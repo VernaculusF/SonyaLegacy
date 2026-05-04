@@ -1,5 +1,13 @@
 # SONYA CONSCIOUSNESS POSITION
 
+**Status:** Active
+**Type:** Core
+**Scope:** Project stance on consciousness, subjecthood, anchors, and their engineering consequences
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
+**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), research plans
+**Last reviewed:** 2026-05-01
+
+
 ## 1. Назначение документа
 
 Этот документ нужен не для публичной полемики и не для академической самозащиты.
