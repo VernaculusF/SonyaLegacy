@@ -88,10 +88,13 @@ async def send_telegram_message(
     client: httpx.AsyncClient | None = None,
     log_error=None,
 ) -> None:
-    for chunk in chunk_plain_text(text, 3500):
+    chunks = chunk_plain_text(text, 3500)
+    if log_error:
+        log_error(f"sendMessage start chat={chat_id} chunks={len(chunks)} total_len={len(text)}")
+    for index, chunk in enumerate(chunks, start=1):
         html = render_telegram_html(chunk)
         try:
-            await telegram_request(
+            result = await telegram_request(
                 token,
                 "sendMessage",
                 {
@@ -101,11 +104,16 @@ async def send_telegram_message(
                     "disable_web_page_preview": "true",
                 },
                 client=client,
+                timeout=httpx.Timeout(30.0, connect=10.0),
             )
+            if log_error:
+                log_error(
+                    f"sendMessage success chat={chat_id} chunk={index}/{len(chunks)} len={len(chunk)} message_id={result.get('message_id')}"
+                )
         except Exception as err:
             if log_error:
-                log_error(f"sendMessage HTML fallback: {err}")
-            await telegram_request(
+                log_error(f"sendMessage HTML fallback chat={chat_id} chunk={index}/{len(chunks)} err={err}")
+            result = await telegram_request(
                 token,
                 "sendMessage",
                 {
@@ -114,7 +122,12 @@ async def send_telegram_message(
                     "disable_web_page_preview": "true",
                 },
                 client=client,
+                timeout=httpx.Timeout(30.0, connect=10.0),
             )
+            if log_error:
+                log_error(
+                    f"sendMessage fallback success chat={chat_id} chunk={index}/{len(chunks)} len={len(chunk)} message_id={result.get('message_id')}"
+                )
 
 
 async def send_telegram_photo(

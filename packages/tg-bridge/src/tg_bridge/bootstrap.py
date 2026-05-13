@@ -6,7 +6,7 @@ from typing import Callable
 from tg_bridge.adapters.openclaw import OpenClawHost
 
 
-Runner = Callable[[Path, list[str]], dict]
+Runner = Callable[[Path, list[str], dict[str, str] | None], dict]
 
 
 def _read_optional_text(path: Path) -> str:
@@ -16,8 +16,9 @@ def _read_optional_text(path: Path) -> str:
         return ""
 
 
-def load_bootstrap_context(host: OpenClawHost, runner: Runner) -> dict[str, str]:
-    context = runner(host.context_loader_path, ["full", "7"])
+def load_bootstrap_context(host: OpenClawHost, runner: Runner, session_id: str | None = None) -> dict[str, str]:
+    extra_env = {"OPENCLAW_SESSION_ID": session_id} if session_id else None
+    context = runner(host.context_loader_path, ["full", "7"], extra_env)
     return {
         "agents": _read_optional_text(host.agents_path),
         "soul": _read_optional_text(host.soul_path),

@@ -46,3 +46,33 @@ async def test_poll_once_advances_offset_and_handles_updates(tmp_path: Path):
     assert writes[-1]["offset"] == 16
     assert handled == [15]
 
+
+@pytest.mark.asyncio
+async def test_poll_once_does_not_advance_offset_when_handle_update_fails(tmp_path: Path):
+    state = {"offset": 10}
+    writes = []
+    raw_path = tmp_path / "raw-updates.jsonl"
+
+    async def fake_get_updates(token: str, offset: int):
+        return [{"update_id": 15, "message": {"text": "hello"}}]
+
+    async def fake_handle_update(cfg, update):
+        raise RuntimeError("provider failed")
+
+    def fake_write_state(new_state):
+        writes.append(dict(new_state))
+
+    with pytest.raises(RuntimeError, match="provider failed"):
+        await poll_once(
+            token="token",
+            cfg={"channels": {"telegram": {"botToken": "token"}}},
+            state=state,
+            get_updates=fake_get_updates,
+            handle_update=fake_handle_update,
+            write_state=fake_write_state,
+            raw_updates_path=raw_path,
+        )
+
+    assert state["offset"] == 10
+    assert writes == []
+

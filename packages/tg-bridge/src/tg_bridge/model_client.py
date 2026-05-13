@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import base64
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -119,13 +120,16 @@ def extract_answer_from_payload(payload: dict[str, Any] | None) -> str:
         return ""
     choice = (payload.get("choices") or [{}])[0]
     content = ((choice.get("message") or {}).get("content"))
-    if isinstance(content, str) and content.strip():
-        return content.strip()
+    if isinstance(content, str):
+        return content if content.strip() else ""
     if isinstance(content, list):
         joined = "".join(part if isinstance(part, str) else str(part.get("text", "")) for part in content)
-        return joined.strip()
+        return joined if joined.strip() else ""
     text = choice.get("text")
-    return str(text).strip() if text else ""
+    if text is None:
+        return ""
+    raw_text = str(text)
+    return raw_text if raw_text.strip() else ""
 
 
 def extract_finish_reason_from_payload(payload: dict[str, Any] | None) -> str:
@@ -142,6 +146,89 @@ def extract_images_from_payload(payload: dict[str, Any] | None) -> list[dict[str
     message = choice.get("message") or {}
     images = message.get("images")
     return images if isinstance(images, list) else []
+
+
+def _looks_incomplete_text(text: str) -> bool:
+    stripped = str(text or "").strip()
+    if not stripped:
+        return True
+    if len(stripped) < 250:
+        return False
+    if stripped.endswith(("...", "…")):
+        return True
+    if stripped[-1].isalnum():
+        return True
+    terminal_chars = {".", "!", "?", ")", "]", "\"", "'", "»", "🖤", "💜", "❤"}
+    return stripped[-1] not in terminal_chars
+
+
+def _normalize_for_overlap(text: str) -> str:
+    return " ".join(str(text or "").split()).strip()
+
+
+def _trim_overlap(existing: str, new_part: str) -> str:
+    existing_raw = str(existing or "")
+    new_raw = str(new_part or "")
+    existing_norm = _normalize_for_overlap(existing)
+    new_norm = _normalize_for_overlap(new_part)
+    if not new_raw:
+        return ""
+    if not existing_raw:
+        return new_raw
+    if new_norm in existing_norm:
+        return ""
+
+    max_raw_overlap = min(len(existing_raw), len(new_raw), 1200)
+    for size in range(max_raw_overlap, 1, -1):
+        if existing_raw.endswith(new_raw[:size]):
+            return new_raw[size:].lstrip(" ")
+
+    max_overlap = min(len(existing_norm), len(new_norm), 1200)
+    for size in range(max_overlap, 11, -1):
+        if existing_norm.endswith(new_norm[:size]):
+            return new_norm[size:].lstrip()
+    return new_raw
+
+
+def _collapse_repeated_paragraphs(text: str) -> str:
+    parts = [part.strip() for part in str(text or "").split("\n\n")]
+    result: list[str] = []
+    seen_tail: set[str] = set()
+    for part in parts:
+        if not part:
+            continue
+        normalized = _normalize_for_overlap(part)
+        if not normalized:
+            continue
+        if result and normalized == _normalize_for_overlap(result[-1]):
+            continue
+        if normalized in seen_tail:
+            continue
+        result.append(part)
+        seen_tail.add(normalized)
+        if len(seen_tail) > 12:
+            seen_tail = set(_normalize_for_overlap(item) for item in result[-12:])
+    return "\n\n".join(result).strip()
+
+
+def _join_text_parts(parts: list[str]) -> str:
+    result = ""
+    for part in parts:
+        if not part:
+            continue
+        if not result:
+            result = part
+            continue
+        prev = result[-1]
+        nxt = part[0]
+        needs_space = (
+            not prev.isspace()
+            and not nxt.isspace()
+            and prev not in "([{\n\t"
+            and nxt not in ".,!?;:)]}\n\t"
+        )
+        result += (" " if needs_space else "") + part
+    return result.strip()
 
 
 async def _chat_completion(
@@ -161,14 +248,27 @@ async def _chat_completion(
         }
         if accept:
             headers["accept"] = accept
-        response = await client.post(
-            f"{provider['baseUrl'].rstrip('/')}/chat/completions",
-            json=body,
-            headers=headers,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        return response.text
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = await client.post(
+                    f"{provider['baseUrl'].rstrip('/')}/chat/completions",
+                    json=body,
+                    headers=headers,
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                return response.text
+            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError) as err:
+                last_err = err
+            except httpx.HTTPStatusError as err:
+                last_err = err
+                if err.response is None or err.response.status_code < 500:
+                    raise
+            if attempt < 2:
+                await asyncio.sleep(1.0 * (attempt + 1))
+        assert last_err is not None
+        raise last_err
     finally:
         if own_client:
             await client.aclose()
@@ -189,23 +289,29 @@ async def complete_text(
         payload = parse_model_payload(raw)
         part = extract_answer_from_payload(payload)
         finish_reason = extract_finish_reason_from_payload(payload)
+        current_answer = _join_text_parts(answer_parts)
         if part:
-            answer_parts.append(part)
+            trimmed_part = _trim_overlap(current_answer, part)
+            if trimmed_part:
+                answer_parts.append(trimmed_part)
             empty_retries = 0
         elif not answer_parts and finish_reason != "length" and empty_retries < 2:
             empty_retries += 1
             continue
-        if finish_reason != "length":
+        current_answer = _join_text_parts(answer_parts)
+        should_continue = finish_reason == "length" or (bool(current_answer) and _looks_incomplete_text(current_answer))
+        if not should_continue:
             break
         request_messages = [
             *request_messages,
-            {"role": "assistant", "content": part},
+            {"role": "assistant", "content": current_answer or part},
             {
                 "role": "user",
                 "content": "Continue exactly from where you stopped. Do not repeat. Finish the same reply naturally.",
             },
         ]
-    return " ".join(part.strip() for part in answer_parts if part and part.strip()).strip()
+    final_answer = _join_text_parts(answer_parts)
+    return _collapse_repeated_paragraphs(final_answer)
 
 
 async def complete_vision(
@@ -265,7 +371,7 @@ async def complete_image_generation(
         file_path.write_bytes(base64.b64decode(b64))
         image_paths.append(file_path)
     return {
-        "answer": answer or "Р“РѕС‚РѕРІРѕ.",
+        "answer": answer or "Готово.",
         "image_paths": image_paths,
     }
 

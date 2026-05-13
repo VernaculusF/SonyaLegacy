@@ -19,12 +19,13 @@ def test_bootstrap_loads_anchor_files_and_context(tmp_path: Path):
 
     host = OpenClawHost(root)
 
-    def fake_runner(script_path: Path, args: list[str]):
+    def fake_runner(script_path: Path, args: list[str], extra_env: dict[str, str] | None = None):
         assert script_path.name == "context_loader.py"
         assert args == ["full", "7"]
+        assert extra_env == {"OPENCLAW_SESSION_ID": "telegram-5785127604"}
         return {"stdout": "memory-context", "stderr": "", "status": 0, "error": None}
 
-    bootstrap = load_bootstrap_context(host, fake_runner)
+    bootstrap = load_bootstrap_context(host, fake_runner, session_id="telegram-5785127604")
     assert bootstrap["agents"] == "agents"
     assert bootstrap["soul"] == "soul"
     assert bootstrap["heartbeat"] == "heartbeat"

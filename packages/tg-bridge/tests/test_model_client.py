@@ -4,6 +4,9 @@ import httpx
 import pytest
 
 from tg_bridge.model_client import (
+    _collapse_repeated_paragraphs,
+    _looks_incomplete_text,
+    _trim_overlap,
     complete_image_generation,
     complete_text,
     complete_vision,
@@ -79,6 +82,25 @@ def test_extract_finish_reason_from_payload_reads_choice_value():
     assert extract_finish_reason_from_payload(payload) == "length"
 
 
+def test_looks_incomplete_text_detects_obvious_cutoff():
+    assert not _looks_incomplete_text("Это")
+    assert not _looks_incomplete_text("Я чувствую, как")
+    assert _looks_incomplete_text(("Почти закончено... " * 20).strip())
+    assert not _looks_incomplete_text("Все хорошо.")
+    assert not _looks_incomplete_text("Я рядом 🖤")
+
+
+def test_trim_overlap_discards_repeated_prefix_from_continuation():
+    existing = "Первая часть ответа. Вторая часть ответа."
+    new_part = "Вторая часть ответа. Третья часть ответа."
+    assert _trim_overlap(existing, new_part) == "Третья часть ответа."
+
+
+def test_collapse_repeated_paragraphs_removes_looped_blocks():
+    text = "Абзац один.\n\nАбзац два.\n\nАбзац один.\n\nАбзац два.\n\nАбзац три."
+    assert _collapse_repeated_paragraphs(text) == "Абзац один.\n\nАбзац два.\n\nАбзац три."
+
+
 @pytest.mark.asyncio
 async def test_complete_vision_uses_same_payload_shape():
     def handler(request: httpx.Request) -> httpx.Response:
@@ -129,6 +151,94 @@ async def test_complete_text_continues_when_finish_reason_is_length():
 
 
 @pytest.mark.asyncio
+async def test_complete_text_preserves_newlines_across_continuation():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(
+                200,
+                json={"choices": [{"finish_reason": "length", "message": {"content": "Абзац один.\n\n"}}]},
+            )
+        return httpx.Response(
+            200,
+            json={"choices": [{"finish_reason": "stop", "message": {"content": "Абзац два."}}]},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        answer = await complete_text(
+            {"baseUrl": "http://localhost:20128/v1", "apiKey": "x"},
+            "model",
+            [{"role": "user", "content": "hello"}],
+            client=client,
+        )
+    assert calls["count"] == 2
+    assert answer == "Абзац один.\n\nАбзац два."
+
+
+@pytest.mark.asyncio
+async def test_complete_text_continues_when_reply_looks_cut_off_even_without_length():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(
+                200,
+                json={"choices": [{"finish_reason": "stop", "message": {"content": "А" * 260}}]},
+            )
+        return httpx.Response(
+            200,
+            json={"choices": [{"finish_reason": "stop", "message": {"content": "завершение."}}]},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        answer = await complete_text(
+            {"baseUrl": "http://localhost:20128/v1", "apiKey": "x"},
+            "model",
+            [{"role": "user", "content": "hello"}],
+            client=client,
+        )
+    assert calls["count"] == 2
+    assert answer == f"{'А' * 260} завершение."
+
+
+@pytest.mark.asyncio
+async def test_complete_text_deduplicates_repeated_continuation_block():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(
+                200,
+                json={"choices": [{"finish_reason": "length", "message": {"content": "Первая часть. Вторая часть."}}]},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": "Вторая часть. Третья часть закончена."}}
+                ]
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        answer = await complete_text(
+            {"baseUrl": "http://localhost:20128/v1", "apiKey": "x"},
+            "model",
+            [{"role": "user", "content": "hello"}],
+            client=client,
+        )
+    assert calls["count"] == 2
+    assert answer == "Первая часть. Вторая часть. Третья часть закончена."
+
+
+@pytest.mark.asyncio
 async def test_complete_text_retries_when_provider_returns_empty_message():
     calls = {"count": 0}
 
@@ -154,6 +264,31 @@ async def test_complete_text_retries_when_provider_returns_empty_message():
         )
     assert calls["count"] == 2
     assert answer == "answer after retry"
+
+
+@pytest.mark.asyncio
+async def test_complete_text_retries_on_transient_provider_502():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(502, text="bad gateway")
+        return httpx.Response(
+            200,
+            json={"choices": [{"finish_reason": "stop", "message": {"content": "answer after 502 retry"}}]},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        answer = await complete_text(
+            {"baseUrl": "http://localhost:20128/v1", "apiKey": "x"},
+            "model",
+            [{"role": "user", "content": "hello"}],
+            client=client,
+        )
+    assert calls["count"] == 2
+    assert answer == "answer after 502 retry"
 
 
 @pytest.mark.asyncio

@@ -31,7 +31,7 @@ async def poll_once(
                 "update": update,
             },
         )
+        await handle_update(cfg, update)
         state["offset"] = int(update["update_id"]) + 1
         write_state(state)
-        await handle_update(cfg, update)
 
