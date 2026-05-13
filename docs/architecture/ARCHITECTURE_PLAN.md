@@ -311,6 +311,13 @@ Every implementation-facing subplan must answer three reference checks:
 2. Which orchestration boundary from Hermes does it respect?
 3. Which tempting OmniAgent shortcut does it explicitly reject?
 
+These three checks live in a single mandatory **Reference Check** section inside every design or implementation plan under `docs/work/`. Templates that pre-populate the section are provided at:
+
+- [work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md)
+- [work/TEMPLATES/DESIGN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/DESIGN_TEMPLATE.md)
+
+A subplan that omits this section, leaves it empty, or answers with "N/A" without explanation is not allowed to govern implementation. Each answer must point at a concrete file, section, or behavior — not a topic.
+
 Relevant linked plans:
 
 - [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)

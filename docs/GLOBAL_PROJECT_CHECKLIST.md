@@ -43,11 +43,11 @@
 - 🟡 Есть анализ Hermes, но только архитектурная роль: code-level audit не найден, Hermes в живом виде в репо/хосте отсутствует
 - ✅ Есть анализ OmniAgent (теория + code-level audit 2026-05-13)
 - ✅ Reference phase встроена в [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md) как обязательная ранняя стадия
-- 🟡 Новые implementation slices иногда ещё делаются быстрее, чем референс-проверка успевает обновиться
-- ⬜ Каждый новый subsystem-план явно отвечает, что он берёт из OpenClaw
-- ⬜ Каждый новый subsystem-план явно отвечает, что он берёт из Hermes
-- ⬜ Каждый новый subsystem-план явно отвечает, какие shortcut-идеи из OmniAgent он отвергает
-- ⬜ Фаза анализа полностью превращена в реальный pre-implementation gate
+- 🟡 Новые implementation slices иногда ещё делаются быстрее, чем референс-проверка успевает обновиться — шаблон и gate закрывают правило, подтверждение — после первого живого plan-а, который пройдёт через шаблон
+- ✅ Каждый новый subsystem-план явно отвечает, что он берёт из OpenClaw — обязательное поле 3.1/4.1 в [шаблоне implementation plan](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md) и [шаблоне design](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/DESIGN_TEMPLATE.md)
+- ✅ Каждый новый subsystem-план явно отвечает, что он берёт из Hermes — то же поле 3.2/4.2; т.к. Hermes code-level отсутствует, он трактуется как орк-роль внутри `sonya_runtime/*`
+- ✅ Каждый новый subsystem-план явно отвечает, какие shortcut-идеи из OmniAgent он отвергает — поле 3.3/4.3 с привязкой к конкретному файлу/модулю OmniAgent
+- ✅ Фаза анализа полностью превращена в реальный pre-implementation gate — Reference Check обязательный раздел в шаблонах, его отсутствие делает план недействительным по [ARCHITECTURE_PLAN.md §11](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md) и [DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md)
 
 ## 3. Репозиторий и package layout
 

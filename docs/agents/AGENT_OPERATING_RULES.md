@@ -119,7 +119,8 @@ For each such change you must, in the same PR or commit series:
 3. update [PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md) when a file moves or changes role;
 4. update [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md) when a ⬜/🟡/✅ item flips;
 5. update `Last reviewed` on every document whose governing meaning changed;
-6. if the change is large enough to constitute a subsystem shift, append a short entry to [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md).
+6. if the change is large enough to constitute a subsystem shift, append a short entry to [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md);
+7. if the change is the execution of (or a deviation from) a work plan, verify that the work plan's **Reference Check** section is still honest — i.e., the OpenClaw / Hermes / OmniAgent answers still hold. If they do not, update the plan first.
 
 If a step is intentionally deferred, say so explicitly in the commit message and name the follow-up task. Silent divergence is treated as a drift event and must be recorded on the next drift-review cadence.
 

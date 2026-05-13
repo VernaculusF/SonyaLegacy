@@ -397,6 +397,13 @@ Use it to answer:
 
 Work docs are allowed to be volatile. They are not project truth, but they still need explicit purpose. Every file under `docs/work/` must carry a valid `Status`; when a work doc completes its purpose or drifts out of usefulness, move it to `Archived` or `Stale` with a short note instead of silently leaving it `Active`. See [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md) for the status lifecycle and the doc-review gate.
 
+New work docs must be created from the shared templates at `docs/work/TEMPLATES/`:
+
+- [work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md) for implementation plans;
+- [work/TEMPLATES/DESIGN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/DESIGN_TEMPLATE.md) for designs.
+
+Both templates carry the mandatory **Reference Check** (Phase 0 gate) section required by [architecture/ARCHITECTURE_PLAN.md §11](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md). A plan or design without this section is not allowed to govern implementation.
+
 ### [work/designs/2026-04-30-telegram-bridge-extraction-design.md](C:/Users/Jester/Desktop/Sonya/docs/work/designs/2026-04-30-telegram-bridge-extraction-design.md)
 
 **Archived (2026-05-13).** Historical record of the extraction strategy for the Telegram bridge. Kept because it records:

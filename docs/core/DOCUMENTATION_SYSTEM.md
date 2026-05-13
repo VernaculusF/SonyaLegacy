@@ -193,9 +193,12 @@ When documentation changes:
 When starting new implementation:
 
 1. read the relevant long-lived docs from docs/;
-2. create or update a work doc in `docs/work/`;
+2. create or update a work doc in `docs/work/` **from the shared templates** at `docs/work/TEMPLATES/`:
+   - [work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md) for implementation plans,
+   - [work/TEMPLATES/DESIGN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/DESIGN_TEMPLATE.md) for design documents;
 3. do not create new execution plans outside the `docs/work/` work layer;
-4. do not allow work docs to silently become project truth without intentional promotion.
+4. do not allow work docs to silently become project truth without intentional promotion;
+5. a work doc that drops or skips the mandatory **Reference Check** section is not valid and must not be used to govern implementation. Reference Check is the Phase 0 gate from [architecture/ARCHITECTURE_PLAN.md §10–11](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md).
 
 ## Checklist Rule
 

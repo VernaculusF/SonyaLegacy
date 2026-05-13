@@ -132,3 +132,42 @@ Append new entries at the bottom. Newest goes last.
 - Write `docs/work/implementation-plans/2026-05-13-base-runtime-implementation-plan.md` as the replacement for the Stale first-runtime plan. Owner: next implementation pass.
 - Add `get_recent_tasks_for_principal` to the `TaskStore` protocol in `sonya_runtime.tasks.store` or rewrite `TaskService.build_task_status_response` against a narrower interface. Owner: next runtime commit.
 - Run the next drift review on or before 2026-05-27.
+
+### 2026-05-13 — Phase 0 gate codified
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (same day as initial lap; tracked as a dedicated subsystem shift)
+**Subsystems checked:**
+
+- governance layer (templates + gate text);
+- `docs/work/` lifecycle under the new templates;
+- checklist section 2 (Phase 0).
+
+### Reality findings
+
+- Phase 0 had three ⬜ items that all boiled down to the same missing artefact: a required Reference Check field in every new work doc. Adding that artefact closes the rule-level part of all three, regardless of which subsystem the next plan touches.
+- No existing work doc is currently `Active` and missing the Reference Check. The two archived bridge plans carry a `Reference Inputs` block; the stale first-runtime plan carries a `Reference Alignment` section. Both satisfy the intent; only new docs need the new template.
+- Hermes stays special-cased in the template: because [HERMES_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/HERMES_ANALYSIS.md) has no code-level audit, the Hermes question becomes "which orchestration boundary inside `sonya_runtime/*` do we respect", not "which file in some Hermes repo".
+
+### Status changes
+
+- [docs/core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md): Active (unchanged; Operational Rule now requires templates and names the Phase 0 gate explicitly).
+- [docs/architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md): Active (unchanged; §11 now links to the templates and declares a plan without Reference Check invalid).
+- [docs/agents/AGENT_OPERATING_RULES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md): Active (unchanged; doc-review gate step 7 added — verify Reference Check honesty when executing or deviating from a plan).
+- [docs/work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/IMPLEMENTATION_PLAN_TEMPLATE.md): Draft (new; template, not a live plan).
+- [docs/work/TEMPLATES/DESIGN_TEMPLATE.md](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES/DESIGN_TEMPLATE.md): Draft (new; template, not a live design).
+- [docs/PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md): Active (unchanged; Work Layer blurb now points at the templates and the Phase 0 gate).
+
+### Checklist diffs
+
+- Section 2 "Фаза 0: анализ референсов":
+  - ⬜ "Каждый новый subsystem-план явно отвечает, что он берёт из OpenClaw" → ✅ (template field 3.1/4.1).
+  - ⬜ "Каждый новый subsystem-план явно отвечает, что он берёт из Hermes" → ✅ (template field 3.2/4.2, with Hermes treated as a role inside `sonya_runtime/*`).
+  - ⬜ "Каждый новый subsystem-план явно отвечает, какие shortcut-идеи из OmniAgent он отвергает" → ✅ (template field 3.3/4.3).
+  - ⬜ "Фаза анализа полностью превращена в реальный pre-implementation gate" → ✅ (Reference Check is mandatory; plan/design invalid without it per ARCHITECTURE_PLAN §11).
+  - 🟡 "Новые implementation slices иногда ещё делаются быстрее, чем референс-проверка успевает обновиться" stays 🟡: the rule is codified, but confirmation will arrive when the first real plan passes through the new template without drift.
+
+### Follow-ups
+
+- The next implementation plan (currently scheduled: `docs/work/implementation-plans/2026-05-13-base-runtime-implementation-plan.md`) must be authored from the new template. Its execution is what will flip the remaining 🟡 in Phase 0.
+- Run the next drift review on or before 2026-05-27.
