@@ -171,3 +171,36 @@ Append new entries at the bottom. Newest goes last.
 
 - The next implementation plan (currently scheduled: `docs/work/implementation-plans/2026-05-13-base-runtime-implementation-plan.md`) must be authored from the new template. Its execution is what will flip the remaining 🟡 in Phase 0.
 - Run the next drift review on or before 2026-05-27.
+
+- Run the next drift review on or before 2026-05-27.
+
+### 2026-05-13 — Checklist split + ROADMAP
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (same day; dedicated subsystem shift)
+**Subsystems checked:**
+
+- `GLOBAL_PROJECT_CHECKLIST.md` как документ;
+- соотношение «audit ledger» vs «план реализации»;
+- порядок секций против `ARCHITECTURE_PLAN.md §4`.
+
+### Reality findings
+
+- Предыдущая версия `GLOBAL_PROJECT_CHECKLIST.md` смешивала три роли: audit ledger, карту подсистем, и §22 «ближайший долг». Из-за этого порядок секций был исторический, а не архитектурный (§5 Runtime shell шёл до §6 Subject core; §15 Planner после §14 Worker; §16 Sessions после Planner). В файле были конкретные дубли: §13 Anti-fake-agency пересекалось с §11 Action contract; §14 Worker был расширенным срезом §12 Reusable task runtime; §22 — буквально выжимка 🟡-пунктов других секций.
+- Главный недостаток: в файле не было настоящего плана реализации. Пользователь (Иван) явно сказал: «файл является общим чеклистом, но в нём нет чеклиста на реализацию конкретных частей системы. У нас буквально ничего нет. Только документация и базовый мост для тг». Это честно — в старом чеклисте не было фазового видения.
+- Решение: расщепить на два файла.
+
+### Status changes
+
+- [docs/ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md): **создан** с `Status: Active`, `Type: Core`. Фиксирует шесть фаз реализации (Foundation → Bare Runtime Shell → Provider & Principal Core → Subject Core & Continuity → Planner Migration → Memory Extraction → VPS Deployment) и пост-MVP треки. Каждая фаза имеет deliverables, exit-критерии, Reference Check preview, Go/No-Go протокол.
+- [docs/GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md): переписан с нуля. Теперь это чистый audit ledger, 18 секций по архитектурным слоям (Foundation governance/phase0, Repo, Host compat, Runtime shell, Subject core, Identity, Memory, Provider, Action/planner, Tasks, Sessions, Skills, Harness, Telegram, Other channels, Observability, Embodiment/future). Секции §22 больше нет — ближайший долг живёт в ROADMAP как текущая фаза. Дубли §13↔§11, §14⊂§12, §15↔§11 устранены слиянием в один секционный блок каждый. Ни один факт не потерян: все ✅/🟡/⬜ из старого файла присутствуют в новом, просто в правильной секции.
+- [docs/PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md): Reading Order расширен; Root Checklist раздел описывает и ROADMAP, и CHECKLIST с явным разделением ролей.
+
+### Checklist diffs
+
+Весь GLOBAL_PROJECT_CHECKLIST.md переписан. Нет единого diff-а по ⬜/🟡/✅: это смена структуры, не смена реальности. Маркеры сохранены все, перемещены в правильные секции.
+
+### Follow-ups
+
+- При старте Фазы 1 (Bare Runtime Shell) написать первый implementation plan по шаблону (`docs/work/implementation-plans/2026-05-?-bare-runtime-implementation-plan.md`), провести его через Reference Check gate. Это закроет последний пункт Фазы 0 в ROADMAP и флипнет жёлтые в §2 CHECKLIST.
+- Run the next drift review on or before 2026-05-27.
