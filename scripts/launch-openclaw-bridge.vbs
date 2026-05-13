@@ -1,10 +1,11 @@
 Option Explicit
 
 Dim shell
-Dim command
+Dim repoRoot
 
 Set shell = CreateObject("WScript.Shell")
-shell.CurrentDirectory = "C:\Users\Jester\Desktop\Sonya"
+repoRoot = "C:\Users\Jester\Desktop\Sonya"
+shell.CurrentDirectory = repoRoot
 
-command = """C:\Users\Jester\Desktop\Sonya\.venv\Scripts\python.exe"" -m tg_bridge.app --openclaw-root ""C:\Users\Jester\.openclaw"""
-shell.Run command, 0, False
+shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & repoRoot & "\scripts\run-openclaw-bridge.ps1"" -Detached", 0, False
+shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & repoRoot & "\scripts\run-openclaw-worker.ps1"" -Detached", 0, False

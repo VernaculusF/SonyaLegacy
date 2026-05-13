@@ -1,10 +1,12 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from tg_bridge.actions import RuntimeAction
+from sonya_runtime.actions.models import RuntimeAction
+from sonya_runtime.actions.policy import looks_like_task_status_query
+from sonya_runtime.tasks.service import TaskService
 from tg_bridge.media import TelegramInput, extract_telegram_input
 from tg_bridge.sessions import load_session, save_session
 from tg_bridge.telegram_api import (
@@ -70,6 +72,7 @@ class HandlerServices:
     save_session: Callable[[Path, int, dict[str, Any]], None] = save_session
     session_dir: Path = field(default_factory=lambda: Path("."))
     inbound_media_dir: Path = field(default_factory=lambda: Path("."))
+    task_service: TaskService | None = None
 
 
 def _assistant_text_for_generated(action: RuntimeAction, generated: dict[str, Any]) -> str:
@@ -82,11 +85,19 @@ def _assistant_text_for_generated(action: RuntimeAction, generated: dict[str, An
     return "[generated image]"
 
 
-def _append_session_messages(session: dict[str, Any], user_text: str, assistant_text: str) -> dict[str, Any]:
+def _append_session_messages(
+    session: dict[str, Any],
+    user_text: str,
+    assistant_text: str,
+    task_ref: str = "",
+) -> dict[str, Any]:
+    assistant_content = assistant_text
+    if task_ref:
+        assistant_content = f"{assistant_content}\n\n[task_ref:{task_ref}]"
     session["messages"] = [
         *(session.get("messages") or []),
         {"role": "user", "content": user_text},
-        {"role": "assistant", "content": assistant_text},
+        {"role": "assistant", "content": assistant_content},
     ]
     return session
 
@@ -159,9 +170,24 @@ async def handle_update(
         return
 
     session = services.load_session(services.session_dir, input_data.chat_id)
+    principal_id = str(input_data.from_id)
+    origin_chat_id = str(input_data.chat_id)
+    task_ref = ""
+
+    if services.task_service and looks_like_task_status_query(input_data.prompt_text):
+        response = services.task_service.build_task_status_response(principal_id, origin_chat_id)
+        await services.send_message(token, input_data.chat_id, response.text)
+        services.save_session(
+            services.session_dir,
+            input_data.chat_id,
+            _append_session_messages(session, input_data.prompt_text, response.text, response.task_ref or ""),
+        )
+        services.run_post_response_hook(f"telegram-{input_data.chat_id}", input_data.prompt_text, response.text)
+        return
+
     action = await services.plan_text_action(cfg, input_data.chat_id, input_data.prompt_text)
     services.log_event(
-        f"planned action chat={input_data.chat_id} type={action.type} has_reply={bool(action.reply_text)} has_image_prompt={bool(action.image_prompt)}"
+        f"planned action chat={input_data.chat_id} type={action.type} has_reply={bool(action.reply_text)} has_image_prompt={bool(action.image_prompt)} has_task_payload={bool(action.task_payload)}"
     )
 
     if action.type == "reply":
@@ -177,13 +203,23 @@ async def handle_update(
             media_items,
             services,
         )
+    elif action.type in {"create_task", "reply_and_create_task"}:
+        if services.task_service is None:
+            raise RuntimeError("task_service is not configured")
+        task = services.task_service.create_task_from_action(action)
+        response = services.task_service.build_task_created_response(task, action.reply_text)
+        assistant_text = response.text
+        task_ref = task.task_id
+        await services.send_message(token, input_data.chat_id, assistant_text)
+    elif action.type in {"ask_clarification", "report_limitation"}:
+        assistant_text = action.reply_text
+        await services.send_message(token, input_data.chat_id, assistant_text)
     else:
         raise RuntimeError(f"unsupported runtime action: {action.type}")
 
     services.save_session(
         services.session_dir,
         input_data.chat_id,
-        _append_session_messages(session, input_data.prompt_text, assistant_text),
+        _append_session_messages(session, input_data.prompt_text, assistant_text, task_ref),
     )
     services.run_post_response_hook(f"telegram-{input_data.chat_id}", input_data.prompt_text, assistant_text)
-

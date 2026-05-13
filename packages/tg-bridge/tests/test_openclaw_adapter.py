@@ -8,4 +8,5 @@ def test_openclaw_host_resolves_expected_paths():
     assert host.config_path.name == "openclaw.json"
     assert host.workspace_root.name == "workspace"
     assert host.bridge_log_path.name == "telegram-bridge.log"
+    assert host.tasks_db_path.name == "tasks.db"
 

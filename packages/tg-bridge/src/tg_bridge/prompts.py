@@ -1,6 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any
+
+from sonya_runtime.actions.policy import ANTI_FAKE_AGENCY_RULES
 
 
 def detect_user_language(text: str) -> str:
@@ -77,14 +79,19 @@ def build_action_messages(
         language_hint,
         extra_rules=[
             "- Decide the next runtime action instead of writing a normal conversational reply.",
-            '- Return only valid JSON with one of these action types: "reply", "generate_image", "reply_and_generate_image".',
+            '- Return only valid JSON with one of these action types: "reply", "generate_image", "reply_and_generate_image", "create_task", "reply_and_create_task", "ask_clarification", "report_limitation".',
             '- For "reply", include "reply_text".',
             '- For "generate_image", include "image_prompt".',
             '- For "reply_and_generate_image", include both "reply_text" and "image_prompt".',
+            '- For "create_task", include a "task_payload" object and omit stage directions about background work.',
+            '- For "reply_and_create_task", include both "reply_text" and "task_payload".',
+            '- For "ask_clarification" and "report_limitation", include "reply_text".',
+            '- A valid "task_payload" must contain: "kind", "goal", "requested_by_principal", "origin_channel", "origin_chat_id", "source_message", "context_summary", "suggested_steps", "priority", "requires_user_followup", "followup_prompt".',
             "- If the user is asking to visualize, depict, show, generate, draw, or create an image from the current conversation, prefer an image action.",
             "- If the user refers to earlier context, synthesize the image prompt yourself from the conversation and memory context.",
+            "- If the user is asking you to inspect files, review a folder, analyze something and come back later, build a plan, synthesize documentation, or otherwise do delayed work, prefer a task action instead of pretending the work is already happening.",
+            *ANTI_FAKE_AGENCY_RULES,
             "- Do not wrap the JSON in markdown fences.",
         ],
     )
     return [{"role": "system", "content": system_content}, *history, {"role": "user", "content": user_text}]
-

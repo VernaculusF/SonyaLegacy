@@ -54,6 +54,14 @@ class OpenClawHost:
         return self.paths.generated_media_dir
 
     @property
+    def runtime_root(self) -> Path:
+        return self.paths.runtime_root
+
+    @property
+    def tasks_db_path(self) -> Path:
+        return self.paths.tasks_db_path
+
+    @property
     def agents_path(self) -> Path:
         return self.paths.agents_path
 

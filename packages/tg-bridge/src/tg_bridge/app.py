@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import asyncio
@@ -10,6 +10,8 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from sonya_runtime.tasks.service import TaskService
+from sonya_runtime.tasks.sqlite_store import SQLiteTaskStore
 from tg_bridge.actions import RuntimeAction, parse_runtime_action
 from tg_bridge.adapters.openclaw import OpenClawHost
 from tg_bridge.bootstrap import load_bootstrap_context
@@ -28,6 +30,7 @@ from tg_bridge.prompts import build_action_messages, build_messages
 from tg_bridge.sessions import load_session
 from tg_bridge.state import read_state, write_state
 from tg_bridge.telegram_api import get_updates
+from tg_bridge.telegram_api import send_telegram_message, send_telegram_photo
 from tg_bridge.update_loop import poll_once
 
 
@@ -45,12 +48,13 @@ def _run_python_script(
     workspace_root: Path,
     script_path: Path,
     args: list[str],
+    extra_env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     try:
         result = subprocess.run(
             [str(python_executable), str(script_path), *args],
             cwd=str(workspace_root),
-            env={**os.environ, "OPENCLAW_WORKSPACE": str(workspace_root)},
+            env={**os.environ, "OPENCLAW_WORKSPACE": str(workspace_root), **(extra_env or {})},
             capture_output=True,
             text=True,
             timeout=60,
@@ -80,17 +84,36 @@ async def _plan_text_action_with_fallback(
     session: dict[str, Any],
     prompt_text: str,
 ) -> RuntimeAction:
+    async def _complete_normal_reply() -> str:
+        fallback_messages = build_messages(bootstrap, session, prompt_text)
+        return await complete_text(provider, model_name, fallback_messages)
+
     action_messages = build_action_messages(bootstrap, session, prompt_text)
     raw = await complete_text(provider, model_name, action_messages)
     action = parse_runtime_action(raw)
     if action is not None:
-        if action.type == "reply" and action.reply_text:
+        if action.type == "generate_image" and action.image_prompt:
             return action
-        if action.type in {"generate_image", "reply_and_generate_image"} and action.image_prompt:
+        if action.type in {"create_task", "reply_and_create_task", "ask_clarification", "report_limitation"}:
             return action
+        if action.type == "reply":
+            fallback_reply = await _complete_normal_reply()
+            if fallback_reply:
+                return RuntimeAction(type="reply", reply_text=fallback_reply)
+            if action.reply_text:
+                return action
+        if action.type == "reply_and_generate_image" and action.image_prompt:
+            fallback_reply = await _complete_normal_reply()
+            if fallback_reply:
+                return RuntimeAction(
+                    type="reply_and_generate_image",
+                    reply_text=fallback_reply,
+                    image_prompt=action.image_prompt,
+                )
+            if action.reply_text:
+                return action
 
-    fallback_messages = build_messages(bootstrap, session, prompt_text)
-    fallback_reply = await complete_text(provider, model_name, fallback_messages)
+    fallback_reply = await _complete_normal_reply()
     if fallback_reply:
         return RuntimeAction(type="reply", reply_text=fallback_reply)
     return RuntimeAction(type="reply", reply_text=raw or "Пустой ответ модели.")
@@ -100,26 +123,30 @@ def _compose_services(host: OpenClawHost, cfg: dict[str, Any], python_executable
     provider = _provider_from_cfg(cfg)
     model_name = resolve_model_name(cfg)
     image_model_name = resolve_image_model_name(cfg)
+    task_service = TaskService(SQLiteTaskStore(host.tasks_db_path))
 
-    def runner(script_path: Path, args: list[str]) -> dict[str, Any]:
-        return _run_python_script(python_executable, host.workspace_root, script_path, args)
+    def runner(script_path: Path, args: list[str], extra_env: dict[str, str] | None = None) -> dict[str, Any]:
+        return _run_python_script(python_executable, host.workspace_root, script_path, args, extra_env)
 
     async def complete_text_service(cfg_: dict[str, Any], chat_id: int, prompt_text: str) -> str:
-        bootstrap = load_bootstrap_context(host, runner)
+        session_id = f"telegram-{chat_id}"
+        bootstrap = load_bootstrap_context(host, runner, session_id=session_id)
         session = load_session(host.session_dir, chat_id)
         messages = build_messages(bootstrap, session, prompt_text)
         answer = await complete_text(provider, model_name, messages)
         return answer or "Пустой ответ модели."
 
     async def plan_text_action_service(cfg_: dict[str, Any], chat_id: int, prompt_text: str) -> RuntimeAction:
-        bootstrap = load_bootstrap_context(host, runner)
+        session_id = f"telegram-{chat_id}"
+        bootstrap = load_bootstrap_context(host, runner, session_id=session_id)
         session = load_session(host.session_dir, chat_id)
         return await _plan_text_action_with_fallback(provider, model_name, bootstrap, session, prompt_text)
 
     async def complete_vision_service(
         cfg_: dict[str, Any], chat_id: int, prompt_text: str, media_items: list[dict[str, Any]]
     ) -> str:
-        bootstrap = load_bootstrap_context(host, runner)
+        session_id = f"telegram-{chat_id}"
+        bootstrap = load_bootstrap_context(host, runner, session_id=session_id)
         session = load_session(host.session_dir, chat_id)
         messages = build_messages(bootstrap, session, serialize_user_content(prompt_text, media_items))
         answer = await complete_vision(provider, model_name, messages)
@@ -128,7 +155,8 @@ def _compose_services(host: OpenClawHost, cfg: dict[str, Any], python_executable
     async def complete_image_generation_service(
         cfg_: dict[str, Any], chat_id: int, prompt_text: str, media_items: list[dict[str, Any]]
     ) -> dict[str, Any]:
-        bootstrap = load_bootstrap_context(host, runner)
+        session_id = f"telegram-{chat_id}"
+        bootstrap = load_bootstrap_context(host, runner, session_id=session_id)
         session = load_session(host.session_dir, chat_id)
         messages = build_messages(bootstrap, session, serialize_user_content(prompt_text, media_items))
         return await complete_image_generation(
@@ -154,7 +182,17 @@ def _compose_services(host: OpenClawHost, cfg: dict[str, Any], python_executable
     def log_event(message: str) -> None:
         append_log_line(host.bridge_log_path, message)
 
+    async def send_message_service(token: str, chat_id: int, text: str) -> None:
+        await send_telegram_message(token, chat_id, text, log_error=log_event)
+
+    async def send_photo_service(token: str, chat_id: int, file_path: Path, caption: str = "") -> Any:
+        result = await send_telegram_photo(token, chat_id, file_path, caption)
+        log_event(f"sendPhoto success chat={chat_id} file={Path(file_path).name} message_id={result.get('message_id')}")
+        return result
+
     return HandlerServices(
+        send_message=send_message_service,
+        send_photo=send_photo_service,
         complete=complete_text_service,
         complete_vision=complete_vision_service,
         complete_image_generation=complete_image_generation_service,
@@ -163,6 +201,7 @@ def _compose_services(host: OpenClawHost, cfg: dict[str, Any], python_executable
         log_event=log_event,
         session_dir=host.session_dir,
         inbound_media_dir=host.inbound_media_dir,
+        task_service=task_service,
     )
 
 
@@ -208,4 +247,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

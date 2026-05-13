@@ -41,6 +41,14 @@ class OpenClawPaths:
         return self.root / "media" / "generated"
 
     @property
+    def runtime_root(self) -> Path:
+        return self.root / "sonya_runtime"
+
+    @property
+    def tasks_db_path(self) -> Path:
+        return self.runtime_root / "tasks.db"
+
+    @property
     def agents_path(self) -> Path:
         return self.workspace_root / "AGENTS.md"
 

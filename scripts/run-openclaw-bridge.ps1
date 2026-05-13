@@ -28,8 +28,10 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $venvRoot = Join-Path $repoRoot ".venv"
 $venvPython = Join-Path $venvRoot "Scripts\python.exe"
 $venvSitePackages = Join-Path $venvRoot "Lib\site-packages"
+$runtimeSource = Join-Path $repoRoot "src"
 $packageTarget = Join-Path $repoRoot "packages\tg-bridge"
 $packageSource = Join-Path $packageTarget "src"
+$workspaceInstalled = $false
 
 if (-not (Test-Path $venvPython)) {
     python -m venv $venvRoot
@@ -51,13 +53,24 @@ if (-not $installed) {
     & $venvPython -m pip install -e $packageTarget | Out-Null
 }
 
+try {
+    & $venvPython -c "import importlib.metadata, sys; sys.exit(0 if importlib.metadata.version('sonya-workspace') else 1)" | Out-Null
+    $workspaceInstalled = ($LASTEXITCODE -eq 0)
+} catch {
+    $workspaceInstalled = $false
+}
+
+if (-not $workspaceInstalled) {
+    & $venvPython -m pip install -e $repoRoot | Out-Null
+}
+
 $bridgeArgs = @("-m", "tg_bridge.app", "--openclaw-root", "C:\Users\Jester\.openclaw")
 if ($Once) {
     $bridgeArgs += "--once"
 }
 
 $env:VIRTUAL_ENV = $venvRoot
-$env:PYTHONPATH = "$packageSource;$venvSitePackages"
+$env:PYTHONPATH = "$runtimeSource;$packageSource;$venvSitePackages"
 
 try {
     if ($Detached) {

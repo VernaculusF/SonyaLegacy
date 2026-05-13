@@ -1,9 +1,10 @@
-﻿import json
 from pathlib import Path
 
 import pytest
 
-from tg_bridge.actions import RuntimeAction
+from sonya_runtime.tasks.service import TaskService
+from sonya_runtime.tasks.sqlite_store import SQLiteTaskStore
+from tg_bridge.actions import RuntimeAction, RuntimeTaskPayload
 from tg_bridge.handlers import HandlerServices, handle_update, should_allow_sender
 from tg_bridge.media import TelegramInput
 
@@ -112,7 +113,7 @@ async def test_handle_update_text_path_can_generate_image_from_action():
     async def fake_plan_text_action(cfg, chat_id, prompt_text):
         return RuntimeAction(
             type="reply_and_generate_image",
-            reply_text="РЎРґРµР»Р°Р»Р°.",
+            reply_text="Сделала.",
             image_prompt="portrait in moonlight",
         )
 
@@ -134,8 +135,8 @@ async def test_handle_update_text_path_can_generate_image_from_action():
             message=update["message"],
             chat_id=5785127604,
             from_id=5785127604,
-            text="СЃРіРµРЅРµСЂСЊ С‚Рѕ, Рѕ С‡РµРј РјС‹ РіРѕРІРѕСЂРёР»Рё",
-            prompt_text="СЃРіРµРЅРµСЂСЊ С‚Рѕ, Рѕ С‡РµРј РјС‹ РіРѕРІРѕСЂРёР»Рё",
+            text="сгенерь то, о чем мы говорили",
+            prompt_text="сгенерь то, о чем мы говорили",
             attachments=[],
             has_image=False,
             mode="text",
@@ -155,17 +156,127 @@ async def test_handle_update_text_path_can_generate_image_from_action():
 
     await handle_update(
         {"channels": {"telegram": {"botToken": "token", "allowFrom": ["5785127604"]}}},
-        {"message": {"text": "СЃРіРµРЅРµСЂСЊ С‚Рѕ, Рѕ С‡РµРј РјС‹ РіРѕРІРѕСЂРёР»Рё"}},
+        {"message": {"text": "сгенерь то, о чем мы говорили"}},
         services=services,
     )
 
-    assert sent_messages == [("token", 5785127604, "РЎРґРµР»Р°Р»Р°.")]
+    assert sent_messages == [("token", 5785127604, "Сделала.")]
     assert sent_photos == [("token", 5785127604, Path("img1.png"), "")]
-    assert hook_calls == [("telegram-5785127604", "СЃРіРµРЅРµСЂСЊ С‚Рѕ, Рѕ С‡РµРј РјС‹ РіРѕРІРѕСЂРёР»Рё", "РЎРґРµР»Р°Р»Р°.")]
-    assert saved_sessions[0][2]["messages"][-1]["content"] == "РЎРґРµР»Р°Р»Р°."
+    assert hook_calls == [("telegram-5785127604", "сгенерь то, о чем мы говорили", "Сделала.")]
+    assert saved_sessions[0][2]["messages"][-1]["content"] == "Сделала."
     assert log_messages[0].startswith("planned action chat=5785127604 type=reply_and_generate_image")
     assert log_messages[1].startswith("image generation start chat=5785127604")
     assert log_messages[2] == "image generation result chat=5785127604 images=1 answer=True"
+
+
+@pytest.mark.asyncio
+async def test_handle_update_creates_task_for_task_action(tmp_path: Path):
+    sent_messages = []
+    saved_sessions = []
+    db_path = tmp_path / "tasks.db"
+    task_service = TaskService(SQLiteTaskStore(db_path))
+
+    async def fake_send_message(token, chat_id, text):
+        sent_messages.append((token, chat_id, text))
+
+    async def fake_plan_text_action(cfg, chat_id, prompt_text):
+        return RuntimeAction(
+            type="reply_and_create_task",
+            reply_text="Задачу поставила.",
+            task_payload=RuntimeTaskPayload(
+                kind="workspace_analysis",
+                goal="Проверить структуру workspace",
+                requested_by_principal="5785127604",
+                origin_channel="telegram",
+                origin_chat_id="5785127604",
+                source_message=prompt_text,
+                context_summary="Нужно понять, куда складывать лиды",
+                suggested_steps=("осмотреть корень", "собрать ключевые узлы"),
+                priority=4,
+            ),
+        )
+
+    def fake_save_session(session_dir, chat_id, session):
+        saved_sessions.append((session_dir, chat_id, session))
+
+    services = HandlerServices(
+        extract_input=lambda update: TelegramInput(
+            message=update["message"],
+            chat_id=5785127604,
+            from_id=5785127604,
+            text="проверь папку и вернись",
+            prompt_text="проверь папку и вернись",
+            attachments=[],
+            has_image=False,
+            mode="text",
+        ),
+        send_message=fake_send_message,
+        plan_text_action=fake_plan_text_action,
+        load_session=lambda session_dir, chat_id: {"messages": []},
+        save_session=fake_save_session,
+        session_dir=Path("sessions"),
+        task_service=task_service,
+    )
+
+    await handle_update(
+        {"channels": {"telegram": {"botToken": "token", "allowFrom": ["5785127604"]}}},
+        {"message": {"text": "проверь папку и вернись"}},
+        services=services,
+    )
+
+    tasks = task_service.store.list_tasks()  # type: ignore[attr-defined]
+    assert len(tasks) == 1
+    created = tasks[0]
+    assert created.kind == "workspace_analysis"
+    assert sent_messages[0][2].startswith("Задачу поставила.")
+    assert f"[task_ref:{created.task_id}]" in saved_sessions[0][2]["messages"][-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_handle_update_answers_with_task_status(tmp_path: Path):
+    sent_messages = []
+    task_service = TaskService(SQLiteTaskStore(tmp_path / "tasks.db"))
+    task = task_service.create_task_from_payload(
+        RuntimeTaskPayload(
+            kind="workspace_analysis",
+            goal="Проверить структуру workspace",
+            requested_by_principal="5785127604",
+            origin_channel="telegram",
+            origin_chat_id="5785127604",
+            source_message="проверь папку",
+            context_summary="Нужно понять состояние репы",
+        )
+    )
+
+    async def fake_send_message(token, chat_id, text):
+        sent_messages.append((token, chat_id, text))
+
+    services = HandlerServices(
+        extract_input=lambda update: TelegramInput(
+            message=update["message"],
+            chat_id=5785127604,
+            from_id=5785127604,
+            text="что с задачей?",
+            prompt_text="что с задачей?",
+            attachments=[],
+            has_image=False,
+            mode="text",
+        ),
+        send_message=fake_send_message,
+        load_session=lambda session_dir, chat_id: {"messages": []},
+        save_session=lambda session_dir, chat_id, session: None,
+        session_dir=Path("sessions"),
+        task_service=task_service,
+    )
+
+    await handle_update(
+        {"channels": {"telegram": {"botToken": "token", "allowFrom": ["5785127604"]}}},
+        {"message": {"text": "что с задачей?"}},
+        services=services,
+    )
+
+    assert task.task_id in sent_messages[0][2]
+    assert "Текущие задачи" in sent_messages[0][2]
 
 
 @pytest.mark.asyncio
@@ -289,4 +400,3 @@ async def test_handle_update_image_generation_path_sends_photos_then_text():
         ("token", 5785127604, Path("img2.png"), ""),
     ]
     assert sent_messages == [("token", 5785127604, "generated")]
-
