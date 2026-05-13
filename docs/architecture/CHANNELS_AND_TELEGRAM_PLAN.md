@@ -5,7 +5,7 @@
 **Scope:** Governing plan for Telegram/Userbot integration, channel contracts, principal resolution, and channel-to-action flow
 **Depends on:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
 **Used by:** Telegram bridge work, future channel implementations, principal resolution, runtime orchestration
-**Last reviewed:** 2026-05-08
+**Last reviewed:** 2026-05-13
 
 ## Purpose
 
@@ -206,19 +206,11 @@ Those are runtime actions, not Telegram transport rules.
 
 This also means Telegram must consume a canonical response object produced above the channel layer, not invent channel-local "versions" of Sonya.
 
-## Minimum Runtime Actions
+## Runtime Actions
 
-The first stable action set should be:
+Telegram must be able to execute the current runtime action set, but must not be the place where any of those actions is invented or extended.
 
-- `reply_text`
-- `analyze_vision`
-- `generate_image`
-- `reply_and_generate_image`
-- `create_task`
-- `reply_and_create_task`
-- `ask_clarification`
-
-Telegram must be able to execute the result of these actions, but should not be the place where they are semantically invented.
+The canonical list of action types, their required fields, and their lifecycle live in [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md §4](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md). Do not restate them here.
 
 ## Task Flow
 

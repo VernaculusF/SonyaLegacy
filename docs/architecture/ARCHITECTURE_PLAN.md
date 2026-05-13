@@ -5,7 +5,7 @@
 **Scope:** Runtime-wide architecture, subsystem boundaries, and structural rules
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
 **Used by:** [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), [VPS_MIGRATION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/VPS_MIGRATION_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), cognition plans, skill plans, work implementation plans
-**Last reviewed:** 2026-05-08
+**Last reviewed:** 2026-05-13
 
 
 ## 1. Purpose
@@ -140,14 +140,7 @@ This layer now explicitly includes the reusable task and action runtime defined 
 
 ### 4.6 Harness Layer
 
-Contains:
-
-- technical harness;
-- epistemic harness;
-- anchor harness;
-- approval controls;
-- immutable zones;
-- drift controls.
+Contains the three harness slices (technical, epistemic, anchor) plus the approval controls, immutable zones, and drift controls that wrap them. The canonical definition of each slice and its contents lives in [cognition/ANCHORS_AND_FAILURE_MODES.md §7](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md).
 
 Responsibility:
 prevent the system from damaging itself, weakening its own criteria, or eroding identity-critical anchors.

@@ -289,33 +289,13 @@ unless the runtime really created or executed something.
 
 The new task/action runtime exists specifically to stop that bullshit.
 
-Current action types include:
-
-- `reply`
-- `generate_image`
-- `reply_and_generate_image`
-- `create_task`
-- `reply_and_create_task`
-- `ask_clarification`
-- `report_limitation`
-
-Current safe task kinds include:
-
-- `workspace_analysis`
-- `documentation_synthesis`
-- `lead_workflow_analysis`
-- `memory_diagnosis`
-- `file_search_and_summary`
+The authoritative list of runtime action types, their fields, and task payload schema lives in [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md). The operational contract for any agent emitting those actions lives in [agents/AGENT_TASK_RUNTIME_CONTRACT.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_TASK_RUNTIME_CONTRACT.md). Allowed v1 task kinds live in `TASK_AND_ACTION_RUNTIME_PLAN.md §10`. Do not rely on lists restated elsewhere.
 
 Important constraint:
 
 v1 worker tasks are intentionally read-oriented and bounded.
 
 They are not a green light for arbitrary file mutation.
-
-See:
-
-- [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
 
 ## 11. Channel Reality
 

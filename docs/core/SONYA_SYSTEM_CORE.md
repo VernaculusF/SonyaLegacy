@@ -5,7 +5,7 @@
 **Scope:** Project identity, system purpose, invariants, and mandatory capability contours
 **Depends on:** None
 **Used by:** [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), all system plans and work docs
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-13
 
 
 ## 1. Кто такая Соня
@@ -472,35 +472,7 @@ MVP-форма:
 
 Harness Safety не должен пониматься как "просто filesystem sandbox".
 
-Минимально он обязан включать три слоя:
-
-- technical harness;
-- epistemic harness;
-- anchor harness.
-
-Technical harness:
-
-- sandbox;
-- protected resources;
-- immutable zones;
-- rollback;
-- approval controls.
-
-Epistemic harness:
-
-- evaluation;
-- traceability;
-- contradiction checks;
-- drift detection;
-- post-change verification.
-
-Anchor harness:
-
-- identity anchors;
-- relation anchors;
-- protected value structures;
-- anti-betrayal constraints;
-- continuity preservation rules.
+Минимально он обязан включать три слоя: technical harness, epistemic harness, anchor harness. Состав каждого слоя и правила их использования раскрыты в [cognition/ANCHORS_AND_FAILURE_MODES.md §7](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md) и не повторяются здесь.
 
 Жёсткое правило:
 harness safety не считается достаточным, если он умеет только ограничивать прямой вред системе, но не умеет защищать её от подмены собственных целей, метрик или identity-critical constraints.
