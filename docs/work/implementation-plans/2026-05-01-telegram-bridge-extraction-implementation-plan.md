@@ -1,11 +1,15 @@
 ﻿# Telegram Bridge Extraction Implementation Plan
 
-**Status:** Active
+**Status:** Archived
+**Archived:** 2026-05-13
+**Superseded by:** the real code under `packages/tg-bridge` (+ its tests) and the runtime wiring described in [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
 **Type:** Work Doc
-**Scope:** Stepwise extraction of the working OpenClaw Telegram bridge into a reusable Sonya package
+**Scope:** Historical stepwise plan for extracting the working OpenClaw Telegram bridge into a reusable Sonya package
 **Depends on:** [2026-04-30-telegram-bridge-extraction-design.md](C:/Users/Jester/Desktop/Sonya/docs/work/designs/2026-04-30-telegram-bridge-extraction-design.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md), [OPENCLAW_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OPENCLAW_ANALYSIS.md)
-**Used by:** bridge extraction implementation sessions and package scaffolding work
-**Last reviewed:** 2026-05-01
+**Used by:** historical reference only
+**Last reviewed:** 2026-05-13
+
+> **Archived note (2026-05-13):** Every task in this plan was executed. The bridge now lives under `packages/tg-bridge`, is covered by tests in `packages/tg-bridge/tests`, and is wired to the reusable runtime slice at `src/sonya_runtime`. For the current shape of the bridge and how it plugs into `sonya_runtime`, read [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md) and [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md) instead of this plan.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

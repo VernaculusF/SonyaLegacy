@@ -5,7 +5,7 @@
 **Scope:** Полная карта состояния проекта Sonya: что уже реально построено, что собрано частично, а что пока только в плане
 **Depends on:** [PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md)
 **Used by:** roadmap review, архитектурный аудит, implementation review, milestone review, drift control
-**Last reviewed:** 2026-05-08
+**Last reviewed:** 2026-05-13
 
 ## Как читать этот файл
 
@@ -29,12 +29,12 @@
 - ✅ Позиция по субъектности зафиксирована в [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md)
 - ✅ Есть корневая карта документации
 - ✅ Есть внешний onboarding-док для замены Codex внешней моделью
-- ✅ Есть правила документационной системы
+- ✅ Есть правила документационной системы (с явным lifecycle `Active/Draft/Stale/Archived`, cadence для drift review и обязательным doc-review gate)
 - ✅ Есть живой глобальный чеклист
-- 🟡 Доки поддерживаются после крупных архитектурных изменений, но дисциплина ещё не автоматизирована
-- ⬜ Drift review встроен в регулярный operational цикл
-- ⬜ Все исторические work-доки размечены как active/stale/archive
-- ⬜ Для каждого большого кодового изменения есть обязательный doc-review gate
+- ✅ Доки поддерживаются после крупных архитектурных изменений: дисциплина закодирована в [DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md) и [agents/AGENT_OPERATING_RULES.md §8](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md)
+- 🟡 Drift review встроен в регулярный operational цикл: cadence, rules и ledger существуют в [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md); подтверждение регулярности — после второго запланированного review
+- ✅ Все исторические work-доки размечены как `Active`/`Stale`/`Archived` с краткой заметкой «why» в шапке
+- 🟡 Для каждого большого кодового изменения есть обязательный doc-review gate: правило codified в [DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md) и [agents/AGENT_OPERATING_RULES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md); проверка на реальных PR ещё впереди
 
 ## 2. Фаза 0: анализ референсов
 

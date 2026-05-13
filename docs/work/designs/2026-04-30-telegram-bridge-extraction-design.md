@@ -1,11 +1,15 @@
 ﻿# Telegram Bridge Extraction Design
 
-**Status:** Active
+**Status:** Archived
+**Archived:** 2026-05-13
+**Superseded by:** live code under `packages/tg-bridge` and the runtime wiring in [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
 **Type:** Work Doc
-**Scope:** Behavior-preserving extraction of the working OpenClaw Telegram bridge into the Sonya repository
+**Scope:** Historical record of the behavior-preserving extraction of the working OpenClaw Telegram bridge into the Sonya repository
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md), [OPENCLAW_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OPENCLAW_ANALYSIS.md)
-**Used by:** [2026-05-01-telegram-bridge-extraction-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-01-telegram-bridge-extraction-implementation-plan.md), future `packages/tg-bridge` implementation work
-**Last reviewed:** 2026-05-01
+**Used by:** historical reference only
+**Last reviewed:** 2026-05-13
+
+> **Archived note (2026-05-13):** The extraction described below is complete. The bridge now lives under `packages/tg-bridge` and is wired to the reusable runtime in `src/sonya_runtime`. This document is kept as a historical record of the decisions made during extraction. For the current shape of the bridge and its runtime contract, read [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md) and [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md) instead.
 
 ## 1. Purpose
 

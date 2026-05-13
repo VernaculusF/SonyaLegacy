@@ -1,11 +1,13 @@
 # First Runtime Slice Implementation Plan
 
-**Status:** Active
+**Status:** Stale
 **Type:** Work Doc
 **Scope:** First deployable runtime slice for Sonya core on hosted models and VPS
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-**Used by:** future runtime implementation sessions
-**Last reviewed:** 2026-05-01
+**Used by:** historical planning context; not currently governing implementation
+**Last reviewed:** 2026-05-13
+
+> **Stale note (2026-05-13):** This plan describes a monolithic `src/sonya/` layout with `events/storage/identity/harness/providers/channels` built in one go. Reality took a narrower path: we first extracted `packages/tg-bridge` (see the archived 2026-05-01 plan) and then built the narrower reusable slice at `src/sonya_runtime` (actions, tasks, continuity stubs, storage paths). The file layout proposed below does not match the current repo and must not be used to drive new code. A replacement implementation plan will be written at `docs/work/implementation-plans/2026-05-13-base-runtime-implementation-plan.md`. Keep this document as historical planning context only.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

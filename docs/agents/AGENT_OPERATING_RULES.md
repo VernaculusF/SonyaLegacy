@@ -3,7 +3,7 @@
 **Status:** Active
 **Type:** System Plan
 **Scope:** Hard operating rules for any agent that edits, investigates, or runs code inside this repository
-**Depends on:** [agents/EXTERNAL_MODEL_ONBOARDING.md](C:/Users/Jester/Desktop/Sonya/docs/agents/EXTERNAL_MODEL_ONBOARDING.md), [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md), [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
+**Depends on:** [agents/EXTERNAL_MODEL_ONBOARDING.md](C:/Users/Jester/Desktop/Sonya/docs/agents/EXTERNAL_MODEL_ONBOARDING.md), [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md), [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md), [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
 **Used by:** external models, replacement assistants, any agent doing hands-on work in the repo
 **Last reviewed:** 2026-05-13
 
@@ -101,11 +101,27 @@ When moving logic out of `tg-bridge` into `sonya_runtime`, preserve behavior fir
 
 ## 8. Documentation Discipline
 
-- Every long-lived doc must have the metadata header defined in [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md).
-- Active execution notes belong in `docs/work/`, not in `docs/core/`, `docs/architecture/`, `docs/agents/`.
+- Every long-lived doc must have the metadata header defined in [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md), including a valid `Status` in `{Active, Draft, Stale, Archived}`.
+- Active execution notes belong in `docs/work/`, not in `docs/core/`, `docs/architecture/`, `docs/agents/`, `docs/governance/`.
 - Do not duplicate governing theory across files. Link to the governing file instead.
 - If you change a governing doc, update any doc that links to it if the link text or section meaning changed.
 - New files under `docs/agents/` must be aimed at the agent in second person and describe a role, a contract, or a failure mode. Do not use this folder as a dumping ground for architecture notes - those still go to `docs/architecture/`.
+- Do not silently leave a document on `Status: Active` when reality has drifted away from it. Move it to `Stale` with a short "why stale" note, or to `Archived` with a replacement pointer. Update [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md) with the change.
+
+### Doc-Review Gate
+
+Every code change that touches a documented contract must pass a doc-review gate before it is considered done. Runtime-relevant changes include adding/renaming an action type, task kind, event, continuity concept, subject-state field, storage path, schema, channel contract, provider contract, or harness surface; they also include any change that shifts the boundary between `packages/tg-bridge`, `src/sonya_runtime/`, and the future `sonya-core`.
+
+For each such change you must, in the same PR or commit series:
+
+1. identify which governing documents describe the affected contract;
+2. update those documents to match the new reality, or record an explicit follow-up doc task;
+3. update [PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md) when a file moves or changes role;
+4. update [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md) when a ⬜/🟡/✅ item flips;
+5. update `Last reviewed` on every document whose governing meaning changed;
+6. if the change is large enough to constitute a subsystem shift, append a short entry to [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md).
+
+If a step is intentionally deferred, say so explicitly in the commit message and name the follow-up task. Silent divergence is treated as a drift event and must be recorded on the next drift-review cadence.
 
 ## 9. Principal and Authority
 

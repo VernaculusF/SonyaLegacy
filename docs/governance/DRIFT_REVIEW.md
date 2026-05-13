@@ -1,0 +1,134 @@
+# DRIFT REVIEW LEDGER
+
+**Status:** Active
+**Type:** System Plan
+**Scope:** Regular cadence log of alignment checks between code and governing documents, with explicit entries per review
+**Depends on:** [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), [PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md), [agents/AGENT_OPERATING_RULES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md)
+**Used by:** operational cadence, governance audit, before-release gate
+**Last reviewed:** 2026-05-13
+
+## 1. Purpose
+
+This file exists so the claim "documents match reality" is inspectable.
+
+It does three jobs:
+
+1. holds the rules for running a drift review;
+2. holds the ledger of every review that was actually performed;
+3. holds the list of documents that were re-tagged (`Active` → `Stale`, `Stale` → `Active`, anything → `Archived`) as a result of each review.
+
+If there is no entry in the ledger for the current window, drift has drifted.
+
+## 2. Cadence
+
+- A drift review must happen at least once every two weeks while active development is happening.
+- A drift review must happen before any deployment or release milestone.
+- A missed window is itself a drift event. If the last entry is older than the cadence allows, the next review must open with a `Missed window` note and state why.
+
+## 3. Scope Of A Single Review
+
+Every review must touch all three of the following.
+
+### 3.1 Reality Check
+
+For each subsystem that is currently non-empty in code, spot-check that the governing document still describes it correctly. Subsystems to check at minimum:
+
+- `src/sonya_runtime/actions/*` vs [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md) and [agents/AGENT_TASK_RUNTIME_CONTRACT.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_TASK_RUNTIME_CONTRACT.md);
+- `src/sonya_runtime/tasks/*` vs the same plan and contract;
+- `src/sonya_runtime/continuity/*` vs [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md);
+- `src/sonya_runtime/storage/paths.py` vs the task runtime plan and any storage claims;
+- `packages/tg-bridge/*` vs [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md);
+- whatever new subsystem was added since the last review, matched to whatever plan governs it.
+
+The review does not require reading every line. It requires opening the governing doc, stating what it claims, and confirming the code still does that.
+
+### 3.2 Status Sweep
+
+Scan the metadata header of every file under `docs/` for:
+
+- incorrect or missing `Status`;
+- `Last reviewed` older than three months while the document is `Active`;
+- `Depends on` or `Used by` links that no longer resolve;
+- references to files that moved since the last review.
+
+Flag each finding. Fix trivial ones during the review. Convert larger ones into follow-up tasks.
+
+### 3.3 Checklist Sync
+
+Open [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md). For every item the review touched, confirm that its ⬜/🟡/✅ marker still matches reality. Flip markers that changed.
+
+## 4. Entry Format
+
+Each review appends one entry below, using this shape. Do not edit earlier entries except to add a `Resolution` line that references a later entry.
+
+```md
+## YYYY-MM-DD — <short label>
+
+**Reviewer:** <human or agent handle>
+**Cadence status:** on time | missed window (previous entry: YYYY-MM-DD)
+**Subsystems checked:** <short list>
+
+### Reality findings
+
+- <what was verified, what was not, with concrete file paths>
+
+### Status changes
+
+- <doc path>: <old status> → <new status> (<reason>)
+
+### Checklist diffs
+
+- <checklist section> — <old marker> → <new marker> (<reason>)
+
+### Follow-ups
+
+- <short description> — owner: <agent/role>, due: <window>
+```
+
+## 5. Ledger
+
+Append new entries at the bottom. Newest goes last.
+
+### 2026-05-13 — Initial governance lap
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** first entry; no prior window to miss
+**Subsystems checked:**
+
+- `src/sonya_runtime/actions` and `src/sonya_runtime/tasks`;
+- `src/sonya_runtime/continuity`;
+- `src/sonya_runtime/storage/paths.py`;
+- `packages/tg-bridge` (as a whole, to confirm the extraction/wiring story);
+- reference docs under `docs/architecture/reference/`;
+- all governing docs under `docs/`.
+
+### Reality findings
+
+- The runtime action/task layer in code matches what [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md) describes. `ALLOWED_ACTION_TYPES` in `sonya_runtime.actions.models` matches the seven action types documented; allowed task kinds in `sonya_runtime.tasks.executor` match the five listed kinds; `tasks.db` path is resolved via `sonya_runtime.storage.paths.RuntimePaths` and aligned with `OpenClawPaths.tasks_db_path` in the bridge.
+- `sonya_runtime.continuity.events.ContinuityEvent` exists as a stub and is not consumed anywhere yet. This matches the governing doc's description of continuity as still "zerno" rather than finished, but the gap should stay visible in the checklist.
+- `sonya_runtime.tasks.service.TaskService.build_task_status_response` calls `store.get_recent_tasks_for_principal` which is not declared on the `TaskStore` protocol in `sonya_runtime.tasks.store`. Works in practice because only `SQLiteTaskStore` is used. Small governance debt. Recorded for follow-up.
+- The extracted Telegram bridge under `packages/tg-bridge` is complete and behavior-preserving vs the original OpenClaw `telegram-bridge.mjs`. The bridge extraction design and implementation plan describe work that is now finished.
+- The earlier first-runtime implementation plan (`2026-04-29-first-runtime-implementation-plan.md`) proposes a `src/sonya/` layout that does not match reality. Reality took a narrower `src/sonya_runtime/` slice instead.
+
+### Status changes
+
+- [docs/work/designs/2026-04-30-telegram-bridge-extraction-design.md](C:/Users/Jester/Desktop/Sonya/docs/work/designs/2026-04-30-telegram-bridge-extraction-design.md): Active → Archived (extraction is complete; bridge now lives under `packages/tg-bridge` and is wired to `sonya_runtime`).
+- [docs/work/implementation-plans/2026-05-01-telegram-bridge-extraction-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-01-telegram-bridge-extraction-implementation-plan.md): Active → Archived (every task was executed; the plan is a historical record of how the bridge was extracted).
+- [docs/work/implementation-plans/2026-04-29-first-runtime-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-04-29-first-runtime-implementation-plan.md): Active → Stale (the plan proposes an `src/sonya/` shape that was superseded by the narrower `src/sonya_runtime/` slice; to be replaced by a new base-runtime implementation plan).
+- [docs/core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md): Active (unchanged status, meaning expanded with explicit status-lifecycle rules, doc-review gate, and drift-review cadence).
+- [docs/PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md): Active (unchanged status, meaning expanded with a new governance layer entry).
+- [docs/GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md): Active (unchanged status, section 1 re-synced so that governance items reflect the new regime).
+
+### Checklist diffs
+
+- Section 1 "Governance и документация":
+  - 🟡 "Доки поддерживаются после крупных архитектурных изменений, но дисциплина ещё не автоматизирована" → ✅ (lifecycle, statuses, and doc-review gate now codified in `DOCUMENTATION_SYSTEM.md`).
+  - ⬜ "Drift review встроен в регулярный operational цикл" → 🟡 (cadence + ledger exist in code; next step is running the second review on schedule).
+  - ⬜ "Все исторические work-доки размечены как active/stale/archive" → ✅ (all three existing `docs/work/` documents now carry correct final statuses).
+  - ⬜ "Для каждого большого кодового изменения есть обязательный doc-review gate" → 🟡 (the gate is codified in `DOCUMENTATION_SYSTEM.md` and expanded in `agents/AGENT_OPERATING_RULES.md`; real-world enforcement across future PRs is still to be proven).
+
+### Follow-ups
+
+- Write `docs/work/implementation-plans/2026-05-13-base-runtime-implementation-plan.md` as the replacement for the Stale first-runtime plan. Owner: next implementation pass.
+- Add `get_recent_tasks_for_principal` to the `TaskStore` protocol in `sonya_runtime.tasks.store` or rewrite `TaskService.build_task_status_response` against a narrower interface. Owner: next runtime commit.
+- Run the next drift review on or before 2026-05-27.
