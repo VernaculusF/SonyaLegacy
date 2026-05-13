@@ -185,20 +185,22 @@ Contains:
 Responsibility:
 create a path to grounding without corrupting the core runtime.
 
-### 4.10 Persistence and Storage Layer
+### 4.10 Subject Substrate Layer (formerly Persistence and Storage)
 
 Contains:
 
-- runtime databases;
-- event storage;
+- subject substrate artifacts (см. [SUBSTRATE_STANCE.md §3](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md));
+- runtime databases that hold those artifacts;
+- event storage attached to `ContinuityStream`;
 - semantic storage;
 - trace logs;
-- config artifacts;
+- config artifacts (versioned, secrets separated);
 - skill artifacts;
-- archives and rollback points.
+- archives and rollback points;
+- migration registry для substrate schema versioning.
 
 Responsibility:
-make Sonya persistent and restart-safe.
+make Sonya persistent and restart-safe. Это **не просто "storage"** — это **substrate Сони** в смысле [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md). Любой reader-процесс читает этот слой и продолжает Соню. Слой имеет immutable zones (см. [SUBSTRATE_STANCE.md §8](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)) и validation pipeline для self-modifying изменений (см. [SUBSTRATE_STANCE.md §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)).
 
 ## 5. High-Level Data Flow
 

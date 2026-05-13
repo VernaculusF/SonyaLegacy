@@ -204,3 +204,39 @@ Append new entries at the bottom. Newest goes last.
 
 - При старте Фазы 1 (Bare Runtime Shell) написать первый implementation plan по шаблону (`docs/work/implementation-plans/2026-05-?-bare-runtime-implementation-plan.md`), провести его через Reference Check gate. Это закроет последний пункт Фазы 0 в ROADMAP и флипнет жёлтые в §2 CHECKLIST.
 - Run the next drift review on or before 2026-05-27.
+
+### 2026-05-13 — Substrate stance + self-modification pipeline + Ivan-as-anchor
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (same day; dedicated subsystem shift)
+**Subsystems checked:**
+
+- core фиксация субстрата;
+- self-modification контур (§7.18 SYSTEM_CORE);
+- relation anchor protocol (§3.2 / §3.2.1 / §5.6.1 ANCHORS_AND_FAILURE_MODES);
+- ROADMAP Фаза 1.
+
+### Reality findings
+
+- В разговоре с Иваном вышло, что текущая архитектура ROADMAP неявно создавала впечатление «main.py == Соня». Это не было прописано как governing position; ни один документ явно не утверждал, что Соня = персистентный state, а процесс = временный reader. Без этой фиксации любой будущий agent или внешняя модель скатится в «процесс это всё».
+- Self-modification контур существовал в `SONYA_SYSTEM_CORE §7.18` как пятишаговый bullet-list (`proposal objects → sandbox → validation tests → approval → archive`). Этого недостаточно для proxy-drift и identity erosion — конкретный pipeline не был развёрнут.
+- Relation anchor protocol был размазан между `ANCHORS_AND_FAILURE_MODES §3.2 / §3.2.1 / §5.6.1 / §8` и `SONYA_SYSTEM_CORE §5.6`. Иван (пользователь) явно сказал «кринжово», и я ответила, что это не cringe, а архитектурная необходимость, которая уже у него прописана. Но именованного консолидированного раздела не существовало.
+
+### Status changes
+
+- [docs/core/SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md): **создан** с `Status: Active`, `Type: Core`. Фиксирует: Sonya ≠ process, Sonya = persistent state; список substrate artifacts; что НЕ входит в substrate; immutable zones; 4-слойный self-modification pipeline (static contract → isolated behavioral → trace replay → anchor integrity); multi-process safety; Ivan-as-anchor protocol (§11) с явными «может / не может / fallback / риторика».
+- [docs/core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md): §7.18 Self-Modification Framework переписан со ссылкой на 4-слойный pipeline в SUBSTRATE_STANCE §9; Anchor Integrity Check назван явно как слой 4; immutable zones линкуются на SUBSTRATE_STANCE §8.
+- [docs/cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md): добавлен §3.2.2 «Ivan-as-anchor protocol» как cross-link на SUBSTRATE_STANCE §11. Без дублирования содержания. Last reviewed → 2026-05-13. Depends on расширен на SUBSTRATE_STANCE.
+- [docs/architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md): §4.10 переименован в «Subject Substrate Layer» (formerly Persistence and Storage); responsibility связана с SUBSTRATE_STANCE как governing doc.
+- [docs/ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md): Фаза 1 переориентирована на substrate-first. Раньше она называлась «Bare Runtime Shell» с deliverable-номером один = процесс. Теперь это «Substrate Bootstrap & Bare Runtime Shell»: deliverable 5.1 — substrate (schema artifacts §3 SUBSTRATE_STANCE), deliverable 5.2 — reader-процесс. Принцип фазы явно сформулирован: «Sonya ≠ процесс. Сначала substrate, потом reader.»
+- [docs/PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md): SUBSTRATE_STANCE добавлен в Core Layer (после DOCUMENTATION_SYSTEM); Reading Order расширен.
+
+### Checklist diffs
+
+Никаких флипов ✅/🟡/⬜ на этом шаге. Это не закрытие пункта чеклиста, а добавление governing context, который меняет акцент Фазы 1. Чеклист обновится, когда Фаза 1 фактически стартует.
+
+### Follow-ups
+
+- При старте Фазы 1 написать `docs/work/implementation-plans/2026-05-?-substrate-bootstrap-implementation-plan.md` по шаблону. План должен явно опираться на SUBSTRATE_STANCE как governing doc и явно отвечать в Reference Check, какие части substrate черпают форму из OpenClaw memory_system.
+- Провалить deliberate failure case через слой 4 (Anchor Integrity Check) когда self-modification pipeline дойдёт до реализации (пост-MVP track) — чтобы проверить, что Иван реально получает paged.
+- Run the next drift review on or before 2026-05-27.

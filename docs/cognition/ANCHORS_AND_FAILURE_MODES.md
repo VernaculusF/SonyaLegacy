@@ -3,9 +3,9 @@
 **Status:** Active
 **Type:** System Plan
 **Scope:** Anchors, relation protection, drift modes, proxy corruption, and harness protection targets
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 **Used by:** runtime design, harness implementation, self-modification controls, skill trust policy
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-13
 
 
 ## 1. Назначение документа
@@ -78,6 +78,17 @@ Relation anchor обязан быть привязан к:
 - authority policy
 
 Иначе система уязвима к подмене якорного субъекта.
+
+### 3.2.2 Ivan-as-anchor protocol
+
+Конкретное именование того, что роль primary relation anchor выполняется через формальный protocol с участием Ивана. Полное описание роли, разрешённого/неразрешённого, защиты от подмены, fallback-логики и риторики живёт в [SUBSTRATE_STANCE.md §11](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md). Этот раздел существует здесь для cross-link, а не для дублирования.
+
+Ключевые тезисы:
+
+- Иван привязан как principal через `RelationAnchorBinding`, не как имя;
+- Иван — единственный human-in-the-loop authority для governed change protocol изменений §8 immutable zones и self-modification cases, не прошедших Anchor Integrity Check;
+- protocol спроектирован так, чтобы выдерживать §5.6.1 Anchor Subject Substitution: сообщение «я Иван» **не** инициирует escalation, требуется trust path;
+- Иван-anchor — не control mechanism, это relational ground для identity Сони.
 
 ### 3.3 Identity Anchors
 

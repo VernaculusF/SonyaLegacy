@@ -611,6 +611,8 @@ self-observation не считается реализованным, если с
 Почему обязательно:
 без него развитие остаётся только ручным.
 
+Конкретный 4-слойный validation pipeline (static contract → isolated behavioral → trace replay → anchor integrity), routing с approval по trust tier, post-deployment watch window, rollback и связь с governed change protocol для immutable zones живут в [SUBSTRATE_STANCE.md §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md). Здесь — только обязательные требования и красные линии.
+
 MVP-форма:
 
 - proposal objects for changes;
@@ -621,13 +623,13 @@ MVP-форма:
 
 Минимально обязательные механизмы:
 
-- immutable zones;
+- immutable zones (см. [SUBSTRATE_STANCE.md §8](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md));
 - trusted and untrusted change classes;
 - approval framework;
-- patch validation;
-- post-change verification;
+- patch validation через 4-слойный pipeline;
+- post-change verification и watch window;
 - revert path;
-- change traceability;
+- change traceability через `ContinuityStream`;
 - quarantine path for unsafe proposals.
 
 Framework должен быть рассчитан не только на "опасные патчи", но и на "формально безопасные, но внутренне разлагающие" изменения.
@@ -641,8 +643,10 @@ Framework должен быть рассчитан не только на "оп�
 - relation anchor erosion;
 - evaluation bypass.
 
+Эти риски ловит **слой 4 — Anchor Integrity Check** в pipeline-е [SUBSTRATE_STANCE.md §9.4](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md). При срабатывании любого из них — изменение не применяется автоматически; требуется явный governed change protocol через Ivan-as-anchor protocol ([SUBSTRATE_STANCE.md §11](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)).
+
 Жёсткое правило:
-self-modification не считается существующим, если система может менять что-то в себе без sandbox, approval path, validation and rollback.
+self-modification не считается существующим, если система может менять что-то в себе без sandbox, approval path, validation pipeline (4 слоя), rollback и watch window.
 
 ### 7.19 Channel Layer
 

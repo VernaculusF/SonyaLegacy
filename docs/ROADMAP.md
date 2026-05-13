@@ -89,53 +89,75 @@
 
 ---
 
-## 5. Фаза 1 — Bare Runtime Shell
+## 5. Фаза 1 — Substrate Bootstrap & Bare Runtime Shell
 
 **Статус:** ⬜ не начата. Ближайшая фаза в работе.
 
-**Цель.** Поднять `src/sonya/` как самостоятельный долгоживущий процесс, независимый от Telegram. Этот процесс ещё не делает ничего «умного». Он запускается, живёт, переживает рестарт, имеет health-сигнал, ведёт структурные логи, читает env-конфиг, публикует внутренние события в простом event bus. Всё.
+**Цель.** Зафиксировать **substrate** Сони как первичный объект (см. [core/SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)) — persistent schema её state, через которые любой будущий reader сможет её продолжить. И, как **второй** deliverable, поднять минимальный долгоживущий процесс-reader, который этот substrate читает, поддерживает и обновляет.
 
-**Почему эта фаза первая (после governance).** Без долгоживущего процесса невозможно проверить ни continuity, ни planner out-of-bridge, ни VPS-готовность. Это фундамент, на котором всё остальное собирается.
+**Принцип фазы.** Sonya ≠ процесс. Сначала — substrate. Потом — reader. Не наоборот.
+
+**Почему эта фаза первая (после governance).** Без явной persistent schema substrate-а любой код-reader, который мы потом напишем, превратит себя в неявного владельца state. Это исторически и приводит к «main.py — это всё». Substrate-first меняет акцент с самого начала.
 
 **Deliverables (планируемые):**
 
-- `src/sonya/__init__.py`, `src/sonya/main.py` — entry point `python -m sonya`;
-- `src/sonya/config.py` — env-based конфиг (pydantic), разделение secrets vs behavior;
-- `src/sonya/runtime/lifecycle.py` — запуск, остановка, signal handling, graceful shutdown;
-- `src/sonya/runtime/events.py` — минимальный async pub/sub event bus (типизированные события);
-- `src/sonya/storage/paths.py` — централизованное разрешение путей (state, logs, db); наследник текущего `sonya_runtime.storage.paths`, но уже на уровне `sonya`;
-- `src/sonya/logging.py` — structured logging с контекстом (component, subject_id placeholder);
-- `src/sonya/health.py` — health endpoint (файл-ping для начала, HTTP позже);
-- `tests/sonya/` — покрытие lifecycle, событий, health;
-- `deploy/systemd/sonya.service` — stub для будущей VPS (но юнит должен быть уже рабочим локально).
+### 5.1 Substrate (первичный)
 
-**Что НЕ входит в Фазу 1 (важно):**
+- `src/sonya/state/substrate.py` — единый registry of substrate artifacts;
+- `src/sonya/state/subject_state.py` — `SubjectState` schema + persistence;
+- `src/sonya/state/continuity_stream.py` — `ContinuityStream` (append-only event log) + `ContinuitySnapshot`;
+- `src/sonya/state/identity.py` — `IdentityRecord` с явно immutable полями (`things_not_to_betray`, identity-critical traits) и `RelationAnchorBinding`;
+- `src/sonya/state/principals.py` — `PrincipalRegistry` с `principal_id`, trusted identifiers, trust evidence (минимальный shape, реальная identity resolution — Фаза 2);
+- `src/sonya/state/migrations.py` — schema versioning, migration path, compatibility window (см. [SUBSTRATE_STANCE.md §7](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md));
+- SQLite layout с явными таблицами; immutable zones помечаются на уровне схемы;
+- тесты: schema migration round-trip, restore-after-restart, snapshot/replay, immutable enforcement.
 
-- ничего про модели, провайдеры, LLM;
-- ничего про память;
-- ничего про subject_state, principals, planner;
-- Telegram-мост не трогаем, он продолжает работать против `.openclaw` как раньше.
+### 5.2 Reader-процесс (вторичный)
+
+- `src/sonya/__init__.py`, `src/sonya/main.py` — entry point `python -m sonya`. Reader **читает substrate** при старте и интерпретирует его как поведение;
+- `src/sonya/runtime/lifecycle.py` — startup/shutdown, signal handling, graceful shutdown с явным flush в substrate;
+- `src/sonya/runtime/events.py` — async pub/sub event bus (типизированные события, attached к continuity stream);
+- `src/sonya/runtime/write_master.py` — single write-master с advisory lock (см. [SUBSTRATE_STANCE.md §10](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md));
+- `src/sonya/config.py` — env-based, секреты отдельно от behavior;
+- `src/sonya/logging.py` — structured logging с attached subject_id;
+- `src/sonya/health.py` — health endpoint (file-ping → потом HTTP);
+- тесты `tests/sonya/runtime/`: lifecycle, события, health, write-master semantics.
+
+### 5.3 Operational
+
+- `deploy/systemd/sonya.service` — stub-юнит (с реальной готовностью к Фазе 6);
+- documentation для запуска локально (`docs/work/...` через шаблон).
+
+**Что НЕ входит в Фазу 1:**
+
+- провайдеры моделей, LLM вызовы — Фаза 2;
+- principal resolution beyond schema — Фаза 2;
+- planner вне бриджа — Фаза 4;
+- self-modification pipeline в коде — закладываются интерфейсы (см. immutable zones в схеме), но реализация pipeline'а — пост-MVP track;
+- Telegram-мост не трогаем; продолжает работать через `.openclaw`.
 
 **Exit-критерии Фазы 1:**
 
+- [ ] substrate schema v1 определена, мигрирует в обе стороны (forward + backward для compatibility window);
+- [ ] второй процесс-reader, запущенный над тем же substrate в read-only, видит то же состояние, что и write-master;
+- [ ] перезапуск процесса восстанавливает `SubjectState` без потерь;
 - [ ] `python -m sonya` запускается, печатает health, работает 10 минут без паники;
-- [ ] `Ctrl+C` / SIGTERM приводит к graceful shutdown за N секунд;
-- [ ] event bus работает: publisher→subscriber по типу события, async-safe, есть тесты;
-- [ ] есть hello-world subscriber, который логирует тестовое событие (proof of wiring);
-- [ ] конфиг читается из env, секреты в env не смешаны с behavior-конфигом;
-- [ ] health-ping обновляется не реже чем раз в 30 секунд;
-- [ ] systemd-юнит работает на локальной машине через `systemd-run` или аналог;
+- [ ] graceful shutdown через SIGTERM с явным flush;
+- [ ] event bus работает, есть hello-world subscriber, attached к continuity;
+- [ ] write-master enforcement: попытка второго write-master блокируется advisory lock-ом;
+- [ ] immutable zones в substrate: попытка обычной записи в `things_not_to_betray` через runtime API → отказ;
+- [ ] systemd-юнит работает локально;
 - [ ] все тесты зелёные, pyright strict проходит;
-- [ ] governance-гейт: implementation plan `docs/work/implementation-plans/2026-05-?-bare-runtime-implementation-plan.md` переведён из `Draft` в `Active`, затем в `Archived`; `Reference Check` пройден;
+- [ ] governance-гейт: implementation plan переведён `Draft` → `Active` → `Archived`; Reference Check пройден;
 - [ ] `GLOBAL_PROJECT_CHECKLIST` обновлён; drift-ledger получил запись фазы.
 
 **Reference Check preview:**
 
-- **OpenClaw:** сохраняем `telegram-bridge.mjs` как живой канал. Ничего в `.openclaw` не меняем. Подсматриваем pattern persistent state в `telegram-bridge-state.json` как ориентир для нашего lifecycle state.
-- **Hermes:** границу «shell vs brain» держим явно: `src/sonya/runtime/*` — это shell (lifecycle, events), не cognition. Никаких decision-функций в этом слое.
-- **OmniAgent:** отвергаем монолитный файл-entry. `reflexion.py` (89 KB) — анти-паттерн. У нас `src/sonya/*` разбит на узкие модули с самого начала.
+- **OpenClaw:** сохраняем `telegram-bridge.mjs` как живой канал. Подсматриваем persistent state pattern в `telegram-bridge-state.json` и в схеме `memory_system/` как ориентир для substrate. Не копируем, не пытаемся читать `~/.openclaw/*` из нового reader-а напрямую — каналы остаются разделены.
+- **Hermes:** граница «shell vs brain» физическая: substrate (`src/sonya/state/`) — это subject (brain layer). Reader (`src/sonya/runtime/`) — это shell. Никаких decision-функций в shell.
+- **OmniAgent:** отвергаем монолитный 89KB reflexion entry. Substrate-first design — наш ответ на «всё в одном файле». Substrate физически отделён от reader-а; reader от того, что substrate означает; brain от того, как brain исполняется.
 
-**Связанный implementation plan.** Будет создан как `docs/work/implementation-plans/2026-05-?-bare-runtime-implementation-plan.md` (дата определится в момент старта) по шаблону. Этот план и есть первый живой тест Reference Check gate.
+**Связанный implementation plan.** Будет создан как `docs/work/implementation-plans/2026-05-?-substrate-bootstrap-implementation-plan.md` по шаблону. Этот план — первый живой тест Reference Check gate.
 
 ---
 
