@@ -3,9 +3,9 @@
 **Status:** Active
 **Type:** System Plan
 **Scope:** Governing plan for Telegram/Userbot integration, channel contracts, principal resolution, and channel-to-action flow
-**Depends on:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
+**Depends on:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
 **Used by:** Telegram bridge work, future channel implementations, principal resolution, runtime orchestration
-**Last reviewed:** 2026-05-02
+**Last reviewed:** 2026-05-08
 
 ## Purpose
 
@@ -134,6 +134,25 @@ The Telegram layer may not alone decide:
 
 Those decisions must remain in higher runtime policy.
 
+## Deferred Work Rule
+
+Telegram is not allowed to simulate background work.
+
+That means the channel must not present text like:
+
+- "I'm checking the files now"
+- "I'll come back in 15 minutes"
+- "I already created the document"
+
+unless the runtime actually created or executed the corresponding action.
+
+The correct flow is:
+
+- planner selects `create_task` or `reply_and_create_task`
+- runtime persists the task
+- worker executes the allowed safe handler
+- channel later renders `task_update` or `task_result`
+
 ## Telegram Input Modes
 
 Telegram/Userbot must support these live modes:
@@ -195,9 +214,23 @@ The first stable action set should be:
 - `analyze_vision`
 - `generate_image`
 - `reply_and_generate_image`
+- `create_task`
+- `reply_and_create_task`
 - `ask_clarification`
 
 Telegram must be able to execute the result of these actions, but should not be the place where they are semantically invented.
+
+## Task Flow
+
+For deferred work, the Telegram channel must support:
+
+1. user asks for analysis or delayed work
+2. planner returns `create_task` or `reply_and_create_task`
+3. runtime task store writes a real task record
+4. Telegram confirms task creation
+5. worker completes the task later
+6. user asks for status or result
+7. Telegram renders the runtime answer from task state
 
 ## Media Rules
 

@@ -4,8 +4,8 @@
 **Type:** System Plan
 **Scope:** Runtime-wide architecture, subsystem boundaries, and structural rules
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-**Used by:** [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), [VPS_MIGRATION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/VPS_MIGRATION_PLAN.md), cognition plans, skill plans, work implementation plans
-**Last reviewed:** 2026-05-02
+**Used by:** [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), [VPS_MIGRATION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/VPS_MIGRATION_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), cognition plans, skill plans, work implementation plans
+**Last reviewed:** 2026-05-08
 
 
 ## 1. Purpose
@@ -124,12 +124,19 @@ Contains:
 
 - tool registry;
 - action protocol;
+- task protocol;
+- task store;
+- task worker;
 - execution sandbox;
 - tool result capture;
 - action trace logging.
 
 Responsibility:
 perform real action in filesystem, network, and process environments.
+
+This layer now explicitly includes the reusable task and action runtime defined in:
+
+- [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
 
 ### 4.6 Harness Layer
 
@@ -269,6 +276,7 @@ Logical first-order modules:
 - `context`
 - `skills`
 - `tools`
+- `tasks`
 - `harness`
 - `reflexion`
 - `initiative`

@@ -210,7 +210,7 @@ def test_render_telegram_html_formats_headings_code_and_bullets():
     output = render_telegram_html(input_text)
     assert "<b>Formatting:</b>" in output
     assert "<code>parse_mode</code>" in output
-    assert "вЂў one" in output
+    assert "- one" in output
 
 
 def test_chunk_plain_text_splits_long_text():

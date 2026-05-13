@@ -4,8 +4,8 @@
 **Type:** System Plan
 **Scope:** Cross-channel subjective continuity, canonical internal response state, and the architectural separation between one Sonya and many interface surfaces
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
-**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), future voice, avatar, multi-channel, and runtime plans
-**Last reviewed:** 2026-05-02
+**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), future voice, avatar, multi-channel, and runtime plans
+**Last reviewed:** 2026-05-08
 
 ## 1. Purpose
 
@@ -120,6 +120,7 @@ Examples:
 - initiative signal;
 - anchor-relevant emotional state shift;
 - pending action that survives the current channel turn.
+- deferred task that remains alive after the current reply.
 
 ### 6.3 Canonical Response Object
 
@@ -131,6 +132,9 @@ Before any channel-specific formatting, Sonya should produce one canonical inter
 - clarification request;
 - initiative proposal;
 - silence or defer.
+- task created;
+- task status;
+- task result.
 
 That canonical result is then rendered into:
 
@@ -189,9 +193,24 @@ Minimum data objects for this layer:
 - `continuity_snapshot`
 - `canonical_response`
 - `pending_intention`
+- `task_record_ref`
 - `channel_render_record`
 - `voice_profile_binding`
 - `avatar_profile_binding`
+
+## 9.1 Deferred Work and Continuity
+
+Deferred work is not just a queue mechanic.
+
+If Sonya tells the user that work will continue beyond the current reply, that work must exist as a continuity-bearing runtime object.
+
+At minimum this requires:
+
+- a persisted task record;
+- a link from the current turn to that task;
+- a later ability to render task status or result as part of the same subject continuity line.
+
+Without this, "I'll do it later" is not continuity. It is fake agency theater.
 
 ## 9. Cross-Channel Rules
 
