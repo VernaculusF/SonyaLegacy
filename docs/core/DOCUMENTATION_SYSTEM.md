@@ -58,6 +58,7 @@ Contains long-lived documentation only.
 Valid subtrees:
 
 - docs/core/
+- docs/agents/
 - docs/architecture/
 - docs/cognition/
 - docs/skills/

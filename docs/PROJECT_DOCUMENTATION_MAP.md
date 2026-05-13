@@ -30,6 +30,7 @@ This file should be the first thing opened when:
 The tree is intentionally split into:
 
 - `docs/core/` - project identity, philosophy, documentation rules;
+- `docs/agents/` - documentation aimed at external models, replacement assistants, and any agent that works on this repo;
 - `docs/architecture/` - runtime structure, deployment shape, channel architecture, reference analyses;
 - `docs/cognition/` - memory, identity, anchors, continuity, failure modes;
 - `docs/skills/` - skill system and evolution surface;
@@ -41,22 +42,26 @@ The tree is intentionally split into:
 
 Read in this order if you need the full project context:
 
-1. [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
-2. [core/SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md)
-3. [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md)
-4. [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
-5. [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md)
-6. [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
-7. [mvp/MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
-8. [cognition/MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md)
-9. [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
-10. [cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
-11. [skills/SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md)
-12. [architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-13. [research/STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
-14. [research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)
-15. [research/SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md)
-16. active work docs under `docs/work/`
+1. [agents/EXTERNAL_MODEL_ONBOARDING.md](C:/Users/Jester/Desktop/Sonya/docs/agents/EXTERNAL_MODEL_ONBOARDING.md)
+2. [agents/AGENT_OPERATING_RULES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md)
+3. [agents/AGENT_TASK_RUNTIME_CONTRACT.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_TASK_RUNTIME_CONTRACT.md)
+4. [agents/AGENT_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_FAILURE_MODES.md)
+5. [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
+6. [core/SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md)
+7. [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md)
+8. [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
+9. [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md)
+10. [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
+11. [mvp/MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
+12. [cognition/MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md)
+13. [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
+14. [cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
+15. [skills/SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md)
+16. [architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
+17. [research/STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
+18. [research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)
+19. [research/SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md)
+20. active work docs under `docs/work/`
 
 ## Core Layer
 
@@ -112,6 +117,73 @@ Use it to answer:
 - whether the implementation is drifting away from the original plan.
 
 This is not a sprint TODO. It is the top-level reality ledger.
+
+## Agents Layer
+
+This layer is the home for documentation aimed at any agent, external model, or replacement assistant that is expected to do real work inside this repo.
+
+Rules for this layer:
+
+- files here must speak to the agent directly, not about the agent in the third person;
+- files here must describe roles, onboarding, expected behavior, operational anchors, and hard boundaries;
+- files here are not a dumping ground for long-form architecture or cognition theory - those still belong to `architecture/` and `cognition/`;
+- files here should link to the real governing documents instead of duplicating them.
+
+### [agents/EXTERNAL_MODEL_ONBOARDING.md](C:/Users/Jester/Desktop/Sonya/docs/agents/EXTERNAL_MODEL_ONBOARDING.md)
+
+This file is the fast-entry briefing for any external model or temporary replacement assistant.
+
+Use it to answer:
+
+- who Ivan is in relation to the project;
+- who Sonya is;
+- what is being built right now;
+- what already exists operationally;
+- what the near-term and far-term architecture are;
+- how embodiment, future brain evolution, and physical body fit the project.
+
+This is the file to hand to an outside model before asking it to work seriously on the repo.
+
+### [agents/AGENT_OPERATING_RULES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md)
+
+This file is the hard rulebook for any agent that edits, investigates, or runs code inside this repository.
+
+Use it to answer:
+
+- what baseline posture is expected before touching anything;
+- what repo boundaries exist and which paths are off-limits without confirmation;
+- what safety gates apply to destructive or high-impact operations;
+- how to behave when the project's code and its documentation disagree;
+- what counts as "done" for a change.
+
+It is the agent-facing counterpart to [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md) and [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md): the theory lives there, this file tells the agent how to act.
+
+### [agents/AGENT_TASK_RUNTIME_CONTRACT.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_TASK_RUNTIME_CONTRACT.md)
+
+This file is the operational contract for any agent that emits runtime actions or creates tasks.
+
+Use it to answer:
+
+- which action types are allowed and what fields each one requires;
+- what shape a valid `task_payload` must have;
+- which task kinds the v1 executor actually supports;
+- how to pick between `reply`, image actions, task actions, `ask_clarification`, and `report_limitation`;
+- how not to invent fake `task_id` values or narrate non-existent task progress.
+
+The governing architectural plan is [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md). This file is the agent-facing contract derived from it.
+
+### [agents/AGENT_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_FAILURE_MODES.md)
+
+This file catalogs the specific failure patterns that external models and replacement assistants repeatedly fall into on this project.
+
+Use it to answer:
+
+- what shapes of mistake show up again and again here;
+- why each of them is wrong in the context of this repo;
+- what the correct posture looks like instead;
+- which system-level failure modes in [cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md) each agent-facing pattern corresponds to.
+
+Treat it as a pre-flight self-check. If your current plan matches any of the patterns listed there, stop and correct course before acting.
 
 ## Architecture Layer
 
