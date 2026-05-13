@@ -7,3 +7,14 @@ name = "sonya-workspace"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["sonya_runtime*", "sonya_shared*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "packages/tg-bridge/src"]
+asyncio_mode = "auto"
