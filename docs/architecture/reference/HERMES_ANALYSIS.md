@@ -96,3 +96,45 @@ Hermes-role естественно держит:
 - world bridge.
 
 То есть Hermes в Sonya project - это архитектурная функция, которую мы реализуем сами, а не священная внешняя зависимость.
+
+
+## 8. Appendix: Code-Level Audit (2026-05-13)
+
+This section records observations after explicitly searching for Hermes as code or artifact inside the live OpenClaw host and the Sonya repo.
+
+### 8.1 Search Results
+
+- `C:\Users\Jester\.openclaw\` does not contain a `Hermes` directory, a Hermes package, or a Hermes entry in `plugins/`, `subagents/`, `flows/registry.sqlite`, `cron/jobs.json`, or `openclaw.json`.
+- `C:\Users\Jester\.openclaw\_tmp_omniagent\` does not reference Hermes in its package tree (`omniagent/agents`, `omniagent/gateway`, `omniagent/channels`, `omniagent/rl`, `omniagent/security`, `omniagent/tools`). The README only mentions Hermes as a comparison column, not as a dependency or embedded module.
+- `C:\Users\Jester\Desktop\Sonya\` does not reference Hermes in code or work docs.
+
+Conclusion: Hermes has no runtime footprint available for code-level audit in the current workspace. It remains **architectural-role-only**, not a file tree we can inspect.
+
+### 8.2 Consequence for Reference Analysis
+
+The absence is not a gap in the analysis. It clarifies a rule:
+
+- Everything this project says about Hermes must be treated as **design inspiration**, not **code inheritance**.
+- No code path in Sonya may claim to be “compatible with Hermes” or “pluggable into Hermes” until a concrete external Hermes surface is actually available for inspection.
+- When Hermes-like concepts are discussed (orchestration shell, adapter-first routing, body/signal layer), the source of truth is this document plus [`docs/план/ОСНОВА.md`](C:/Users/Jester/Desktop/Sonya/docs/план/ОСНОВА.md), not any speculative external repository.
+
+### 8.3 What Already Plays The Hermes Role Locally
+
+Several subsystems in OpenClaw already carry pieces of the Hermes role, even without that name:
+
+- `C:\Users\Jester\.openclaw\telegram-bridge.mjs` acts as a single-channel ingress/egress shell, connecting Telegram to the cognition path (model call + memory hook).
+- `openclaw.json.channels.telegram` + `gateway` together approximate an adapter + routing + auth front door.
+- `C:\Users\Jester\.openclaw\flows\registry.sqlite` plus `cron/jobs.json` and `delivery-queue/` are the closest thing to an active orchestration surface currently on the host.
+- `workspace/hooks/` holds the only currently enabled hook pipeline (`working-memory-logger`), which functions as a post-cognition side-effect step.
+
+The aggregate of those is the *de facto* Hermes-analog in the live host, even though none of them is labeled that way.
+
+### 8.4 Implication For Sonya
+
+- The Sonya-side counterpart to Hermes is not a future external dependency; it is the part of Sonya that will own `channels/`, `routing/`, `scheduler/`, `delivery/`, and `hooks/`. That responsibility is ours to build.
+- We should not leave “orchestration shell” as a vague future slot. The Hermes role should be explicitly absorbed into `sonya_runtime/channels/*`, `sonya_runtime/routing/*`, and the future `sonya_runtime/scheduler/*`, all sitting between subject core and provider/tool layers.
+- Any contract that we later label “Hermes-compatible” must start from the real list of responsibilities the live host already demonstrates: polling, ingress normalization, raw-update audit, allowlist policy, per-channel timeouts, outbound chunking and HTML fallback, media download, post-response hook invocation, and persistent state offset — not from marketing-level descriptions.
+
+### 8.5 Honest Limitation
+
+Until an actual Hermes codebase is provided for inspection in this workspace, this document should remain a **role specification**, not a comparison. A real code-level audit of Hermes will be added to this file if and when that code becomes available.

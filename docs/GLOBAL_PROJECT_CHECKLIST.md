@@ -39,9 +39,9 @@
 ## 2. Фаза 0: анализ референсов
 
 - ✅ Есть общий reference-анализ
-- ✅ Есть анализ OpenClaw
-- ✅ Есть анализ Hermes
-- ✅ Есть анализ OmniAgent
+- ✅ Есть анализ OpenClaw (теория + code-level audit 2026-05-13)
+- 🟡 Есть анализ Hermes, но только архитектурная роль: code-level audit не найден, Hermes в живом виде в репо/хосте отсутствует
+- ✅ Есть анализ OmniAgent (теория + code-level audit 2026-05-13)
 - ✅ Reference phase встроена в [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md) как обязательная ранняя стадия
 - 🟡 Новые implementation slices иногда ещё делаются быстрее, чем референс-проверка успевает обновиться
 - ⬜ Каждый новый subsystem-план явно отвечает, что он берёт из OpenClaw
