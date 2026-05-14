@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
+from sonya.state.identity import (
+    IdentityRecord,
+    IdentityWriter,
+    ImmutableFieldError,
+    RelationAnchorBinding,
+)
 from sonya.state.subject_state import (
     ContinuitySnapshotRef,
     SubjectState,
@@ -12,6 +18,10 @@ __all__ = [
     "ContinuityEvent",
     "ContinuityStream",
     "ContinuitySnapshotRef",
+    "IdentityRecord",
+    "IdentityWriter",
+    "ImmutableFieldError",
+    "RelationAnchorBinding",
     "SubjectState",
     "SubjectStateStore",
     "Substrate",
