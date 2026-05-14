@@ -1,0 +1,20 @@
+[Unit]
+Description=Sonya runtime
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sonya
+EnvironmentFile=/opt/sonya/.env
+ExecStart=/opt/sonya/.venv/bin/python -m sonya
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
