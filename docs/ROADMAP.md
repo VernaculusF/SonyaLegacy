@@ -56,7 +56,7 @@
 
 ## 4. Фаза 0 — Foundation
 
-**Статус:** 🟡 почти закрыта.
+**Статус:** ✅ закрыта (2026-05-13).
 
 **Цель.** Создать и зафиксировать governance-слой, на котором можно вести проект класса Сони без его развала: документационная система, lifecycle, phase-0 gate, drift review, reference-анализы, агент-дисциплина.
 
@@ -81,17 +81,33 @@
 - [x] reference-анализы (OpenClaw, Hermes, OmniAgent) содержат code-level audit;
 - [x] phase-0 gate (Reference Check) обязателен в шаблонах и в `ARCHITECTURE_PLAN §11`;
 - [x] drift review cadence codified и имеет начальный ledger;
-- [ ] первый живой implementation plan прошёл через шаблон без дрейфа (closure этого пункта — старт Фазы 1).
+- [x] первый живой implementation plan прошёл через шаблон без дрейфа (substrate bootstrap, archived 2026-05-13).
 
-Фаза 0 закрывается ровно в тот момент, когда implementation plan Фазы 1 создан из шаблона, прошёл Reference Check и принят как `Active`.
+Фаза 0 закрыта 2026-05-13 в момент закрытия Phase 1 (substrate bootstrap implementation plan переведён в `Archived`).
 
-**Ближайший шаг.** Написать implementation plan Фазы 1 по шаблону → флипнуть последний пункт Фазы 0.
+**Ближайший шаг.** Фаза 2: Provider & Principal Core.
 
 ---
 
 ## 5. Фаза 1 — Substrate Bootstrap & Bare Runtime Shell
 
-**Статус:** ⬜ не начата. Ближайшая фаза в работе.
+**Статус:** ✅ закрыта (2026-05-13).
+
+**Цель.** Зафиксировать **substrate** Сони как первичный объект (см. [core/SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)) — persistent schema её state, через которые любой будущий reader сможет её продолжить. И, как **второй** deliverable, поднять минимальный долгоживущий процесс-reader, который этот substrate читает, поддерживает и обновляет.
+
+**Принцип фазы.** Sonya ≠ процесс. Сначала — substrate. Потом — reader. Не наоборот.
+
+**Что построено (фактически):**
+
+- substrate v1 schema + миграции в `src/sonya/state/` (substrate, subject_state, continuity_stream, identity, principals, schema.sql);
+- reader-процесс в `src/sonya/runtime/` (lifecycle с continuity-event-ами на старт/стоп, типизированный async event bus, write-master с advisory lock и portable PID-liveness check, file-ping health);
+- composition root `src/sonya/main.py` с signal handling (POSIX `add_signal_handler` + Windows fallback);
+- env-driven config (`SONYA_SUBSTRATE_PATH`, `SONYA_HEALTH_PATH`, `SONYA_LOG_LEVEL`), structured JSON logger;
+- AST-тест границы `state ↔ runtime` (state не импортирует runtime; runtime использует только публичный API state);
+- systemd unit + deploy README;
+- 137 тестов зелёные, 1 skipped (POSIX-only signal test).
+
+**Связанный план:** [docs/work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md) (Archived).
 
 **Цель.** Зафиксировать **substrate** Сони как первичный объект (см. [core/SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)) — persistent schema её state, через которые любой будущий reader сможет её продолжить. И, как **второй** deliverable, поднять минимальный долгоживущий процесс-reader, который этот substrate читает, поддерживает и обновляет.
 

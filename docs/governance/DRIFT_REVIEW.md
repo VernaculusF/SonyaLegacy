@@ -240,3 +240,45 @@ Append new entries at the bottom. Newest goes last.
 - При старте Фазы 1 написать `docs/work/implementation-plans/2026-05-?-substrate-bootstrap-implementation-plan.md` по шаблону. План должен явно опираться на SUBSTRATE_STANCE как governing doc и явно отвечать в Reference Check, какие части substrate черпают форму из OpenClaw memory_system.
 - Провалить deliberate failure case через слой 4 (Anchor Integrity Check) когда self-modification pipeline дойдёт до реализации (пост-MVP track) — чтобы проверить, что Иван реально получает paged.
 - Run the next drift review on or before 2026-05-27.
+
+### 2026-05-13 — Phase 1 closure (substrate bootstrap)
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (same day; Phase 1 closure — first executed implementation plan)
+**Subsystems checked:**
+
+- `src/sonya/state/*` против [SUBSTRATE_STANCE.md §3](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md);
+- `src/sonya/runtime/*` против shell/brain split в Reference Check плана;
+- `src/sonya/main.py` как composition root;
+- legacy `src/sonya_runtime/*` (не тронут);
+- `packages/tg-bridge` (не тронут).
+
+### Reality findings
+
+- Substrate v1 поднят: `subject_state`, `continuity_events` (autoincrement seq), `continuity_snapshots`, `identity_record` с runtime-enforced immutable zones, `relation_anchor_bindings`, `principals`. Schema versioning через `schema_version` table; reader отказывает на future-version DB.
+- Reader-процесс: `Lifecycle` пишет `subject.lifecycle.started/stopped` в continuity stream, `WriteMaster` блокирует параллельный write через PID-liveness lock-файл (portable между POSIX/Windows), `Health` пишет file-ping JSON по интервалу.
+- `main.py` — composition root: load config → open substrate → acquire write-master → start lifecycle → start health → wait for signal → graceful shutdown. Exit codes 0/2/3 для clean/version-mismatch/contention.
+- Layer boundary AST-тест проходит: `state/*` не импортирует `runtime/*`; `runtime/*` пользуется только публичным API `sonya.state`.
+- Все 137 тестов зелёные (1 skipped — POSIX-only signal-based subprocess тест).
+- Реальный smoke: `python -m sonya` поднимает процесс, пишет валидный `health.json`, корректно завершается через сигнал.
+- Bridge и legacy `sonya_runtime/*` не тронуты — продолжают работать против `.openclaw`.
+
+### Status changes
+
+- [docs/work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md): Active → Archived (выполнен полностью).
+- [docs/ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md): Фаза 0 → ✅ закрыта; Фаза 1 → ✅ закрыта; ближайшая — Фаза 2 (Provider & Principal Core).
+- [docs/GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md): секции 1, 2, 3, 5, 6, 7 переразмечены под реальность кода.
+
+### Checklist diffs
+
+- §1 «Foundation»: 🟡 «Drift review cadence работает... подтверждение после второй записи» — теперь 🟡 «после третьей записи» (cadence работает, появилась вторая запись Phase 1 closure); 🟡 «Doc-review gate ... реальное исполнение на PR ещё впереди» → ✅ (план substrate bootstrap прошёл шаблон + Reference Check + closure-апдейт).
+- §2 «Phase 0»: 🟡 «новые slices иногда быстрее...» → ✅ (живой план без дрейфа); 🟡 «Полная работоспособность gate ...» → ✅.
+- §3 «Repo & package layout»: ⬜ `src/sonya/` → ✅ (state + runtime + main); ⬜ packaging → 🟡 (shape работает, имя финализируется в Фазе 6); ⬜ boundary checks → 🟡 (state↔runtime AST есть, остальное предстоит).
+- §5 «Runtime shell»: 6 ⬜ → ✅ (только scheduler остаётся ⬜, он Phase 6+).
+- §6 «Subject core & continuity»: ⬜ `SubjectState`, `ContinuityStream`, `ContinuitySnapshot` → ✅; legacy `sonya_runtime/continuity/canonical_response.py` помечен 🟡 как «переезд в Фазе 4».
+- §7 «Identity, anchors, principals»: ⬜ `Principal/PrincipalRegistry` → ✅; ⬜ relation-anchor binding → ✅ (schema + governed-change); ⬜ audit trail → 🟡 (governed_identity_change уже пишется в continuity, audit-API — Фаза 2+).
+
+### Follow-ups
+
+- Запустить Фазу 2: вытащить `tg_bridge.model_client` за интерфейс `sonya.providers.*`, расширить `PrincipalRegistry` реальным channel-side resolver-ом, ввести `sonya.harness.authority`. План — отдельный файл по шаблону.
+- Run the next drift review on or before 2026-05-27.

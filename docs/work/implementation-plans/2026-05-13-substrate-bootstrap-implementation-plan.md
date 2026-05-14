@@ -1,6 +1,8 @@
 # Substrate Bootstrap & Bare Runtime Shell Implementation Plan
 
-**Status:** Active
+**Status:** Archived
+**Archived:** 2026-05-13
+**Superseded by:** working code under `src/sonya/` and `tests/sonya/` (Phase 1 of [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md) closed)
 **Type:** Work Doc
 **Scope:** Поднять substrate Сони (persistent schema её state) как первичный объект, и минимальный reader-процесс над ним. Реализация Фазы 1 ROADMAP.
 **Depends on:** [ROADMAP.md §5](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md), [OPENCLAW_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OPENCLAW_ANALYSIS.md), [HERMES_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/HERMES_ANALYSIS.md), [OMNIAGENT_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OMNIAGENT_ANALYSIS.md)

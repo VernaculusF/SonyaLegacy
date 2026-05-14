@@ -39,8 +39,8 @@
 - ✅ Governance-layer: drift review ledger с cadence и правилами ([governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md))
 - ✅ Templates для work-доков с обязательным Reference Check ([docs/work/TEMPLATES/](C:/Users/Jester/Desktop/Sonya/docs/work/TEMPLATES))
 - ✅ Все исторические work-доки размечены (`Active`/`Stale`/`Archived` с «why»-заметкой)
-- 🟡 Drift review cadence работает: правило есть, первая запись есть — регулярность подтверждается после второй записи
-- 🟡 Doc-review gate для кодовых изменений: правило codified — реальное исполнение на PR ещё впереди
+- 🟡 Drift review cadence работает: правило есть, две записи есть (initial + Phase 1 closure) — регулярность подтверждается после третьей записи на следующем cadence-окне
+- ✅ Doc-review gate для кодовых изменений: применён в Phase 1 substrate bootstrap (план через шаблон, Reference Check пройден, checklist+ledger+roadmap синхронизированы при closure)
 
 ## 2. Foundation — Phase 0: анализ референсов
 
@@ -49,7 +49,7 @@
 - ✅ [OMNIAGENT_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OMNIAGENT_ANALYSIS.md) (теория + code-level audit 2026-05-13)
 - 🟡 [HERMES_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/HERMES_ANALYSIS.md) — code-level невозможен (Hermes-кода нет); роль трактуется как ответственность внутри `sonya_runtime/*`
 - ✅ Reference Check встроен как обязательное поле шаблонов и pre-implementation gate ([ARCHITECTURE_PLAN.md §11](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md))
-- 🟡 Полная работоспособность gate подтверждается после первого живого plan через шаблон
+- ✅ Полная работоспособность gate подтверждена: substrate bootstrap план (2026-05-13) первым прошёл шаблон без дрейфа
 
 ## 3. Repo & package layout
 
@@ -58,9 +58,9 @@
 - ✅ `packages/tg-bridge` как выделенный пакет
 - ✅ `src/sonya_runtime` — reusable runtime slice (action models, task runtime, continuity stubs, storage paths)
 - ✅ `src/sonya_shared` — общие примитивы
-- ⬜ `src/sonya/` как итоговое ядро
-- ⬜ Финализированная packaging strategy для будущего `sonya-core`
-- ⬜ Repo-level boundary checks автоматизированы
+- ✅ `src/sonya/` как итоговое ядро: state (substrate v1, subject_state, continuity_stream, identity, principals) + runtime (lifecycle, event_bus, write_master, health) + main composition root
+- 🟡 Финализированная packaging strategy для будущего `sonya-core` (пока shape работает, итоговое имя/распакетовка — Фаза 6+)
+- ⬜ Repo-level boundary checks автоматизированы (есть state↔runtime AST-test, нужно добавить остальные)
 
 ## 4. Emergency host — OpenClaw compatibility
 
@@ -75,37 +75,37 @@
 
 ## 5. Runtime shell
 
-- ⬜ `src/sonya/` — самостоятельный долгоживущий процесс
-- ⬜ Event bus на уровне ядра
-- ⬜ Lifecycle manager (startup/shutdown/signals)
-- ⬜ Scheduler на уровне ядра
-- ⬜ Health/status модель
-- ⬜ Restart-safe shell без emergency-костылей
-- 🟡 `python -m sonya_runtime.tasks.worker` работает как отдельный процесс воркера
-- 🟡 `sonya_runtime.storage.paths` — начальная абстракция путей
+- ✅ `src/sonya/` — самостоятельный долгоживущий процесс (`python -m sonya`)
+- ✅ Event bus на уровне ядра ([sonya.runtime.events](C:/Users/Jester/Desktop/Sonya/src/sonya/runtime/events.py))
+- ✅ Lifecycle manager (startup/shutdown/signals, attached to continuity stream)
+- ⬜ Scheduler на уровне ядра (Фаза 6+)
+- ✅ Health/status модель (file-ping JSON, [sonya.runtime.health](C:/Users/Jester/Desktop/Sonya/src/sonya/runtime/health.py))
+- ✅ Restart-safe shell без emergency-костылей (substrate-first; write-master enforced)
+- 🟡 `python -m sonya_runtime.tasks.worker` работает как отдельный процесс воркера (legacy, мигрирует в Фазе 5)
+- ✅ Substrate-aware abstraction путей ([sonya.config](C:/Users/Jester/Desktop/Sonya/src/sonya/config.py)); `sonya_runtime.storage.paths` остаётся для legacy-task-worker
 
 ## 6. Subject core & continuity
 
 - ✅ Subject core и continuity стрим описаны как базовая архитектура ([CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md))
-- 🟡 `CanonicalResponse` как минимальный dataclass в [sonya_runtime/continuity/canonical_response.py](C:/Users/Jester/Desktop/Sonya/src/sonya_runtime/continuity/canonical_response.py) — используется только `TaskService`
-- 🟡 `ContinuityEvent` как stub в [sonya_runtime/continuity/events.py](C:/Users/Jester/Desktop/Sonya/src/sonya_runtime/continuity/events.py) — без читателя
-- ⬜ `SubjectState` в коде
-- ⬜ `ContinuityStream` с персистентностью
-- ⬜ `ContinuitySnapshot` (snapshot/restore)
-- ⬜ `PendingIntention` как runtime state
-- ⬜ Cross-channel continuity persistence
+- ✅ `SubjectState` в коде ([sonya.state.subject_state](C:/Users/Jester/Desktop/Sonya/src/sonya/state/subject_state.py))
+- ✅ `ContinuityStream` с персистентным append-only логом и автоинкрементным `seq` ([sonya.state.continuity_stream](C:/Users/Jester/Desktop/Sonya/src/sonya/state/continuity_stream.py))
+- ✅ `ContinuitySnapshot` (snapshot/restore) через `SubjectStateStore`
+- 🟡 `CanonicalResponse` пока живёт в legacy `sonya_runtime/continuity/canonical_response.py` — переезд в `sonya.subject.canonical_response` будет в Фазе 4
+- ⬜ `PendingIntention` как first-class runtime state (Фаза 3)
+- ⬜ Cross-channel continuity persistence (Фаза 6+)
 
 ## 7. Identity, anchors, principals
 
 - ✅ Identity и anchors описаны как несущий контур ([ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md))
 - ✅ Principal vs display-name separation зафиксирована в `SONYA_SYSTEM_CORE.md §5.6`
-- 🟡 Telegram использует транспортный `from_id` + allowlist как частичную operational identity
-- ⬜ `Principal` / `PrincipalRegistry` в коде
-- ⬜ Trusted identity evidence model
-- ⬜ Authority scopes на principal-уровне
-- ⬜ Relation-anchor binding rules в runtime
-- ⬜ Cross-channel principal linking
-- ⬜ Audit trail для principal решений
+- ✅ `IdentityRecord` с явным enforcement immutable-зон в коде ([sonya.state.identity](C:/Users/Jester/Desktop/Sonya/src/sonya/state/identity.py))
+- ✅ `RelationAnchorBinding` schema + governed-change путь
+- ✅ `PrincipalRegistry` (минимальный CRUD) ([sonya.state.principals](C:/Users/Jester/Desktop/Sonya/src/sonya/state/principals.py))
+- 🟡 Telegram использует транспортный `from_id` + allowlist — связь с `PrincipalRegistry` появится в Фазе 2
+- ⬜ Trusted identity evidence model (структура есть, scoring/policy — Фаза 2)
+- ⬜ Authority scopes на principal-уровне (структура есть, enforcement — Фаза 2)
+- ⬜ Cross-channel principal linking (Фаза 6+)
+- 🟡 Audit trail для governed-change решений: уже пишется в `ContinuityStream` (`governed_identity_change`), полный audit-API — Фаза 2+
 
 ## 8. Memory core
 
