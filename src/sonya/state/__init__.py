@@ -7,6 +7,11 @@ from sonya.state.identity import (
     ImmutableFieldError,
     RelationAnchorBinding,
 )
+from sonya.state.principals import (
+    Principal,
+    PrincipalAlreadyExistsError,
+    PrincipalRegistry,
+)
 from sonya.state.subject_state import (
     ContinuitySnapshotRef,
     SubjectState,
@@ -21,6 +26,9 @@ __all__ = [
     "IdentityRecord",
     "IdentityWriter",
     "ImmutableFieldError",
+    "Principal",
+    "PrincipalAlreadyExistsError",
+    "PrincipalRegistry",
     "RelationAnchorBinding",
     "SubjectState",
     "SubjectStateStore",
