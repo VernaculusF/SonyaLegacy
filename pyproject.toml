@@ -13,7 +13,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["sonya_runtime*", "sonya_shared*"]
+include = ["sonya*", "sonya_runtime*", "sonya_shared*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "packages/tg-bridge/src"]
