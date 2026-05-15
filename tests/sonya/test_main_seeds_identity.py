@@ -85,6 +85,36 @@ def test_substrate_is_at_v2(tmp_path: Path) -> None:
         sub.close()
 
 
+def test_internal_process_writes_events_on_run(tmp_path: Path) -> None:
+    cfg = AppConfig(
+        substrate_path=tmp_path / "s.db",
+        health_path=tmp_path / "h.json",
+        log_level="WARNING",
+    )
+
+    # Use longer sleep to let internal process tick
+    async def driver() -> int:
+        run_task = asyncio.create_task(_run(cfg))
+        await asyncio.sleep(0.5)
+        run_task.cancel()
+        try:
+            await run_task
+        except asyncio.CancelledError:
+            return 0
+        return 0
+
+    asyncio.run(driver())
+
+    sub = Substrate.open(cfg.substrate_path)
+    try:
+        events = list(ContinuityStream(sub).read_since(0))
+        # Should have lifecycle started + at least some internal events
+        kinds = [e.kind for e in events]
+        assert "subject.lifecycle.started" in kinds
+    finally:
+        sub.close()
+
+
 def test_second_run_does_not_re_seed(tmp_path: Path) -> None:
     cfg = AppConfig(
         substrate_path=tmp_path / "s.db",

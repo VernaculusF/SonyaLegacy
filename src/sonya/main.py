@@ -14,7 +14,19 @@ from sonya.runtime import (
     WriteMaster,
     WriteMasterContention,
 )
-from sonya.state import Substrate, SubstrateVersionError, seed_identity_if_empty
+from sonya.state import (
+    ContinuityStream,
+    PendingIntentionStore,
+    SubjectStateStore,
+    Substrate,
+    SubstrateVersionError,
+    seed_identity_if_empty,
+)
+from sonya.subject import (
+    BusAwareContinuityStream,
+    BusAwareSubjectStateStore,
+    InternalProcess,
+)
 
 _log = get_logger("sonya.main")
 
@@ -41,6 +53,22 @@ async def _run(config: AppConfig) -> int:
         )
 
     bus = EventBus()
+
+    # Bus-aware wrappers for continuity and subject state
+    raw_stream = ContinuityStream(substrate)
+    stream = BusAwareContinuityStream(raw_stream, bus)
+    raw_state_store = SubjectStateStore(substrate)
+    state_store = BusAwareSubjectStateStore(raw_state_store, bus)
+    intention_store = PendingIntentionStore(substrate)
+
+    # Internal cognitive process
+    internal_process = InternalProcess(
+        stream=raw_stream,
+        intention_store=intention_store,
+        idle_interval_seconds=300.0,
+        tick_interval_seconds=10.0,
+    )
+
     lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
     health = Health(path=config.health_path)
 
@@ -55,6 +83,7 @@ async def _run(config: AppConfig) -> int:
 
     try:
         await lifecycle.start()
+        await internal_process.start()
         await health.start(schema_version=substrate.schema_version)
         _log.info(
             "sonya_started",
@@ -67,6 +96,7 @@ async def _run(config: AppConfig) -> int:
 
         await stop_requested.wait()
 
+        await internal_process.stop()
         await health.stop()
         await lifecycle.request_stop()
         _log.info("sonya_stopped", extra={"event": "stopped"})
