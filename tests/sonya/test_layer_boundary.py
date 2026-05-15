@@ -219,3 +219,26 @@ def test_selfmod_public_api_is_explicit() -> None:
         pytest.skip("selfmod/ not yet created")
     text = selfmod_init.read_text(encoding="utf-8")
     assert "__all__" in text, "selfmod/__init__.py must declare __all__"
+
+
+def test_skills_does_not_import_runtime_or_subject() -> None:
+    """skills is brain layer; imports state + selfmod only."""
+    skills_dir = _SONYA_ROOT / "skills"
+    if not skills_dir.exists():
+        pytest.skip("skills/ not yet created")
+    offenders: list[tuple[Path, str]] = []
+    for file in _python_files(skills_dir):
+        for name in _imports(file):
+            if name.startswith("sonya.runtime") or name.startswith("sonya.subject"):
+                offenders.append((file, name))
+    assert not offenders, (
+        f"skills must not import runtime or subject: {offenders}"
+    )
+
+
+def test_skills_public_api_is_explicit() -> None:
+    skills_init = _SONYA_ROOT / "skills" / "__init__.py"
+    if not skills_init.exists():
+        pytest.skip("skills/ not yet created")
+    text = skills_init.read_text(encoding="utf-8")
+    assert "__all__" in text, "skills/__init__.py must declare __all__"

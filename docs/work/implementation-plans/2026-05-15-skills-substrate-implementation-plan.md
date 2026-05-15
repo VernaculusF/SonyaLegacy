@@ -1,11 +1,13 @@
 # Skills Substrate & Capability Gap Detection Implementation Plan
 
-**Status:** Active
+**Status:** Archived
 **Type:** Work Doc
 **Scope:** Skill registry with trust levels, capability gap detection, skill proposals through self-mod pipeline, skill injection from user messages. Substrate v5.
 **Depends on:** [ROADMAP.md §11](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), [SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md), [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md), [SONYA_SYSTEM_CORE.md §7.8-§7.10](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
 **Used by:** Phase 5 implementation sessions
 **Last reviewed:** 2026-05-15
+**Archived:** 2026-05-15 — Phase 5 closed.
+**Code pointers:** [src/sonya/skills/](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/__init__.py).
 
 ## 1. Goal
 

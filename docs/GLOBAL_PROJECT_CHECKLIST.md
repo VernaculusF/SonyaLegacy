@@ -185,15 +185,14 @@
 
 - ✅ Skill architecture задокументирована ([SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md))
 - ✅ OpenClaw-side skill реальность проанализирована ([OPENCLAW_ANALYSIS.md §7.5](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OPENCLAW_ANALYSIS.md))
-- ⬜ Skill registry в коде (Фаза 5)
-- ⬜ Skill loading (Фаза 5)
-- ⬜ Skill trust tiers (Фаза 5)
-- ⬜ Skill testing contract (Фаза 5)
-- ⬜ Skill evolution runtime — Manual-Gated в Фазе 5; production через self-mod pipeline — post-MVP Track A
-- ⬜ Capability gap detection (Фаза 5) — это базовый механизм самоулучшения
-- ⬜ Skill Injection User Message — Partial в Фазе 5
+- ✅ Skill registry в коде ([sonya.skills.registry](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/registry.py))
+- ✅ Skill trust tiers ([sonya.skills.trust](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/trust.py))
+- ✅ Activation policy (quarantined cannot activate) ([sonya.skills.activation](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/activation.py))
+- ✅ Capability gap detection → SelfModificationProposal ([sonya.skills.gap_detector](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/gap_detector.py))
+- ✅ Skill Injection from User Message (keyword-based, manual approval) ([sonya.skills.injection](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/injection.py))
+- ⬜ Skill evolution runtime — Manual-Gated; production через self-mod pipeline — post-MVP Track A
 - ⬜ Planner умеет выбирать skill action (Фаза 7)
-- ⬜ Capability graph включает skills как first-class
+- ⬜ Real skill execution (run skill code) — Фаза 7+
 
 ## 14. Harness & safety
 

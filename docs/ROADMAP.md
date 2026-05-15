@@ -209,7 +209,7 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ## 11. Фаза 5 — Skills Substrate & Capability Gap Detection
 
-**Статус:** ⬜ после Phase 4.
+**Статус:** ✅ закрыта (2026-05-15).
 
 **Цель.** Поднять skill system как persistent substrate с trust levels, registry, lifecycle. **Capability gap detection** — Соня замечает, что для задачи Y не хватает функции X, и **создаёт skill proposal** через self-mod pipeline. Это и есть базовое самоулучшение, о котором написано в [SELF_REWRITE_STANCE §1](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md).
 
