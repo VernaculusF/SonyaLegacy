@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from sonya.providers.secrets import ProviderSecret, load_provider_secret
+
 
 _DEFAULT_DATA_ROOT = Path.home() / ".sonya"
 
@@ -15,6 +17,7 @@ class AppConfig:
     substrate_path: Path
     health_path: Path
     log_level: str = "INFO"
+    openrouter_api_key: ProviderSecret | None = None
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -37,4 +40,5 @@ def load_config() -> AppConfig:
         substrate_path=substrate_path,
         health_path=health_path,
         log_level=log_level,
+        openrouter_api_key=load_provider_secret("openrouter"),
     )
