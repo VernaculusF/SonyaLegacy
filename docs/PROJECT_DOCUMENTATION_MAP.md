@@ -493,6 +493,10 @@ For the live bridge shape, read the architecture plans listed above. This docume
 
 **Archived (2026-05-15).** Phase 2 implementation plan: provider abstraction, substrate v2 with harness tables, authority policy, approval manager, audit log, channel-side principal resolver, identity seed. All 12 tasks executed. Code lives in `src/sonya/providers/`, `src/sonya/harness/`, `src/sonya/state/seed.py`, `src/sonya/state/principals.py`.
 
+### [work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md)
+
+**Active.** Phase 3 implementation plan: CanonicalResponse, PendingIntention, substrate v3, SubjectState enrichment, event bus wiring, internal cognitive process (event-driven with homeostasis counters and LLM calls), composition root update, layer boundary extension. In progress.
+
 ## Files That Were Deliberately Removed
 
 The following document classes were intentionally collapsed because they had become redundant after adding this root map and root checklist:
@@ -500,7 +504,22 @@ The following document classes were intentionally collapsed because they had bec
 - local `INDEX.md` files that did nothing except restate directory contents;
 - the older `core/GLOBAL_CHECKLIST.md`, which is now superseded by the root-level [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md).
 
-If someone wants to re-add local indexes later, they need a stronger justification than "the folder has files in it."
+## Legacy Planning Artifacts (docs/план/)
+
+The `docs/план/` folder contains the original pre-project planning documents written before the governing documentation system existed:
+
+- `ОСНОВА.md` — full AGI vision document (RWKV-7, State Tuning, SNN, embodiment, self-modification);
+- `модель.txt` — sensorimotor RWKV architecture notes;
+- `тело.txt` — body/emotion implementation notes;
+- `эмоции.txt` — emotion and self-evolution steps.
+
+These are **not governing documents**. They use their own internal numbering (not aligned with ROADMAP phases). Their content has been incorporated into the proper governing docs:
+- RWKV/State Tuning details → [research/STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md) §12 and [research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md) §4-5;
+- Simulation/embodiment/SNN → [research/SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md) §10-11;
+- Memory/forgetting curve → [cognition/MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md) §12;
+- Uncensored stance → [core/UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md).
+
+They are kept as historical reference of the original vision.
 
 ## Documentation Judgment Rules
 

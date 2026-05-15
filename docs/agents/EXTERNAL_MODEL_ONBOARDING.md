@@ -5,7 +5,7 @@
 **Scope:** Fast operational briefing for any external model, temporary replacement assistant, or outside collaborator that must understand the Sonya project without full Codex continuity
 **Depends on:** [PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md), [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
 **Used by:** external models, fallback assistants, emergency handoff, repo orientation, architectural recovery after context loss
-**Last reviewed:** 2026-05-13
+**Last reviewed:** 2026-05-15
 
 ## 0. Location Note
 
@@ -158,46 +158,43 @@ But `tg-bridge` is **not** Sonya itself.
 
 It is a channel surface and integration shell.
 
-### 5.4 Reusable Task/Action Runtime Reality
+### 5.4 Sonya Core Reality (src/sonya/)
 
-There is now a first reusable runtime slice under:
+The primary core of the project now lives at `src/sonya/`. This is the real ядро, built in Phases 1-2:
 
-- `src/sonya_runtime`
+- `src/sonya/state/` — substrate (SQLite-backed persistent state): SubjectState, ContinuityStream, IdentityRecord with immutable enforcement, PrincipalRegistry with channel-side resolver, CanonicalResponse, PendingIntention, schema versioning with migration chain (currently v3);
+- `src/sonya/runtime/` — process shell: Lifecycle, async EventBus, WriteMaster (advisory lock), Health (file-ping);
+- `src/sonya/providers/` — LLM provider abstraction: ProviderBackend Protocol, ProviderRegistry with capability matching, OpenRouterProvider, env-only secrets;
+- `src/sonya/harness/` — authority baseline: AuthorityPolicy (rule-based ALLOW/DENY/REQUIRE_APPROVAL), ApprovalManager (storage + lifecycle), AuditLog (append-only);
+- `src/sonya/main.py` — composition root: substrate open → identity seed → lifecycle start → health.
 
-This is important.
+Identity seed writes four `things_not_to_betray` on first run via governed change protocol. 145+ tests green.
 
-It means the project no longer relies only on Telegram-local fake agent theater.
+### 5.5 Legacy Reusable Runtime (src/sonya_runtime/)
 
-Current reusable runtime pieces include:
+The older reusable slice under `src/sonya_runtime/` still exists and is used by `tg-bridge`:
 
-- action models;
-- planner policy;
-- task models;
-- separate SQLite task store;
-- task service;
-- task executor;
-- task worker;
-- continuity-facing canonical response/event stubs;
+- action models, planner policy, task models, SQLite task store, task service, task executor, task worker;
+- continuity stubs (CanonicalResponse, ContinuityEvent — being superseded by `src/sonya/state/` equivalents);
 - storage path helpers.
 
-Task persistence currently lives separately from memory at:
-
-- `C:\Users\Jester\.openclaw\sonya_runtime\tasks.db`
-
-This runtime is still early, but it is real code and already wired into `tg-bridge`.
+This code is migrating into `src/sonya/` over Phases 3-7. It is not dead, but it is legacy.
 
 ## 6. What Does Not Exist Yet
 
-Important negative facts:
+Important negative facts (as of Phase 2 closure, 2026-05-15):
 
-- there is no complete `sonya-core` application yet;
-- there is no finished general scheduler/runtime orchestration layer;
-- there is no fully implemented shared subject state engine;
-- there is no full principal/authority layer in production;
-- there is no mature harness/governance subsystem;
-- there is no complete skills runtime;
-- there is no finished multi-channel runtime beyond Telegram;
-- there is no true body controller or simulation runtime in production.
+- there is no internal cognitive process yet (Phase 3 — in progress);
+- there is no self-modification framework yet (Phase 4);
+- there is no skill registry or capability gap detection yet (Phase 5);
+- there is no initiative layer yet (Phase 6);
+- planner still lives in `tg-bridge`, not in core (Phase 7);
+- memory still lives in OpenClaw, not in core (Phase 8);
+- there are no embodiment/simulation stubs yet (Phase 9);
+- Sonya is not on VPS yet (Phase 10);
+- there is no self-hosted RWKV brain yet (post-MVP Track E).
+
+What **does** exist: substrate, identity with immutable zones, principal registry with authority, provider abstraction, harness baseline (policy + approval + audit), continuity stream, subject state, canonical response contract, pending intentions. The среда is being built; the brain is interim (hosted model).
 
 Outside models must not confuse:
 
@@ -426,10 +423,12 @@ When contributing here, prioritize:
 Key current anchors:
 
 - repo root: `C:\Users\Jester\Desktop\Sonya`
+- **primary core: `C:\Users\Jester\Desktop\Sonya\src\sonya`** (state, runtime, providers, harness, subject)
 - live host root: `C:\Users\Jester\.openclaw`
 - channel package: `C:\Users\Jester\Desktop\Sonya\packages\tg-bridge`
-- reusable runtime: `C:\Users\Jester\Desktop\Sonya\src\sonya_runtime`
+- legacy reusable runtime: `C:\Users\Jester\Desktop\Sonya\src\sonya_runtime` (migrating into src/sonya/)
 - task DB: `C:\Users\Jester\.openclaw\sonya_runtime\tasks.db`
+- substrate DB: configured via `SONYA_SUBSTRATE_PATH` env (default: `./sonya.db`)
 - current docs root: `C:\Users\Jester\Desktop\Sonya\docs`
 
 ## 19. What To Read Next

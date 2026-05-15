@@ -66,7 +66,8 @@ Do not invent new source-of-truth files. Do not treat a random `docs/work/` note
 
 You are allowed to write inside:
 
-- `src/sonya_runtime/` - reusable runtime;
+- `src/sonya/` - the primary core (state, runtime, providers, harness, subject);
+- `src/sonya_runtime/` - legacy reusable runtime (migrating into src/sonya/ over time);
 - `src/sonya_shared/` - shared primitives;
 - `packages/tg-bridge/` - Telegram channel package;
 - `tests/` and `packages/tg-bridge/tests/` - test code;
