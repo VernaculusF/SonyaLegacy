@@ -242,3 +242,26 @@ def test_skills_public_api_is_explicit() -> None:
         pytest.skip("skills/ not yet created")
     text = skills_init.read_text(encoding="utf-8")
     assert "__all__" in text, "skills/__init__.py must declare __all__"
+
+
+def test_planning_does_not_import_runtime_or_subject() -> None:
+    """planning is brain layer; imports state only."""
+    planning_dir = _SONYA_ROOT / "planning"
+    if not planning_dir.exists():
+        pytest.skip("planning/ not yet created")
+    offenders: list[tuple[Path, str]] = []
+    for file in _python_files(planning_dir):
+        for name in _imports(file):
+            if name.startswith("sonya.runtime") or name.startswith("sonya.subject"):
+                offenders.append((file, name))
+    assert not offenders, (
+        f"planning must not import runtime or subject: {offenders}"
+    )
+
+
+def test_planning_public_api_is_explicit() -> None:
+    planning_init = _SONYA_ROOT / "planning" / "__init__.py"
+    if not planning_init.exists():
+        pytest.skip("planning/ not yet created")
+    text = planning_init.read_text(encoding="utf-8")
+    assert "__all__" in text, "planning/__init__.py must declare __all__"

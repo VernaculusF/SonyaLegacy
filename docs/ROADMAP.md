@@ -307,7 +307,7 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ## 13. Фаза 7 — Planner Migration & CanonicalResponse Adoption
 
-**Статус:** ⬜ после Phase 6.
+**Статус:** ✅ закрыта (2026-05-16).
 
 **Цель.** Вытащить planner из `tg_bridge.app` в `src/sonya/planning/`. Bridge переходит на тонкий adapter, потребляющий `CanonicalResponse` (объявленный в Phase 3). Planner теперь читает subject_state, skills, initiative signals.
 
