@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:

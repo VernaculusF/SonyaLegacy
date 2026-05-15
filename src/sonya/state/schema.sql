@@ -139,3 +139,32 @@ CREATE TABLE IF NOT EXISTS pending_intentions (
 
 CREATE INDEX IF NOT EXISTS idx_intentions_status ON pending_intentions(status);
 CREATE INDEX IF NOT EXISTS idx_intentions_principal ON pending_intentions(principal_id);
+
+-- ====================================================================
+-- v4 additions: self-modification framework.
+-- See [docs/work/implementation-plans/2026-05-15-self-modification-framework-implementation-plan.md].
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS self_mod_proposals (
+    proposal_id TEXT PRIMARY KEY,
+    target_module TEXT NOT NULL,
+    change_summary TEXT NOT NULL,
+    diff_blob TEXT NOT NULL DEFAULT '',
+    proposed_by_principal_id TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_selfmod_status ON self_mod_proposals(status);
+
+CREATE TABLE IF NOT EXISTS self_mod_validation_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id TEXT NOT NULL,
+    layer INTEGER NOT NULL,
+    passed INTEGER NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    checked_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_selfmod_validation_proposal ON self_mod_validation_results(proposal_id);
