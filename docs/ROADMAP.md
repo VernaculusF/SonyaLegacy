@@ -257,7 +257,7 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ## 12. Фаза 6 — Initiative Layer & Anchor Drift Signals
 
-**Статус:** ⬜ после Phase 5.
+**Статус:** ✅ закрыта (2026-05-15).
 
 **Цель.** Соня может **сама начинать действие** — не только реагировать на сообщения. Drives, signals, outbound proposals. Параллельно — anchor drift signals для self-modification watchdog (которые в Phase 4 были stub, теперь становятся реальными).
 

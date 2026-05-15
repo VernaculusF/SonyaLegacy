@@ -222,11 +222,11 @@
 ## 14.2 Initiative layer
 
 - ✅ Initiative описан как обязательный контур ([SYSTEM_CORE §7.20](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [CONSCIOUSNESS_POSITION §10.5](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md))
-- ⬜ Internal continuous loop coroutine (Фаза 3 — heartbeat)
-- ⬜ Drive counters (`boredom_analog`, `curiosity_analog`, etc.) — Фаза 6
-- ⬜ `InitiativeSignal` first-class objects — Фаза 6
-- ⬜ Outbound action proposals через harness — Фаза 6
-- ⬜ Anchor drift signals — Фаза 6
+- ✅ Internal continuous loop coroutine (Phase 3 — [sonya.subject.internal_loop](C:/Users/Jester/Desktop/Sonya/src/sonya/subject/internal_loop.py))
+- ✅ Drive counters (`boredom_analog`, `curiosity_analog`, `relational_focus`, `pending_debt`) — [sonya.initiative.drives](C:/Users/Jester/Desktop/Sonya/src/sonya/initiative/drives.py)
+- ✅ `InitiativeSignal` first-class objects — [sonya.initiative.signals](C:/Users/Jester/Desktop/Sonya/src/sonya/initiative/signals.py)
+- ✅ Outbound action proposals — [sonya.initiative.proposal](C:/Users/Jester/Desktop/Sonya/src/sonya/initiative/proposal.py)
+- ✅ Anchor drift signals — [sonya.anchor.drift_signals](C:/Users/Jester/Desktop/Sonya/src/sonya/anchor/drift_signals.py)
 - ⬜ LLM-driven creative initiation — post-MVP Track A/B (требует skill execution + planner)
 
 ## 15. Telegram channel
