@@ -140,7 +140,30 @@ def _compose_services(host: OpenClawHost, cfg: dict[str, Any], python_executable
         session_id = f"telegram-{chat_id}"
         bootstrap = load_bootstrap_context(host, runner, session_id=session_id)
         session = load_session(host.session_dir, chat_id)
-        return await _plan_text_action_with_fallback(provider, model_name, bootstrap, session, prompt_text)
+        # Use sonya.planning.plan_next as the brain-side planner.
+        # Convert CanonicalResponse back to RuntimeAction for handler compatibility.
+        from sonya.planning import PlannerContext, plan_next as _plan_next
+        from sonya.state.canonical_response import ResponseKind
+
+        system_prompt = bootstrap.get("system", "")
+        session_messages = session.get("messages", [])
+
+        class _BridgeProvider:
+            async def complete_text(self, messages, **kwargs):
+                return await complete_text(provider, model_name, messages)
+
+        ctx = PlannerContext(
+            principal_id=str(chat_id),
+            user_input=prompt_text,
+            system_prompt=system_prompt,
+            session_messages=session_messages,
+        )
+        response = await _plan_next(ctx, _BridgeProvider())
+
+        # Map CanonicalResponse kind → RuntimeAction
+        if response.kind is ResponseKind.INITIATIVE_PROPOSAL:
+            return RuntimeAction(type="reply", reply_text=response.text)
+        return RuntimeAction(type="reply", reply_text=response.text)
 
     async def complete_vision_service(
         cfg_: dict[str, Any], chat_id: int, prompt_text: str, media_items: list[dict[str, Any]]
