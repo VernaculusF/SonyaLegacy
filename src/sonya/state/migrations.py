@@ -56,6 +56,17 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         conn.commit()
         version = 3
 
+    if version == 3:
+        # v3 → v4: add self_mod_proposals + self_mod_validation_results tables.
+        conn.executescript(_SCHEMA_FILE.read_text(encoding="utf-8"))
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (4, now),
+        )
+        conn.commit()
+        version = 4
+
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
 

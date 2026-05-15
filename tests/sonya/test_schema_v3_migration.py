@@ -107,7 +107,7 @@ def _create_v2_db(path: Path) -> None:
 
 def test_fresh_substrate_creates_v3(tmp_path: Path) -> None:
     sub = Substrate.open(tmp_path / "s.db")
-    assert sub.schema_version == 3
+    assert sub.schema_version >= 3
     # pending_intentions table exists
     row = sub.connection.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='pending_intentions'"
@@ -126,7 +126,7 @@ def test_v2_db_migrates_to_v3_preserving_data(tmp_path: Path) -> None:
     _create_v2_db(db)
 
     sub = Substrate.open(db)
-    assert sub.schema_version == 3
+    assert sub.schema_version >= 3
 
     # Old data preserved
     row = sub.connection.execute(
@@ -220,7 +220,7 @@ def test_v1_to_v3_migration_chain(tmp_path: Path) -> None:
     conn.close()
 
     sub = Substrate.open(db)
-    assert sub.schema_version == 3
+    assert sub.schema_version >= 3
     # All v2 + v3 tables exist
     tables = {
         row[0]
