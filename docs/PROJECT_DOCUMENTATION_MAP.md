@@ -5,7 +5,7 @@
 **Scope:** Root navigation and role map for every living documentation file in the Sonya project
 **Depends on:** [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md), [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
 **Used by:** all readers, all planning, all implementation, all documentation maintenance
-**Last reviewed:** 2026-05-13
+**Last reviewed:** 2026-05-15
 
 ## Why This File Exists
 
@@ -473,7 +473,7 @@ The current shape of the bridge is governed by [architecture/CHANNELS_AND_TELEGR
 
 ### [work/implementation-plans/2026-04-29-first-runtime-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-04-29-first-runtime-implementation-plan.md)
 
-**Stale (2026-05-13).** Earliest first-runtime slice plan. Kept as historical planning context only. Its proposed `src/sonya/` file layout does not match reality, because the real path taken was narrower (extract bridge, then build `src/sonya_runtime`). A replacement implementation plan is scheduled at `docs/work/implementation-plans/2026-05-13-base-runtime-implementation-plan.md`; this document must not be used to drive new code.
+**Stale (2026-05-13).** Earliest first-runtime slice plan. Kept as historical planning context only. Its proposed `src/sonya/` file layout does not match reality, because the real path taken was narrower (extract bridge, then build `src/sonya_runtime`). Replaced by `2026-05-13-substrate-bootstrap-implementation-plan.md` (the plan that actually built `src/sonya/`). This document must not be used to drive new code.
 
 ### [work/implementation-plans/2026-05-01-telegram-bridge-extraction-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-01-telegram-bridge-extraction-implementation-plan.md)
 
@@ -484,6 +484,14 @@ The current shape of the bridge is governed by [architecture/CHANNELS_AND_TELEGR
 - how the current `tg-bridge` package took shape.
 
 For the live bridge shape, read the architecture plans listed above. This document is historical reference only.
+
+### [work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md)
+
+**Archived (2026-05-13).** Phase 1 implementation plan: substrate v1 + bare runtime shell. All tasks executed. Code lives in `src/sonya/state/`, `src/sonya/runtime/`, `src/sonya/main.py`. First plan that passed through Reference Check gate without drift.
+
+### [work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md)
+
+**Archived (2026-05-15).** Phase 2 implementation plan: provider abstraction, substrate v2 with harness tables, authority policy, approval manager, audit log, channel-side principal resolver, identity seed. All 12 tasks executed. Code lives in `src/sonya/providers/`, `src/sonya/harness/`, `src/sonya/state/seed.py`, `src/sonya/state/principals.py`.
 
 ## Files That Were Deliberately Removed
 

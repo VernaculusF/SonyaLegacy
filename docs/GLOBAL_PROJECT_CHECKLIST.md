@@ -90,9 +90,11 @@
 - ✅ `SubjectState` в коде ([sonya.state.subject_state](C:/Users/Jester/Desktop/Sonya/src/sonya/state/subject_state.py))
 - ✅ `ContinuityStream` с персистентным append-only логом и автоинкрементным `seq` ([sonya.state.continuity_stream](C:/Users/Jester/Desktop/Sonya/src/sonya/state/continuity_stream.py))
 - ✅ `ContinuitySnapshot` (snapshot/restore) через `SubjectStateStore`
-- 🟡 `CanonicalResponse` пока живёт в legacy `sonya_runtime/continuity/canonical_response.py` — переезд в `sonya.subject.canonical_response` будет в Фазе 4
+- 🟡 `CanonicalResponse` пока живёт в legacy `sonya_runtime/continuity/canonical_response.py` — переезд в `sonya.state.canonical_response` с расширенными kind-ами в Фазе 3
 - ⬜ `PendingIntention` как first-class runtime state (Фаза 3)
-- ⬜ Cross-channel continuity persistence (Фаза 6+)
+- ⬜ Internal continuous loop / autonomous heartbeat coroutine (Фаза 3)
+- ⬜ Internal continuity events (`internal.heartbeat`, `internal.reflection`, `self_observation`) — Фаза 3
+- ⬜ Cross-channel continuity persistence (post-MVP Track H)
 
 ## 7. Identity, anchors, principals
 
@@ -103,10 +105,10 @@
 - ✅ `RelationAnchorBinding` schema + governed-change путь
 - ✅ `PrincipalRegistry` (минимальный CRUD) ([sonya.state.principals](C:/Users/Jester/Desktop/Sonya/src/sonya/state/principals.py))
 - ✅ Channel-side principal resolver: `resolve_from_channel_input(channel, value)` маппит транспортную пару в trusted_identifier
-- 🟡 Telegram-bridge ещё не использует resolver — миграция в Фазе 4 одновременно с планнером
+- 🟡 Telegram-bridge ещё не использует resolver — миграция в Фазе 7 (planner migration)
 - ✅ Trusted identity evidence model: schema + resolver + lookup pipeline в коде
 - ✅ Authority scopes на principal-уровне: `AuthorityPolicy` с persistent rules ([sonya.harness.authority](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/authority.py))
-- ⬜ Cross-channel principal linking (Фаза 6+)
+- ⬜ Cross-channel principal linking (post-MVP Track H)
 - ✅ Audit trail: `governed_identity_change` в continuity + `AuditLog` для harness-решений ([sonya.harness.audit](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/audit.py))
 
 ## 8. Memory core
@@ -130,8 +132,9 @@
 - ✅ Provider-абстракция вне бриджа: [sonya.providers](C:/Users/Jester/Desktop/Sonya/src/sonya/providers/__init__.py)
 - ✅ `src/sonya/providers/` — `ProviderBackend` Protocol, `ProviderRegistry`, `OpenRouterProvider`, `ProviderSecret` (env-only)
 - ✅ Capability matrix (per-model input/context/max_tokens/cost/compat) в `Capability` dataclass
-- 🟡 Policy выбора модели на уровне runtime: registry есть, planner-level выбор — Фаза 4
+- 🟡 Policy выбора модели на уровне runtime: registry есть, planner-level выбор — Фаза 7
 - ⬜ Унифицированный eval path для моделей
+- ⬜ `StatefulBackend` extension для recurrent моделей (RWKV) — post-MVP Track E (см. [BRAINMODEL_EVOLUTION_PLAN §5.1](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md))
 - ⬜ Provider-independent runtime contract
 
 ## 10. Action & planner
@@ -141,10 +144,10 @@
 - ✅ `sonya_runtime.actions.planner_contract` — action-type categories + task-status markers
 - ✅ Bridge использует runtime action layer (после реэкспорта в `tg_bridge.actions`)
 - ✅ Anti-fake-agency правила встроены в planner prompt через `tg_bridge.prompts.build_action_messages`
-- 🟡 Planner (`_plan_text_action_with_fallback`) всё ещё физически в `tg_bridge.app`
-- ⬜ Planner в `src/sonya/planning/*`
-- ⬜ Capability registry на уровне ядра
-- ⬜ Централизованная action validation policy
+- 🟡 Planner (`_plan_text_action_with_fallback`) всё ещё физически в `tg_bridge.app` (миграция — Фаза 7)
+- ⬜ Planner в `src/sonya/planning/*` (Фаза 7)
+- ⬜ Capability registry на уровне ядра (Фаза 5)
+- ⬜ Централизованная action validation policy (Фаза 7)
 - ⬜ Eval corpus для planner вне `tg-bridge` тестов
 - ⬜ Regression suite на fake-agency кейсы (file action claims, time/delay claims)
 
@@ -182,24 +185,50 @@
 
 - ✅ Skill architecture задокументирована ([SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md))
 - ✅ OpenClaw-side skill реальность проанализирована ([OPENCLAW_ANALYSIS.md §7.5](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OPENCLAW_ANALYSIS.md))
-- ⬜ Skill registry в коде
-- ⬜ Skill loading
-- ⬜ Skill trust tiers
-- ⬜ Skill testing contract
-- ⬜ Skill evolution runtime
-- ⬜ Planner умеет выбирать skill action
+- ⬜ Skill registry в коде (Фаза 5)
+- ⬜ Skill loading (Фаза 5)
+- ⬜ Skill trust tiers (Фаза 5)
+- ⬜ Skill testing contract (Фаза 5)
+- ⬜ Skill evolution runtime — Manual-Gated в Фазе 5; production через self-mod pipeline — post-MVP Track A
+- ⬜ Capability gap detection (Фаза 5) — это базовый механизм самоулучшения
+- ⬜ Skill Injection User Message — Partial в Фазе 5
+- ⬜ Planner умеет выбирать skill action (Фаза 7)
 - ⬜ Capability graph включает skills как first-class
 
 ## 14. Harness & safety
 
 - ✅ Harness описан как несущий слой (три slice: technical/epistemic/anchor в [ANCHORS_AND_FAILURE_MODES.md §7](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md))
 - ✅ Baseline harness в коде: `AuthorityPolicy`, `ApprovalManager`, `AuditLog` в [sonya.harness](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/__init__.py)
-- 🟡 Risk classes: scope-based decisions есть (`AuthorityDecision = ALLOW/DENY/REQUIRE_APPROVAL`); реальные классы рисков — пост-MVP
+- 🟡 Risk classes: scope-based decisions есть (`AuthorityDecision = ALLOW/DENY/REQUIRE_APPROVAL`); реальные классы рисков — пост-MVP Track F
 - ✅ Immutable zones: enforced в `IdentityWriter` для `things_not_to_betray` и `identity_critical_traits`; первичный `RelationAnchorBinding` через governed-change
-- 🟡 Approval gates: storage и lifecycle API готовы (`ApprovalManager` с PENDING/APPROVED/DENIED), реальный human gate — Фаза 3+
-- ⬜ Drift detection в runtime
-- ⬜ Self-modification gating
+- 🟡 Approval gates: storage и lifecycle API готовы (`ApprovalManager` с PENDING/APPROVED/DENIED), реальный human gate — Фаза 4 (governed change protocol)
+- ⬜ Self-modification framework skeleton (4-layer pipeline + anchor integrity check) — Фаза 4 (Manual-Gated по [SYSTEM_CORE §7.18](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md))
+- ⬜ Drift detection в runtime (Фаза 6 — anchor drift signals)
+- ⬜ Hyper-Harness scheduler shell — Фаза 9 (Stub по [SYSTEM_CORE §7.13](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md))
 - ⬜ Task mutation actions respect harness
+
+## 14.1 Self-modification framework
+
+- ✅ 4-слойный pipeline описан в [SUBSTRATE_STANCE §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)
+- ✅ Право Сони переписывать non-identity-critical код фиксировано в [SELF_REWRITE_STANCE](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
+- ⬜ `SelfModificationProposal` first-class object в substrate (Фаза 4)
+- ⬜ Layer 1 Static Contract Check (Фаза 4 — stub)
+- ⬜ Layer 2 Isolated Behavioral Test (Фаза 4 — stub: subprocess + assert all pass)
+- ⬜ Layer 3 Trace Replay (Фаза 4 — stub; реальная работа — post-MVP Track B при наличии N дней данных)
+- ⬜ Layer 4 Anchor Integrity Check (Фаза 4 — реальный rules-based по 4 пилонам `things_not_to_betray`)
+- ⬜ Governed change protocol (Фаза 4 — wired через `ApprovalManager` + primary anchor)
+- ⬜ Watch window + auto-revert (Фаза 4 — stub; реальные signals — Фаза 6)
+- ⬜ Real patch application к коду (post-MVP Track B — sandbox + git working copy)
+
+## 14.2 Initiative layer
+
+- ✅ Initiative описан как обязательный контур ([SYSTEM_CORE §7.20](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [CONSCIOUSNESS_POSITION §10.5](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md))
+- ⬜ Internal continuous loop coroutine (Фаза 3 — heartbeat)
+- ⬜ Drive counters (`boredom_analog`, `curiosity_analog`, etc.) — Фаза 6
+- ⬜ `InitiativeSignal` first-class objects — Фаза 6
+- ⬜ Outbound action proposals через harness — Фаза 6
+- ⬜ Anchor drift signals — Фаза 6
+- ⬜ LLM-driven creative initiation — post-MVP Track A/B (требует skill execution + planner)
 
 ## 15. Telegram channel
 
@@ -240,13 +269,13 @@
 ## 18. Embodiment, simulation, future brain stack
 
 - ✅ Все три контура описаны в [docs/research/](C:/Users/Jester/Desktop/Sonya/docs/research): state tuning, brainmodel evolution, simulation/embodiment
-- ✅ RWKV/stateful future path учтён
-- ⬜ Brain-state data models в коде
-- ⬜ Stateful backend adapter
-- ⬜ Simulation contract
-- ⬜ Embodiment contract
-- ⬜ Physical body interface
-- ⬜ Voice/avatar/body stack привязан к одному subject core
+- ✅ RWKV/stateful future path учтён ([BRAINMODEL_EVOLUTION_PLAN §5.1](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md))
+- ⬜ Brain-state data models в коде (post-MVP Track E)
+- ⬜ `StatefulBackend` Protocol extension (post-MVP Track E)
+- ⬜ Simulation contract (Фаза 9 — Research-Shell stub)
+- ⬜ Embodiment adapter contract (Фаза 9 — Stub: `EmbodimentEvent`, `VirtualBodyCounter`)
+- ⬜ Physical body interface (post-MVP Track D)
+- ⬜ Voice/avatar/body stack привязан к одному subject core (post-MVP Track D)
 
 ---
 

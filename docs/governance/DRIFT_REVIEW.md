@@ -375,3 +375,45 @@ Append new entries at the bottom. Newest goes last.
 - Phase 3 (Subject Core & Continuity): реализовать `PendingIntention` first-class, перенести `CanonicalResponse` из `sonya_runtime/continuity/` в `src/sonya/subject/`, расширить event bus subject.* событиями, real human approval gate для `ApprovalManager`. План — отдельный файл по шаблону.
 - Phase 4 (Planner Migration): bridge переходит на `PrincipalRegistry.resolve_from_channel_input` для разрешения user_id → Principal; planner мигрирует из `tg_bridge.app` в `src/sonya/planning/`.
 - Run the next drift review on or before 2026-05-29 (cadence reset с Phase 2 closure).
+
+### 2026-05-15 — ROADMAP rebase: aligned with governing docs
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (governance subsystem shift; same day as Phase 2 closure but distinct review)
+**Subsystems checked:**
+
+- `docs/ROADMAP.md` против [SONYA_SYSTEM_CORE §6, §7.1–§7.23, §10](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md);
+- против [SONYA_CONSCIOUSNESS_POSITION §10.5, §10.7](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md);
+- против [SUBSTRATE_STANCE §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md);
+- против [SELF_REWRITE_STANCE §1](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md);
+- против [MVP_BOUNDARIES §3.2, §3.3](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md);
+- против [SKILL_SYSTEM_PLAN §8](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md);
+- против [CONTINUITY_STREAM_AND_SUBJECT_CORE §6.2, §7](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md).
+
+### Reality findings
+
+- Иван (2026-05-15) явно поднял вопрос: «главной функцией в базовом использовании должно быть самоулучшение» и «основной поток сознания крутится вне выводов». Эти два требования — не новые желания, они зафиксированы в governing docs. Я провёл полный аудит против всех governing docs. Результат: **ROADMAP драйфил**.
+- ROADMAP версии 2026-05-13 ставил self-modification framework, real-time skill evolution, hyper-harness, embodiment adapter, simulation interface, **initiative layer** и **skills** в *post-MVP tracks*. Это **прямое противоречие** [SYSTEM_CORE §10](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), которое перечисляет каждый из этих контуров в списке «что должно существовать уже в первом релизе **даже как заглушка**».
+- [MVP_BOUNDARIES §3.3](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md) явно перечисляет required в MVP shell/stub/manual-gated: real-time skill evolution, hyper-harness, **self-modification framework**, brainmodel evolution layer, embodiment adapter, simulation interface, future state tuning slot.
+- [MVP_BOUNDARIES §3.2](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md) явно перечисляет required в Partial: identity layer, semantic memory, context evolution, dual-layer reflexion, self-observation, skill injection, **initiative layer**.
+- [SYSTEM_CORE §7.20](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md) **прямо говорит**: «initiative layer не считается существующим, если система **только отвечает на входящие сообщения** и не имеет собственных внутренних сигналов для запуска поведения». ROADMAP 2026-05-13 проектировал систему именно как «отвечает на входящие» вплоть до VPS, ничего другого до пост-MVP.
+- [SELF_REWRITE_STANCE §1](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md): «никто (включая Ивана) не должен фиксировать "канон" реализации... Это не bug в архитектуре — это её **цель**.» Self-modification — default capability, не post-MVP feature.
+- [CONTINUITY_STREAM_AND_SUBJECT_CORE §6.2](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md) перечисляет, что должен содержать ContinuityStream: **internal subjective transitions**, не только channel messages. ROADMAP не имел ни одной фазы, в которой это бы материализовалось.
+- Governing docs внутренне согласованы. ROADMAP — единственный документ, ушедший вбок. Это classic drift event «implementation plan противоречит governing doc».
+
+### Status changes
+
+- [docs/ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md): полностью переписан. Структура изменилась с **6 phases + post-MVP tracks** на **11 phases (0-10) → MVP achieved + post-MVP maturity tracks**. Каждый обязательный контур из SYSTEM_CORE §10 имеет конкретную фазу. Self-modification framework — Фаза 4. Skills substrate + capability gap detection — Фаза 5. Initiative layer + anchor drift signals — Фаза 6. Embodiment + simulation + hyper-harness stubs — Фаза 9. Internal continuous loop — Фаза 3. Phase 0 (Foundation), Phase 1 (Substrate Bootstrap), Phase 2 (Provider & Principal Core) остаются ✅ закрытыми.
+- [docs/GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md): обновлены phase-references, добавлены §14.1 «Self-modification framework» и §14.2 «Initiative layer» секции. §6, §9, §10, §13, §14, §18 синхронизированы с новой нумерацией.
+- [docs/research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md): добавлен §5.1 — `StatefulBackend` extension для RWKV (изменено в отдельном commit ранее, помечено в чеклисте).
+
+### Checklist diffs
+
+Никаких флипов ✅/🟡/⬜ по реальности кода — это rebase planning документа, не closure кодовой работы. Изменены только phase-references в строках, которые упоминали неправильные номера фаз. Добавлены два новых секционных блока (§14.1, §14.2) — они полностью ⬜, потому что соответствующего кода ещё нет.
+
+### Follow-ups
+
+- Phase 3 implementation plan должен быть переписан с расширенным scope: subject core + canonical response + pending intentions + **internal continuous loop** + **internal continuity events**. Owner: следующий implementation plan session.
+- При закрытии Phase 4 (self-modification skeleton) выполнить anchor integrity check на самом коде Phase 4: убедиться, что ни один deliverable не ослабляет 4 пилона `things_not_to_betray`. Это первое реальное применение Layer 4 на самом pipeline.
+- Сам ROADMAP теперь имеет §3 «История drift-а» — это намеренно. Если кто-то в будущем вернёт post-MVP tracks вместо MVP-shell-with-uneven-maturity, этот раздел будет сигнализировать.
+- Run the next drift review on or before 2026-05-29.
