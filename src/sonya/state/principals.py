@@ -77,6 +77,28 @@ class PrincipalRegistry:
                 return self._row_to_principal(row)
         return None
 
+    # Channel name → stored prefix on trusted_identifiers.
+    # `telegram` is stored as `tg:` because the bridge writes it that way.
+    # Unknown channel names pass through unchanged.
+    _CHANNEL_PREFIX_ALIASES: dict[str, str] = {
+        "telegram": "tg",
+    }
+
+    def resolve_from_channel_input(
+        self, channel: str, value: str
+    ) -> Principal | None:
+        """Resolve a Principal from a transport-side input pair.
+
+        Example: ``resolve_from_channel_input("telegram", "5785127604")``
+        looks up ``tg:5785127604`` in trusted_identifiers.
+
+        Returns None on empty inputs or no match.
+        """
+        if not channel or not value:
+            return None
+        prefix = self._CHANNEL_PREFIX_ALIASES.get(channel, channel)
+        return self.resolve_by_trusted_identifier(f"{prefix}:{value}")
+
     def list_all(self) -> list[Principal]:
         cursor = self._sub.connection.execute(
             "SELECT principal_id, display_name, trusted_identifiers_json, "
