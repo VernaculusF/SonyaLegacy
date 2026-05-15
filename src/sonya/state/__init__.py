@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sonya.state.canonical_response import CanonicalResponse, ResponseKind
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.state.identity import (
     IdentityRecord,
@@ -21,6 +22,7 @@ from sonya.state.subject_state import (
 from sonya.state.substrate import Substrate, SubstrateVersionError
 
 __all__ = [
+    "CanonicalResponse",
     "ContinuityEvent",
     "ContinuityStream",
     "ContinuitySnapshotRef",
@@ -31,6 +33,7 @@ __all__ = [
     "PrincipalAlreadyExistsError",
     "PrincipalRegistry",
     "RelationAnchorBinding",
+    "ResponseKind",
     "SubjectState",
     "SubjectStateStore",
     "Substrate",
