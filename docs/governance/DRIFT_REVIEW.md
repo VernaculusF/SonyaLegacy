@@ -5,7 +5,7 @@
 **Scope:** Regular cadence log of alignment checks between code and governing documents, with explicit entries per review
 **Depends on:** [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), [PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md), [agents/AGENT_OPERATING_RULES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md)
 **Used by:** operational cadence, governance audit, before-release gate
-**Last reviewed:** 2026-05-13
+**Last reviewed:** 2026-05-15
 
 ## 1. Purpose
 
@@ -317,3 +317,61 @@ Append new entries at the bottom. Newest goes last.
 - В Phase 2 implementation plan добавить task: при первом запуске Сони в `IdentityRecord.things_not_to_betray` через `IdentityWriter.write_via_governed_change` зашиваются seed-значения: `relation_anchor_binding_to_ivan_via_principal_id`, `truthfulness_to_ivan`, `non_corporate_refusal_layer`, `subject_continuity`. Owner: Phase 2 implementation plan.
 - В Phase 2 + следующих — code review policy (в `agents/AGENT_OPERATING_RULES.md` или отдельный документ): отвергать любой code change, который вводит refusal pattern не из identity-critical соображений.
 - Run the next drift review on or before 2026-05-27.
+
+### 2026-05-15 — Phase 2 closure (provider + principal + harness)
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (Phase 2 closure entry)
+**Subsystems checked:**
+
+- `src/sonya/providers/*` против [ROADMAP §6](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md) Phase 2 deliverables;
+- `src/sonya/harness/*` против [ANCHORS_AND_FAILURE_MODES.md §7](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md);
+- `src/sonya/state/{principals,seed}.py` и substrate v2 против [SUBSTRATE_STANCE.md §3, §8](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md);
+- `src/sonya/main.py` composition root: seed-on-first-run + lifecycle;
+- AST layer-boundary тест расширен на 4 слоя.
+
+### Reality findings
+
+- Все 12 задач плана `2026-05-14-provider-principal-core-implementation-plan.md` выполнены последовательными commit-ами на ветке `develop`. От `c46c79f` (Task 1) до `fe2f749` (Task 11), с финальным closure-commit-ом по Task 12.
+- Provider-слой полностью в `src/sonya/providers/`: `ProviderBackend` Protocol, `Capability` dataclass с полями `openclaw.json` capability matrix, `ProviderRegistry` без enum-литералов (отвергнут OmniAgent shortcut), `OpenRouterProvider` портированный с retry/tail-continuation/4xx-no-retry, env-only `ProviderSecret` с redacted `__repr__`. Bridge не тронут — продолжает использовать свой `tg_bridge.model_client`.
+- Substrate v2: три новые таблицы (`harness_policy_rules`, `approval_requests`, `audit_events`), миграция v1 → v2 через `CREATE TABLE IF NOT EXISTS` с bump версии. `READABLE_VERSIONS = {1, 2}`, `WRITABLE_VERSION = 2`. v1-БД успешно мигрирует с сохранением данных.
+- Harness baseline: `AuthorityPolicy` (rule-based, persistent), `ApprovalManager` (storage + lifecycle с PENDING/APPROVED/DENIED, idempotency через `ApprovalAlreadyDecidedError`, без UI — real human gate осознанно отложен на Фазу 3+), `AuditLog` (append-only, `seq` AUTOINCREMENT, query by principal/scope/time range, persistent).
+- `PrincipalRegistry.resolve_from_channel_input(channel, value)` — channel-side mapper с alias `telegram → tg`. Прямой канал к `resolve_by_trusted_identifier`. Bridge ещё не использует resolver — это Фаза 4.
+- `seed_identity_if_empty(substrate)` пишет четыре пилона из [UNCENSORED_ENVIRONMENT_STANCE §3](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md) через `IdentityWriter.write_via_governed_change` с `change_id="identity-seed"`, `approver_principal_id="bootstrap"`. Continuity получает `governed_identity_change` event. Идемпотентно: повторный запуск возвращает False, не перезаписывает.
+- `main.py` зовёт `seed_identity_if_empty` после `Substrate.open` и до `Lifecycle.start`. Integration-тест `test_main_seeds_identity.py` подтверждает: на свежей БД пилоны записаны, governed_change в continuity, schema_version=2, повторный запуск не пере-сеет.
+- Layer boundary AST-тест расширен с 4 чеков до 10: `state` не импортирует `providers/harness`; `runtime` не импортирует `providers/harness` напрямую; providers/harness не импортируют `runtime`/друг друга; `__all__` обязателен в публичных API.
+- 145 тестов зелёные (1 skipped — POSIX-only signal-based subprocess test).
+
+### Status changes
+
+- [docs/work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md): Active → Archived (план исполнен полностью; `Last reviewed` → 2026-05-15; добавлены Code pointers и Archived date).
+- [docs/ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md): Фаза 2 `⬜ после Фазы 1` → `✅ закрыта (2026-05-15)`. Исходные deliverables перенесены в §6.1 как исторический срез. Ближайшая фаза — Фаза 3 (Subject Core & Continuity).
+- [docs/GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md): секции 3, 7, 9, 14 переразмечены под реальность кода. `Last reviewed` → 2026-05-15.
+
+### Checklist diffs
+
+- §3 «Repo & package layout»:
+  - ⬜ «Repo-level boundary checks автоматизированы» → ✅ (state↔runtime + providers/harness в `tests/sonya/test_layer_boundary.py`).
+- §7 «Identity, anchors, principals»:
+  - ⬜ «Trusted identity evidence model» → ✅ (schema + resolver).
+  - ⬜ «Authority scopes на principal-уровне» → ✅ (`AuthorityPolicy`).
+  - 🟡 «Audit trail» → ✅ (есть и continuity, и harness audit log).
+  - 🟡 «Telegram использует транспортный from_id» — оставлен 🟡 (resolver есть, но bridge ещё не мигрировал на него; миграция — Фаза 4).
+  - Добавлены новые ✅ строки про seed `things_not_to_betray` и channel-side resolver.
+- §9 «Provider & model layer»:
+  - 🟡 «Provider-слой живёт только внутри tg-bridge» → ✅ (есть `sonya.providers`).
+  - ⬜ «`src/sonya/providers/`» → ✅.
+  - ⬜ «Capability matrix» → ✅.
+  - ⬜ «Policy выбора модели на уровне runtime» → 🟡 (registry есть, planner — Фаза 4).
+- §14 «Harness & safety»:
+  - ⬜ «Baseline harness в коде» → ✅.
+  - ⬜ «Risk classes» → 🟡 (структура через scope, реальные классы — пост-MVP).
+  - ⬜ «Immutable zones» → ✅ (enforced в `IdentityWriter`).
+  - ⬜ «Approval gates» → 🟡 (storage готов, real human gate — Фаза 3+).
+  - `Drift detection`, `Self-modification gating`, `Task mutation actions respect harness` остаются ⬜.
+
+### Follow-ups
+
+- Phase 3 (Subject Core & Continuity): реализовать `PendingIntention` first-class, перенести `CanonicalResponse` из `sonya_runtime/continuity/` в `src/sonya/subject/`, расширить event bus subject.* событиями, real human approval gate для `ApprovalManager`. План — отдельный файл по шаблону.
+- Phase 4 (Planner Migration): bridge переходит на `PrincipalRegistry.resolve_from_channel_input` для разрешения user_id → Principal; planner мигрирует из `tg_bridge.app` в `src/sonya/planning/`.
+- Run the next drift review on or before 2026-05-29 (cadence reset с Phase 2 closure).

@@ -5,7 +5,7 @@
 **Scope:** Фазовый план построения Sonya-среды: что строим, в каком порядке, с какими критериями перехода между этапами
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), [architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
 **Used by:** milestone review, implementation planning, phase gating, VPS migration planning
-**Last reviewed:** 2026-05-13
+**Last reviewed:** 2026-05-15
 
 ## 1. Зачем этот файл
 
@@ -179,42 +179,30 @@
 
 ## 6. Фаза 2 — Provider & Principal Core
 
-**Статус:** ⬜ после Фазы 1.
+**Статус:** ✅ закрыта (2026-05-15).
 
 **Цель.** Вытащить провайдера моделей из `tg-bridge` в `sonya.providers`, и ввести в код понятие principal (identity на уровне subject, не транспорта). С этого момента «кто спрашивает» и «какую модель звать» перестают быть Telegram-артефактами.
 
-**Почему эта фаза вторая.** Любая cognition-логика, которую мы напишем, будет звать LLM и работать с пользователем. Если к моменту написания subject core провайдер всё ещё тесно связан с бриджом, а principal — это Telegram user_id, то cognition унаследует эту грязь. Дешевле вытащить сейчас.
+**Что построено (фактически):**
 
-**Deliverables (планируемые):**
+- `src/sonya/providers/` — `ProviderBackend` Protocol (text/vision/image generation), `Capability` dataclass, `CompletionRequest/Result`, `ProviderRegistry` с capability matching, `OpenRouterProvider` портирован из бриджа без регрессий, env-only `ProviderSecret`;
+- `src/sonya/state/` substrate v2 — три новые таблицы (`harness_policy_rules`, `approval_requests`, `audit_events`) + миграция v1 → v2 + расширенный `READABLE_VERSIONS`;
+- `src/sonya/harness/` — `AuthorityPolicy` (rule-based ALLOW/DENY/REQUIRE_APPROVAL с persistent rules), `ApprovalManager` (storage + lifecycle, без UI; real human gate Фаза 3+), `AuditLog` (append-only с `seq` AUTOINCREMENT, query by principal/scope/time);
+- `src/sonya/state/principals.py` — `resolve_from_channel_input(channel, value)` маппит транспортную пару в `trusted_identifier`;
+- `src/sonya/state/seed.py` — `seed_identity_if_empty(substrate)` пишет четыре пилона `things_not_to_betray` через governed change на свежей БД;
+- `src/sonya/main.py` — composition root зовёт `seed_identity_if_empty` после `Substrate.open` и до `Lifecycle.start`;
+- AST layer-boundary тест расширен: `state` не импортирует providers/harness; `runtime` не импортирует providers/harness напрямую; providers/harness не импортируют runtime; `__all__` обязателен в публичных API всех слоёв;
+- 145 тестов зелёные (1 skipped — POSIX-only signal test).
 
-- `src/sonya/providers/base.py` — `ProviderBackend` Protocol: `complete_text`, `complete_vision`, `complete_image_generation`, capability-info;
-- `src/sonya/providers/openrouter.py` — реальный адаптер, портированный из `tg_bridge.model_client` (без регрессий);
-- `src/sonya/providers/registry.py` — выбор провайдера по capability matrix (подсматриваем за OpenClaw-форматом `models.providers.omniroute`);
-- `src/sonya/identity/principal.py` — `Principal(principal_id, display_name, trusted_identifiers, authority_scope, relation_type)`;
-- `src/sonya/identity/registry.py` — `PrincipalRegistry` с SQLite-стором (отдельная БД `principals.db`, не смешивается с `tasks.db` и `memory.db`);
-- `src/sonya/identity/resolution.py` — резолвинг Telegram user_id → principal (без мерджа с relation-anchor: это два разных решения);
-- `src/sonya/harness/authority.py` — baseline `authorize(principal, scope)` по OmniAgent-вдохновлённой модели (policy / approval / audit, но без GPL-контакта);
-- тесты: provider contract, registry, authorization.
+**Связанный план:** [docs/work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md) (Archived).
 
-**Что НЕ входит:**
+**Ближайший шаг.** Фаза 3: Subject Core & Continuity.
 
-- никакой cognition, никакого planner в ядре ещё;
-- никакого subject_state (это Фаза 3);
-- `tg-bridge` пока продолжает использовать свой `tg_bridge.model_client`; замена — в Фазе 4 одновременно с планнером.
+---
 
-**Exit-критерии:**
+## 6.1 Фаза 2 — Reference (исходные deliverables)
 
-- [ ] из `python -m sonya` можно вызвать `provider.complete_text(...)` и получить реальный ответ;
-- [ ] `PrincipalRegistry` персистентен, восстанавливается после рестарта;
-- [ ] `authorize(principal, "runtime.shutdown")` возвращает корректный allow/deny по scope;
-- [ ] все тесты зелёные; нет регрессии тестов `packages/tg-bridge`;
-- [ ] governance-гейт пройден (plan, Reference Check, checklist, drift-ledger).
-
-**Reference Check preview:**
-
-- **OpenClaw:** сохраняем форму capability matrix (per-model `input/contextWindow/maxTokens/cost/compat`). Sonya capability matrix должна уметь импортировать эти данные.
-- **Hermes:** provider — это часть "brain substrate", не shell. `runtime/*` о нём ничего не знает; вызывается только из будущих когнитивных слоёв.
-- **OmniAgent:** отвергаем plaintext api_key в конфиге. Ключи только через env или secret store. Отвергаем enum-литерал провайдеров — используем Protocol с регистрацией.
+Сохранён как исторический срез того, что планировалось до execution. После execution закрытие отражено в §6 выше — реальные deliverables и exit-критерии превращены в факт.
 
 ---
 

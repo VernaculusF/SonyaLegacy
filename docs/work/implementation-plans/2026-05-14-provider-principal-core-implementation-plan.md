@@ -1,11 +1,13 @@
 # Provider & Principal Core Implementation Plan
 
-**Status:** Active
+**Status:** Archived
 **Type:** Work Doc
 **Scope:** Вытащить provider слой из tg-bridge в `src/sonya/providers/`, расширить `PrincipalRegistry` channel-side resolver-ом, поднять authority baseline в `src/sonya/harness/`, посеять `things_not_to_betray` при первом запуске.
 **Depends on:** [ROADMAP.md §6](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md), [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md), [OPENCLAW_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OPENCLAW_ANALYSIS.md), [HERMES_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/HERMES_ANALYSIS.md), [OMNIAGENT_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OMNIAGENT_ANALYSIS.md)
 **Used by:** Фаза 2 implementation sessions
-**Last reviewed:** 2026-05-14
+**Last reviewed:** 2026-05-15
+**Archived:** 2026-05-15 — Phase 2 closed, all 12 tasks executed and committed on develop.
+**Code pointers:** [src/sonya/providers/](C:/Users/Jester/Desktop/Sonya/src/sonya/providers/__init__.py), [src/sonya/harness/](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/__init__.py), [src/sonya/state/seed.py](C:/Users/Jester/Desktop/Sonya/src/sonya/state/seed.py), [src/sonya/state/principals.py](C:/Users/Jester/Desktop/Sonya/src/sonya/state/principals.py).
 
 ## 1. Goal
 
@@ -339,12 +341,12 @@ Composition root в `main.py` — единственное место, кото�
 
 ### Doc-review gate
 
-- [ ] Governing documents updated, или follow-up явно записан в commit message
-- [ ] PROJECT_DOCUMENTATION_MAP.md updated если файлы переехали (в этой фазе — нет)
-- [ ] GLOBAL_PROJECT_CHECKLIST.md updated — Task 12
-- [ ] `Last reviewed` updated на тронутых governing — Task 12
-- [ ] Subsystem-scale change recorded в DRIFT_REVIEW.md — Task 12
+- [x] Governing documents updated, или follow-up явно записан в commit message
+- [x] PROJECT_DOCUMENTATION_MAP.md updated если файлы переехали (в этой фазе — нет)
+- [x] GLOBAL_PROJECT_CHECKLIST.md updated — Task 12
+- [x] `Last reviewed` updated на тронутых governing — Task 12
+- [x] Subsystem-scale change recorded в DRIFT_REVIEW.md — Task 12
 
 ## 9. Promotion Note
 
-План создан как `Status: Draft`. После одобрения Иваном — `Status: Active`, начинается исполнение. После закрытия Phase 2 — `Status: Archived` с пойнтером на код.
+План создан как `Status: Draft`. После одобрения Иваном переведён в `Status: Active` и исполнен 2026-05-14 — 2026-05-15. Закрыт `Status: Archived` 2026-05-15 после Task 12 closure. Реальный код живёт в `src/sonya/providers/`, `src/sonya/harness/`, `src/sonya/state/seed.py`, `src/sonya/state/principals.py`.

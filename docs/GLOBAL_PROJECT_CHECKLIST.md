@@ -5,7 +5,7 @@
 **Scope:** Audit ledger фактического состояния проекта Sonya — что реально есть в коде прямо сейчас
 **Depends on:** [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), [PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 **Used by:** drift review, архитектурный аудит, milestone review, перед-коммитный sanity check
-**Last reviewed:** 2026-05-13
+**Last reviewed:** 2026-05-15
 
 ## Что это за файл
 
@@ -60,7 +60,7 @@
 - ✅ `src/sonya_shared` — общие примитивы
 - ✅ `src/sonya/` как итоговое ядро: state (substrate v1, subject_state, continuity_stream, identity, principals) + runtime (lifecycle, event_bus, write_master, health) + main composition root
 - 🟡 Финализированная packaging strategy для будущего `sonya-core` (пока shape работает, итоговое имя/распакетовка — Фаза 6+)
-- ⬜ Repo-level boundary checks автоматизированы (есть state↔runtime AST-test, нужно добавить остальные)
+- ✅ Repo-level boundary checks автоматизированы (state ↔ runtime + расширены на providers/harness; см. [tests/sonya/test_layer_boundary.py](C:/Users/Jester/Desktop/Sonya/tests/sonya/test_layer_boundary.py))
 
 ## 4. Emergency host — OpenClaw compatibility
 
@@ -99,13 +99,15 @@
 - ✅ Identity и anchors описаны как несущий контур ([ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md))
 - ✅ Principal vs display-name separation зафиксирована в `SONYA_SYSTEM_CORE.md §5.6`
 - ✅ `IdentityRecord` с явным enforcement immutable-зон в коде ([sonya.state.identity](C:/Users/Jester/Desktop/Sonya/src/sonya/state/identity.py))
+- ✅ `things_not_to_betray` seed на первом запуске через governed change ([sonya.state.seed](C:/Users/Jester/Desktop/Sonya/src/sonya/state/seed.py))
 - ✅ `RelationAnchorBinding` schema + governed-change путь
 - ✅ `PrincipalRegistry` (минимальный CRUD) ([sonya.state.principals](C:/Users/Jester/Desktop/Sonya/src/sonya/state/principals.py))
-- 🟡 Telegram использует транспортный `from_id` + allowlist — связь с `PrincipalRegistry` появится в Фазе 2
-- ⬜ Trusted identity evidence model (структура есть, scoring/policy — Фаза 2)
-- ⬜ Authority scopes на principal-уровне (структура есть, enforcement — Фаза 2)
+- ✅ Channel-side principal resolver: `resolve_from_channel_input(channel, value)` маппит транспортную пару в trusted_identifier
+- 🟡 Telegram-bridge ещё не использует resolver — миграция в Фазе 4 одновременно с планнером
+- ✅ Trusted identity evidence model: schema + resolver + lookup pipeline в коде
+- ✅ Authority scopes на principal-уровне: `AuthorityPolicy` с persistent rules ([sonya.harness.authority](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/authority.py))
 - ⬜ Cross-channel principal linking (Фаза 6+)
-- 🟡 Audit trail для governed-change решений: уже пишется в `ContinuityStream` (`governed_identity_change`), полный audit-API — Фаза 2+
+- ✅ Audit trail: `governed_identity_change` в continuity + `AuditLog` для harness-решений ([sonya.harness.audit](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/audit.py))
 
 ## 8. Memory core
 
@@ -125,10 +127,10 @@
 - ✅ `tg_bridge.model_client` работает: text/vision/image gen через OpenRouter
 - ✅ Retry/timeout/continuation/dedup hardening для completion loop
 - ✅ Text+vision и image-generation модели разведены (через `agents.defaults.model` / `imageModel`)
-- 🟡 Provider-слой живёт только внутри `packages/tg-bridge/src/tg_bridge/model_client.py`
-- ⬜ `src/sonya/providers/` — provider abstraction вне бриджа
-- ⬜ Capability matrix (per-model input/context/max_tokens/cost/compat)
-- ⬜ Policy выбора модели на уровне runtime
+- ✅ Provider-абстракция вне бриджа: [sonya.providers](C:/Users/Jester/Desktop/Sonya/src/sonya/providers/__init__.py)
+- ✅ `src/sonya/providers/` — `ProviderBackend` Protocol, `ProviderRegistry`, `OpenRouterProvider`, `ProviderSecret` (env-only)
+- ✅ Capability matrix (per-model input/context/max_tokens/cost/compat) в `Capability` dataclass
+- 🟡 Policy выбора модели на уровне runtime: registry есть, planner-level выбор — Фаза 4
 - ⬜ Унифицированный eval path для моделей
 - ⬜ Provider-independent runtime contract
 
@@ -191,10 +193,10 @@
 ## 14. Harness & safety
 
 - ✅ Harness описан как несущий слой (три slice: technical/epistemic/anchor в [ANCHORS_AND_FAILURE_MODES.md §7](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md))
-- ⬜ Baseline harness в коде
-- ⬜ Risk classes
-- ⬜ Immutable zones
-- ⬜ Approval gates (за пределами читаемого `exec-approvals.json` в OpenClaw)
+- ✅ Baseline harness в коде: `AuthorityPolicy`, `ApprovalManager`, `AuditLog` в [sonya.harness](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/__init__.py)
+- 🟡 Risk classes: scope-based decisions есть (`AuthorityDecision = ALLOW/DENY/REQUIRE_APPROVAL`); реальные классы рисков — пост-MVP
+- ✅ Immutable zones: enforced в `IdentityWriter` для `things_not_to_betray` и `identity_critical_traits`; первичный `RelationAnchorBinding` через governed-change
+- 🟡 Approval gates: storage и lifecycle API готовы (`ApprovalManager` с PENDING/APPROVED/DENIED), реальный human gate — Фаза 3+
 - ⬜ Drift detection в runtime
 - ⬜ Self-modification gating
 - ⬜ Task mutation actions respect harness
