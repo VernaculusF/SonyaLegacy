@@ -168,3 +168,40 @@ CREATE TABLE IF NOT EXISTS self_mod_validation_results (
 );
 
 CREATE INDEX IF NOT EXISTS idx_selfmod_validation_proposal ON self_mod_validation_results(proposal_id);
+
+-- ====================================================================
+-- v5 additions: skills substrate.
+-- See [docs/work/implementation-plans/2026-05-15-skills-substrate-implementation-plan.md].
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS skills (
+    skill_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '0.1.0',
+    status TEXT NOT NULL DEFAULT 'active',
+    trust_level TEXT NOT NULL DEFAULT 'experimental',
+    activation_rules_json TEXT NOT NULL DEFAULT '{}',
+    dependencies_json TEXT NOT NULL DEFAULT '[]',
+    allowed_tools_json TEXT NOT NULL DEFAULT '[]',
+    forbidden_zones_json TEXT NOT NULL DEFAULT '[]',
+    tests_json TEXT NOT NULL DEFAULT '[]',
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    trace_tags_json TEXT NOT NULL DEFAULT '[]',
+    history_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_skills_status ON skills(status);
+CREATE INDEX IF NOT EXISTS idx_skills_trust ON skills(trust_level);
+
+CREATE TABLE IF NOT EXISTS capability_gaps (
+    gap_id TEXT PRIMARY KEY,
+    description TEXT NOT NULL,
+    detected_from_event_seq INTEGER,
+    proposal_id TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_gaps_status ON capability_gaps(status);
