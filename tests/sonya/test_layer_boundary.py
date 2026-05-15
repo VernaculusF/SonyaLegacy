@@ -172,3 +172,50 @@ def test_subject_public_api_is_explicit() -> None:
         pytest.skip("subject/ not yet created")
     text = subject_init.read_text(encoding="utf-8")
     assert "__all__" in text, "subject/__init__.py must declare __all__"
+
+
+def test_selfmod_does_not_import_runtime_or_subject() -> None:
+    """selfmod is brain layer parallel to subject; imports state + harness only."""
+    selfmod_dir = _SONYA_ROOT / "selfmod"
+    if not selfmod_dir.exists():
+        pytest.skip("selfmod/ not yet created")
+    offenders: list[tuple[Path, str]] = []
+    for file in _python_files(selfmod_dir):
+        for name in _imports(file):
+            if name.startswith("sonya.runtime") or name.startswith("sonya.subject"):
+                offenders.append((file, name))
+    assert not offenders, (
+        f"selfmod must not import runtime or subject: {offenders}"
+    )
+
+
+def test_runtime_does_not_import_selfmod() -> None:
+    runtime_dir = _SONYA_ROOT / "runtime"
+    offenders: list[tuple[Path, str]] = []
+    for file in _python_files(runtime_dir):
+        for name in _imports(file):
+            if name.startswith("sonya.selfmod"):
+                offenders.append((file, name))
+    assert not offenders, (
+        f"runtime must not import selfmod: {offenders}"
+    )
+
+
+def test_state_does_not_import_selfmod() -> None:
+    state_dir = _SONYA_ROOT / "state"
+    offenders: list[tuple[Path, str]] = []
+    for file in _python_files(state_dir):
+        for name in _imports(file):
+            if name.startswith("sonya.selfmod"):
+                offenders.append((file, name))
+    assert not offenders, (
+        f"state must not import selfmod: {offenders}"
+    )
+
+
+def test_selfmod_public_api_is_explicit() -> None:
+    selfmod_init = _SONYA_ROOT / "selfmod" / "__init__.py"
+    if not selfmod_init.exists():
+        pytest.skip("selfmod/ not yet created")
+    text = selfmod_init.read_text(encoding="utf-8")
+    assert "__all__" in text, "selfmod/__init__.py must declare __all__"
