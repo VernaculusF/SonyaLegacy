@@ -375,3 +375,42 @@ Continuity удерживается не одним механизмом, а с�
 Память и идентичность должны быть реализованы как реальная внутренняя ткань Сони.
 
 Если они останутся просто "немного истории плюс немного промпта", то никакой непрерывной Сони не получится.
+
+## 12. Кривая забывания и укрепление воспоминаний
+
+### 12.1 Принцип
+
+Не все воспоминания одинаково сильны. Сила воспоминания экспоненциально падает со временем (кривая Эббингауза). При каждом успешном воспроизведении (retrieval) сила увеличивается. Воспоминания ниже порога отправляются на «ревью» — модель их намеренно воспроизводит, чтобы укрепить.
+
+### 12.2 Механизм
+
+Каждое episodic event имеет `retention_strength` (0.0–1.0):
+- При создании: 1.0;
+- Decay: `strength *= exp(-lambda * hours_since_last_access)`;
+- При retrieval: `strength = min(1.0, strength + reinforcement_delta)`;
+- Порог забывания: 0.3 (ниже — кандидат на consolidation или archive).
+
+### 12.3 Ревью-цикл (consolidation sleep)
+
+Периодически (раз в сутки или по trigger) запускается процесс «сна»:
+- Модель анализирует воспоминания с низким retention_strength;
+- Обобщает повторяющиеся паттерны в semantic memory (правила, наблюдения);
+- Воспоминания, которые не обобщаются и не укрепляются — архивируются (не удаляются, но не участвуют в retrieval по умолчанию);
+- Воспоминания с высоким anchor_relevance никогда не архивируются автоматически.
+
+### 12.4 Связь с consolidation pipeline (§7)
+
+Кривая забывания — это **scoring mechanism** для consolidation pipeline. Pipeline решает, что промоутить в semantic memory, на основе:
+- retention_strength (слабые → кандидаты на обобщение);
+- frequency (часто retrieved → кандидат на правило);
+- anchor_relevance (identity-critical → никогда не забывать).
+
+### 12.5 Реализация в Phase 8 (Memory Extraction)
+
+При реализации `src/sonya/memory/episodic.py` каждый event получает:
+- `retention_strength: float` — текущая сила;
+- `last_accessed_at: str` — когда последний раз retrieved;
+- `access_count: int` — сколько раз retrieved;
+- `archived: bool` — ниже порога и не обобщён.
+
+Consolidation pipeline (`src/sonya/memory/consolidation.py`) использует эти поля для batch review.

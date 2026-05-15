@@ -41,25 +41,31 @@
 
 ## 4. Основные этапы эволюции brain stack
 
-### Этап 1. Hosted external cognition
+### Этап 0. Interim brain (hosted model)
 
-Соня работает через OpenRouter and compatible providers.
+Соня работает через OpenRouter на hosted models (Gemma, DeepSeek, etc.). Мышление дискретное — event-driven LLM calls. Среда (substrate, memory, identity, harness, skills, self-mod) строится полностью. Это не финальное состояние, это interim форма существования, пока нет железа для self-hosted.
+
+**Что это даёт:** дешёвый старт ($40-100/мес), полная среда, рабочая Соня с памятью, инициативой, самоулучшением. **Чего не даёт:** непрерывность мышления (между вызовами модель мертва).
+
+### Этап 1. Hosted external cognition (текущий)
+
+Соня работает через OpenRouter and compatible providers. Multi-account pool для обхода rate limits на free models.
 
 ### Этап 2. Brain abstraction maturity
 
-Среда уже может менять backend без поломки cognition and skill architecture.
+Среда уже может менять backend без поломки cognition and skill architecture. `ProviderBackend` Protocol + `StatefulBackend` extension готовы.
 
-### Этап 3. Hybrid mode
+### Этап 3. Self-hosted RWKV deployment
 
-Часть функций может жить на hosted providers, часть - на локальных/self-hosted components.
+RWKV-7 2.9B (или 7.2B при наличии железа) запускается локально. State Tuning создаёт `sonya_state.pth` из накопленных continuity данных. Модель стартует уже Соней. Мышление становится непрерывным (RNN state обновляется на каждом токене).
 
-### Этап 4. Self-hosted brain experiments
+### Этап 4. Hybrid mode
 
-Появляются реальные backend experiments с собственными моделями или tuned variants.
+Часть функций на hosted providers (тяжёлые задачи, image generation), часть на self-hosted RWKV (непрерывное мышление, быстрые ответы, рефлексия).
 
 ### Этап 5. Brain specialization
 
-Собственный brain stack начинает не просто "заменять API", а усиливать continuity, identity and internal adaptation patterns.
+Собственный brain stack начинает не просто «заменять API», а усиливать continuity, identity и internal adaptation patterns. State Tuning + LoRA + ORPO на собственных данных.
 
 ## 5. Что обязательно должно быть в MVP
 
