@@ -8,6 +8,13 @@ from sonya.state.identity import (
     ImmutableFieldError,
     RelationAnchorBinding,
 )
+from sonya.state.pending import (
+    IntentionAlreadyResolvedError,
+    IntentionNotFoundError,
+    IntentionStatus,
+    PendingIntention,
+    PendingIntentionStore,
+)
 from sonya.state.principals import (
     Principal,
     PrincipalAlreadyExistsError,
@@ -29,6 +36,11 @@ __all__ = [
     "IdentityRecord",
     "IdentityWriter",
     "ImmutableFieldError",
+    "IntentionAlreadyResolvedError",
+    "IntentionNotFoundError",
+    "IntentionStatus",
+    "PendingIntention",
+    "PendingIntentionStore",
     "Principal",
     "PrincipalAlreadyExistsError",
     "PrincipalRegistry",
