@@ -417,3 +417,47 @@ Append new entries at the bottom. Newest goes last.
 - При закрытии Phase 4 (self-modification skeleton) выполнить anchor integrity check на самом коде Phase 4: убедиться, что ни один deliverable не ослабляет 4 пилона `things_not_to_betray`. Это первое реальное применение Layer 4 на самом pipeline.
 - Сам ROADMAP теперь имеет §3 «История drift-а» — это намеренно. Если кто-то в будущем вернёт post-MVP tracks вместо MVP-shell-with-uneven-maturity, этот раздел будет сигнализировать.
 - Run the next drift review on or before 2026-05-29.
+
+### 2026-05-15 — Phase 3 closure (subject core + internal loop)
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (Phase 3 closure)
+**Subsystems checked:**
+
+- `src/sonya/state/canonical_response.py` — CanonicalResponse with 11 ResponseKind values;
+- `src/sonya/state/pending.py` — PendingIntention + PendingIntentionStore;
+- `src/sonya/state/subject_state.py` — enriched with emotional_vector + drift_signals;
+- `src/sonya/state/schema.sql` + `migrations.py` — substrate v3 (pending_intentions table + subject_state columns);
+- `src/sonya/subject/bus_wiring.py` — BusAwareContinuityStream + BusAwareSubjectStateStore;
+- `src/sonya/subject/internal_loop.py` — InternalProcess (event-driven cognitive coroutine + HomeostasisCounters);
+- `src/sonya/main.py` — composition root wires internal process + bus wrappers;
+- `tests/sonya/test_layer_boundary.py` — extended to 14 checks (5 packages).
+
+### Reality findings
+
+- All 9 tasks executed. 173 tests green (1 skipped POSIX-only).
+- CanonicalResponse covers external (reply, task_*, image_generated, clarification, limitation, silence) and internal (initiative_proposal, self_observation, internal_reflection) kinds.
+- PendingIntention is first-class persistent with status transitions (active → completed/cancelled/overdue).
+- InternalProcess is event-driven: triggers on idle timeout, homeostasis threshold crossing, deadline expiry. Writes `internal.cognitive_tick` and `internal.intention_overdue` to continuity. This is interim discrete cognition — target непрерывность через RWKV (post-MVP Track E).
+- HomeostasisCounters (loneliness, curiosity, relational_focus) tick in background, threshold crossing triggers cognitive events.
+- Event bus integration: every continuity append → `continuity.event_added`; every state save → `subject.state_changed`.
+- Layer boundary: subject/ is brain layer, can import state + runtime; runtime/state cannot import subject/.
+
+### Status changes
+
+- [2026-05-15-subject-core-internal-loop-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md): Active → Archived.
+- [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md): Phase 3 → ✅ закрыта. Ближайшая: Phase 4 (Self-Modification Framework Skeleton).
+- [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md): §6 updated — all Phase 3 items flipped to ✅.
+
+### Checklist diffs
+
+- §6 «Subject core & continuity»:
+  - 🟡 «CanonicalResponse legacy» → ✅ (new one in sonya.state.canonical_response with 11 kinds)
+  - ⬜ «PendingIntention» → ✅
+  - ⬜ «Internal continuous loop» → ✅ (InternalProcess with homeostasis)
+  - ⬜ «Internal continuity events» → ✅ (internal.cognitive_tick, internal.intention_overdue)
+
+### Follow-ups
+
+- Phase 4 (Self-Modification Framework Skeleton): SelfModificationProposal, 4-layer pipeline stubs, Anchor Integrity Check (rules-based), governed change protocol wiring. Plan — отдельный файл по шаблону.
+- Run the next drift review on or before 2026-05-29.

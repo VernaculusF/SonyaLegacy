@@ -87,13 +87,13 @@
 ## 6. Subject core & continuity
 
 - ✅ Subject core и continuity стрим описаны как базовая архитектура ([CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md))
-- ✅ `SubjectState` в коде ([sonya.state.subject_state](C:/Users/Jester/Desktop/Sonya/src/sonya/state/subject_state.py))
+- ✅ `SubjectState` в коде с emotional_vector и drift_signals ([sonya.state.subject_state](C:/Users/Jester/Desktop/Sonya/src/sonya/state/subject_state.py))
 - ✅ `ContinuityStream` с персистентным append-only логом и автоинкрементным `seq` ([sonya.state.continuity_stream](C:/Users/Jester/Desktop/Sonya/src/sonya/state/continuity_stream.py))
 - ✅ `ContinuitySnapshot` (snapshot/restore) через `SubjectStateStore`
-- 🟡 `CanonicalResponse` пока живёт в legacy `sonya_runtime/continuity/canonical_response.py` — переезд в `sonya.state.canonical_response` с расширенными kind-ами в Фазе 3
-- ⬜ `PendingIntention` как first-class runtime state (Фаза 3)
-- ⬜ Internal continuous loop / autonomous heartbeat coroutine (Фаза 3)
-- ⬜ Internal continuity events (`internal.heartbeat`, `internal.reflection`, `self_observation`) — Фаза 3
+- ✅ `CanonicalResponse` с 11 response kinds в `sonya.state.canonical_response` (bridge ещё не использует — Phase 7)
+- ✅ `PendingIntention` как first-class persistent state ([sonya.state.pending](C:/Users/Jester/Desktop/Sonya/src/sonya/state/pending.py))
+- ✅ Internal cognitive process: event-driven coroutine с homeostasis counters ([sonya.subject.internal_loop](C:/Users/Jester/Desktop/Sonya/src/sonya/subject/internal_loop.py))
+- ✅ Event bus integration: `continuity.event_added` и `subject.state_changed` ([sonya.subject.bus_wiring](C:/Users/Jester/Desktop/Sonya/src/sonya/subject/bus_wiring.py))
 - ⬜ Cross-channel continuity persistence (post-MVP Track H)
 
 ## 7. Identity, anchors, principals

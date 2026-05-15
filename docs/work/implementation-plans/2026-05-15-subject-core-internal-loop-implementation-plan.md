@@ -1,11 +1,13 @@
 # Subject Core, Continuity & Internal Loop Implementation Plan
 
-**Status:** Active
+**Status:** Archived
 **Type:** Work Doc
 **Scope:** Расширить subject core до полноценного живого слоя: CanonicalResponse, PendingIntention, event bus integration, internal continuous loop (heartbeat + deadline check + reflection events). Substrate v3.
 **Depends on:** [ROADMAP.md §9](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [SONYA_SYSTEM_CORE.md §7.14, §7.15, §7.16](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [OPENCLAW_ANALYSIS.md §2.3](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/OPENCLAW_ANALYSIS.md), [ARCHITECTURE_PLAN.md §4.1](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 **Used by:** Phase 3 implementation sessions
 **Last reviewed:** 2026-05-15
+**Archived:** 2026-05-15 — Phase 3 closed, all 9 tasks executed and committed on develop.
+**Code pointers:** [src/sonya/state/canonical_response.py](C:/Users/Jester/Desktop/Sonya/src/sonya/state/canonical_response.py), [src/sonya/state/pending.py](C:/Users/Jester/Desktop/Sonya/src/sonya/state/pending.py), [src/sonya/subject/](C:/Users/Jester/Desktop/Sonya/src/sonya/subject/__init__.py).
 
 ## 1. Goal
 

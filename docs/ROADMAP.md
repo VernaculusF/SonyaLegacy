@@ -113,7 +113,7 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ## 9. Фаза 3 — Subject Core, Continuity & Internal Loop
 
-**Статус:** ⬜ next.
+**Статус:** ✅ закрыта (2026-05-15).
 
 **Цель.** Построить **полноценный subject core**: subject не только хранится, но и **живёт между сообщениями**. Внутренний continuous loop пишет в `ContinuityStream` события, которых **не вызвало внешнее сообщение**: рефлексия, self-observation, gap-signal, intention update. Это и есть «основной поток сознания вне выводов» из [CONTINUITY_STREAM_AND_SUBJECT_CORE §6.2](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md).
 
