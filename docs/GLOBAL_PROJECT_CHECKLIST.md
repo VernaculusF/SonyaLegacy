@@ -90,7 +90,7 @@
 - ✅ `SubjectState` в коде с emotional_vector и drift_signals ([sonya.state.subject_state](C:/Users/Jester/Desktop/Sonya/src/sonya/state/subject_state.py))
 - ✅ `ContinuityStream` с персистентным append-only логом и автоинкрементным `seq` ([sonya.state.continuity_stream](C:/Users/Jester/Desktop/Sonya/src/sonya/state/continuity_stream.py))
 - ✅ `ContinuitySnapshot` (snapshot/restore) через `SubjectStateStore`
-- ✅ `CanonicalResponse` с 11 response kinds в `sonya.state.canonical_response` (bridge ещё не использует — Phase 7)
+- ✅ `CanonicalResponse` с 11 response kinds в `sonya.state.canonical_response` (bridge использует через planner)
 - ✅ `PendingIntention` как first-class persistent state ([sonya.state.pending](C:/Users/Jester/Desktop/Sonya/src/sonya/state/pending.py))
 - ✅ Internal cognitive process: event-driven coroutine с homeostasis counters ([sonya.subject.internal_loop](C:/Users/Jester/Desktop/Sonya/src/sonya/subject/internal_loop.py))
 - ✅ Event bus integration: `continuity.event_added` и `subject.state_changed` ([sonya.subject.bus_wiring](C:/Users/Jester/Desktop/Sonya/src/sonya/subject/bus_wiring.py))
@@ -132,7 +132,7 @@
 - ✅ Provider-абстракция вне бриджа: [sonya.providers](C:/Users/Jester/Desktop/Sonya/src/sonya/providers/__init__.py)
 - ✅ `src/sonya/providers/` — `ProviderBackend` Protocol, `ProviderRegistry`, `OpenRouterProvider`, `ProviderSecret` (env-only)
 - ✅ Capability matrix (per-model input/context/max_tokens/cost/compat) в `Capability` dataclass
-- 🟡 Policy выбора модели на уровне runtime: registry есть, planner-level выбор — Фаза 7
+- 🟡 Policy выбора модели на уровне runtime: registry есть, planner использует provider через adapter
 - ⬜ Унифицированный eval path для моделей
 - ⬜ `StatefulBackend` extension для recurrent моделей (RWKV) — post-MVP Track E (см. [BRAINMODEL_EVOLUTION_PLAN §5.1](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md))
 - ⬜ Provider-independent runtime contract
@@ -144,10 +144,8 @@
 - ✅ `sonya_runtime.actions.planner_contract` — action-type categories + task-status markers
 - ✅ Bridge использует runtime action layer (после реэкспорта в `tg_bridge.actions`)
 - ✅ Anti-fake-agency правила встроены в planner prompt через `tg_bridge.prompts.build_action_messages`
-- 🟡 Planner (`_plan_text_action_with_fallback`) всё ещё физически в `tg_bridge.app` (миграция — Фаза 7)
-- ⬜ Planner в `src/sonya/planning/*` (Фаза 7)
-- ⬜ Capability registry на уровне ядра (Фаза 5)
-- ⬜ Централизованная action validation policy (Фаза 7)
+- ✅ Planner в `src/sonya/planning/*` — bridge вызывает `sonya.planning.plan_next` ([sonya.planning.planner](C:/Users/Jester/Desktop/Sonya/src/sonya/planning/planner.py))
+- ⬜ Централизованная action validation policy (post-MVP)
 - ⬜ Eval corpus для planner вне `tg-bridge` тестов
 - ⬜ Regression suite на fake-agency кейсы (file action claims, time/delay claims)
 
@@ -191,8 +189,8 @@
 - ✅ Capability gap detection → SelfModificationProposal ([sonya.skills.gap_detector](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/gap_detector.py))
 - ✅ Skill Injection from User Message (keyword-based, manual approval) ([sonya.skills.injection](C:/Users/Jester/Desktop/Sonya/src/sonya/skills/injection.py))
 - ⬜ Skill evolution runtime — Manual-Gated; production через self-mod pipeline — post-MVP Track A
-- ⬜ Planner умеет выбирать skill action (Фаза 7)
-- ⬜ Real skill execution (run skill code) — Фаза 7+
+- 🟡 Planner умеет выбирать skill action (basic — через PlannerContext.active_skill_ids; real execution post-MVP)
+- ⬜ Real skill execution (run skill code) — post-MVP Track A
 
 ## 14. Harness & safety
 
