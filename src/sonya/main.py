@@ -14,7 +14,7 @@ from sonya.runtime import (
     WriteMaster,
     WriteMasterContention,
 )
-from sonya.state import Substrate, SubstrateVersionError
+from sonya.state import Substrate, SubstrateVersionError, seed_identity_if_empty
 
 _log = get_logger("sonya.main")
 
@@ -33,6 +33,12 @@ async def _run(config: AppConfig) -> int:
         _log.error("write_master_contention", extra={"error": str(err)})
         substrate.close()
         return 3
+
+    if seed_identity_if_empty(substrate):
+        _log.info(
+            "identity_seeded",
+            extra={"event": "identity_seeded", "change_id": "identity-seed"},
+        )
 
     bus = EventBus()
     lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
