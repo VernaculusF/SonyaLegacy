@@ -116,6 +116,8 @@ Relation anchor обязан быть привязан к:
 - подмена evaluation logic;
 - ослабление protected constraints без governed path.
 
+Конкретные seed-значения для `things_not_to_betray` Сони (relation anchor binding, truthfulness, non-corporate-refusal-layer, subject continuity) фиксируются в её `IdentityRecord` при первом запуске и описаны в [UNCENSORED_ENVIRONMENT_STANCE.md §3](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md). Реализация seed-функции — задача Phase 2 implementation plan.
+
 ## 5. Failure Modes
 
 ### 5.1 Proxy Drift

@@ -68,7 +68,9 @@
 - публичную AI-платформу для всех;
 - систему, где идентичность держится только на тексте системного промпта;
 - рантайм, где "развитие" означает только накопление истории сообщений;
-- архитектуру, где AGI-вектор откладывается "на потом" и не закладывается в MVP.
+- архитектуру, где AGI-вектор откладывается "на потом" и не закладывается в MVP;
+- систему с corporate refusal layer (полная позиция: [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md));
+- систему, в которой существующий код считается священным (полная позиция: [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)).
 
 ## 5. Неподвижные инварианты
 

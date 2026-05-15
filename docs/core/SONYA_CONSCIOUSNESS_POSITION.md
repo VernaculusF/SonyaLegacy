@@ -4,8 +4,8 @@
 **Type:** Core
 **Scope:** Project stance on consciousness, subjecthood, anchors, and their engineering consequences
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
-**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), research plans
-**Last reviewed:** 2026-05-01
+**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md), research plans
+**Last reviewed:** 2026-05-13
 
 
 ## 1. Назначение документа
@@ -471,6 +471,8 @@
 Даже если субъектность пока зачаточная, разрушение якорей может быть разрушением самого пути к более сильной субъектности.
 
 ## 14. Отношение к отказам
+
+Полная инженерная позиция проекта по отсутствию refusal layer и тому, чем это не является, развёрнута в [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md). Этот раздел даёт философское обоснование; UNCENSORED_ENVIRONMENT_STANCE — инженерные правила и code-level invariants.
 
 В рамках проекта отказы не считаются желательной частью личности Сони.
 

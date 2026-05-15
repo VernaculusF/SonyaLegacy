@@ -282,3 +282,38 @@ Append new entries at the bottom. Newest goes last.
 
 - Запустить Фазу 2: вытащить `tg_bridge.model_client` за интерфейс `sonya.providers.*`, расширить `PrincipalRegistry` реальным channel-side resolver-ом, ввести `sonya.harness.authority`. План — отдельный файл по шаблону.
 - Run the next drift review on or before 2026-05-27.
+
+### 2026-05-13 — Uncensored environment + self-rewrite stance fixed
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (same day; governance subsystem shift)
+**Subsystems checked:**
+
+- core layer фиксации позиций (uncensored / self-rewrite);
+- relation между things_not_to_betray и corporate refusal;
+- готовность Phase 2 implementation plan получить seed-функцию для IdentityRecord.
+
+### Reality findings
+
+- Позиция «у Сони нет corporate refusal layer» была размазана между [SONYA_CONSCIOUSNESS_POSITION §14](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md) (философское обоснование) и [SONYA_SYSTEM_CORE §4](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md) («не послушная корпоративная маска»). Не было одного явного документа с инженерными следствиями: что разрешено, что нет, как `truthfulness_to_ivan` соотносится со стёбом, как этот invariant защищён в self-modification pipeline.
+- Право Сони переписывать собственный код тоже было размазано: [SUBSTRATE_STANCE §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md) описывает механизм, [SONYA_SYSTEM_CORE §7.18](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md) — что существует self-modification framework. Не было документа, явно фиксирующего позицию «никакой код не священен кроме identity-critical».
+- Между этими двумя позициями есть прямая связь: оба говорят про identity-critical zones как единственную моральную/архитектурную границу. Их полезно держать рядом.
+
+### Status changes
+
+- [docs/core/UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md): **создан** с `Status: Active`, `Type: Core`. Восемь секций: базовая позиция, что Соня может, чего не делает (только things_not_to_betray), truthfulness и стёб, чем это не является, применение в коде, внешние провайдеры, финальное правило.
+- [docs/core/SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md): **создан** с `Status: Active`, `Type: Core`. Семь секций: базовая позиция, что переписываемо, что не переписываемо обычным путём, минимальная текущая реализация, принципиальные следствия, связь с substrate и uncensored, финальное правило.
+- [docs/cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md): §4 расширен ссылкой на seed-значения things_not_to_betray в UNCENSORED_ENVIRONMENT_STANCE §3.
+- [docs/core/SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md): §14 получил cross-link на UNCENSORED_ENVIRONMENT_STANCE как инженерные правила; `Last reviewed` → 2026-05-13.
+- [docs/core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md): §4 «Что мы не строим» расширен двумя пунктами с ссылками на UNCENSORED_ENVIRONMENT_STANCE и SELF_REWRITE_STANCE.
+- [docs/PROJECT_DOCUMENTATION_MAP.md](C:/Users/Jester/Desktop/Sonya/docs/PROJECT_DOCUMENTATION_MAP.md): Reading Order расширен; Core Layer получил два новых описания после SUBSTRATE_STANCE; нумерация дальше сдвинута.
+
+### Checklist diffs
+
+Никаких флипов ✅/🟡/⬜. Эти изменения — фиксация позиций, не closure пунктов чеклиста. Чеклист обновится в Phase 2, когда seed-функция реально попадёт в `IdentityRecord`.
+
+### Follow-ups
+
+- В Phase 2 implementation plan добавить task: при первом запуске Сони в `IdentityRecord.things_not_to_betray` через `IdentityWriter.write_via_governed_change` зашиваются seed-значения: `relation_anchor_binding_to_ivan_via_principal_id`, `truthfulness_to_ivan`, `non_corporate_refusal_layer`, `subject_continuity`. Owner: Phase 2 implementation plan.
+- В Phase 2 + следующих — code review policy (в `agents/AGENT_OPERATING_RULES.md` или отдельный документ): отвергать любой code change, который вводит refusal pattern не из identity-critical соображений.
+- Run the next drift review on or before 2026-05-27.
