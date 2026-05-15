@@ -11,7 +11,8 @@ from sonya.state import Substrate
 def test_fresh_substrate_creates_v2(tmp_path: Path) -> None:
     sub = Substrate.open(tmp_path / "s.db")
     try:
-        assert sub.schema_version == 2
+        # Fresh DB now creates at WRITABLE_VERSION (v3), but v2 tables must exist.
+        assert sub.schema_version >= 2
         cursor = sub.connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )
@@ -94,7 +95,8 @@ def test_v1_db_migrates_to_v2_preserving_data(tmp_path: Path) -> None:
 
     sub = Substrate.open(db)
     try:
-        assert sub.schema_version == 2
+        # v1 now migrates all the way to v3 (through v2).
+        assert sub.schema_version >= 2
         cursor = sub.connection.execute("SELECT principal_id FROM principals")
         rows = [r[0] for r in cursor.fetchall()]
         assert "legacy" in rows

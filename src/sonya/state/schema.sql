@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS subject_state (
     last_canonical_response_ref TEXT,
     active_channels_json TEXT NOT NULL DEFAULT '[]',
     pending_intentions_json TEXT NOT NULL DEFAULT '[]',
+    emotional_vector_json TEXT NOT NULL DEFAULT '{}',
+    drift_signals_json TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL
 );
 
@@ -118,3 +120,22 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_audit_principal ON audit_events(principal_id);
 CREATE INDEX IF NOT EXISTS idx_audit_scope ON audit_events(scope);
+
+-- ====================================================================
+-- v3 additions: pending intentions + subject state enrichment.
+-- See [docs/work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md].
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS pending_intentions (
+    intention_id TEXT PRIMARY KEY,
+    principal_id TEXT,
+    description TEXT NOT NULL,
+    task_id TEXT,
+    deadline TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_intentions_status ON pending_intentions(status);
+CREATE INDEX IF NOT EXISTS idx_intentions_principal ON pending_intentions(principal_id);
