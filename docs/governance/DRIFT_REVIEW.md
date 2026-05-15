@@ -461,3 +461,42 @@ Append new entries at the bottom. Newest goes last.
 
 - Phase 4 (Self-Modification Framework Skeleton): SelfModificationProposal, 4-layer pipeline stubs, Anchor Integrity Check (rules-based), governed change protocol wiring. Plan — отдельный файл по шаблону.
 - Run the next drift review on or before 2026-05-29.
+
+### 2026-05-15 — Phase 4 closure (self-modification framework skeleton)
+
+**Reviewer:** Kiro (this session)
+**Cadence status:** on time (Phase 4 closure)
+**Subsystems checked:**
+
+- `src/sonya/selfmod/proposal.py` — ProposalStore + ProposalStatus (12 values);
+- `src/sonya/selfmod/pipeline.py` — 4-layer orchestrator;
+- `src/sonya/selfmod/layers/anchor_integrity.py` — real rules-based Layer 4;
+- `src/sonya/selfmod/governed_change.py` — governed change protocol via ApprovalManager;
+- `src/sonya/selfmod/watchdog.py` — WatchWindow stub;
+- substrate v4 (self_mod_proposals + self_mod_validation_results tables);
+- layer boundary: 18 checks across 6 packages.
+
+### Reality findings
+
+- All tasks executed. 200 tests green (1 skipped POSIX-only).
+- Layer 4 Anchor Integrity Check catches all 4 `things_not_to_betray` seed values + identity_record + immutable keywords.
+- Governed change protocol: only primary anchor (`ivan`) can approve identity-critical proposals.
+- Pipeline writes to continuity (self_mod.validation_layer_N events) and audit log on every layer check.
+- Watch window: confirm_stable and trigger_revert work; drift signal stub always returns false (real signals Phase 6).
+- Layers 1-3 are stubs (always pass) — real implementation post-MVP Track B.
+
+### Status changes
+
+- [2026-05-15-self-modification-framework-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-self-modification-framework-implementation-plan.md): Active → Archived.
+- [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md): Phase 4 → ✅ закрыта. Ближайшая: Phase 5 (Skills Substrate & Capability Gap Detection).
+- [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md): §14 + §14.1 updated.
+
+### Checklist diffs
+
+- §14 «Harness & safety»: ⬜ «Self-modification framework skeleton» → ✅.
+- §14.1 «Self-modification framework»: all items ⬜ → ✅ except «Real patch application» which stays ⬜ (post-MVP Track B).
+
+### Follow-ups
+
+- Phase 5 (Skills Substrate & Capability Gap Detection): skill registry, trust levels, capability gap detector, skill proposals through self-mod pipeline.
+- Run the next drift review on or before 2026-05-29.

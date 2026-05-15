@@ -1,11 +1,13 @@
 # Self-Modification Framework Skeleton Implementation Plan
 
-**Status:** Active
+**Status:** Archived
 **Type:** Work Doc
 **Scope:** Structural skeleton of the 4-layer self-modification pipeline from SUBSTRATE_STANCE §9. Manual-Gated: proposals stored, pipeline runs, anchor integrity check real (rules-based), governed change protocol wired. No real code patching (post-MVP Track B).
 **Depends on:** [ROADMAP.md §10](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), [SUBSTRATE_STANCE.md §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md), [ANCHORS_AND_FAILURE_MODES.md §7-8](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), [SONYA_SYSTEM_CORE.md §7.18](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
 **Used by:** Phase 4 implementation sessions
 **Last reviewed:** 2026-05-15
+**Archived:** 2026-05-15 — Phase 4 closed, all tasks executed and committed on develop.
+**Code pointers:** [src/sonya/selfmod/](C:/Users/Jester/Desktop/Sonya/src/sonya/selfmod/__init__.py).
 
 ## 1. Goal
 

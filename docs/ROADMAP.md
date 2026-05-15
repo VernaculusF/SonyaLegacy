@@ -160,7 +160,7 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ## 10. Фаза 4 — Self-Modification Framework Skeleton
 
-**Статус:** ⬜ после Phase 3.
+**Статус:** ✅ закрыта (2026-05-15).
 
 **Цель.** Поднять **structural skeleton** self-modification pipeline-а из [SUBSTRATE_STANCE §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md). Это `Manual-Gated` фаза: pipeline существует, proposals хранятся, 4 слоя проверки stub-ed, anchor integrity check работает на правилах. Реальная автоматическая применение — пост-MVP.
 

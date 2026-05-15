@@ -202,7 +202,7 @@
 - 🟡 Risk classes: scope-based decisions есть (`AuthorityDecision = ALLOW/DENY/REQUIRE_APPROVAL`); реальные классы рисков — пост-MVP Track F
 - ✅ Immutable zones: enforced в `IdentityWriter` для `things_not_to_betray` и `identity_critical_traits`; первичный `RelationAnchorBinding` через governed-change
 - 🟡 Approval gates: storage и lifecycle API готовы (`ApprovalManager` с PENDING/APPROVED/DENIED), реальный human gate — Фаза 4 (governed change protocol)
-- ⬜ Self-modification framework skeleton (4-layer pipeline + anchor integrity check) — Фаза 4 (Manual-Gated по [SYSTEM_CORE §7.18](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md))
+- ⬜ Self-modification framework skeleton (4-layer pipeline + anchor integrity check) — ✅ Фаза 4 закрыта: `ProposalStore`, `Pipeline` (4 layers), `GovernedChangeProtocol`, `WatchWindow` в [sonya.selfmod](C:/Users/Jester/Desktop/Sonya/src/sonya/selfmod/__init__.py)
 - ⬜ Drift detection в runtime (Фаза 6 — anchor drift signals)
 - ⬜ Hyper-Harness scheduler shell — Фаза 9 (Stub по [SYSTEM_CORE §7.13](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md))
 - ⬜ Task mutation actions respect harness
@@ -211,13 +211,13 @@
 
 - ✅ 4-слойный pipeline описан в [SUBSTRATE_STANCE §9](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)
 - ✅ Право Сони переписывать non-identity-critical код фиксировано в [SELF_REWRITE_STANCE](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
-- ⬜ `SelfModificationProposal` first-class object в substrate (Фаза 4)
-- ⬜ Layer 1 Static Contract Check (Фаза 4 — stub)
-- ⬜ Layer 2 Isolated Behavioral Test (Фаза 4 — stub: subprocess + assert all pass)
-- ⬜ Layer 3 Trace Replay (Фаза 4 — stub; реальная работа — post-MVP Track B при наличии N дней данных)
-- ⬜ Layer 4 Anchor Integrity Check (Фаза 4 — реальный rules-based по 4 пилонам `things_not_to_betray`)
-- ⬜ Governed change protocol (Фаза 4 — wired через `ApprovalManager` + primary anchor)
-- ⬜ Watch window + auto-revert (Фаза 4 — stub; реальные signals — Фаза 6)
+- ✅ `SelfModificationProposal` first-class object в substrate v4 ([sonya.selfmod.proposal](C:/Users/Jester/Desktop/Sonya/src/sonya/selfmod/proposal.py))
+- ✅ Layer 1 Static Contract Check (stub — always passes)
+- ✅ Layer 2 Isolated Behavioral Test (stub — always passes)
+- ✅ Layer 3 Trace Replay (stub — passes with «not enough data»; real — post-MVP Track B)
+- ✅ Layer 4 Anchor Integrity Check (**реальный rules-based** — ловит все 4 пилона `things_not_to_betray`)
+- ✅ Governed change protocol (wired через `ApprovalManager` + primary anchor check)
+- ✅ Watch window stub (confirm_stable / trigger_revert; real drift signals — Phase 6)
 - ⬜ Real patch application к коду (post-MVP Track B — sandbox + git working copy)
 
 ## 14.2 Initiative layer
