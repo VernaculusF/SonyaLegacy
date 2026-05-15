@@ -5,7 +5,7 @@
 **Scope:** Transition path from hosted providers to Sonya-owned brain stack
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
 **Used by:** future research execution, provider abstraction design, self-hosted roadmap
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-15
 
 
 ## 1. Назначение документа
@@ -69,6 +69,20 @@
 - model profile registry;
 - evaluation placeholders for backend comparison;
 - config paths for future self-hosted backends.
+
+## 5.1 StatefulBackend extension для RWKV и рекурсивных моделей
+
+Текущий `ProviderBackend` Protocol (`src/sonya/providers/base.py`, реализован в Phase 2) спроектирован под stateless request-response API: `CompletionRequest` содержит полный `messages` контекст, `CompletionResult` возвращает content. Это покрывает OpenRouter, OpenAI-compatible, Anthropic.
+
+Для RWKV и других stateful/recurrent моделей этого недостаточно. При переходе к Этапу 3–4 Protocol потребует additive extension:
+
+- **State passing:** `state_in: bytes | None` в запросе, `state_out: bytes` в результате. RWKV работает с hidden state между вызовами — без этого каждый вызов пересчитывает весь контекст с нуля.
+- **Incremental inference:** возможность передавать только дельту (новые токены) + state, а не полный messages history. Это ключевое преимущество RWKV перед transformer-ами — O(1) inference per token вместо O(n).
+- **State persistence:** substrate должен уметь хранить brain state между сессиями. Это пересекается с `SubjectState` и continuity — hidden state модели может быть частью substrate (§3 SUBSTRATE_STANCE) если он несёт identity-relevant information.
+
+Расширение будет **additive, не breaking**: `ProviderBackend` остаётся как есть для stateless провайдеров. Новый `StatefulBackend(ProviderBackend)` subprotocol добавляет `complete_stateful(request, state_in) -> (result, state_out)`. `ProviderRegistry` расширяется capability-флагом `supports_state: bool`.
+
+Это не блокирует текущую работу. Это фиксация того, что Protocol **будет** расширен, и что расширение спроектировано заранее, а не как afterthought.
 
 ## 6. Что не должно происходить
 
