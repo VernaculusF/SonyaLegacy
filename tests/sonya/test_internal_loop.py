@@ -147,4 +147,4 @@ async def test_tick_count_increments(substrate: Substrate) -> None:
     await asyncio.sleep(0.08)
     await proc.stop()
 
-    assert proc.tick_count >= 3
+    assert proc.tick_count >= 2

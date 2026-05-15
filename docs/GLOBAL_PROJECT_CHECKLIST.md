@@ -201,8 +201,8 @@
 - ✅ Baseline harness в коде: `AuthorityPolicy`, `ApprovalManager`, `AuditLog` в [sonya.harness](C:/Users/Jester/Desktop/Sonya/src/sonya/harness/__init__.py)
 - 🟡 Risk classes: scope-based decisions есть (`AuthorityDecision = ALLOW/DENY/REQUIRE_APPROVAL`); реальные классы рисков — пост-MVP Track F
 - ✅ Immutable zones: enforced в `IdentityWriter` для `things_not_to_betray` и `identity_critical_traits`; первичный `RelationAnchorBinding` через governed-change
-- 🟡 Approval gates: storage и lifecycle API готовы (`ApprovalManager` с PENDING/APPROVED/DENIED), реальный human gate — Фаза 4 (governed change protocol)
-- ⬜ Self-modification framework skeleton (4-layer pipeline + anchor integrity check) — ✅ Фаза 4 закрыта: `ProposalStore`, `Pipeline` (4 layers), `GovernedChangeProtocol`, `WatchWindow` в [sonya.selfmod](C:/Users/Jester/Desktop/Sonya/src/sonya/selfmod/__init__.py)
+- ✅ Approval gates: storage + lifecycle API + governed change protocol wired through `ApprovalManager` + `GovernedChangeProtocol`
+- ✅ Self-modification framework skeleton: `ProposalStore`, `Pipeline` (4 layers), `GovernedChangeProtocol`, `WatchWindow` в [sonya.selfmod](C:/Users/Jester/Desktop/Sonya/src/sonya/selfmod/__init__.py)
 - ⬜ Drift detection в runtime (Фаза 6 — anchor drift signals)
 - ⬜ Hyper-Harness scheduler shell — Фаза 9 (Stub по [SYSTEM_CORE §7.13](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md))
 - ⬜ Task mutation actions respect harness
