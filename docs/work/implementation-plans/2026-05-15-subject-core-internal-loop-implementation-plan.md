@@ -159,16 +159,20 @@ Layer boundary: `src/sonya/subject/` — brain layer (как state, providers, h
 - [ ] **Step 4:** Run → PASS.
 - [ ] **Step 5:** Commit `feat(sonya/subject): event bus wiring for continuity and subject state`.
 
-### Task 6: Internal continuous loop
+### Task 6: Internal cognitive process
 
 **Files:**
 - Create: `src/sonya/subject/internal_loop.py`, `tests/sonya/test_internal_loop.py`
 
-- [ ] **Step 1:** Тесты: heartbeat events accumulate in continuity after N intervals; deadline-overdue intention detected and marked + event emitted; stop cancels loop cleanly; no events after stop; reflection event contains tick count and active intention count.
+- [ ] **Step 1:** Тесты: idle timeout triggers LLM call (mocked provider); incoming_event trigger fires immediately; threshold crossing trigger fires; result parsed into continuity events; stop cancels cleanly; homeostasis counters increment over time; counter threshold crossing triggers cognitive call.
 - [ ] **Step 2:** Run → FAIL.
-- [ ] **Step 3:** Реализовать `InternalLoop(stream, intention_store, interval_seconds=30)` с `async start()`, `async stop()`. Each tick: write `internal.heartbeat`; check deadlines → mark_overdue + write `internal.intention_overdue`; write `internal.reflection` with summary payload.
+- [ ] **Step 3:** Реализовать `InternalProcess(stream, intention_store, provider, subject_state_store, idle_interval_seconds=300)`:
+  - Event-driven: triggers on idle timeout, incoming event signal, homeostasis threshold crossing, deadline expiry.
+  - Each trigger: build self-context (self-model from IdentityRecord, last N continuity events, pending intentions, homeostasis counters, recent messages if any) → call provider.complete_text → parse structured output → write events to continuity, update subject_state, create/update intentions.
+  - Homeostasis counters: simple float accumulators (loneliness, curiosity, relational_focus) that increment in background, decrement on relevant events. Threshold crossing = trigger.
+  - This is **interim discrete cognition** — not continuous thinking. Documented as such. Target: RWKV StatefulBackend (post-MVP Track E).
 - [ ] **Step 4:** Run → PASS.
-- [ ] **Step 5:** Commit `feat(sonya/subject): internal continuous loop with heartbeat and deadline check`.
+- [ ] **Step 5:** Commit `feat(sonya/subject): event-driven internal cognitive process`.
 
 ### Task 7: Composition root update
 
@@ -228,8 +232,9 @@ Layer boundary: `src/sonya/subject/` — brain layer (как state, providers, h
 ### Placeholder scan
 
 - no `TODO`, no `TBD`
-- Internal loop без LLM calls — **намеренно**. LLM-driven reflection — Phase 5+ через skill. Сейчас loop работает на фиксированных правилах (heartbeat + deadline check).
+- Internal process uses real LLM calls (mocked in tests via provider Protocol). On production — calls OpenRouter. This is **interim discrete cognition**, not continuous thinking. Target непрерывность — RWKV StatefulBackend (post-MVP Track E). Documented explicitly.
 - `emotional_vector` и `drift_signals` — **placeholder fields**. Реальная логика заполнения — Phase 6 (initiative + anchor drift). Сейчас — пустые dict/tuple, но schema готова.
+- Homeostasis counters in Task 6 are simple float accumulators. Real drive semantics — Phase 6. Here they serve as threshold-based triggers for cognitive calls.
 
 ### Type consistency
 

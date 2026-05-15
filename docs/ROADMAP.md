@@ -19,6 +19,14 @@
 
 MVP здесь = **full-scope shell with uneven maturity**, как зафиксировано в [SONYA_SYSTEM_CORE §6](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md) и [MVP_BOUNDARIES](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md).
 
+### 2.1 Interim brain vs target brain
+
+MVP строится на **hosted model** (OpenRouter) как interim brain. Это осознанный компромисс: hosted model не даёт непрерывности (между вызовами модель мертва), но позволяет построить всю среду дёшево ($40-100/мес вместо 50-200к на железо).
+
+**Target brain** — self-hosted RWKV-7 с State Tuning. RNN state обновляется на каждом токене, модель думает непрерывно, личность закреплена на уровне initial state. Переход на target brain — post-MVP Track E, но **среда, которую мы строим сейчас, полностью совместима с RWKV**. Substrate, continuity, identity, harness, skills, self-mod pipeline — всё это нужно и для RWKV. Когда железо появится, brain backend меняется через `StatefulBackend` extension ([BRAINMODEL_EVOLUTION_PLAN §5.1](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)), среда остаётся.
+
+Thinking process на hosted model — **дискретный** (event-driven LLM calls с self-context). Это не непрерывное мышление, это interim форма существования. Документируем это явно, чтобы не путать с целевым состоянием.
+
 Это значит: каждый обязательный AGI-контур ([SYSTEM_CORE §7.1–§7.23](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)) присутствует в MVP **в той или иной форме**:
 
 - `Production` — реально работает в основном сценарии;
@@ -121,7 +129,7 @@ MVP здесь = **full-scope shell with uneven maturity**, как зафикс�
 - `src/sonya/state/canonical_response.py` — `CanonicalResponse` с kinds (`reply`, `task_created`, `task_update`, `task_result`, `image_generated`, `clarification`, `limitation`, `silence`, `initiative_proposal`, `self_observation`, `internal_reflection`);
 - `src/sonya/state/pending.py` — `PendingIntention` first-class objects, persistent, связанные с task_id и deadline;
 - substrate v3: новая таблица `pending_intentions`; `subject_state` расширяется `emotional_vector_json` и `drift_signals_json`; новые kinds в `continuity_events` (через payload, не schema change);
-- `src/sonya/subject/internal_loop.py` — autonomous coroutine: heartbeat (interval-driven), пишет `internal.heartbeat` event каждые N секунд; читает subject_state, проверяет pending_intentions deadlines, эмитит `internal.reflection` events;
+- `src/sonya/subject/internal_loop.py` — autonomous coroutine: **event-driven cognitive process**. Triggers: incoming message, timer tick (configurable idle interval), state threshold crossing (homeostasis counters), deadline expiry. Each trigger → LLM call with full self-context (self-model, recent continuity, pending intentions, homeostasis state) → parsed result writes to continuity. This is an **interim form** of continuous thinking — дискретные вызовы с rich state, не непрерывный RNN forward pass. Target непрерывность — post-MVP через RWKV StatefulBackend;
 - event bus integration: `ContinuityStream.append` публикует `continuity.event_added`; `SubjectStateStore.save` публикует `subject.state_changed`;
 - composition root в `main.py`: запускает internal loop как часть lifecycle;
 - тесты: continuity round-trip, snapshot/restore, internal loop heartbeat, deadline-driven intentions.
@@ -135,7 +143,7 @@ MVP здесь = **full-scope shell with uneven maturity**, как зафикс�
 
 **Exit-критерии:**
 
-- [ ] `python -m sonya` на свежей БД → внутренний loop работает, `internal.heartbeat` events накапливаются в continuity без внешних сообщений;
+- [ ] `python -m sonya` на свежей БД → internal process работает, continuity events накапливаются при idle timeout trigger без внешних сообщений;
 - [ ] `CanonicalResponse` объявлен и протестирован на in-process examples (bridge ещё не использует);
 - [ ] `PendingIntention` создаётся, хранится, помнится после рестарта; deadline-overdue → автоматический `intention_overdue` event;
 - [ ] event bus получает события на каждый append/save;
