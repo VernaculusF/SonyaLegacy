@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 from sonya.state.substrate import Substrate
 
@@ -15,6 +16,8 @@ class SubjectState:
     last_canonical_response_ref: str | None = None
     active_channels: tuple[str, ...] = field(default_factory=tuple)
     pending_intentions: tuple[str, ...] = field(default_factory=tuple)
+    emotional_vector: dict[str, Any] = field(default_factory=dict)
+    drift_signals: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +39,8 @@ class SubjectStateStore:
     def load(self) -> SubjectState:
         row = self._sub.connection.execute(
             "SELECT active_principal_id, last_canonical_response_ref, "
-            "active_channels_json, pending_intentions_json "
+            "active_channels_json, pending_intentions_json, "
+            "emotional_vector_json, drift_signals_json "
             "FROM subject_state WHERE id = 1"
         ).fetchone()
         if row is None:
@@ -46,25 +50,32 @@ class SubjectStateStore:
             last_canonical_response_ref=row[1],
             active_channels=tuple(json.loads(row[2] or "[]")),
             pending_intentions=tuple(json.loads(row[3] or "[]")),
+            emotional_vector=json.loads(row[4] or "{}"),
+            drift_signals=tuple(json.loads(row[5] or "[]")),
         )
 
     def save(self, state: SubjectState) -> None:
         now = _utc_now_iso()
         self._sub.connection.execute(
             "INSERT INTO subject_state(id, active_principal_id, last_canonical_response_ref, "
-            "active_channels_json, pending_intentions_json, updated_at) "
-            "VALUES (1, ?, ?, ?, ?, ?) "
+            "active_channels_json, pending_intentions_json, emotional_vector_json, "
+            "drift_signals_json, updated_at) "
+            "VALUES (1, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET "
             "active_principal_id=excluded.active_principal_id, "
             "last_canonical_response_ref=excluded.last_canonical_response_ref, "
             "active_channels_json=excluded.active_channels_json, "
             "pending_intentions_json=excluded.pending_intentions_json, "
+            "emotional_vector_json=excluded.emotional_vector_json, "
+            "drift_signals_json=excluded.drift_signals_json, "
             "updated_at=excluded.updated_at",
             (
                 state.active_principal_id,
                 state.last_canonical_response_ref,
                 json.dumps(list(state.active_channels), ensure_ascii=False),
                 json.dumps(list(state.pending_intentions), ensure_ascii=False),
+                json.dumps(state.emotional_vector, ensure_ascii=False),
+                json.dumps(list(state.drift_signals), ensure_ascii=False),
                 now,
             ),
         )
@@ -81,6 +92,8 @@ class SubjectStateStore:
                 "last_canonical_response_ref": state.last_canonical_response_ref,
                 "active_channels": list(state.active_channels),
                 "pending_intentions": list(state.pending_intentions),
+                "emotional_vector": state.emotional_vector,
+                "drift_signals": list(state.drift_signals),
             },
             ensure_ascii=False,
         )
@@ -107,5 +120,7 @@ class SubjectStateStore:
                 last_canonical_response_ref=data.get("last_canonical_response_ref"),
                 active_channels=tuple(data.get("active_channels", [])),
                 pending_intentions=tuple(data.get("pending_intentions", [])),
+                emotional_vector=data.get("emotional_vector", {}),
+                drift_signals=tuple(data.get("drift_signals", [])),
             )
         )

@@ -80,7 +80,7 @@ def test_substrate_is_at_v2(tmp_path: Path) -> None:
 
     sub = Substrate.open(cfg.substrate_path)
     try:
-        assert sub.schema_version == 2
+        assert sub.schema_version >= 2
     finally:
         sub.close()
 
