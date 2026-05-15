@@ -12,6 +12,7 @@ from sonya.state.principals import (
     PrincipalAlreadyExistsError,
     PrincipalRegistry,
 )
+from sonya.state.seed import THINGS_NOT_TO_BETRAY_SEED, seed_identity_if_empty
 from sonya.state.subject_state import (
     ContinuitySnapshotRef,
     SubjectState,
@@ -34,4 +35,6 @@ __all__ = [
     "SubjectStateStore",
     "Substrate",
     "SubstrateVersionError",
+    "THINGS_NOT_TO_BETRAY_SEED",
+    "seed_identity_if_empty",
 ]
