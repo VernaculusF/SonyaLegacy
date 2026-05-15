@@ -7,6 +7,7 @@ from sonya.harness.approval import (
     ApprovalRequest,
     ApprovalStatus,
 )
+from sonya.harness.audit import AuditEvent, AuditLog
 from sonya.harness.authority import (
     AuthorityDecision,
     AuthorityPolicy,
@@ -19,6 +20,8 @@ __all__ = [
     "ApprovalNotFoundError",
     "ApprovalRequest",
     "ApprovalStatus",
+    "AuditEvent",
+    "AuditLog",
     "AuthorityDecision",
     "AuthorityPolicy",
     "AuthorityRule",
