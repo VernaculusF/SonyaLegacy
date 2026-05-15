@@ -75,3 +75,46 @@ CREATE TABLE IF NOT EXISTS principals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_principals_display ON principals(display_name);
+
+-- ====================================================================
+-- v2 additions: harness layer (policy, approval, audit).
+-- See [docs/work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md].
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS harness_policy_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    principal_id TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_harness_policy_principal ON harness_policy_rules(principal_id);
+CREATE INDEX IF NOT EXISTS idx_harness_policy_scope ON harness_policy_rules(scope);
+
+CREATE TABLE IF NOT EXISTS approval_requests (
+    request_id TEXT PRIMARY KEY,
+    principal_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    decided_by_principal_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    principal_id TEXT,
+    action TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_principal ON audit_events(principal_id);
+CREATE INDEX IF NOT EXISTS idx_audit_scope ON audit_events(scope);

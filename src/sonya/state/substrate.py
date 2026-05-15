@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from sonya.state.migrations import apply_initial_schema, read_current_version
+from sonya.state.migrations import apply_initial_schema, migrate_to_current, read_current_version
 
 
 class SubstrateVersionError(RuntimeError):
@@ -13,8 +13,8 @@ class SubstrateVersionError(RuntimeError):
 class Substrate:
     """Persistent substrate of Sonya. Long-lived connection, single owner."""
 
-    WRITABLE_VERSION: int = 1
-    READABLE_VERSIONS: frozenset[int] = frozenset({1})
+    WRITABLE_VERSION: int = 2
+    READABLE_VERSIONS: frozenset[int] = frozenset({1, 2})
 
     def __init__(self, path: Path, connection: sqlite3.Connection, version: int) -> None:
         self._path = path
@@ -37,6 +37,8 @@ class Substrate:
         if version == 0 and not read_only:
             apply_initial_schema(conn)
             version = read_current_version(conn)
+        elif version > 0 and version < cls.WRITABLE_VERSION and not read_only:
+            version = migrate_to_current(conn, version)
         if version not in cls.READABLE_VERSIONS:
             conn.close()
             raise SubstrateVersionError(
