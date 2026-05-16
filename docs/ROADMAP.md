@@ -427,7 +427,35 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ---
 
-## 16. Фаза 10 — VPS Deployment
+## 16. Фаза 9.5 — Integration Sprint
+
+**Статус:** ⬜ next.
+
+**Цель.** Склеить все модули в **реально работающую систему**. До этой фазы — набор contracts и stubs. После — Соня отвечает в Telegram через core planner, помнит разговоры, думает между сообщениями, инициирует.
+
+**Почему эта фаза нужна.** Phases 3-9 строили архитектурный каркас. Каждый модуль тестирован изолированно. Но они не склеены: planner не зовёт memory, InternalProcess не зовёт LLM, bridge не рендерит все kinds, memory не получает events от planner. Без этой фазы MVP — мёртвый код.
+
+**Deliverables:**
+
+- `src/sonya/providers/pool.py` — `AccountPool` для multi-key OpenRouter rotation (round-robin, 429 fallback);
+- Planner full context assembly: system prompt из IdentityRecord.self_model + recent episodic memories + emotional_vector + initiative_signals + active_skills;
+- InternalProcess LLM integration: при idle timeout зовёт provider с full self-context, парсит результат в continuity events (thoughts, observations, intentions);
+- Memory wiring: каждый planner response → episodic event; consolidation запускается из InternalProcess периодически;
+- Bridge full CanonicalResponse rendering: initiative_proposal → outbound Telegram message; all 11 kinds handled;
+- Integration test: full flow Telegram message → planner → response → memory → internal loop → initiative.
+
+**Exit-критерии:**
+
+- [ ] Ты пишешь в Telegram → ответ приходит через `sonya.planning.plan_next` с full context;
+- [ ] Ответ записывается в episodic memory;
+- [ ] Между сообщениями InternalProcess тикает, зовёт LLM, пишет thoughts в continuity;
+- [ ] Drives накапливаются → threshold → initiative signal → outbound message в Telegram;
+- [ ] AccountPool ротирует ключи при 429;
+- [ ] `python -m sonya` + bridge работают вместе 30 минут без падений.
+
+---
+
+## 17. Фаза 10 — VPS Deployment
 
 **Статус:** ⬜ финальная MVP фаза.
 
