@@ -142,6 +142,31 @@ async def api_chat_send(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def api_telegram(request: web.Request) -> web.Response:
+    """Return recent telegram messages from continuity stream."""
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        stream = ContinuityStream(sub)
+        latest = stream.latest_seq()
+        events = list(stream.read_since(max(0, latest - 200)))
+        tg_events = [e for e in events if "telegram" in e.kind or "incoming" in e.kind][-50:]
+        return web.json_response({
+            "messages": [
+                {
+                    "chat_id": e.payload.get("chat_id", ""),
+                    "sender_id": e.payload.get("sender_id", ""),
+                    "text": e.payload.get("text", ""),
+                    "is_private": e.payload.get("is_private", False),
+                    "date": e.created_at[:19],
+                }
+                for e in reversed(tg_events)
+            ]
+        })
+    finally:
+        sub.close()
+
+
 async def api_audit(request: web.Request) -> web.Response:
     config = request.app["config"]
     sub = _get_substrate(config)
@@ -187,6 +212,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/dashboard", api_dashboard)
     app.router.add_get("/api/thoughts", api_thoughts)
     app.router.add_get("/api/memory", api_memory)
+    app.router.add_get("/api/telegram", api_telegram)
     app.router.add_post("/api/chat/send", api_chat_send)
     app.router.add_get("/api/audit", api_audit)
     app.router.add_get("/api/substrate", api_substrate)

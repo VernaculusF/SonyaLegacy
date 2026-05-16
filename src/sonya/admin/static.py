@@ -68,6 +68,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="nav-item active" data-page="dashboard">⚡ Dashboard</div>
     <div class="nav-item" data-page="thoughts">💭 Thoughts</div>
     <div class="nav-item" data-page="memory">🧠 Memory</div>
+    <div class="nav-item" data-page="telegram">📱 Telegram</div>
     <div class="nav-item" data-page="chat">💬 Chat</div>
     <div class="nav-item" data-page="audit">📋 Audit</div>
     <div class="nav-item" data-page="substrate">💾 Substrate</div>
@@ -136,6 +137,16 @@ const renderers = {
     html += d.semantic.map(f => `<div class="event"><div class="meta">${f.fact_type} • conf=${f.confidence}</div><div class="body">${f.statement}</div></div>`).join('');
     html += '</div>';
     return html;
+  },
+  telegram(d) {
+    if (!d.messages || d.messages.length === 0) return '<div class="card"><h3>No messages yet</h3><p>Userbot is running. Incoming messages will appear here.</p></div>';
+    return `<div class="card"><h3>Recent Telegram Messages</h3>
+      ${d.messages.map(m => `
+        <div class="event ${m.is_private ? 'thought' : 'memory'}">
+          <div class="meta">[${m.chat_id}] sender=${m.sender_id} • ${m.date}</div>
+          <div class="body">${m.text}</div>
+        </div>`).join('')}
+    </div>`;
   },
   audit(d) {
     return d.entries.map(e => `
