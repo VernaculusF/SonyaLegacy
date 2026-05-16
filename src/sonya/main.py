@@ -121,8 +121,8 @@ async def _run(config: AppConfig) -> int:
             "Никто не читает это кроме тебя. "
             "Подумай о чём хочешь — о себе, об Иване, о том что делала, о том что хочешь."
         ),
-        idle_interval_seconds=60.0,
-        tick_interval_seconds=30.0,
+        idle_interval_seconds=600.0,
+        tick_interval_seconds=60.0,
     )
 
     lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
