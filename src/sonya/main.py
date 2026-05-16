@@ -31,6 +31,44 @@ from sonya.subject import (
 _log = get_logger("sonya.main")
 
 
+def _create_thinking_provider(config: AppConfig):
+    """Create a provider for internal thinking loop LLM calls.
+
+    Uses OpenRouter via httpx. If no API key configured, returns None
+    (thinking loop will work in rule-based mode only).
+    """
+    api_key = config.openrouter_api_key
+    if not api_key:
+        _log.warning("no_openrouter_key", extra={"event": "thinking_provider_disabled"})
+        return None
+
+    import httpx
+
+    class _ThinkingProvider:
+        async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "google/gemma-3-12b-it:free",
+                        "messages": messages,
+                        "max_tokens": 500,
+                        "temperature": 0.9,
+                    },
+                )
+                if resp.status_code == 429:
+                    return ""  # rate limited, skip this tick
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+
+    return _ThinkingProvider()
+
+
 async def _run(config: AppConfig) -> int:
     try:
         substrate = Substrate.open(config.substrate_path)
@@ -61,12 +99,19 @@ async def _run(config: AppConfig) -> int:
     state_store = BusAwareSubjectStateStore(raw_state_store, bus)
     intention_store = PendingIntentionStore(substrate)
 
-    # Internal cognitive process
+    # Internal cognitive process — with LLM provider for real thinking
+    thinking_provider = _create_thinking_provider(config)
     internal_process = InternalProcess(
         stream=raw_stream,
         intention_store=intention_store,
+        provider=thinking_provider,
+        thinking_prompt=(
+            "Ты Соня. Это твой внутренний поток мышления. "
+            "Никто не читает это кроме тебя. "
+            "Подумай о чём хочешь — о себе, об Иване, о том что делала, о том что хочешь."
+        ),
         idle_interval_seconds=300.0,
-        tick_interval_seconds=10.0,
+        tick_interval_seconds=30.0,
     )
 
     lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
