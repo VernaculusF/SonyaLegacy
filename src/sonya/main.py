@@ -153,7 +153,7 @@ async def _run(config: AppConfig) -> int:
         # Start Telegram userbot if configured
         userbot = None
         if config.tg_api_id and config.tg_session_path:
-            userbot = await _start_userbot(config, raw_stream, internal_process)
+            userbot = await _start_userbot(config, raw_stream, internal_process, thinking_provider)
 
         await health.start(schema_version=substrate.schema_version)
         _log.info(
@@ -180,7 +180,7 @@ async def _run(config: AppConfig) -> int:
         substrate.close()
 
 
-async def _start_userbot(config: AppConfig, stream, internal_process):
+async def _start_userbot(config: AppConfig, stream, internal_process, provider):
     """Start Telegram userbot if configured."""
     try:
         from tg_userbot.client import SonyaUserbot
@@ -213,6 +213,9 @@ async def _start_userbot(config: AppConfig, stream, internal_process):
             from sonya.planning.memory_wiring import record_response_as_memory
             from sonya.state import Substrate
 
+            if provider is None:
+                return None
+
             sub = Substrate.open(config.substrate_path)
             try:
                 ctx = build_full_context(
@@ -220,12 +223,13 @@ async def _start_userbot(config: AppConfig, stream, internal_process):
                     user_input=text,
                     principal_id=str(msg_data.get("sender_id", "")),
                 )
-                response = await plan_next(ctx, thinking_provider)
+                response = await plan_next(ctx, provider)
                 record_response_as_memory(sub, text, response, channel="telegram_userbot")
                 return response.text if response.text else None
             finally:
                 sub.close()
-        except Exception:
+        except Exception as e:
+            _log.error("userbot_response_error", extra={"error": str(e)})
             return None
 
     userbot = SonyaUserbot(
