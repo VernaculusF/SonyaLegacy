@@ -2,22 +2,25 @@
 title Sonya
 cd /d "%~dp0"
 
-:: Load .env
+:: Load .env file
 if exist .env (
-    for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
-        if not "%%a"=="" if not "%%a:~0,1%"=="#" set "%%a=%%b"
+    for /f "usebackq eol=# tokens=1,* delims==" %%a in (".env") do (
+        set "%%a=%%b"
     )
 )
 
-call .venv\Scripts\activate.bat
+:: Start core hidden
+start /b "" .venv\Scripts\pythonw.exe -m sonya > nul 2>&1
 
-start "Sonya Core" cmd /k "cd /d "%~dp0" && .venv\Scripts\activate.bat && python -m sonya"
-timeout /t 2 >nul
-start "Sonya Admin" cmd /k "cd /d "%~dp0" && .venv\Scripts\activate.bat && python -m sonya.admin"
+:: Wait for core to init
+timeout /t 3 /nobreak > nul
 
-echo.
-echo Sonya started.
-echo Core: running in background
-echo Admin: http://localhost:8877
-echo.
-pause
+:: Start admin hidden
+start /b "" .venv\Scripts\pythonw.exe -m sonya.admin > nul 2>&1
+
+echo Sonya running. Admin: http://localhost:8877
+echo Press any key to stop.
+pause > nul
+
+:: Kill on exit
+taskkill /f /im pythonw.exe > nul 2>&1
