@@ -55,7 +55,7 @@ def _create_thinking_provider(config: AppConfig):
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
                 resp = await client.post(
                     f"{api_base}/chat/completions",
                     headers=headers,
