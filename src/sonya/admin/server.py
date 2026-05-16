@@ -124,10 +124,16 @@ async def api_chat_send(request: web.Request) -> web.Response:
                     resp = await client.post(
                         f"{config.llm_api_base}/chat/completions",
                         headers=headers,
-                        json={"model": config.llm_model, "messages": messages, "max_tokens": 1000, "temperature": 0.8},
+                        json={"model": config.llm_model, "messages": messages, "max_tokens": 1000, "temperature": 0.8, "stream": False},
                     )
                     resp.raise_for_status()
-                    return resp.json()["choices"][0]["message"]["content"]
+                    # Handle potential streaming response (multiple JSON objects)
+                    text = resp.text.strip()
+                    if "\n" in text:
+                        text = text.split("\n")[0]
+                    import json as _json
+                    data = _json.loads(text)
+                    return data["choices"][0]["message"]["content"]
 
         response = await plan_next(ctx, _Provider())
         record_response_as_memory(sub, message, response, channel="admin")

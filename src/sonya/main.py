@@ -64,12 +64,17 @@ def _create_thinking_provider(config: AppConfig):
                         "messages": messages,
                         "max_tokens": 500,
                         "temperature": 0.9,
+                        "stream": False,
                     },
                 )
                 if resp.status_code == 429:
                     return ""  # rate limited, skip this tick
                 resp.raise_for_status()
-                data = resp.json()
+                text = resp.text.strip()
+                if "\n" in text:
+                    text = text.split("\n")[0]
+                import json as _json
+                data = _json.loads(text)
                 return data["choices"][0]["message"]["content"]
 
     return _ThinkingProvider()
