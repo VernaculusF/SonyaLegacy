@@ -62,9 +62,10 @@ class SonyaUserbot:
                 if response:
                     await event.respond(response)
 
-        # Start receiving updates — this keeps the connection alive
+        # Force-start update handling
+        await self._client.get_dialogs()
         import asyncio
-        self._disconnect_future = asyncio.ensure_future(self._client.disconnected)
+        asyncio.ensure_future(self._client._run_until_disconnected())
 
     async def send_message(self, chat_id: int, text: str) -> None:
         """Send a message to any chat Sonya is in."""
