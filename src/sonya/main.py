@@ -30,13 +30,16 @@ from sonya.subject import (
 
 _log = get_logger("sonya.main")
 
+# Global daily budget
+from sonya.providers.budget import DailyBudget
+_budget = DailyBudget(max_requests_per_day=200)
+
 
 def _create_thinking_provider(config: AppConfig):
     """Create a provider for internal thinking loop LLM calls.
 
     Uses configurable endpoint (SONYA_LLM_API_BASE) and model (SONYA_LLM_MODEL).
-    Defaults to OpenRouter. Can point to local proxy, llama.cpp, or any
-    OpenAI-compatible endpoint.
+    Includes daily budget cap — stops making requests after 200/day.
     """
     api_key_secret = config.openrouter_api_key
     api_key = api_key_secret.get_secret_value() if api_key_secret else ""
@@ -51,6 +54,11 @@ def _create_thinking_provider(config: AppConfig):
 
     class _ThinkingProvider:
         async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
+            if not _budget.can_request():
+                _log.warning("budget_exceeded", extra={"used": _budget.used_today})
+                return ""
+            _budget.record_request()
+
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"

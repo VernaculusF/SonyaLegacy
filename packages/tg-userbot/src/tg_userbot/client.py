@@ -39,12 +39,8 @@ class SonyaUserbot:
         self._running = False
 
     async def start(self) -> None:
-        """Start the userbot. Connects and begins receiving events."""
-        await self._client.connect()
-
-        if not await self._client.is_user_authorized():
-            raise RuntimeError("Session not authorized. Need a valid .session file.")
-
+        """Start the userbot. Uses client.start() for full initialization."""
+        await self._client.start()
         self._running = True
 
         if self._on_message:
@@ -62,10 +58,9 @@ class SonyaUserbot:
                 if response:
                     await event.respond(response)
 
-        # Force-start update handling
-        await self._client.get_dialogs()
+        # Keep receiving updates in background
         import asyncio
-        asyncio.ensure_future(self._client._run_until_disconnected())
+        self._run_task = asyncio.create_task(self._client.run_until_disconnected())
 
     async def send_message(self, chat_id: int, text: str) -> None:
         """Send a message to any chat Sonya is in."""
@@ -98,6 +93,8 @@ class SonyaUserbot:
 
     async def stop(self) -> None:
         self._running = False
+        if hasattr(self, '_run_task') and self._run_task:
+            self._run_task.cancel()
         await self._client.disconnect()
 
     @property
