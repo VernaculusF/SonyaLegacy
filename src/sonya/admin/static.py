@@ -72,6 +72,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="nav-item" data-page="chat">💬 Chat</div>
     <div class="nav-item" data-page="audit">📋 Audit</div>
     <div class="nav-item" data-page="substrate">💾 Substrate</div>
+    <div class="nav-item" data-page="core">⚙️ Core</div>
   </div>
   <div class="sidebar-footer">
     Sonya Environment v0.1<br>Packages: tg-bridge, tg-userbot
@@ -101,12 +102,38 @@ async function loadPage(page) {
 
   if (page === 'chat') { renderChat(); return; }
 
+  if (page === 'core') {
+    try {
+      const [statusResp, logsResp] = await Promise.all([
+        fetch(`${API}/api/core/status`),
+        fetch(`${API}/api/core/logs?lines=40`)
+      ]);
+      const status = await statusResp.json();
+      const logs = await logsResp.json();
+      content.innerHTML = renderers.core({...status, logs: logs.logs});
+    } catch(e) {
+      content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+    }
+    return;
+  }
+
   try {
     const resp = await fetch(`${API}/api/${page}`);
     const data = await resp.json();
     content.innerHTML = renderers[page](data);
   } catch(e) {
     content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+  }
+}
+
+async function coreAction(action) {
+  try {
+    const resp = await fetch(`${API}/api/core/${action}`, {method: 'POST'});
+    const data = await resp.json();
+    alert(JSON.stringify(data));
+    setTimeout(() => loadPage('core'), 2000);
+  } catch(e) {
+    alert('Error: ' + e.message);
   }
 }
 
@@ -158,6 +185,20 @@ const renderers = {
   substrate(d) {
     return `<div class="card"><h3>Schema Version: ${d.version}</h3><pre>${d.path}</pre></div>
       <div class="card"><h3>Tables</h3>${d.tables.map(t => `<div class="stat">${t.name}: <b>${t.rows}</b></div>`).join('')}</div>`;
+  },
+  core(d) {
+    const status = d.running ? '🟢 Running' : '🔴 Stopped';
+    const pid = d.pid ? ` (PID: ${d.pid})` : '';
+    return `
+      <div class="card"><h3>Core Status</h3>
+        <div class="stat">Status: <b>${status}${pid}</b></div>
+      </div>
+      <div class="card"><h3>Controls</h3>
+        <button onclick="coreAction('start')" style="background:#238636;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">▶ Start Core</button>
+        <button onclick="coreAction('stop')" style="background:#da3633;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">⬛ Stop Core</button>
+        <button onclick="loadPage('core')" style="background:#30363d;color:#c9d1d9;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">🔄 Refresh</button>
+      </div>
+      <div class="card"><h3>Logs (last 40 lines)</h3><pre id="core-logs" style="font-size:11px;max-height:400px;overflow-y:auto">${d.logs || 'No logs'}</pre></div>`;
   }
 };
 

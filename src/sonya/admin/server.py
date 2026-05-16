@@ -244,6 +244,71 @@ async def api_substrate(request: web.Request) -> web.Response:
         sub.close()
 
 
+# --- Core process management ---
+
+_core_process: Any = None
+
+
+async def api_core_status(request: web.Request) -> web.Response:
+    """Check if core process is running."""
+    global _core_process
+    running = _core_process is not None and _core_process.returncode is None
+    return web.json_response({"running": running, "pid": _core_process.pid if running else None})
+
+
+async def api_core_start(request: web.Request) -> web.Response:
+    """Start the core process (sonya main with userbot + thinking)."""
+    import subprocess
+    import os
+    global _core_process
+
+    # Check if already running
+    if _core_process is not None and _core_process.returncode is None:
+        return web.json_response({"status": "already_running", "pid": _core_process.pid})
+
+    # Build env with PYTHONPATH
+    env = os.environ.copy()
+    project_root = os.path.expanduser("~/Sonya")
+    env["PYTHONPATH"] = f"{project_root}/src:{project_root}/packages/tg-userbot/src:{project_root}/packages/tg-bridge/src"
+
+    # Start core as subprocess
+    _core_process = subprocess.Popen(
+        [os.path.expanduser("~/Sonya/.venv/bin/python"), "-m", "sonya"],
+        cwd=project_root,
+        env=env,
+        stdout=open("/tmp/sonya.log", "w"),
+        stderr=subprocess.STDOUT,
+    )
+    return web.json_response({"status": "started", "pid": _core_process.pid})
+
+
+async def api_core_stop(request: web.Request) -> web.Response:
+    """Stop the core process."""
+    import signal
+    global _core_process
+
+    if _core_process is None or _core_process.returncode is not None:
+        return web.json_response({"status": "not_running"})
+
+    _core_process.send_signal(signal.SIGKILL)
+    _core_process.wait(timeout=5)
+    pid = _core_process.pid
+    _core_process = None
+    return web.json_response({"status": "stopped", "pid": pid})
+
+
+async def api_core_logs(request: web.Request) -> web.Response:
+    """Get last N lines of core log."""
+    import os
+    lines = int(request.query.get("lines", "50"))
+    log_path = "/tmp/sonya.log"
+    if not os.path.exists(log_path):
+        return web.json_response({"logs": ""})
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+        all_lines = f.readlines()
+    return web.json_response({"logs": "".join(all_lines[-lines:])})
+
+
 def create_app() -> web.Application:
     config = load_config()
     import os
@@ -260,6 +325,10 @@ def create_app() -> web.Application:
     app.router.add_post("/api/chat/send", api_chat_send)
     app.router.add_get("/api/audit", api_audit)
     app.router.add_get("/api/substrate", api_substrate)
+    app.router.add_get("/api/core/status", api_core_status)
+    app.router.add_post("/api/core/start", api_core_start)
+    app.router.add_post("/api/core/stop", api_core_stop)
+    app.router.add_get("/api/core/logs", api_core_logs)
     return app
 
 
