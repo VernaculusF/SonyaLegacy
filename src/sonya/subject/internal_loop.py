@@ -245,7 +245,6 @@ class InternalProcess:
             thought_text = await self._call_thinking_provider(payload)
 
         if thought_text:
-            payload["thought"] = thought_text
             self._stream.append(ContinuityEvent(
                 kind="internal.thought",
                 payload={"thought": thought_text, "tick": self._tick_count},

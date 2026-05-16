@@ -129,9 +129,9 @@ async def _run(config: AppConfig) -> int:
             "Никто не читает это кроме тебя. "
             "Подумай о чём хочешь — о себе, об Иване, о том что делала, о том что хочешь."
         ),
-        idle_interval_seconds=600.0,
+        idle_interval_seconds=1800.0,
         tick_interval_seconds=60.0,
-        active_interval_seconds=3600.0,
+        active_interval_seconds=7200.0,
     )
 
     lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
@@ -225,10 +225,24 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
             from sonya.planning import build_full_context, plan_next
             from sonya.planning.memory_wiring import record_response_as_memory
 
+            # Fetch recent chat history for context
+            session_messages = []
+            try:
+                me = await userbot._client.get_me()
+                my_id = me.id
+                recent_msgs = await userbot._client.get_messages(msg_data["chat_id"], limit=12)
+                for m in reversed(recent_msgs):
+                    if m.text and m.id != msg_data.get("msg_id"):
+                        role = "assistant" if m.sender_id == my_id else "user"
+                        session_messages.append({"role": role, "content": m.text})
+            except Exception as e:
+                _log.warning("tg_history_fetch_error", extra={"error": str(e)})
+
             ctx = build_full_context(
                 substrate=substrate,
                 user_input=text,
                 principal_id=str(msg_data.get("sender_id", "")),
+                session_messages=session_messages,
             )
             response = await plan_next(ctx, provider)
             _log.info("tg_response_generated", extra={
@@ -257,6 +271,9 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
         return None
     _log.info("tg_authorized", extra={"event": "session_valid"})
 
+    # Track last message time per chat for reply/respond logic
+    _last_msg_time: dict[int, float] = {}
+
     # Register handler with full error handling
     @userbot._client.on(_tg_events.NewMessage(incoming=True))
     async def _tg_handler(event):
@@ -269,13 +286,22 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
                 "date": str(event.date),
                 "is_private": event.is_private,
                 "reply_to": event.reply_to_msg_id,
+                "msg_id": event.id,
             }
             # Show typing while generating response for private messages
             if event.is_private and event.text:
                 async with userbot._client.action(event.chat_id, 'typing'):
                     response = await _on_incoming(msg_data)
                 if response:
-                    await event.reply(response)
+                    # Reply only after >120s pause, otherwise send as new message
+                    import time as _time
+                    now = _time.time()
+                    last = _last_msg_time.get(event.chat_id, 0)
+                    if now - last > 120:
+                        await event.reply(response)
+                    else:
+                        await event.respond(response)
+                    _last_msg_time[event.chat_id] = now
             else:
                 await _on_incoming(msg_data)
         except Exception as e:

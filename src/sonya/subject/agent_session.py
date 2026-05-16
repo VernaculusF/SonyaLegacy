@@ -47,7 +47,11 @@ TOOL_DESCRIPTIONS = """Available tools:
 - plugins.create [name] [python_code] — create a new plugin tool (hot-loaded, no restart)
 - plugins.call [name] [args] — call a loaded plugin
 
-To use a tool, write: [TOOL: tool_name arg]
+IMPORTANT: Use exactly ONE tool per response. Write it as:
+[TOOL: tool_name arg]
+
+Do NOT put multiple [TOOL: ...] in one response. One tool at a time.
+
 To finish, write: [DONE] or [DONE: summary]
 To pause and continue later, write: [PAUSE: reason]
 """
@@ -101,11 +105,11 @@ async def run_agent_session(
             ))
             break
 
-        # Check for TOOL call
-        tool_match = re.search(r'\[TOOL:\s*(\S+)\s*(.*?)\]', response)
+        # Check for TOOL call — strict regex: [TOOL: name arg]
+        tool_match = re.search(r'\[TOOL:\s*([^\]\s]+)(?:\s+([^\]]*))?\]', response)
         if tool_match:
             tool_name = tool_match.group(1)
-            tool_arg = tool_match.group(2).strip()
+            tool_arg = (tool_match.group(2) or "").strip()
             result.actions.append(f"{tool_name} {tool_arg}")
             result.thoughts.append(response)
 
