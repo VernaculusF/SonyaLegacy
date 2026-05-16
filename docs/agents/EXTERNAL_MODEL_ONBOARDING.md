@@ -182,19 +182,14 @@ This code is migrating into `src/sonya/` over Phases 3-7. It is not dead, but it
 
 ## 6. What Does Not Exist Yet
 
-Important negative facts (as of Phase 2 closure, 2026-05-15):
+Important negative facts (as of Phase 7 closure, 2026-05-16):
 
-- there is no internal cognitive process yet (Phase 3 — in progress);
-- there is no self-modification framework yet (Phase 4);
-- there is no skill registry or capability gap detection yet (Phase 5);
-- there is no initiative layer yet (Phase 6);
-- planner still lives in `tg-bridge`, not in core (Phase 7);
 - memory still lives in OpenClaw, not in core (Phase 8);
 - there are no embodiment/simulation stubs yet (Phase 9);
 - Sonya is not on VPS yet (Phase 10);
 - there is no self-hosted RWKV brain yet (post-MVP Track E).
 
-What **does** exist: substrate, identity with immutable zones, principal registry with authority, provider abstraction, harness baseline (policy + approval + audit), continuity stream, subject state, canonical response contract, pending intentions. The среда is being built; the brain is interim (hosted model).
+What **does** exist in code: substrate v5, identity with immutable zones, principal registry with authority, provider abstraction, harness baseline (policy + approval + audit), continuity stream with internal cognitive process (event-driven coroutine + homeostasis counters), subject state with emotional vector, canonical response (11 kinds), pending intentions, self-modification pipeline (4-layer with real anchor integrity check + governed change protocol), skill registry with trust levels + capability gap detection + skill injection, initiative layer (drive counters + signals + outbound proposals), anchor drift detection, and **planner in core** (bridge calls `sonya.planning.plan_next`). The среда is built; the brain is interim (hosted model via OpenRouter).
 
 Outside models must not confuse:
 
@@ -449,9 +444,10 @@ Sonya is being built as one persistent subject-like runtime with memory, continu
 
 Right now the live system is a hybrid:
 
-- OpenClaw still hosts the operational shell;
-- `tg-bridge` is the active Telegram surface;
-- `sonya_runtime` is the first reusable runtime slice;
-- the final `sonya-core` still has to be built.
+- OpenClaw still hosts the operational shell (memory, post-response hook);
+- `tg-bridge` is the active Telegram surface, now calling `sonya.planning.plan_next`;
+- `src/sonya/` is the primary core (11 packages: state, runtime, providers, harness, subject, selfmod, skills, initiative, anchor, planning);
+- `sonya_runtime` is legacy (migrating into src/sonya/ over remaining phases);
+- remaining work: memory extraction (Phase 8), embodiment stubs (Phase 9), VPS deployment (Phase 10).
 
-If you help on this repo, optimize for that future shape instead of patching local hacks that make the current shell look temporarily convenient.
+If you help on this repo, optimize for the existing `src/sonya/` architecture. Do not patch local hacks in bridge or legacy runtime.

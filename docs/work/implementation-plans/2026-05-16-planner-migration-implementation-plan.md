@@ -1,11 +1,13 @@
 # Planner Migration & CanonicalResponse Adoption Implementation Plan
 
-**Status:** Active
+**Status:** Archived
 **Type:** Work Doc
 **Scope:** Move planner from tg-bridge into src/sonya/planning/. Bridge becomes thin adapter consuming CanonicalResponse. Planner reads subject_state, skills, initiative signals.
 **Depends on:** [ROADMAP.md §13](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), [ARCHITECTURE_PLAN.md §4.2](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md §6.3](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
 **Used by:** Phase 7 implementation sessions
 **Last reviewed:** 2026-05-16
+**Archived:** 2026-05-16 — Phase 7 closed.
+**Code pointers:** [src/sonya/planning/](C:/Users/Jester/Desktop/Sonya/src/sonya/planning/__init__.py).
 
 ## 1. Goal
 

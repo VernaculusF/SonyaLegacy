@@ -495,7 +495,19 @@ For the live bridge shape, read the architecture plans listed above. This docume
 
 ### [work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md)
 
-**Active.** Phase 3 implementation plan: CanonicalResponse, PendingIntention, substrate v3, SubjectState enrichment, event bus wiring, internal cognitive process (event-driven with homeostasis counters and LLM calls), composition root update, layer boundary extension. In progress.
+**Archived (2026-05-15).** Phase 3: CanonicalResponse, PendingIntention, substrate v3, SubjectState enrichment, event bus wiring, internal cognitive process. Code in `src/sonya/state/canonical_response.py`, `src/sonya/state/pending.py`, `src/sonya/subject/`.
+
+### [work/implementation-plans/2026-05-15-self-modification-framework-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-self-modification-framework-implementation-plan.md)
+
+**Archived (2026-05-15).** Phase 4: 4-layer self-modification pipeline, anchor integrity check, governed change protocol, watch window. Code in `src/sonya/selfmod/`.
+
+### [work/implementation-plans/2026-05-15-skills-substrate-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-skills-substrate-implementation-plan.md)
+
+**Archived (2026-05-15).** Phase 5: Skill registry, trust levels, activation policy, capability gap detection, skill injection. Code in `src/sonya/skills/`.
+
+### [work/implementation-plans/2026-05-16-planner-migration-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-16-planner-migration-implementation-plan.md)
+
+**Archived (2026-05-16).** Phase 7: Core planner (`plan_next -> CanonicalResponse`), bridge adapter migration. Code in `src/sonya/planning/`.
 
 ## Files That Were Deliberately Removed
 

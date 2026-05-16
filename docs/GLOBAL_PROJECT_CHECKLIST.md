@@ -234,9 +234,9 @@
 - ✅ Raw updates JSONL audit (`telegram/raw-updates.jsonl`)
 - ✅ Post-response hook wiring через subprocess
 - ✅ Bridge использует `sonya_runtime` action/task layer (не invented локально)
-- 🟡 Bridge держит planner у себя
-- 🟡 Bridge ещё не получает готовый `CanonicalResponse` от ядра — рендерит из ответа LLM напрямую
-- ⬜ Telegram как тонкий adapter к общему `sonya-core`
+- ✅ Bridge вызывает `sonya.planning.plan_next` — planner в ядре, bridge = thin adapter
+- ✅ Bridge получает `CanonicalResponse` от ядра (через adapter конвертирует в RuntimeAction для handler)
+- 🟡 Telegram как тонкий adapter к общему `sonya-core` (planner мигрировал, но handler ещё работает с RuntimeAction — полный переход post-MVP)
 - ⬜ Channel contract обобщён для других поверхностей
 
 ## 16. Каналы beyond Telegram
