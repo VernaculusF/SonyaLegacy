@@ -120,6 +120,13 @@ class InternalProcess:
         self._stop_event.clear()
         self._last_external_event = asyncio.get_event_loop().time()
         self._task = asyncio.create_task(self._loop())
+        # Emit initial cognitive event on start
+        self._stream.append(
+            ContinuityEvent(
+                kind="internal.cognitive_tick",
+                payload={"tick": 0, "triggers": ["boot"], "counters": self._counters.to_dict()},
+            )
+        )
 
     async def stop(self) -> None:
         self._stop_event.set()
@@ -161,7 +168,7 @@ class InternalProcess:
             should_think = bool(crossed) or idle_triggered or bool(overdue_ids)
 
             if should_think:
-                self._emit_cognitive_events(crossed, idle_triggered, overdue_ids)
+                await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
                 if idle_triggered:
                     self._last_external_event = now  # reset idle timer
 
@@ -184,7 +191,7 @@ class InternalProcess:
         idle_triggered: bool,
         overdue_ids: list[str],
     ) -> None:
-        """Write continuity events based on triggers. Call LLM if provider available."""
+        """Write continuity events based on triggers (sync fallback)."""
         payload: dict[str, Any] = {
             "tick": self._tick_count,
             "counters": self._counters.to_dict(),
@@ -192,46 +199,51 @@ class InternalProcess:
         }
 
         if crossed_thresholds:
-            payload["triggers"].extend(
-                [f"threshold:{c}" for c in crossed_thresholds]
-            )
+            payload["triggers"].extend([f"threshold:{c}" for c in crossed_thresholds])
         if idle_triggered:
             payload["triggers"].append("idle_timeout")
         if overdue_ids:
-            payload["triggers"].extend(
-                [f"deadline_overdue:{iid}" for iid in overdue_ids]
-            )
+            payload["triggers"].extend([f"deadline_overdue:{iid}" for iid in overdue_ids])
 
-        # Call LLM for thinking if provider available
+        self._stream.append(ContinuityEvent(kind="internal.cognitive_tick", payload=payload))
+        for iid in overdue_ids:
+            self._stream.append(ContinuityEvent(kind="internal.intention_overdue", payload={"intention_id": iid}))
+
+    async def _emit_cognitive_events_async(
+        self,
+        crossed_thresholds: list[str],
+        idle_triggered: bool,
+        overdue_ids: list[str],
+    ) -> None:
+        """Write continuity events + call LLM for thinking."""
+        payload: dict[str, Any] = {
+            "tick": self._tick_count,
+            "counters": self._counters.to_dict(),
+            "triggers": [],
+        }
+
+        if crossed_thresholds:
+            payload["triggers"].extend([f"threshold:{c}" for c in crossed_thresholds])
+        if idle_triggered:
+            payload["triggers"].append("idle_timeout")
+        if overdue_ids:
+            payload["triggers"].extend([f"deadline_overdue:{iid}" for iid in overdue_ids])
+
+        # Call LLM for thinking
         thought_text = ""
         if self._provider is not None:
-            try:
-                thought_text = asyncio.get_event_loop().run_until_complete(
-                    self._call_thinking_provider(payload)
-                )
-            except RuntimeError:
-                # Already in async context — use create_task
-                asyncio.ensure_future(self._async_think(payload))
+            thought_text = await self._call_thinking_provider(payload)
 
         if thought_text:
             payload["thought"] = thought_text
+            self._stream.append(ContinuityEvent(
+                kind="internal.thought",
+                payload={"thought": thought_text, "tick": self._tick_count},
+            ))
 
-        # Write main cognitive event
-        self._stream.append(
-            ContinuityEvent(
-                kind="internal.cognitive_tick",
-                payload=payload,
-            )
-        )
-
-        # Write specific overdue events
+        self._stream.append(ContinuityEvent(kind="internal.cognitive_tick", payload=payload))
         for iid in overdue_ids:
-            self._stream.append(
-                ContinuityEvent(
-                    kind="internal.intention_overdue",
-                    payload={"intention_id": iid},
-                )
-            )
+            self._stream.append(ContinuityEvent(kind="internal.intention_overdue", payload={"intention_id": iid}))
 
     async def _call_thinking_provider(self, payload: dict[str, Any]) -> str:
         """Call LLM provider for internal thinking."""
@@ -256,14 +268,3 @@ class InternalProcess:
             return await self._provider.complete_text(messages)
         except Exception:
             return ""
-
-    async def _async_think(self, payload: dict[str, Any]) -> None:
-        """Async wrapper for thinking when already in event loop."""
-        thought = await self._call_thinking_provider(payload)
-        if thought:
-            self._stream.append(
-                ContinuityEvent(
-                    kind="internal.thought",
-                    payload={"thought": thought, "tick": self._tick_count},
-                )
-            )
