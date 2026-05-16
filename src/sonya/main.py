@@ -153,7 +153,7 @@ async def _run(config: AppConfig) -> int:
         # Start Telegram userbot if configured
         userbot = None
         if config.tg_api_id and config.tg_session_path:
-            userbot = await _start_userbot(config, raw_stream, internal_process, thinking_provider)
+            userbot = await _start_userbot(config, raw_stream, internal_process, thinking_provider, substrate)
 
         await health.start(schema_version=substrate.schema_version)
         _log.info(
@@ -180,7 +180,7 @@ async def _run(config: AppConfig) -> int:
         substrate.close()
 
 
-async def _start_userbot(config: AppConfig, stream, internal_process, provider):
+async def _start_userbot(config: AppConfig, stream, internal_process, provider, substrate):
     """Start Telegram userbot if configured."""
     try:
         from tg_userbot.client import SonyaUserbot
@@ -192,7 +192,7 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider):
         """Handle incoming Telegram message — respond through planner."""
         internal_process.notify_external_event()
         from sonya.state.continuity_stream import ContinuityEvent
-        stream.append(ContinuityEvent(
+        raw_stream.append(ContinuityEvent(
             kind="incoming.telegram_message",
             payload={
                 "chat_id": msg_data.get("chat_id"),
@@ -207,27 +207,22 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider):
         if not text or not msg_data.get("is_private"):
             return None
 
-        # Plan response through full context
+        if provider is None:
+            return None
+
+        # Plan response using already-open substrate
         try:
             from sonya.planning import build_full_context, plan_next
             from sonya.planning.memory_wiring import record_response_as_memory
-            from sonya.state import Substrate
 
-            if provider is None:
-                return None
-
-            sub = Substrate.open(config.substrate_path)
-            try:
-                ctx = build_full_context(
-                    substrate=sub,
-                    user_input=text,
-                    principal_id=str(msg_data.get("sender_id", "")),
-                )
-                response = await plan_next(ctx, provider)
-                record_response_as_memory(sub, text, response, channel="telegram_userbot")
-                return response.text if response.text else None
-            finally:
-                sub.close()
+            ctx = build_full_context(
+                substrate=substrate,
+                user_input=text,
+                principal_id=str(msg_data.get("sender_id", "")),
+            )
+            response = await plan_next(ctx, provider)
+            record_response_as_memory(substrate, text, response, channel="telegram_userbot")
+            return response.text if response.text else None
         except Exception as e:
             _log.error("userbot_response_error", extra={"error": str(e)})
             return None
@@ -244,6 +239,7 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider):
     from telethon import events as _tg_events
     @userbot._client.on(_tg_events.NewMessage(incoming=True))
     async def _tg_handler(event):
+        await event.mark_read()
         msg_data = {
             "chat_id": event.chat_id,
             "sender_id": event.sender_id,
