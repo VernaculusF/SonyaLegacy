@@ -62,19 +62,9 @@ class SonyaUserbot:
                 if response:
                     await event.respond(response)
 
-        # Poll for updates in background
+        # Start receiving updates — this keeps the connection alive
         import asyncio
-        self._poll_task = asyncio.create_task(self._poll_loop())
-
-    async def _poll_loop(self) -> None:
-        """Continuously fetch updates from Telegram."""
-        import asyncio
-        while self._running:
-            try:
-                await self._client.catch_up()
-            except Exception:
-                pass
-            await asyncio.sleep(2)
+        self._disconnect_future = asyncio.ensure_future(self._client.disconnected)
 
     async def send_message(self, chat_id: int, text: str) -> None:
         """Send a message to any chat Sonya is in."""
@@ -107,12 +97,6 @@ class SonyaUserbot:
 
     async def stop(self) -> None:
         self._running = False
-        if hasattr(self, '_poll_task') and self._poll_task:
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except (asyncio.CancelledError, Exception):
-                pass
         await self._client.disconnect()
 
     @property
