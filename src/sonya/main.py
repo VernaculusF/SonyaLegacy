@@ -248,9 +248,14 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
             "is_private": event.is_private,
             "reply_to": event.reply_to_msg_id,
         }
-        response = await _on_incoming(msg_data)
-        if response:
-            await event.respond(response)
+        # Show typing while generating response
+        if event.is_private and event.text:
+            async with userbot._client.action(event.chat_id, 'typing'):
+                response = await _on_incoming(msg_data)
+                if response:
+                    await event.respond(response)
+        else:
+            await _on_incoming(msg_data)
     # Run update loop as background task in same event loop
     import asyncio
     asyncio.create_task(userbot._client.run_until_disconnected())
