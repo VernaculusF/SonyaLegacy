@@ -39,8 +39,13 @@ class SonyaUserbot:
         self._running = False
 
     async def start(self) -> None:
-        """Start the userbot. Uses client.start() for full initialization."""
-        await self._client.start()
+        """Start the userbot."""
+        # Use connect() not start() — start() may prompt for phone on headless
+        await self._client.connect()
+
+        if not await self._client.is_user_authorized():
+            raise RuntimeError("Session not authorized")
+
         self._running = True
 
         if self._on_message:
@@ -58,7 +63,8 @@ class SonyaUserbot:
                 if response:
                     await event.respond(response)
 
-        # Keep receiving updates in background
+        # Force fetch dialogs to init update state, then run update loop
+        await self._client.get_dialogs(limit=5)
         import asyncio
         self._run_task = asyncio.create_task(self._client.run_until_disconnected())
 
