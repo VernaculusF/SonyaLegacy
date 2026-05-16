@@ -62,9 +62,19 @@ class SonyaUserbot:
                 if response:
                     await event.respond(response)
 
-        # Run the client's update loop as a background task
+        # Poll for updates in background
         import asyncio
-        self._run_task = asyncio.create_task(self._client.run_until_disconnected())
+        self._poll_task = asyncio.create_task(self._poll_loop())
+
+    async def _poll_loop(self) -> None:
+        """Continuously fetch updates from Telegram."""
+        import asyncio
+        while self._running:
+            try:
+                await self._client.catch_up()
+            except Exception:
+                pass
+            await asyncio.sleep(2)
 
     async def send_message(self, chat_id: int, text: str) -> None:
         """Send a message to any chat Sonya is in."""
@@ -97,13 +107,13 @@ class SonyaUserbot:
 
     async def stop(self) -> None:
         self._running = False
-        await self._client.disconnect()
-        if hasattr(self, '_run_task') and self._run_task:
-            self._run_task.cancel()
+        if hasattr(self, '_poll_task') and self._poll_task:
+            self._poll_task.cancel()
             try:
-                await self._run_task
+                await self._poll_task
             except (asyncio.CancelledError, Exception):
                 pass
+        await self._client.disconnect()
 
     @property
     def is_running(self) -> bool:
