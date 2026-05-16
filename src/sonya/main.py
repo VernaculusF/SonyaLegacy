@@ -191,8 +191,8 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
     async def _on_incoming(msg_data):
         """Handle incoming Telegram message — respond through planner."""
         internal_process.notify_external_event()
-        from sonya.state.continuity_stream import ContinuityEvent
-        raw_stream.append(ContinuityEvent(
+        from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
+        ContinuityStream(substrate).append(ContinuityEvent(
             kind="incoming.telegram_message",
             payload={
                 "chat_id": msg_data.get("chat_id"),
