@@ -21,8 +21,27 @@ from sonya.harness.audit import AuditLog
 
 try:
     from aiohttp import web
+    from aiohttp.web import middleware
 except ImportError:
     raise ImportError("Install aiohttp: pip install aiohttp")
+
+# Simple auth
+_ADMIN_PASSWORD = None  # Set via env SONYA_ADMIN_PASSWORD
+
+
+@middleware
+async def auth_middleware(request: web.Request, handler):
+    password = request.app.get("admin_password")
+    if not password:
+        return await handler(request)
+    # Check cookie
+    if request.cookies.get("sonya_auth") == password:
+        return await handler(request)
+    # Check if this is login page
+    if request.path == "/login":
+        return await handler(request)
+    # Redirect to login
+    return web.HTTPFound("/login")
 
 
 def _get_substrate(config: AppConfig) -> Substrate:
@@ -31,6 +50,27 @@ def _get_substrate(config: AppConfig) -> Substrate:
 
 async def handle_index(request: web.Request) -> web.Response:
     return web.Response(text=ADMIN_HTML, content_type="text/html")
+
+
+async def handle_login(request: web.Request) -> web.Response:
+    if request.method == "POST":
+        data = await request.post()
+        pwd = data.get("password", "")
+        if pwd == request.app.get("admin_password"):
+            resp = web.HTTPFound("/")
+            resp.set_cookie("sonya_auth", pwd, max_age=86400 * 30)
+            return resp
+        return web.Response(text=_LOGIN_HTML.replace("{{error}}", "Wrong password"), content_type="text/html")
+    return web.Response(text=_LOGIN_HTML.replace("{{error}}", ""), content_type="text/html")
+
+
+_LOGIN_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sonya Login</title>
+<style>body{font-family:sans-serif;background:#0d1117;color:#c9d1d9;display:flex;align-items:center;justify-content:center;height:100vh}
+.box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:40px;width:300px;text-align:center}
+h1{color:#f0f;margin-bottom:20px}input{width:100%;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;margin:10px 0;font-size:14px}
+button{width:100%;padding:12px;background:#f0f;color:#0d1117;border:none;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px}
+.err{color:#f66;font-size:12px}</style></head>
+<body><div class="box"><h1>Sonya</h1><form method="POST"><input type="password" name="password" placeholder="Password" autofocus><button>Enter</button></form><p class="err">{{error}}</p></div></body></html>"""
 
 
 async def api_dashboard(request: web.Request) -> web.Response:
@@ -206,9 +246,13 @@ async def api_substrate(request: web.Request) -> web.Response:
 
 def create_app() -> web.Application:
     config = load_config()
-    app = web.Application()
+    import os
+    admin_password = os.environ.get("SONYA_ADMIN_PASSWORD", "")
+    app = web.Application(middlewares=[auth_middleware])
     app["config"] = config
+    app["admin_password"] = admin_password
     app.router.add_get("/", handle_index)
+    app.router.add_route("*", "/login", handle_login)
     app.router.add_get("/api/dashboard", api_dashboard)
     app.router.add_get("/api/thoughts", api_thoughts)
     app.router.add_get("/api/memory", api_memory)
@@ -221,5 +265,5 @@ def create_app() -> web.Application:
 
 def main() -> None:
     app = create_app()
-    print("Sonya Admin: http://localhost:8877")
-    web.run_app(app, host="127.0.0.1", port=8877)
+    print("Sonya Admin: http://0.0.0.0:8877")
+    web.run_app(app, host="0.0.0.0", port=8877)
