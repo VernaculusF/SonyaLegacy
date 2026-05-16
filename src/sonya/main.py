@@ -238,7 +238,27 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider):
         session_path=config.tg_session_path.replace(".session", ""),
         on_message=_on_incoming,
     )
-    await userbot.start()
+    # Run userbot in a separate thread with its own event loop
+    # because Telethon's run_until_disconnected needs to own the loop
+    import threading
+
+    def _run_userbot():
+        import asyncio as _asyncio
+        loop = _asyncio.new_event_loop()
+        _asyncio.set_event_loop(loop)
+        loop.run_until_complete(_userbot_main(userbot))
+
+    async def _userbot_main(bot):
+        import asyncio as _asyncio
+        await bot._client.connect()
+        if not await bot._client.is_user_authorized():
+            return
+        await bot._client.get_dialogs(limit=5)
+        bot._running = True
+        await bot._client.run_until_disconnected()
+
+    t = threading.Thread(target=_run_userbot, daemon=True)
+    t.start()
     _log.info("userbot_started", extra={"event": "userbot_running"})
     return userbot
 
