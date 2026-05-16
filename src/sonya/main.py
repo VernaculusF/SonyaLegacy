@@ -34,27 +34,33 @@ _log = get_logger("sonya.main")
 def _create_thinking_provider(config: AppConfig):
     """Create a provider for internal thinking loop LLM calls.
 
-    Uses OpenRouter via httpx. If no API key configured, returns None
-    (thinking loop will work in rule-based mode only).
+    Uses configurable endpoint (SONYA_LLM_API_BASE) and model (SONYA_LLM_MODEL).
+    Defaults to OpenRouter. Can point to local proxy, llama.cpp, or any
+    OpenAI-compatible endpoint.
     """
-    api_key = config.openrouter_api_key
-    if not api_key:
-        _log.warning("no_openrouter_key", extra={"event": "thinking_provider_disabled"})
+    api_key_secret = config.openrouter_api_key
+    api_key = api_key_secret.get() if api_key_secret else ""
+    api_base = config.llm_api_base
+    model = config.llm_model
+
+    if not api_key and "openrouter" in api_base:
+        _log.warning("no_api_key", extra={"event": "thinking_provider_disabled"})
         return None
 
     import httpx
 
     class _ThinkingProvider:
         async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    f"{api_base}/chat/completions",
+                    headers=headers,
                     json={
-                        "model": "google/gemma-3-12b-it:free",
+                        "model": model,
                         "messages": messages,
                         "max_tokens": 500,
                         "temperature": 0.9,

@@ -18,6 +18,8 @@ class AppConfig:
     health_path: Path
     log_level: str = "INFO"
     openrouter_api_key: ProviderSecret | None = None
+    llm_api_base: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "google/gemma-4-27b-it:free"
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -36,9 +38,13 @@ def load_config() -> AppConfig:
         _DEFAULT_DATA_ROOT / "health.json",
     )
     log_level = os.environ.get("SONYA_LOG_LEVEL", "INFO").upper()
+    llm_api_base = os.environ.get("SONYA_LLM_API_BASE", "https://openrouter.ai/api/v1")
+    llm_model = os.environ.get("SONYA_LLM_MODEL", "google/gemma-4-27b-it:free")
     return AppConfig(
         substrate_path=substrate_path,
         health_path=health_path,
         log_level=log_level,
         openrouter_api_key=load_provider_secret("openrouter"),
+        llm_api_base=llm_api_base,
+        llm_model=llm_model,
     )
