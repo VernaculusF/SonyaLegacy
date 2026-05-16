@@ -305,8 +305,8 @@ class InternalProcess:
                 self_inspect=self_inspect,
                 filesystem=filesystem,
                 system_prompt=prompt,
-                max_steps=20,
-                max_seconds=300.0,
+                max_steps=30,
+                max_seconds=1200.0,
             )
         except Exception:
             pass  # Don't crash the loop on session error

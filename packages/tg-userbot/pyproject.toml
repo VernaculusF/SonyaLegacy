@@ -1,0 +1,9 @@
+[project]
+name = "tg-userbot"
+version = "0.1.0"
+description = "Sonya Telegram userbot — acts as a real user"
+requires-python = ">=3.11"
+dependencies = ["telethon>=1.36.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

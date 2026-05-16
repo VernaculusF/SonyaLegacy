@@ -73,7 +73,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="nav-item" data-page="substrate">💾 Substrate</div>
   </div>
   <div class="sidebar-footer">
-    Sonya Environment v0.1<br>Substrate v6 • 13 packages
+    Sonya Environment v0.1<br>Packages: tg-bridge, tg-userbot
   </div>
 </div>
 <div class="main">

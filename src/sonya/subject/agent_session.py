@@ -43,9 +43,13 @@ TOOL_DESCRIPTIONS = """Available tools:
 - filesystem.list [path] — list directory
 - filesystem.tree [path] — show directory tree
 - filesystem.write [path] [content] — write a file
+- plugins.list — list available plugins
+- plugins.create [name] [python_code] — create a new plugin tool (hot-loaded, no restart)
+- plugins.call [name] [args] — call a loaded plugin
 
 To use a tool, write: [TOOL: tool_name arg]
 To finish, write: [DONE] or [DONE: summary]
+To pause and continue later, write: [PAUSE: reason]
 """
 
 
@@ -57,12 +61,13 @@ async def run_agent_session(
     filesystem: FilesystemTool,
     system_prompt: str,
     initial_thought: str = "",
-    max_steps: int = 20,
-    max_seconds: float = 300.0,
+    max_steps: int = 30,
+    max_seconds: float = 1200.0,
 ) -> SessionResult:
     """Run a ReAct agent session within the single stream.
 
-    Returns when model says [DONE], budget exceeded, or max time hit.
+    Returns when model says [DONE] or [PAUSE], or hard limits hit (30 steps / 20 min).
+    If context gets too long, compresses history and continues.
     All steps recorded in continuity.
     """
     result = SessionResult()
@@ -86,8 +91,8 @@ async def run_agent_session(
         response = await provider.complete_text(messages)
         result.steps += 1
 
-        # Check for DONE
-        if "[DONE" in response:
+        # Check for DONE or PAUSE
+        if "[DONE" in response or "[PAUSE" in response:
             result.final_output = response
             result.thoughts.append(response)
             stream.append(ContinuityEvent(
@@ -165,11 +170,37 @@ def _execute_tool(name: str, arg: str, self_inspect: SelfInspectTool, filesystem
         elif name == "filesystem.tree":
             return filesystem.tree(arg)
         elif name == "filesystem.write":
-            # Parse: first token = path, rest = content
             parts = arg.split(" ", 1)
             if len(parts) < 2:
                 return "[ERROR] filesystem.write needs: path content"
             return filesystem.write(parts[0], parts[1])
+        elif name == "plugins.list":
+            from sonya.tools.hot_loader import list_plugins
+            plugins = list_plugins()
+            return "\n".join(plugins) if plugins else "No plugins loaded."
+        elif name == "plugins.create":
+            from sonya.tools.hot_loader import ensure_plugins_dir, load_plugin
+            parts = arg.split(" ", 1)
+            if len(parts) < 2:
+                return "[ERROR] plugins.create needs: name python_code"
+            plugin_name = parts[0]
+            plugin_code = parts[1]
+            plugin_path = ensure_plugins_dir() / f"{plugin_name}.py"
+            plugin_path.write_text(plugin_code, encoding="utf-8")
+            load_plugin(plugin_name)
+            return f"[OK] Plugin '{plugin_name}' created and loaded."
+        elif name == "plugins.call":
+            from sonya.tools.hot_loader import get_plugin, load_plugin
+            parts = arg.split(" ", 1)
+            plugin_name = parts[0]
+            plugin_args = parts[1] if len(parts) > 1 else ""
+            module = get_plugin(plugin_name)
+            if module is None:
+                module = load_plugin(plugin_name)
+            if hasattr(module, "run"):
+                result = module.run(plugin_args)
+                return str(result)
+            return f"[ERROR] Plugin '{plugin_name}' has no run() function"
         else:
             return f"[ERROR] Unknown tool: {name}"
     except Exception as e:
