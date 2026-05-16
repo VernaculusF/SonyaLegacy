@@ -62,7 +62,7 @@ def _create_thinking_provider(config: AppConfig):
                     json={
                         "model": model,
                         "messages": messages,
-                        "max_tokens": 500,
+                        "max_tokens": 1500,
                         "temperature": 0.9,
                         "stream": False,
                     },
