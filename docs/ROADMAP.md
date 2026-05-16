@@ -25,7 +25,7 @@ MVP строится на **hosted model** (OpenRouter) как interim brain. Э
 
 **Target brain** — self-hosted RWKV-7 с State Tuning. RNN state обновляется на каждом токене, модель думает непрерывно, личность закреплена на уровне initial state. Переход на target brain — post-MVP Track E, но **среда, которую мы строим сейчас, полностью совместима с RWKV**. Substrate, continuity, identity, harness, skills, self-mod pipeline — всё это нужно и для RWKV. Когда железо появится, brain backend меняется через `StatefulBackend` extension ([BRAINMODEL_EVOLUTION_PLAN §5.1](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)), среда остаётся.
 
-Thinking process на hosted model — **дискретный** (event-driven LLM calls с self-context). Это не непрерывное мышление, это interim форма существования. Документируем это явно, чтобы не путать с целевым состоянием.
+Thinking process на hosted model — **дискретный** (event-driven LLM calls с self-context). Это не непрерывное мышление, это interim форма существования. Документируем это явно, чтобы не путать с целевым состоянием. Полный реестр костылей текущей реализации: [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md).
 
 Это значит: каждый обязательный AGI-контур ([SYSTEM_CORE §7.1–§7.23](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)) присутствует в MVP **в той или иной форме**:
 

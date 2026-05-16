@@ -74,6 +74,8 @@ You are allowed to write inside:
 - `scripts/` - operational launch scripts;
 - `docs/` - documentation, under the rules of [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md).
 
+**Important:** The current system runs on architectural crutches documented in [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md). When adding new crutches (workarounds due to hosted-model limitations), document them there.
+
 You must not:
 
 - silently reach into `C:\Users\Jester\.openclaw\**` to mutate files. That path is the live operational host. Read-oriented access through existing adapters is allowed. Writing there is a host-level operation and requires explicit user confirmation.

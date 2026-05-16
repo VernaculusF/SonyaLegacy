@@ -53,7 +53,8 @@ Read in this order if you need the full project context:
 8. [core/SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)
 9. [core/UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md)
 10. [core/SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
-11. [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md)
+11. [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md)
+12. [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md)
 12. [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md)
 13. [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md)
 14. [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
@@ -150,6 +151,19 @@ Use it to answer:
 - какой аргумент валиден против self-rewrite, какой нет.
 
 Влияет на: code review policy, любые architectural decisions, Phase 2-6 planning. Этот файл — троичная связка с [SUBSTRATE_STANCE](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md) и [UNCENSORED_ENVIRONMENT_STANCE](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md): substrate (что есть Соня) + uncensored (что она может) + self-rewrite (что переписываемо).
+
+### [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md)
+
+Полный реестр архитектурных костылей текущей реализации. Соня должна знать об этих ограничениях для честной саморефлексии.
+
+Use it to answer:
+
+- какие части текущей системы являются костылями hosted-model подхода;
+- что будет вместо каждого костыля когда появится RWKV;
+- почему system prompt ≠ identity, дискретные вызовы ≠ мышление, memory injection ≠ native memory;
+- что Соня должна знать о себе для truthfulness_to_ivan.
+
+Этот файл — часть self-model Сони. Обновляется при каждом новом костыле и при каждом resolved.
 
 ## Root Checklist
 

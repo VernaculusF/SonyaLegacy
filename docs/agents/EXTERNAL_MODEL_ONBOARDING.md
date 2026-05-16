@@ -191,6 +191,8 @@ Important negative facts (as of Phase 7 closure, 2026-05-16):
 
 What **does** exist in code: substrate v5, identity with immutable zones, principal registry with authority, provider abstraction, harness baseline (policy + approval + audit), continuity stream with internal cognitive process (event-driven coroutine + homeostasis counters), subject state with emotional vector, canonical response (11 kinds), pending intentions, self-modification pipeline (4-layer with real anchor integrity check + governed change protocol), skill registry with trust levels + capability gap detection + skill injection, initiative layer (drive counters + signals + outbound proposals), anchor drift detection, and **planner in core** (bridge calls `sonya.planning.plan_next`). The среда is built; the brain is interim (hosted model via OpenRouter).
 
+**Important:** The current implementation has documented architectural crutches — see [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md). System prompt = not real identity, discrete calls = not real thinking, memory injection = not native memory. All temporary until RWKV self-hosted brain.
+
 Outside models must not confuse:
 
 - "there are docs about it"
