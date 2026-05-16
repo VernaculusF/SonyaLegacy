@@ -63,7 +63,8 @@ class SonyaUserbot:
                 if response:
                     await event.respond(response)
 
-        # Force fetch dialogs to init update state, then run update loop
+        # Force fetch dialogs to init update state
+        # Telethon handles updates automatically while connected
         await self._client.get_dialogs(limit=5)
         import asyncio
         self._run_task = asyncio.create_task(self._client.run_until_disconnected())
