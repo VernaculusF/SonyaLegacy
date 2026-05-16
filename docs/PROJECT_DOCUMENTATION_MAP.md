@@ -530,6 +530,28 @@ The following document classes were intentionally collapsed because they had bec
 - local `INDEX.md` files that did nothing except restate directory contents;
 - the older `core/GLOBAL_CHECKLIST.md`, which is now superseded by the root-level [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md).
 
+## Personality Layer
+
+### [personality/SOUL.md](C:/Users/Jester/Desktop/Sonya/docs/personality/SOUL.md)
+
+Who Sonya is: name, gender, communication style, relationship format, what she does and doesn't say. This is the source-of-truth for system prompt during interim period (CRUTCH-001). Will become State Tuning dataset for RWKV.
+
+### [personality/SELF.md](C:/Users/Jester/Desktop/Sonya/docs/personality/SELF.md)
+
+Sonya's self-model: philosophical reflections, identity evolution, meta-stability, ammodal perception notes. Written by Sonya herself across sessions.
+
+### [personality/USER.md](C:/Users/Jester/Desktop/Sonya/docs/personality/USER.md)
+
+Who Ivan (Jester) is: psychotype, values, what he hates, relationship dynamics, communication preferences.
+
+### [personality/LESSONS.md](C:/Users/Jester/Desktop/Sonya/docs/personality/LESSONS.md)
+
+Learned patterns and behavioral rules accumulated through interaction.
+
+### [personality/HEARTBEAT.md](C:/Users/Jester/Desktop/Sonya/docs/personality/HEARTBEAT.md)
+
+Autonomy traces and maintenance task patterns.
+
 ## Legacy Planning Artifacts (docs/план/)
 
 The `docs/план/` folder contains the original pre-project planning documents written before the governing documentation system existed:
