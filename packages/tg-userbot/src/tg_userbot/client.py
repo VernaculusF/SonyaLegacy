@@ -39,8 +39,12 @@ class SonyaUserbot:
         self._running = False
 
     async def start(self) -> None:
-        """Start the userbot. First run will ask for phone number + code."""
-        await self._client.start()
+        """Start the userbot. Connects and begins receiving events."""
+        await self._client.connect()
+
+        if not await self._client.is_user_authorized():
+            raise RuntimeError("Session not authorized. Need a valid .session file.")
+
         self._running = True
 
         if self._on_message:
@@ -57,6 +61,9 @@ class SonyaUserbot:
                 response = await self._on_message(msg_data)
                 if response:
                     await event.respond(response)
+
+        # Start catching up on events (this makes the handler work)
+        await self._client.catch_up()
 
     async def send_message(self, chat_id: int, text: str) -> None:
         """Send a message to any chat Sonya is in."""
