@@ -238,27 +238,27 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider):
         session_path=config.tg_session_path.replace(".session", ""),
         on_message=_on_incoming,
     )
-    # Run userbot in a separate thread with its own event loop
-    # because Telethon's run_until_disconnected needs to own the loop
-    import threading
-
-    def _run_userbot():
-        import asyncio as _asyncio
-        loop = _asyncio.new_event_loop()
-        _asyncio.set_event_loop(loop)
-        loop.run_until_complete(_userbot_main(userbot))
-
-    async def _userbot_main(bot):
-        import asyncio as _asyncio
-        await bot._client.connect()
-        if not await bot._client.is_user_authorized():
-            return
-        await bot._client.get_dialogs(limit=5)
-        bot._running = True
-        await bot._client.run_until_disconnected()
-
-    t = threading.Thread(target=_run_userbot, daemon=True)
-    t.start()
+    # start() does connect + authorize + get_dialogs
+    await userbot._client.start()
+    # Register handler
+    from telethon import events as _tg_events
+    @userbot._client.on(_tg_events.NewMessage(incoming=True))
+    async def _tg_handler(event):
+        msg_data = {
+            "chat_id": event.chat_id,
+            "sender_id": event.sender_id,
+            "text": event.text,
+            "date": str(event.date),
+            "is_private": event.is_private,
+            "reply_to": event.reply_to_msg_id,
+        }
+        response = await _on_incoming(msg_data)
+        if response:
+            await event.respond(response)
+    # Run update loop as background task in same event loop
+    import asyncio
+    asyncio.create_task(userbot._client.run_until_disconnected())
+    userbot._running = True
     _log.info("userbot_started", extra={"event": "userbot_running"})
     return userbot
 
