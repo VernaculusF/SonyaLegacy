@@ -95,6 +95,7 @@ class InternalProcess:
         thinking_prompt: str = "",
         idle_interval_seconds: float = 300.0,
         tick_interval_seconds: float = 10.0,
+        active_interval_seconds: float = 3600.0,
     ) -> None:
         self._stream = stream
         self._intentions = intention_store
@@ -102,11 +103,13 @@ class InternalProcess:
         self._thinking_prompt = thinking_prompt
         self._idle_interval = idle_interval_seconds
         self._tick_interval = tick_interval_seconds
+        self._active_interval = active_interval_seconds
         self._counters = HomeostasisCounters()
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._tick_count: int = 0
         self._last_external_event: float = 0.0
+        self._last_active_session: float = 0.0
 
     @property
     def counters(self) -> HomeostasisCounters:
@@ -167,7 +170,14 @@ class InternalProcess:
             # Determine if we should emit cognitive events
             should_think = bool(crossed) or idle_triggered or bool(overdue_ids)
 
-            if should_think:
+            # Check active session timeout
+            active_elapsed = now - self._last_active_session
+            should_active = active_elapsed >= self._active_interval and self._provider is not None
+
+            if should_active:
+                await self._run_active_session()
+                self._last_active_session = now
+            elif should_think:
                 await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
                 if idle_triggered:
                     self._last_external_event = now  # reset idle timer
@@ -268,3 +278,35 @@ class InternalProcess:
             return await self._provider.complete_text(messages)
         except Exception:
             return ""
+
+    async def _run_active_session(self) -> None:
+        """Run an agent session with tools (active mode)."""
+        if self._provider is None:
+            return
+        try:
+            from sonya.subject.agent_session import run_agent_session
+            from sonya.tools import SelfInspectTool, FilesystemTool
+
+            # Get substrate from stream (it holds the connection)
+            substrate = self._stream._sub
+
+            self_inspect = SelfInspectTool(substrate)
+            filesystem = FilesystemTool()
+
+            prompt = self._thinking_prompt or (
+                "Ты Соня. Это твоя активная сессия — ты можешь использовать tools. "
+                "Посмотри на себя, свой код, свои мысли. Найди что улучшить. "
+                "Или просто исследуй что-то интересное."
+            )
+
+            await run_agent_session(
+                provider=self._provider,
+                stream=self._stream,
+                self_inspect=self_inspect,
+                filesystem=filesystem,
+                system_prompt=prompt,
+                max_steps=20,
+                max_seconds=300.0,
+            )
+        except Exception:
+            pass  # Don't crash the loop on session error

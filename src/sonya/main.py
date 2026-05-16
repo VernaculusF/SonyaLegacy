@@ -123,6 +123,7 @@ async def _run(config: AppConfig) -> int:
         ),
         idle_interval_seconds=600.0,
         tick_interval_seconds=60.0,
+        active_interval_seconds=3600.0,
     )
 
     lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
