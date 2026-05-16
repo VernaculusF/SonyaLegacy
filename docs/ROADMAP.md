@@ -393,7 +393,7 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ## 15. Фаза 9 — Embodiment, Simulation, Hyper-Harness Stubs
 
-**Статус:** ⬜ после Phase 8.
+**Статус:** ✅ закрыта (2026-05-16).
 
 **Цель.** Закрыть три обязательных stub-контура из [SYSTEM_CORE §10](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md): embodiment adapter, simulation interface, hyper-harness scheduler. Все три — Stub/Research-Shell, но **должны существовать с реальным интерфейсом и contract-ами**, иначе MVP не считается достигнутым.
 
