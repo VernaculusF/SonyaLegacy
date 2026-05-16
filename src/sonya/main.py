@@ -184,12 +184,20 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
     """Start Telegram userbot if configured."""
     try:
         from tg_userbot.client import SonyaUserbot
+        from telethon import events as _tg_events
     except ImportError:
         _log.warning("telethon_not_installed", extra={"event": "userbot_disabled"})
         return None
 
     async def _on_incoming(msg_data):
         """Handle incoming Telegram message — respond through planner."""
+        _log.info("tg_incoming", extra={
+            "chat_id": msg_data.get("chat_id"),
+            "sender_id": msg_data.get("sender_id"),
+            "text_preview": (msg_data.get("text") or "")[:80],
+            "is_private": msg_data.get("is_private"),
+        })
+
         internal_process.notify_external_event()
         from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
         ContinuityStream(substrate).append(ContinuityEvent(
@@ -205,9 +213,11 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
         # Only respond to private messages
         text = msg_data.get("text") or ""
         if not text or not msg_data.get("is_private"):
+            _log.info("tg_skip", extra={"reason": "not_private_or_empty"})
             return None
 
         if provider is None:
+            _log.warning("tg_no_provider", extra={"reason": "provider_is_none"})
             return None
 
         # Plan response using already-open substrate
@@ -221,43 +231,63 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
                 principal_id=str(msg_data.get("sender_id", "")),
             )
             response = await plan_next(ctx, provider)
+            _log.info("tg_response_generated", extra={
+                "response_len": len(response.text) if response.text else 0,
+                "response_preview": (response.text or "")[:80],
+            })
             record_response_as_memory(substrate, text, response, channel="telegram_userbot")
             return response.text if response.text else None
         except Exception as e:
-            _log.error("userbot_response_error", extra={"error": str(e)})
+            _log.error("userbot_response_error", extra={"error": str(e), "type": type(e).__name__})
+            import traceback
+            _log.error("userbot_response_traceback", extra={"tb": traceback.format_exc()})
             return None
 
     userbot = SonyaUserbot(
         api_id=config.tg_api_id,
         api_hash=config.tg_api_hash,
         session_path=config.tg_session_path.replace(".session", ""),
-        on_message=_on_incoming,
+        on_message=None,  # We register our own handler below
     )
-    # start() does connect + authorize + get_dialogs
-    await userbot._client.start()
-    # Register handler
-    from telethon import events as _tg_events
+
+    # Connect and verify authorization (no interactive prompts)
+    await userbot._client.connect()
+    if not await userbot._client.is_user_authorized():
+        _log.error("tg_not_authorized", extra={"event": "session_invalid"})
+        return None
+    _log.info("tg_authorized", extra={"event": "session_valid"})
+
+    # Register handler with full error handling
     @userbot._client.on(_tg_events.NewMessage(incoming=True))
     async def _tg_handler(event):
-        await event.mark_read()
-        msg_data = {
-            "chat_id": event.chat_id,
-            "sender_id": event.sender_id,
-            "text": event.text,
-            "date": str(event.date),
-            "is_private": event.is_private,
-            "reply_to": event.reply_to_msg_id,
-        }
-        # Show typing while generating response
-        if event.is_private and event.text:
-            async with userbot._client.action(event.chat_id, 'typing'):
-                response = await _on_incoming(msg_data)
+        try:
+            await event.mark_read()
+            msg_data = {
+                "chat_id": event.chat_id,
+                "sender_id": event.sender_id,
+                "text": event.text,
+                "date": str(event.date),
+                "is_private": event.is_private,
+                "reply_to": event.reply_to_msg_id,
+            }
+            # Show typing while generating response for private messages
+            if event.is_private and event.text:
+                async with userbot._client.action(event.chat_id, 'typing'):
+                    response = await _on_incoming(msg_data)
                 if response:
-                    await event.respond(response)
-        else:
-            await _on_incoming(msg_data)
-    # Run update loop as background task in same event loop
-    import asyncio
+                    await event.reply(response)
+            else:
+                await _on_incoming(msg_data)
+        except Exception as e:
+            _log.error("tg_handler_crash", extra={"error": str(e), "type": type(e).__name__})
+            import traceback
+            _log.error("tg_handler_traceback", extra={"tb": traceback.format_exc()})
+
+    # Fetch dialogs to init update state (required for receiving updates)
+    dialogs = await userbot._client.get_dialogs(limit=5)
+    _log.info("tg_dialogs_loaded", extra={"count": len(dialogs)})
+
+    # Run update loop as background task
     asyncio.create_task(userbot._client.run_until_disconnected())
     userbot._running = True
     _log.info("userbot_started", extra={"event": "userbot_running"})
