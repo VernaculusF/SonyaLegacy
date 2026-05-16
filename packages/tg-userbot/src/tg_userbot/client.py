@@ -62,8 +62,9 @@ class SonyaUserbot:
                 if response:
                     await event.respond(response)
 
-        # Start catching up on events (this makes the handler work)
-        await self._client.catch_up()
+        # Run the client's update loop as a background task
+        import asyncio
+        self._run_task = asyncio.create_task(self._client.run_until_disconnected())
 
     async def send_message(self, chat_id: int, text: str) -> None:
         """Send a message to any chat Sonya is in."""
@@ -97,6 +98,12 @@ class SonyaUserbot:
     async def stop(self) -> None:
         self._running = False
         await self._client.disconnect()
+        if hasattr(self, '_run_task') and self._run_task:
+            self._run_task.cancel()
+            try:
+                await self._run_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     @property
     def is_running(self) -> bool:
