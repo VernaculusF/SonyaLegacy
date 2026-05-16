@@ -205,3 +205,41 @@ CREATE TABLE IF NOT EXISTS capability_gaps (
 );
 
 CREATE INDEX IF NOT EXISTS idx_gaps_status ON capability_gaps(status);
+
+-- ====================================================================
+-- v6 additions: memory substrate (episodic + semantic).
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS episodic_events (
+    event_id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
+    channel TEXT NOT NULL DEFAULT '',
+    actor TEXT NOT NULL DEFAULT '',
+    raw_content TEXT NOT NULL DEFAULT '',
+    normalized_summary TEXT NOT NULL DEFAULT '',
+    emotion_tags_json TEXT NOT NULL DEFAULT '[]',
+    importance_score REAL NOT NULL DEFAULT 0.5,
+    retention_strength REAL NOT NULL DEFAULT 1.0,
+    last_accessed_at TEXT NOT NULL DEFAULT '',
+    access_count INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_episodic_type ON episodic_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_episodic_timestamp ON episodic_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_episodic_archived ON episodic_events(archived);
+
+CREATE TABLE IF NOT EXISTS semantic_facts (
+    fact_id TEXT PRIMARY KEY,
+    fact_type TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    source_event_ids_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0.5,
+    last_reinforced_at TEXT NOT NULL DEFAULT '',
+    contradiction_flags_json TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_semantic_type ON semantic_facts(fact_type);
+CREATE INDEX IF NOT EXISTS idx_semantic_confidence ON semantic_facts(confidence);
