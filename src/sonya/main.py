@@ -39,7 +39,7 @@ def _create_thinking_provider(config: AppConfig):
     OpenAI-compatible endpoint.
     """
     api_key_secret = config.openrouter_api_key
-    api_key = api_key_secret.get() if api_key_secret else ""
+    api_key = api_key_secret.get_secret_value() if api_key_secret else ""
     api_base = config.llm_api_base
     model = config.llm_model
 

@@ -6,6 +6,13 @@ from pathlib import Path
 
 from sonya.providers.secrets import ProviderSecret, load_provider_secret
 
+# Load .env file if exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, rely on actual env vars
+
 
 _DEFAULT_DATA_ROOT = Path.home() / ".sonya"
 
