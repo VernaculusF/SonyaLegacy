@@ -140,25 +140,33 @@ def _compose_services(host: OpenClawHost, cfg: dict[str, Any], python_executable
         session_id = f"telegram-{chat_id}"
         bootstrap = load_bootstrap_context(host, runner, session_id=session_id)
         session = load_session(host.session_dir, chat_id)
-        # Use sonya.planning.plan_next as the brain-side planner.
-        # Convert CanonicalResponse back to RuntimeAction for handler compatibility.
-        from sonya.planning import PlannerContext, plan_next as _plan_next
+        # Use sonya.planning full context builder for rich LLM calls.
+        from sonya.planning import build_full_context, plan_next as _plan_next
+        from sonya.planning.memory_wiring import record_response_as_memory
         from sonya.state.canonical_response import ResponseKind
-
-        system_prompt = bootstrap.get("system", "")
-        session_messages = session.get("messages", [])
+        from sonya.state import Substrate
 
         class _BridgeProvider:
             async def complete_text(self, messages, **kwargs):
                 return await complete_text(provider, model_name, messages)
 
-        ctx = PlannerContext(
-            principal_id=str(chat_id),
-            user_input=prompt_text,
-            system_prompt=system_prompt,
-            session_messages=session_messages,
-        )
-        response = await _plan_next(ctx, _BridgeProvider())
+        # Open substrate for context building
+        import os
+        substrate_path = os.environ.get("SONYA_SUBSTRATE_PATH", "sonya.db")
+        sub = Substrate.open(substrate_path)
+        try:
+            ctx = build_full_context(
+                substrate=sub,
+                user_input=prompt_text,
+                principal_id=str(chat_id),
+                session_messages=session.get("messages", []),
+            )
+            response = await _plan_next(ctx, _BridgeProvider())
+
+            # Memory wiring: record this exchange
+            record_response_as_memory(sub, prompt_text, response, channel="telegram")
+        finally:
+            sub.close()
 
         # Map CanonicalResponse kind → RuntimeAction
         if response.kind is ResponseKind.INITIATIVE_PROPOSAL:
