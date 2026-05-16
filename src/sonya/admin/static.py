@@ -126,9 +126,10 @@ async function loadPage(page) {
   }
 }
 
-async function coreAction(action) {
+async function coreAction(action, mode) {
   try {
-    const resp = await fetch(`${API}/api/core/${action}`, {method: 'POST'});
+    const url = mode ? `${API}/api/core/${action}?mode=${mode}` : `${API}/api/core/${action}`;
+    const resp = await fetch(url, {method: 'POST'});
     const data = await resp.json();
     alert(JSON.stringify(data));
     setTimeout(() => loadPage('core'), 2000);
@@ -192,9 +193,14 @@ const renderers = {
     return `
       <div class="card"><h3>Core Status</h3>
         <div class="stat">Status: <b>${status}${pid}</b></div>
+        <p style="font-size:11px;color:#8b949e;margin-top:8px">Только один процесс может писать в substrate. Выбери режим.</p>
+      </div>
+      <div class="card"><h3>Start Modes</h3>
+        <button onclick="coreAction('start','full')" style="background:#238636;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">▶ Full (TG + Thinking)</button>
+        <button onclick="coreAction('start','telegram_only')" style="background:#1f6feb;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">📱 Telegram Only</button>
+        <button onclick="coreAction('start','thinking_only')" style="background:#8957e5;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">💭 Thinking Only</button>
       </div>
       <div class="card"><h3>Controls</h3>
-        <button onclick="coreAction('start')" style="background:#238636;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">▶ Start Core</button>
         <button onclick="coreAction('stop')" style="background:#da3633;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">⬛ Stop Core</button>
         <button onclick="loadPage('core')" style="background:#30363d;color:#c9d1d9;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">🔄 Refresh</button>
       </div>

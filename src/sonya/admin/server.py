@@ -257,7 +257,11 @@ async def api_core_status(request: web.Request) -> web.Response:
 
 
 async def api_core_start(request: web.Request) -> web.Response:
-    """Start the core process (sonya main with userbot + thinking)."""
+    """Start the core process (sonya main with userbot + thinking).
+
+    Query params:
+      mode = full | telegram_only | thinking_only (default: full)
+    """
     import subprocess
     import os
     global _core_process
@@ -266,10 +270,22 @@ async def api_core_start(request: web.Request) -> web.Response:
     if _core_process is not None and _core_process.returncode is None:
         return web.json_response({"status": "already_running", "pid": _core_process.pid})
 
-    # Build env with PYTHONPATH
+    mode = request.query.get("mode", "full")
+
+    # Build env with PYTHONPATH and toggles
     env = os.environ.copy()
     project_root = os.path.expanduser("~/Sonya")
     env["PYTHONPATH"] = f"{project_root}/src:{project_root}/packages/tg-userbot/src:{project_root}/packages/tg-bridge/src"
+
+    if mode == "telegram_only":
+        env["SONYA_ENABLE_TELEGRAM"] = "1"
+        env["SONYA_ENABLE_THINKING"] = "0"
+    elif mode == "thinking_only":
+        env["SONYA_ENABLE_TELEGRAM"] = "0"
+        env["SONYA_ENABLE_THINKING"] = "1"
+    else:  # full
+        env["SONYA_ENABLE_TELEGRAM"] = "1"
+        env["SONYA_ENABLE_THINKING"] = "1"
 
     # Start core as subprocess
     _core_process = subprocess.Popen(
@@ -279,7 +295,7 @@ async def api_core_start(request: web.Request) -> web.Response:
         stdout=open("/tmp/sonya.log", "w"),
         stderr=subprocess.STDOUT,
     )
-    return web.json_response({"status": "started", "pid": _core_process.pid})
+    return web.json_response({"status": "started", "pid": _core_process.pid, "mode": mode})
 
 
 async def api_core_stop(request: web.Request) -> web.Response:

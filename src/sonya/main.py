@@ -148,12 +148,18 @@ async def _run(config: AppConfig) -> int:
 
     try:
         await lifecycle.start()
-        await internal_process.start()
+        if config.enable_thinking:
+            await internal_process.start()
+            _log.info("thinking_enabled", extra={"event": "thinking_loop_started"})
+        else:
+            _log.info("thinking_disabled", extra={"event": "thinking_loop_skipped"})
 
-        # Start Telegram userbot if configured
+        # Start Telegram userbot if configured AND enabled
         userbot = None
-        if config.tg_api_id and config.tg_session_path:
+        if config.enable_telegram and config.tg_api_id and config.tg_session_path:
             userbot = await _start_userbot(config, raw_stream, internal_process, thinking_provider, substrate)
+        elif not config.enable_telegram:
+            _log.info("telegram_disabled", extra={"event": "userbot_skipped"})
 
         await health.start(schema_version=substrate.schema_version)
         _log.info(
@@ -163,6 +169,7 @@ async def _run(config: AppConfig) -> int:
                 "schema_version": substrate.schema_version,
                 "substrate_path": str(config.substrate_path),
                 "userbot": "running" if userbot else "disabled",
+                "thinking": "enabled" if config.enable_thinking else "disabled",
             },
         )
 
@@ -170,7 +177,8 @@ async def _run(config: AppConfig) -> int:
 
         if userbot:
             await userbot.stop()
-        await internal_process.stop()
+        if config.enable_thinking:
+            await internal_process.stop()
         await health.stop()
         await lifecycle.request_stop()
         _log.info("sonya_stopped", extra={"event": "stopped"})

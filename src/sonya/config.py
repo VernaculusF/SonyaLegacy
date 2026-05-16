@@ -30,11 +30,20 @@ class AppConfig:
     tg_api_id: int = 0
     tg_api_hash: str = ""
     tg_session_path: str = ""
+    enable_telegram: bool = True
+    enable_thinking: bool = True
 
 
 def _env_path(name: str, default: Path) -> Path:
     raw = os.environ.get(name)
     return Path(raw) if raw else default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.lower() in ("1", "true", "yes", "on")
 
 
 def load_config() -> AppConfig:
@@ -53,6 +62,8 @@ def load_config() -> AppConfig:
     tg_api_id = int(os.environ.get("SONYA_TG_API_ID", "0"))
     tg_api_hash = os.environ.get("SONYA_TG_API_HASH", "")
     tg_session_path = os.environ.get("SONYA_TG_SESSION_PATH", "")
+    enable_telegram = _env_bool("SONYA_ENABLE_TELEGRAM", True)
+    enable_thinking = _env_bool("SONYA_ENABLE_THINKING", True)
     return AppConfig(
         substrate_path=substrate_path,
         health_path=health_path,
@@ -63,4 +74,6 @@ def load_config() -> AppConfig:
         tg_api_id=tg_api_id,
         tg_api_hash=tg_api_hash,
         tg_session_path=tg_session_path,
+        enable_telegram=enable_telegram,
+        enable_thinking=enable_thinking,
     )
