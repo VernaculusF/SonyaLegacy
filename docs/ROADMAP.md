@@ -351,7 +351,7 @@ Thinking process на hosted model — **дискретный** (event-driven LL
 
 ## 14. Фаза 8 — Memory Extraction
 
-**Статус:** ⬜ после Phase 7.
+**Статус:** ✅ закрыта (2026-05-16).
 
 **Цель.** Sonya-owned memory core в `src/sonya/memory/*`. Миграция данных из OpenClaw `memory.db`. Post-response hook через event bus, не subprocess.
 
