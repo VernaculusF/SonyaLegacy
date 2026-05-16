@@ -181,7 +181,7 @@ async def _start_userbot(config: AppConfig, stream, internal_process):
         return None
 
     async def _on_incoming(msg_data):
-        """Handle incoming Telegram message — notify internal process."""
+        """Handle incoming Telegram message — respond through planner."""
         internal_process.notify_external_event()
         from sonya.state.continuity_stream import ContinuityEvent
         stream.append(ContinuityEvent(
@@ -193,8 +193,32 @@ async def _start_userbot(config: AppConfig, stream, internal_process):
                 "is_private": msg_data.get("is_private"),
             },
         ))
-        # Don't auto-reply yet — will be wired through planner later
-        return None
+
+        # Only respond to private messages
+        text = msg_data.get("text") or ""
+        if not text or not msg_data.get("is_private"):
+            return None
+
+        # Plan response through full context
+        try:
+            from sonya.planning import build_full_context, plan_next
+            from sonya.planning.memory_wiring import record_response_as_memory
+            from sonya.state import Substrate
+
+            sub = Substrate.open(config.substrate_path)
+            try:
+                ctx = build_full_context(
+                    substrate=sub,
+                    user_input=text,
+                    principal_id=str(msg_data.get("sender_id", "")),
+                )
+                response = await plan_next(ctx, thinking_provider)
+                record_response_as_memory(sub, text, response, channel="telegram_userbot")
+                return response.text if response.text else None
+            finally:
+                sub.close()
+        except Exception:
+            return None
 
     userbot = SonyaUserbot(
         api_id=config.tg_api_id,
