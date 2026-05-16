@@ -141,6 +141,12 @@ async def _run(config: AppConfig) -> int:
     try:
         await lifecycle.start()
         await internal_process.start()
+
+        # Start Telegram userbot if configured
+        userbot = None
+        if config.tg_api_id and config.tg_session_path:
+            userbot = await _start_userbot(config, raw_stream, internal_process)
+
         await health.start(schema_version=substrate.schema_version)
         _log.info(
             "sonya_started",
@@ -148,11 +154,14 @@ async def _run(config: AppConfig) -> int:
                 "event": "started",
                 "schema_version": substrate.schema_version,
                 "substrate_path": str(config.substrate_path),
+                "userbot": "running" if userbot else "disabled",
             },
         )
 
         await stop_requested.wait()
 
+        if userbot:
+            await userbot.stop()
         await internal_process.stop()
         await health.stop()
         await lifecycle.request_stop()
@@ -161,6 +170,41 @@ async def _run(config: AppConfig) -> int:
     finally:
         write_master.release()
         substrate.close()
+
+
+async def _start_userbot(config: AppConfig, stream, internal_process):
+    """Start Telegram userbot if configured."""
+    try:
+        from tg_userbot.client import SonyaUserbot
+    except ImportError:
+        _log.warning("telethon_not_installed", extra={"event": "userbot_disabled"})
+        return None
+
+    async def _on_incoming(msg_data):
+        """Handle incoming Telegram message — notify internal process."""
+        internal_process.notify_external_event()
+        from sonya.state.continuity_stream import ContinuityEvent
+        stream.append(ContinuityEvent(
+            kind="incoming.telegram_message",
+            payload={
+                "chat_id": msg_data.get("chat_id"),
+                "sender_id": msg_data.get("sender_id"),
+                "text": (msg_data.get("text") or "")[:500],
+                "is_private": msg_data.get("is_private"),
+            },
+        ))
+        # Don't auto-reply yet — will be wired through planner later
+        return None
+
+    userbot = SonyaUserbot(
+        api_id=config.tg_api_id,
+        api_hash=config.tg_api_hash,
+        session_path=config.tg_session_path.replace(".session", ""),
+        on_message=_on_incoming,
+    )
+    await userbot.start()
+    _log.info("userbot_started", extra={"event": "userbot_running"})
+    return userbot
 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop, handler) -> None:
