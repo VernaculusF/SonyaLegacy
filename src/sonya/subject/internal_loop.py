@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Protocol
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.state.pending import PendingIntentionStore, IntentionStatus
@@ -11,6 +11,13 @@ from sonya.state.pending import PendingIntentionStore, IntentionStatus
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+class ThinkingProvider(Protocol):
+    """Provider interface for thinking loop LLM calls."""
+
+    async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
+        ...
 
 
 @dataclass(slots=True)
@@ -84,11 +91,15 @@ class InternalProcess:
         stream: ContinuityStream,
         intention_store: PendingIntentionStore,
         *,
+        provider: ThinkingProvider | None = None,
+        thinking_prompt: str = "",
         idle_interval_seconds: float = 300.0,
         tick_interval_seconds: float = 10.0,
     ) -> None:
         self._stream = stream
         self._intentions = intention_store
+        self._provider = provider
+        self._thinking_prompt = thinking_prompt
         self._idle_interval = idle_interval_seconds
         self._tick_interval = tick_interval_seconds
         self._counters = HomeostasisCounters()
@@ -173,7 +184,7 @@ class InternalProcess:
         idle_triggered: bool,
         overdue_ids: list[str],
     ) -> None:
-        """Write continuity events based on triggers."""
+        """Write continuity events based on triggers. Call LLM if provider available."""
         payload: dict[str, Any] = {
             "tick": self._tick_count,
             "counters": self._counters.to_dict(),
@@ -191,6 +202,20 @@ class InternalProcess:
                 [f"deadline_overdue:{iid}" for iid in overdue_ids]
             )
 
+        # Call LLM for thinking if provider available
+        thought_text = ""
+        if self._provider is not None:
+            try:
+                thought_text = asyncio.get_event_loop().run_until_complete(
+                    self._call_thinking_provider(payload)
+                )
+            except RuntimeError:
+                # Already in async context — use create_task
+                asyncio.ensure_future(self._async_think(payload))
+
+        if thought_text:
+            payload["thought"] = thought_text
+
         # Write main cognitive event
         self._stream.append(
             ContinuityEvent(
@@ -205,5 +230,40 @@ class InternalProcess:
                 ContinuityEvent(
                     kind="internal.intention_overdue",
                     payload={"intention_id": iid},
+                )
+            )
+
+    async def _call_thinking_provider(self, payload: dict[str, Any]) -> str:
+        """Call LLM provider for internal thinking."""
+        if self._provider is None:
+            return ""
+        triggers = payload.get("triggers", [])
+        counters = payload.get("counters", {})
+        prompt = self._thinking_prompt or (
+            "Ты Соня. Это твой внутренний поток мышления. "
+            "Никто не читает это кроме тебя. Подумай о чём хочешь."
+        )
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": (
+                f"Текущее состояние drives: {counters}\n"
+                f"Триггеры: {triggers}\n"
+                f"Tick: {self._tick_count}\n"
+                "Что у тебя на уме?"
+            )},
+        ]
+        try:
+            return await self._provider.complete_text(messages)
+        except Exception:
+            return ""
+
+    async def _async_think(self, payload: dict[str, Any]) -> None:
+        """Async wrapper for thinking when already in event loop."""
+        thought = await self._call_thinking_provider(payload)
+        if thought:
+            self._stream.append(
+                ContinuityEvent(
+                    kind="internal.thought",
+                    payload={"thought": thought, "tick": self._tick_count},
                 )
             )
