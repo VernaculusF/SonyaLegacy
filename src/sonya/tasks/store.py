@@ -35,6 +35,7 @@ class TaskStore:
         scheduled_for: str = "",
         recurring_spec: str = "",
         notify_mode: str = "progress",
+        max_sessions: int = 0,
     ) -> Task:
         task_id = f"task-{uuid4().hex[:12]}"
         now = _utc_now_iso()
@@ -43,12 +44,15 @@ class TaskStore:
             "INSERT INTO tasks (task_id, title, description, status, principal_id, "
             "parent_task_id, deadline, plan_steps_json, completed_steps_json, "
             "blocker, result, created_at, updated_at, "
-            "created_by, scheduled_for, recurring_spec, notify_mode) "
-            "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, '[]', '', '', ?, ?, ?, ?, ?, ?)",
+            "created_by, scheduled_for, recurring_spec, notify_mode, "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint) "
+            "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, '[]', '', '', ?, ?, "
+            "?, ?, ?, ?, ?, 0, '', '')",
             (
                 task_id, title, description, principal_id, parent_task_id,
                 deadline, steps_json, now, now,
                 created_by, scheduled_for, recurring_spec, notify_mode,
+                int(max_sessions or 0),
             ),
         )
         self._sub.connection.commit()
@@ -58,7 +62,8 @@ class TaskStore:
         row = self._sub.connection.execute(
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-            "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+            "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint "
             "FROM tasks WHERE task_id = ?",
             (task_id,),
         ).fetchone()
@@ -71,7 +76,8 @@ class TaskStore:
             cursor = self._sub.connection.execute(
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-                "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+                "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
+                "max_sessions, sessions_used, last_session_notes, next_step_hint "
                 "FROM tasks WHERE status = ? ORDER BY updated_at DESC LIMIT ?",
                 (status, limit),
             )
@@ -79,7 +85,8 @@ class TaskStore:
             cursor = self._sub.connection.execute(
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-                "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+                "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
+                "max_sessions, sessions_used, last_session_notes, next_step_hint "
                 "FROM tasks ORDER BY updated_at DESC LIMIT ?",
                 (limit,),
             )
@@ -90,7 +97,8 @@ class TaskStore:
         cursor = self._sub.connection.execute(
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-            "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+            "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint "
             "FROM tasks "
             "WHERE status IN ('pending','in_progress','blocked') ORDER BY updated_at DESC"
         )
@@ -114,6 +122,27 @@ class TaskStore:
 
     def replace_plan_steps(self, task_id: str, steps: list[str]) -> Task:
         return self._patch(task_id, {"plan_steps_json": json.dumps(steps, ensure_ascii=False)})
+
+    def increment_sessions_used(self, task_id: str) -> Task:
+        """Record that another agent session worked on this task."""
+        self.get(task_id)
+        self._sub.connection.execute(
+            "UPDATE tasks SET sessions_used = sessions_used + 1, updated_at = ? "
+            "WHERE task_id = ?",
+            (_utc_now_iso(), task_id),
+        )
+        self._sub.connection.commit()
+        return self.get(task_id)
+
+    def set_session_handoff(self, task_id: str, *, notes: str = "", next_step: str = "") -> Task:
+        """Persist where the most recent session left off."""
+        return self._patch(
+            task_id,
+            {
+                "last_session_notes": (notes or "")[:4000],
+                "next_step_hint": (next_step or "")[:500],
+            },
+        )
 
     def append_completed_step(
         self, task_id: str, *, step_idx: int, summary: str
@@ -161,4 +190,8 @@ def _row_to_task(row) -> Task:
         scheduled_for=row[14] if len(row) > 14 else "",
         recurring_spec=row[15] if len(row) > 15 else "",
         notify_mode=row[16] if len(row) > 16 else "progress",
+        max_sessions=int(row[17]) if len(row) > 17 and row[17] is not None else 0,
+        sessions_used=int(row[18]) if len(row) > 18 and row[18] is not None else 0,
+        last_session_notes=row[19] if len(row) > 19 else "",
+        next_step_hint=row[20] if len(row) > 20 else "",
     )

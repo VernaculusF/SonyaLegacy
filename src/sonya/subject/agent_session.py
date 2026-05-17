@@ -92,12 +92,14 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
     "plan_steps": ["step1", "step2"],
     "created_by": "ivan" | "self",        // default depends on context
     "scheduled_for": "2026-05-17T15:00:00Z",  // optional ISO timestamp; empty = run now
-    "notify_mode": "progress" | "final" | "silent"  // default "progress"
+    "notify_mode": "progress" | "final" | "silent",  // default "progress"
+    "max_sessions": 3                     // optional; 0 = unlimited. After this many active sessions / worker runs, task auto-fails if not done.
   }
   - created_by="ivan": worker runs every ~2 min (continuous)
   - created_by="self": picked up by active session every 2 hours (her own ideas)
   - scheduled_for=future: scheduler holds it until the time
   - notify_mode=progress: chat.tell_ivan after each step. final: only on done. silent: never.
+  - max_sessions: hard budget cap. Use when Ivan says "не пытайся продолжать после N попыток".
 - tasks.list [status_filter?] — pending / in_progress / blocked / done / failed / open
 - tasks.get [task_id]
 - tasks.pick — pick next open task and mark in_progress
@@ -108,6 +110,8 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - tasks.block — block form, JSON: {"task_id": "...", "blocker": "..."}
 - tasks.unblock [task_id]
 - tasks.pause [task_id]
+- tasks.handoff — block form, JSON: {"task_id": "...", "notes": "where I left off", "next_step": "what next session should do first"}
+  Call BEFORE [DONE] when ending a session on an unfinished task. Bumps sessions_used. If max_sessions reached, task auto-fails. Without handoff next session starts blind.
 
 Tasks survive sessions. When active session starts you pick up your in_progress task.
 
@@ -452,6 +456,10 @@ def _execute_tool(
             if tasks is None:
                 return "[ERROR] tasks tool not configured"
             return tasks.pause(arg)
+        elif name == "tasks.handoff":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.handoff(arg)
 
         # --- web.* family ---
         elif name == "web.search":

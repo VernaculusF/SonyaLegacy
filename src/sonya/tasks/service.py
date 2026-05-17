@@ -34,6 +34,7 @@ class TaskService:
         scheduled_for: str = "",
         recurring_spec: str = "",
         notify_mode: str = "progress",
+        max_sessions: int = 0,
     ) -> Task:
         if not title.strip():
             raise ValueError("title cannot be empty")
@@ -41,6 +42,8 @@ class TaskService:
             raise ValueError(f"created_by must be 'ivan' or 'self', got {created_by!r}")
         if notify_mode not in ("progress", "final", "silent"):
             raise ValueError(f"notify_mode must be progress/final/silent, got {notify_mode!r}")
+        if max_sessions < 0:
+            raise ValueError("max_sessions cannot be negative (0 = unlimited)")
         task = self._store.create(
             title=title,
             description=description,
@@ -52,12 +55,47 @@ class TaskService:
             scheduled_for=scheduled_for,
             recurring_spec=recurring_spec,
             notify_mode=notify_mode,
+            max_sessions=max_sessions,
         )
         self._emit("task.created", task, extra={
             "title": task.title,
             "created_by": created_by,
             "scheduled_for": scheduled_for,
             "notify_mode": notify_mode,
+            "max_sessions": max_sessions,
+        })
+        return task
+
+    def record_session_handoff(
+        self,
+        task_id: str,
+        *,
+        notes: str = "",
+        next_step: str = "",
+    ) -> Task:
+        """End-of-session handoff: bump sessions_used + persist notes/next_step.
+
+        Auto-fails the task if max_sessions reached.
+        """
+        task = self._store.increment_sessions_used(task_id)
+        if notes or next_step:
+            task = self._store.set_session_handoff(task_id, notes=notes, next_step=next_step)
+        if task.session_budget_exhausted() and task.status not in (TaskStatus.DONE, TaskStatus.FAILED):
+            failed = self._store.set_result(
+                task_id,
+                f"session budget exhausted ({task.sessions_used}/{task.max_sessions}); "
+                f"last_notes: {task.last_session_notes[:300]}",
+                TaskStatus.FAILED,
+            )
+            self._emit("task.session_budget_exhausted", failed, extra={
+                "sessions_used": failed.sessions_used,
+                "max_sessions": failed.max_sessions,
+            })
+            return failed
+        self._emit("task.session_handoff", task, extra={
+            "sessions_used": task.sessions_used,
+            "max_sessions": task.max_sessions,
+            "next_step": next_step[:200],
         })
         return task
 

@@ -41,6 +41,11 @@ class Task:
     scheduled_for: str = ""           # ISO; empty = run immediately
     recurring_spec: str = ""          # JSON; empty = one-off
     notify_mode: str = "progress"     # 'progress' | 'final' | 'silent'
+    # v12 additions: session budget + cross-session continuity
+    max_sessions: int = 0              # 0 = unlimited
+    sessions_used: int = 0
+    last_session_notes: str = ""       # model writes summary at end of each session
+    next_step_hint: str = ""           # one-line "where to start next time"
 
     def is_open(self) -> bool:
         return self.status in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED}
@@ -65,3 +70,7 @@ class Task:
 
     def is_ivan_task(self) -> bool:
         return self.created_by == "ivan"
+
+    def session_budget_exhausted(self) -> bool:
+        """True if max_sessions > 0 and we've burned them all."""
+        return self.max_sessions > 0 and self.sessions_used >= self.max_sessions

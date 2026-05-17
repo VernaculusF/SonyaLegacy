@@ -92,6 +92,7 @@ class TasksTool:
         scheduled_for = ""
         notify_mode = "progress"
         recurring_spec = ""
+        max_sessions = 0
         # Try JSON first
         stripped = arg.strip()
         if stripped.startswith("{"):
@@ -107,7 +108,8 @@ class TasksTool:
                 scheduled_for = str(data.get("scheduled_for", "")).strip()
                 notify_mode = str(data.get("notify_mode", "progress")).strip().lower() or "progress"
                 recurring_spec = str(data.get("recurring_spec", "")).strip()
-            except json.JSONDecodeError as err:
+                max_sessions = int(data.get("max_sessions", 0) or 0)
+            except (json.JSONDecodeError, TypeError, ValueError) as err:
                 return f"[ERROR] tasks.create: invalid JSON ({err})"
         else:
             parts = [p.strip() for p in arg.split("|")]
@@ -129,6 +131,7 @@ class TasksTool:
                 scheduled_for=scheduled_for,
                 recurring_spec=recurring_spec,
                 notify_mode=notify_mode,
+                max_sessions=max_sessions,
             )
         except ValueError as err:
             return f"[ERROR] {err}"
@@ -326,3 +329,44 @@ class TasksTool:
         except TaskNotFoundError as err:
             return f"[ERROR] {err}"
         return f"[OK] paused\n{_format_task(task)}"
+
+    def handoff(self, arg: str) -> str:
+        """End-of-session handoff. Records what was done + next step.
+
+        JSON: {"task_id": "...", "notes": "where I am, what I learned, what's blocking",
+               "next_step": "concrete one-liner for next session"}
+        Pipe: task_id | notes | next_step
+
+        Bumps sessions_used. If max_sessions reached, task auto-fails.
+        Always call this BEFORE [DONE] when actively working an Ivan-task that
+        you didn't fully complete. Without handoff the next session re-discovers
+        from scratch.
+        """
+        stripped = arg.strip()
+        task_id = ""
+        notes = ""
+        next_step = ""
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                task_id = str(data.get("task_id", "")).strip()
+                notes = str(data.get("notes", "")).strip()
+                next_step = str(data.get("next_step", "")).strip()
+            except json.JSONDecodeError as err:
+                return f"[ERROR] tasks.handoff: invalid JSON ({err})"
+        else:
+            parts = arg.split("|", 2)
+            if len(parts) < 3:
+                return "[ERROR] tasks.handoff needs JSON or 'task_id | notes | next_step'"
+            task_id = parts[0].strip()
+            notes = parts[1].strip()
+            next_step = parts[2].strip()
+        if not task_id:
+            return "[ERROR] tasks.handoff: task_id required"
+        try:
+            task = self._service.record_session_handoff(
+                task_id, notes=notes, next_step=next_step,
+            )
+        except TaskNotFoundError as err:
+            return f"[ERROR] {err}"
+        return f"[OK] handoff recorded ({task.sessions_used}/{task.max_sessions or '∞'})\n{_format_task(task)}"

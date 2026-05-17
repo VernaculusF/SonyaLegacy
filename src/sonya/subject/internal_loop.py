@@ -486,14 +486,32 @@ class InternalProcess:
                     from sonya.tasks.models import TaskStatus as _TS
                     if next_task.status is _TS.IN_PROGRESS:
                         remaining = next_task.remaining_steps()
-                        next_step_hint = f"\nNext step: {remaining[0]}" if remaining else ""
-                        initial_thought = (
-                            f"You have an in-progress task: {next_task.title}\n"
-                            f"task_id: {next_task.task_id}\n"
-                            f"description: {next_task.description}{next_step_hint}\n"
-                            f"Use tasks.get {next_task.task_id} for full state, "
-                            f"then continue working. When you finish a step use tasks.step."
+                        # Build a rich hint that includes the previous session's
+                        # handoff notes and the next-step hint, so this session
+                        # doesn't re-discover from scratch.
+                        bits = [
+                            f"You have an in-progress task: {next_task.title}",
+                            f"task_id: {next_task.task_id}",
+                        ]
+                        if next_task.description:
+                            bits.append(f"description: {next_task.description}")
+                        if next_task.max_sessions:
+                            bits.append(
+                                f"Session budget: {next_task.sessions_used}/{next_task.max_sessions} used"
+                            )
+                        if next_task.next_step_hint:
+                            bits.append(f"Next step (from previous session): {next_task.next_step_hint}")
+                        elif remaining:
+                            bits.append(f"Next plan step: {remaining[0]}")
+                        if next_task.last_session_notes:
+                            bits.append(
+                                f"Notes from previous session:\n{next_task.last_session_notes[:1500]}"
+                            )
+                        bits.append(
+                            "BEFORE [DONE], call `tasks.handoff` with what you accomplished + concrete next_step. "
+                            "Then call `tasks.complete` if done, otherwise [DONE] keeps it in_progress."
                         )
+                        initial_thought = "\n".join(bits)
                     else:
                         initial_thought = (
                             f"There's a pending task you haven't started: {next_task.title} "
@@ -531,7 +549,7 @@ class InternalProcess:
                 system_prompt=full_prompt,
                 initial_thought=initial_thought,
                 max_steps=30,
-                max_seconds=1200.0,
+                max_seconds=1800.0,  # 30 min hard cap on a single active session
                 purpose="active_session",
             )
 
@@ -545,6 +563,31 @@ class InternalProcess:
                     "had_initial_thought": bool(initial_thought),
                 },
             ))
+
+            # Auto-increment sessions_used on the in_progress task even if Sonya
+            # forgot to call tasks.handoff. Without this, max_sessions cap could
+            # be bypassed by simply never calling handoff.
+            try:
+                from sonya.tasks.service import TaskService
+                from sonya.tasks.store import TaskStore
+                from sonya.tasks.models import TaskStatus as _TS
+                svc = TaskService(TaskStore(substrate), stream=self._stream)
+                cur = svc.list_due_ivan_tasks()
+                in_prog = [t for t in cur if t.status is _TS.IN_PROGRESS]
+                # Only auto-bump if "tasks.handoff" wasn't among the actions.
+                used_handoff = any(a.startswith("tasks.handoff") for a in result.actions)
+                used_terminal = any(
+                    a.startswith(("tasks.complete", "tasks.fail"))
+                    for a in result.actions
+                )
+                if in_prog and not used_handoff and not used_terminal:
+                    svc.record_session_handoff(
+                        in_prog[0].task_id,
+                        notes="(auto) session ended without explicit handoff",
+                        next_step="(unknown — model did not record)",
+                    )
+            except Exception:
+                pass
         except Exception:
             pass  # Don't crash the loop on session error
 
@@ -631,22 +674,43 @@ class InternalProcess:
                 ),
             }.get(task.notify_mode, "После осмысленного шага можешь отправить апдейт.")
 
+            session_budget_line = ""
+            if task.max_sessions:
+                session_budget_line = (
+                    f"\nSession budget: {task.sessions_used}/{task.max_sessions} used. "
+                    "If you can't finish in remaining sessions, say so via `chat.tell_ivan` "
+                    "and call `tasks.fail` with reason — don't burn the budget on dead ends.\n"
+                )
+
+            handoff_block = ""
+            if task.last_session_notes or task.next_step_hint:
+                handoff_block = "\n## Handoff from previous session:\n"
+                if task.next_step_hint:
+                    handoff_block += f"Next step: {task.next_step_hint}\n"
+                if task.last_session_notes:
+                    handoff_block += f"Notes: {task.last_session_notes[:1500]}\n"
+
             worker_prompt = (
                 "Ты Соня. Это автономная мини-сессия — продолжаешь работу над "
                 "задачей Ивана в фоне, между TG-сообщениями.\n\n"
                 f"Текущая задача: {task.title}\n"
                 f"task_id: {task.task_id}\n"
                 f"description: {task.description}\n"
-                f"следующий шаг: {next_step}\n"
-                f"notify_mode: {task.notify_mode}\n\n"
-                f"{notify_hint}\n\n"
-                "Что делать:\n"
+                f"следующий шаг (план): {next_step}\n"
+                f"notify_mode: {task.notify_mode}"
+                f"{session_budget_line}\n"
+                f"{handoff_block}"
+                f"\n{notify_hint}\n\n"
+                "Что делать в этом тике:\n"
                 "- Сделай 1-2 шага по этой задаче через tools\n"
                 "- Когда закончил шаг — `[TOOL: tasks.step]` с JSON\n"
                 "- Если задача done — `[TOOL: tasks.complete]` JSON и финальный chat.tell_ivan если notify_mode != silent\n"
                 "- Если ждёшь approval/Ивана — `[TOOL: tasks.block]` JSON и закрывайся\n"
                 "- Если задача оказалась бессмысленной — `[TOOL: tasks.fail]`\n"
-                "- Если просто хочешь подождать — `[DONE: пауза]` (через ~2 минуты я снова запущу)\n\n"
+                "- Если просто хочешь подождать — `[DONE]` (через ~2 минуты я снова запущу)\n\n"
+                "**ВАЖНО**: ПЕРЕД `[DONE]` (если не вызвала complete/fail/block) — обязательно "
+                "`[TOOL: tasks.handoff]` с notes и next_step. "
+                "Без этого следующий тик начнёт с нуля и не будет знать где ты остановилась.\n\n"
                 "У тебя 5 шагов и 60 секунд. Не торопись.\n\n"
                 + ctx.system_prompt
             )
@@ -678,6 +742,21 @@ class InternalProcess:
                         "budget_exceeded": result.budget_exceeded,
                     },
                 ))
+                # Auto-bump sessions_used if she didn't call handoff/complete/fail.
+                try:
+                    used_handoff = any(a.startswith("tasks.handoff") for a in result.actions)
+                    used_terminal = any(
+                        a.startswith(("tasks.complete", "tasks.fail"))
+                        for a in result.actions
+                    )
+                    if not used_handoff and not used_terminal:
+                        svc.record_session_handoff(
+                            task.task_id,
+                            notes="(auto) worker tick ended without explicit handoff",
+                            next_step="(unknown — model did not record)",
+                        )
+                except Exception:
+                    pass
             except Exception as err:
                 self._stream.append(ContinuityEvent(
                     kind="internal.task_worker_error",
