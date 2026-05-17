@@ -75,7 +75,9 @@ async def test_send_blocked_when_quiet_window_not_passed(env) -> None:
         payload={"text": "ping"},
     ))
     gate = _make_gate(env, min_quiet=120)
-    out = await gate.send_via_tool("hi")
+    # Default tool behaviour now bypasses quiet-window (Sonya is in active dialog).
+    # Use ignore_quiet=False to assert the gate still works for that mode.
+    out = await gate.send_via_tool("hi", ignore_quiet=False)
     assert "[BLOCKED]" in out
     assert "quiet window" in out
 

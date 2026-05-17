@@ -65,12 +65,17 @@ class OutboundGate:
 
     # ---------- public ----------
 
-    async def send_via_tool(self, text: str, *, reason: str = "tool") -> str:
-        """Tool entry point. Returns a status string for the agent."""
+    async def send_via_tool(self, text: str, *, reason: str = "tool", ignore_quiet: bool = True) -> str:
+        """Tool entry point. Returns a status string for the agent.
+
+        `ignore_quiet`: skip the quiet-window gate (default True) — when Sonya
+        explicitly calls chat.tell_ivan from an agent session she's already
+        actively talking to him. Daily cap still applies.
+        """
         text = (text or "").strip()
         if not text:
             return "[ERROR] chat.tell_ivan: empty message"
-        ok, why = self._check_gates()
+        ok, why = self._check_gates(ignore_quiet=ignore_quiet)
         if not ok:
             return f"[BLOCKED] initiative gate: {why}"
         return await self._dispatch(text, reason=reason)
@@ -79,6 +84,7 @@ class OutboundGate:
         """Scan an idle thought for the [SEND_TO_IVAN: ...] marker.
 
         Returns the dispatch status string if a send was attempted, else None.
+        Quiet-window IS enforced here (initiative from idle is anti-spam).
         """
         if not thought_text:
             return None
@@ -88,7 +94,7 @@ class OutboundGate:
         body = match.group("body").strip()
         if not body:
             return None
-        ok, why = self._check_gates()
+        ok, why = self._check_gates(ignore_quiet=False)
         if not ok:
             self._stream.append(ContinuityEvent(
                 kind="internal.initiative_blocked",
@@ -99,7 +105,7 @@ class OutboundGate:
 
     # ---------- gates ----------
 
-    def _check_gates(self) -> tuple[bool, str]:
+    def _check_gates(self, *, ignore_quiet: bool = False) -> tuple[bool, str]:
         if not self._target:
             return False, "no SONYA_PRIMARY_USER_TG_ID configured"
         # Per-day counter
@@ -109,6 +115,8 @@ class OutboundGate:
             self._sent_today = 0
         if self._sent_today >= self._max_per_day:
             return False, f"daily cap reached ({self._sent_today}/{self._max_per_day})"
+        if ignore_quiet:
+            return True, ""
         # Quiet window — look for latest tg event in continuity
         last_tg = self._latest_tg_seconds_ago()
         if last_tg is not None and last_tg < self._min_quiet * 60:
@@ -183,11 +191,15 @@ def call_outbound_sync(gate: OutboundGate, text: str) -> str:
     thread deadlocks. Solution: fire-and-forget via create_task. The actual
     delivery + continuity event happens on the next loop turn. We do an
     immediate gate-check synchronously so the agent sees "BLOCKED" right away.
+
+    Quiet-window is bypassed for explicit tool calls — Sonya is actively
+    interacting (either in TG-session or active session). Daily cap still
+    enforced. Idle-thought marker path still uses quiet-window gate.
     """
     text = (text or "").strip()
     if not text:
         return "[ERROR] chat.tell_ivan: empty message"
-    ok, why = gate._check_gates()
+    ok, why = gate._check_gates(ignore_quiet=True)
     if not ok:
         return f"[BLOCKED] initiative gate: {why}"
 

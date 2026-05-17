@@ -105,8 +105,11 @@ def _build_incoming_handler(
             return None
 
         try:
-            from sonya.planning import build_full_context, plan_next
+            from sonya.planning import build_full_context
             from sonya.planning.memory_wiring import record_response_as_memory
+            from sonya.state.canonical_response import CanonicalResponse, ResponseKind
+            from sonya.state.continuity_stream import ContinuityStream
+            from sonya.subject.tg_session import run_tg_session
 
             session_messages: list[dict[str, Any]] = []
             if msg.channel == "telegram" and msg.raw is not None:
@@ -130,13 +133,45 @@ def _build_incoming_handler(
                 session_messages=session_messages,
                 drives=internal_process.drives if internal_process else None,
             )
-            response = await plan_next(ctx, provider)
+
+            # Build a system_prompt that includes recent dialog history as
+            # plain text (since we're not passing session_messages to agent).
+            system_prompt = ctx.system_prompt
+            if session_messages:
+                history_block = "\n\n## История этого диалога:\n"
+                for sm in session_messages[-8:]:
+                    role = sm.get("role", "?")
+                    content = (sm.get("content") or "")[:600]
+                    label = "Иван" if role == "user" else "я"
+                    history_block += f"- [{label}]: {content}\n"
+                system_prompt += history_block
+
+            tg_result = await run_tg_session(
+                provider=provider,
+                stream=ContinuityStream(substrate),
+                substrate=substrate,
+                system_prompt=system_prompt,
+                user_input=msg.text,
+                outbound=internal_process.outbound if internal_process else None,
+                max_steps=8,
+                max_seconds=90.0,
+            )
+
+            response_text = tg_result.reply_text
+            response = CanonicalResponse(
+                kind=ResponseKind.REPLY,
+                text=response_text,
+                principal_id=msg.sender_id,
+            )
+
             _log.info(
                 "response_generated",
                 extra={
                     "channel": msg.channel,
-                    "response_len": len(response.text) if response.text else 0,
-                    "preview": (response.text or "")[:80],
+                    "response_len": len(response_text),
+                    "preview": response_text[:80],
+                    "agent_steps": tg_result.raw.steps,
+                    "actions": tg_result.raw.actions[:5],
                 },
             )
             record_response_as_memory(
