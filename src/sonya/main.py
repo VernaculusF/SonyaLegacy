@@ -70,10 +70,14 @@ def _create_thinking_provider(config: AppConfig):
                     return ""
                 resp.raise_for_status()
                 text = resp.text.strip()
-                if "\n" in text:
-                    text = text.split("\n")[0]
                 import json as _json
-                data = _json.loads(text)
+                # Robust parse: try whole text first, fall back to first JSON line
+                try:
+                    data = _json.loads(text)
+                except _json.JSONDecodeError:
+                    # Some proxies return concatenated JSONL — take first valid object
+                    first_line = text.split("\n", 1)[0].strip()
+                    data = _json.loads(first_line)
                 return data["choices"][0]["message"]["content"]
 
     return _ThinkingProvider()
@@ -184,17 +188,57 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
     try:
         from tg_userbot.client import SonyaUserbot
         from telethon import events as _tg_events
+        from telethon.tl.types import (
+            MessageMediaPhoto,
+            MessageMediaDocument,
+            DocumentAttributeSticker,
+            DocumentAttributeAudio,
+            DocumentAttributeVideo,
+            DocumentAttributeAnimated,
+        )
     except ImportError:
         _log.warning("telethon_not_installed", extra={"event": "userbot_disabled"})
         return None
 
-    async def _on_incoming(msg_data):
-        """Handle incoming Telegram message — respond through planner."""
+    def _detect_media_kind(event) -> str | None:
+        """Return short user-visible label for media in event, or None."""
+        msg = event.message
+        if not msg or not msg.media:
+            return None
+
+        media = msg.media
+
+        # Photo
+        if isinstance(media, MessageMediaPhoto):
+            return "фото"
+
+        # Document — sticker / audio / video / gif / file
+        if isinstance(media, MessageMediaDocument) and media.document:
+            doc = media.document
+            attrs = doc.attributes or []
+            for attr in attrs:
+                if isinstance(attr, DocumentAttributeSticker):
+                    emoji = getattr(attr, "alt", "") or ""
+                    return f"стикер {emoji}".strip()
+                if isinstance(attr, DocumentAttributeAudio):
+                    return "голосовое сообщение" if attr.voice else "аудио"
+                if isinstance(attr, DocumentAttributeAnimated):
+                    return "гифка"
+                if isinstance(attr, DocumentAttributeVideo):
+                    return "видеосообщение" if attr.round_message else "видео"
+            return "файл"
+
+        return "медиа"
+
+    async def _on_incoming(msg_data, generate_response: bool = True):
+        """Handle incoming Telegram message — record + optionally plan response."""
         _log.info("tg_incoming", extra={
             "chat_id": msg_data.get("chat_id"),
             "sender_id": msg_data.get("sender_id"),
             "text_preview": (msg_data.get("text") or "")[:80],
+            "media_kind": msg_data.get("media_kind"),
             "is_private": msg_data.get("is_private"),
+            "generate_response": generate_response,
         })
 
         internal_process.notify_external_event()
@@ -205,14 +249,17 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
                 "chat_id": msg_data.get("chat_id"),
                 "sender_id": msg_data.get("sender_id"),
                 "text": (msg_data.get("text") or "")[:500],
+                "media_kind": msg_data.get("media_kind"),
                 "is_private": msg_data.get("is_private"),
             },
         ))
 
-        # Only respond to private messages
+        if not generate_response:
+            return None
+
         text = msg_data.get("text") or ""
-        if not text or not msg_data.get("is_private"):
-            _log.info("tg_skip", extra={"reason": "not_private_or_empty"})
+        if not text:
+            _log.info("tg_skip", extra={"reason": "empty_text"})
             return None
 
         if provider is None:
@@ -227,8 +274,6 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
             # Fetch recent chat history for context
             session_messages = []
             try:
-                me = await userbot._client.get_me()
-                my_id = me.id
                 recent_msgs = await userbot._client.get_messages(msg_data["chat_id"], limit=12)
                 for m in reversed(recent_msgs):
                     if m.text and m.id != msg_data.get("msg_id"):
@@ -270,6 +315,34 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
         return None
     _log.info("tg_authorized", extra={"event": "session_valid"})
 
+    # Cache own user info for mention detection in group chats
+    me = await userbot._client.get_me()
+    my_id = me.id
+    my_username = (me.username or "").lower()
+    my_first_name = (me.first_name or "").lower()
+    _log.info("tg_self_info", extra={"id": my_id, "username": my_username})
+
+    async def _should_respond_in_group(event, text: str) -> bool:
+        """Return True if Sonya should respond to this group message."""
+        if not text:
+            return False
+        text_lower = text.lower()
+        # 1. Direct username mention
+        if my_username and f"@{my_username}" in text_lower:
+            return True
+        # 2. First-name mention at the start of the message
+        if my_first_name and text_lower.startswith(my_first_name):
+            return True
+        # 3. Reply to one of Sonya's own messages
+        if event.reply_to_msg_id:
+            try:
+                replied = await event.get_reply_message()
+                if replied and replied.sender_id == my_id:
+                    return True
+            except Exception:
+                pass
+        return False
+
     # Track last message time per chat for reply/respond logic
     _last_msg_time: dict[int, float] = {}
 
@@ -278,31 +351,50 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
     async def _tg_handler(event):
         try:
             await event.mark_read()
+
+            # Extract text or media description
+            text = event.text or ""
+            media_kind = _detect_media_kind(event)
+            if not text and media_kind:
+                text = f"[{media_kind}]"
+
             msg_data = {
                 "chat_id": event.chat_id,
                 "sender_id": event.sender_id,
-                "text": event.text,
+                "text": text,
+                "media_kind": media_kind,
                 "date": str(event.date),
                 "is_private": event.is_private,
                 "reply_to": event.reply_to_msg_id,
                 "msg_id": event.id,
             }
-            # Show typing while generating response for private messages
-            if event.is_private and event.text:
+
+            # Decide whether to respond
+            should_respond = False
+            if event.is_private and text:
+                should_respond = True
+            elif text and not event.is_private:
+                # Group chat — respond only when addressed
+                should_respond = await _should_respond_in_group(event, text)
+                if should_respond:
+                    _log.info("tg_group_address_detected", extra={"chat_id": event.chat_id})
+
+            if should_respond:
                 async with userbot._client.action(event.chat_id, 'typing'):
-                    response = await _on_incoming(msg_data)
+                    response = await _on_incoming(msg_data, generate_response=True)
                 if response:
                     # Reply only after >120s pause, otherwise send as new message
                     import time as _time
                     now = _time.time()
                     last = _last_msg_time.get(event.chat_id, 0)
-                    if now - last > 120:
+                    if now - last > 120 or not event.is_private:
+                        # In groups, always reply for clarity who is addressed
                         await event.reply(response)
                     else:
                         await event.respond(response)
                     _last_msg_time[event.chat_id] = now
             else:
-                await _on_incoming(msg_data)
+                await _on_incoming(msg_data, generate_response=False)
         except Exception as e:
             _log.error("tg_handler_crash", extra={"error": str(e), "type": type(e).__name__})
             import traceback
@@ -312,8 +404,8 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
     dialogs = await userbot._client.get_dialogs(limit=5)
     _log.info("tg_dialogs_loaded", extra={"count": len(dialogs)})
 
-    # Run update loop as background task
-    asyncio.create_task(userbot._client.run_until_disconnected())
+    # Run update loop as background task — store task on userbot for graceful cancel
+    userbot._run_task = asyncio.create_task(userbot._client.run_until_disconnected())
     userbot._running = True
     _log.info("userbot_started", extra={"event": "userbot_running"})
     return userbot

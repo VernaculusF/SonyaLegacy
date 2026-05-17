@@ -38,17 +38,30 @@
 
 ## 3. СРЕДНИЕ (работает, но некрасиво)
 
-### 3.1 Стикеры/фото/голосовые — молча пропускаются
+### 3.1 Стикеры/фото/голосовые ✅ ИСПРАВЛЕНО (commit pending)
 
-### 3.2 Групповые чаты полностью игнорируются
+`_detect_media_kind(event)` распознаёт стикеры (с emoji), фото, голосовые/аудио, видео/видеосообщения, гифки, файлы. Если у сообщения нет text но есть media — формируется текст вида `"[стикер 😏]"` или `"[голосовое сообщение]"` и идёт в planner как обычный input.
 
-### 3.4 LLM response parsing — берёт только первую JSON строку
+### 3.2 Групповые чаты ✅ ИСПРАВЛЕНО (commit pending)
 
-**Статус:** Это в **трёх** местах: `main.py:75`, `admin/server.py:170`, и старый `OpenRouterProvider`. См. S-1.
+В группах Соня отвечает только когда:
+- упомянули по `@username`
+- имя в начале сообщения
+- reply на её собственное сообщение
 
-### 3.5 Нет graceful shutdown для Telegram connection
+В группах ответ всегда через `event.reply()` — чтобы было ясно кому адресовано. Все группы tracked в continuity stream даже без ответа (для context awareness).
 
-### 3.6 `_start_userbot` создаёт SonyaUserbot но не использует его .start()
+### 3.4 LLM response parsing — берёт только первую JSON строку ✅ ИСПРАВЛЕНО (commit pending)
+
+В `main.py` и `admin/server.py` теперь сначала пробуем парсить весь response, fallback на первую строку только при `JSONDecodeError`. Работает с обычными JSON-ответами и со streaming-чанкованными.
+
+### 3.5 Graceful shutdown для Telegram connection ✅ ИСПРАВЛЕНО (commit pending)
+
+`_run_task` теперь сохраняется на инстансе `userbot._run_task`. Метод `userbot.stop()` корректно отменяет task и закрывает connection. При SIGTERM в systemd unit срабатывает graceful shutdown handler в `main.py`.
+
+### 3.6 `_start_userbot` создаёт SonyaUserbot но не использует его .start() ✅ ПРИНЯТО КАК ЕСТЬ
+
+Решено намеренно: `SonyaUserbot.start()` использует callback-based handler, а в main.py нужен handler с доступом к `internal_process`, `provider`, `substrate`, и `_last_msg_time`. Использовать класс целиком пришлось бы с замыканиями — менее читаемо. Сейчас класс держит TelegramClient + lifecycle (`start`, `stop`, `_run_task`), а handler реализован в main где есть полный context.
 
 ---
 

@@ -169,10 +169,12 @@ async def api_chat_send(request: web.Request) -> web.Response:
                     resp.raise_for_status()
                     # Handle potential streaming response (multiple JSON objects)
                     text = resp.text.strip()
-                    if "\n" in text:
-                        text = text.split("\n")[0]
                     import json as _json
-                    data = _json.loads(text)
+                    try:
+                        data = _json.loads(text)
+                    except _json.JSONDecodeError:
+                        first_line = text.split("\n", 1)[0].strip()
+                        data = _json.loads(first_line)
                     return data["choices"][0]["message"]["content"]
 
         response = await plan_next(ctx, _Provider())
