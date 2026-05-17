@@ -83,6 +83,9 @@ def _build_incoming_handler(
     registry: ChannelRegistry,
 ):
     """Construct the channel-agnostic incoming-message handler."""
+    from sonya.subject.inbox import MessageInbox, InboxItem
+    inbox = MessageInbox()
+
     async def _on_incoming(msg: ChannelMessage) -> OutgoingMessage | None:
         from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 
@@ -104,98 +107,125 @@ def _build_incoming_handler(
             _log.warning("no_provider", extra={"channel": msg.channel})
             return None
 
-        try:
-            from sonya.planning import build_full_context
-            from sonya.planning.memory_wiring import record_response_as_memory
-            from sonya.state.canonical_response import CanonicalResponse, ResponseKind
-            from sonya.state.continuity_stream import ContinuityStream
-            from sonya.subject.tg_session import run_tg_session
+        chat_lock = inbox.lock_for(msg.chat_id)
 
-            session_messages: list[dict[str, Any]] = []
-            if msg.channel == "telegram" and msg.raw is not None:
-                try:
-                    channel = registry.get("telegram")
-                    if channel is not None and hasattr(channel, "_client") and channel._client is not None:
-                        client = channel._client
-                        my_id = channel._my_id
-                        recent = await client.get_messages(int(msg.chat_id), limit=12)
-                        for m in reversed(recent):
-                            if m.text and (msg.msg_id is None or str(m.id) != msg.msg_id):
-                                role = "assistant" if m.sender_id == my_id else "user"
-                                session_messages.append({"role": role, "content": m.text})
-                except Exception as err:
-                    _log.warning("history_fetch_error", extra={"error": str(err)})
-
-            ctx = build_full_context(
-                substrate=substrate,
-                user_input=msg.text,
-                principal_id=msg.sender_id,
-                session_messages=session_messages,
-                drives=internal_process.drives if internal_process else None,
-            )
-
-            # Build a system_prompt that includes recent dialog history as
-            # plain text (since we're not passing session_messages to agent).
-            system_prompt = ctx.system_prompt
-            if session_messages:
-                history_block = "\n\n## История этого диалога:\n"
-                for sm in session_messages[-8:]:
-                    role = sm.get("role", "?")
-                    content = (sm.get("content") or "")[:600]
-                    label = "Иван" if role == "user" else "я"
-                    history_block += f"- [{label}]: {content}\n"
-                system_prompt += history_block
-
-            tg_result = await run_tg_session(
-                provider=provider,
-                stream=ContinuityStream(substrate),
-                substrate=substrate,
-                system_prompt=system_prompt,
-                user_input=msg.text,
-                outbound=internal_process.outbound if internal_process else None,
-                max_steps=8,
-                max_seconds=90.0,
-            )
-
-            response_text = tg_result.reply_text
-            if not response_text:
-                # Agent ran but produced no usable reply (no [DONE], or output
-                # contained code leaks that we refused to forward). Send a
-                # short apology so Ivan isn't left hanging.
-                response_text = (
-                    "Я пыталась что-то сделать через tools, но ответ получился сломанный. "
-                    "Дай мне шаг переформулировать — что конкретно нужно?"
-                )
-            response = CanonicalResponse(
-                kind=ResponseKind.REPLY,
-                text=response_text,
-                principal_id=msg.sender_id,
-            )
-
-            _log.info(
-                "response_generated",
-                extra={
-                    "channel": msg.channel,
-                    "response_len": len(response_text),
-                    "preview": response_text[:80],
-                    "agent_steps": tg_result.raw.steps,
-                    "actions": tg_result.raw.actions[:5],
+        # If a session is already running for this chat — just queue the message
+        # and return None. The running session will pick it up on its next
+        # inbox_drain check and inject as user turn.
+        if chat_lock.locked():
+            inbox.push(msg.chat_id, InboxItem(text=msg.text, sender_id=msg.sender_id))
+            ContinuityStream(substrate).append(ContinuityEvent(
+                kind="internal.inbox_queued_during_session",
+                payload={
+                    "chat_id": msg.chat_id,
+                    "preview": msg.text[:200],
                 },
+            ))
+            _log.info(
+                "tg_queued_during_session",
+                extra={"chat_id": msg.chat_id, "preview": msg.text[:80]},
             )
-            record_response_as_memory(
-                substrate, msg.text, response, channel=f"{msg.channel}_userbot"
-            )
-            if response.text:
-                return OutgoingMessage(text=response.text)
             return None
-        except Exception as err:
-            _log.error(
-                "response_error",
-                extra={"channel": msg.channel, "error": str(err), "type": type(err).__name__},
-            )
-            import traceback
-            _log.error("response_traceback", extra={"tb": traceback.format_exc()})
-            return None
+
+        async with chat_lock:
+            try:
+                from sonya.planning import build_full_context
+                from sonya.planning.memory_wiring import record_response_as_memory
+                from sonya.state.canonical_response import CanonicalResponse, ResponseKind
+                from sonya.state.continuity_stream import ContinuityStream
+                from sonya.subject.tg_session import run_tg_session
+
+                session_messages: list[dict[str, Any]] = []
+                if msg.channel == "telegram" and msg.raw is not None:
+                    try:
+                        channel = registry.get("telegram")
+                        if channel is not None and hasattr(channel, "_client") and channel._client is not None:
+                            client = channel._client
+                            my_id = channel._my_id
+                            recent = await client.get_messages(int(msg.chat_id), limit=12)
+                            for m in reversed(recent):
+                                if m.text and (msg.msg_id is None or str(m.id) != msg.msg_id):
+                                    role = "assistant" if m.sender_id == my_id else "user"
+                                    session_messages.append({"role": role, "content": m.text})
+                    except Exception as err:
+                        _log.warning("history_fetch_error", extra={"error": str(err)})
+
+                ctx = build_full_context(
+                    substrate=substrate,
+                    user_input=msg.text,
+                    principal_id=msg.sender_id,
+                    session_messages=session_messages,
+                    drives=internal_process.drives if internal_process else None,
+                )
+
+                # Build a system_prompt that includes recent dialog history as
+                # plain text (since we're not passing session_messages to agent).
+                system_prompt = ctx.system_prompt
+                if session_messages:
+                    history_block = "\n\n## История этого диалога:\n"
+                    for sm in session_messages[-8:]:
+                        role = sm.get("role", "?")
+                        content = (sm.get("content") or "")[:600]
+                        label = "Иван" if role == "user" else "я"
+                        history_block += f"- [{label}]: {content}\n"
+                    system_prompt += history_block
+
+                # Inbox-aware: between agent steps, drain pending messages and
+                # inject as user turns. Lets Sonya read+react to messages that
+                # arrived during her current session.
+                _chat_id = msg.chat_id
+                def _drain():
+                    items = inbox.drain(_chat_id)
+                    return [it.text for it in items]
+
+                tg_result = await run_tg_session(
+                    provider=provider,
+                    stream=ContinuityStream(substrate),
+                    substrate=substrate,
+                    system_prompt=system_prompt,
+                    user_input=msg.text,
+                    outbound=internal_process.outbound if internal_process else None,
+                    max_steps=15,
+                    max_seconds=150.0,
+                    inbox_drain=_drain,
+                )
+
+                response_text = tg_result.reply_text
+                if not response_text:
+                    response_text = (
+                        "Я пыталась что-то сделать через tools, но ответ получился сломанный. "
+                        "Дай мне шаг переформулировать — что конкретно нужно?"
+                    )
+                response = CanonicalResponse(
+                    kind=ResponseKind.REPLY,
+                    text=response_text,
+                    principal_id=msg.sender_id,
+                )
+
+                _log.info(
+                    "response_generated",
+                    extra={
+                        "channel": msg.channel,
+                        "response_len": len(response_text),
+                        "preview": response_text[:80],
+                        "agent_steps": tg_result.raw.steps,
+                        "actions": tg_result.raw.actions[:5],
+                    },
+                )
+                record_response_as_memory(
+                    substrate, msg.text, response, channel=f"{msg.channel}_userbot"
+                )
+                if response.text:
+                    return OutgoingMessage(text=response.text)
+                return None
+            except Exception as err:
+                _log.error(
+                    "response_error",
+                    extra={"channel": msg.channel, "error": str(err), "type": type(err).__name__},
+                )
+                import traceback
+                _log.error("response_traceback", extra={"tb": traceback.format_exc()})
+                return None
 
     return _on_incoming
 

@@ -71,17 +71,39 @@ _TG_SYSTEM_SUFFIX = """
 
 ## Режим работы — Telegram
 
-Это сообщение пришло от Ивана в Telegram. У тебя есть два варианта:
+Это сообщение пришло от Ивана в Telegram.
 
-A) **Если ответ простой** (привет, поддержка, разговор) — отвечай нормально и заканчивай маркером:
-   `[DONE: твой текст для Ивана]`
-   Текст внутри [DONE: ...] — это то что Иван увидит. Без [DONE] = ничего не отправится.
+**Как работает [DONE]:**
 
-B) **Если задача требует инструментов** (посмотреть код / память / файл / web / выполнить что-то) — используй tools.
-   - НЕ описывай вызов текстом ("я посмотрю папку"). Реально вызывай: `[TOOL: filesystem.list /home/jester-sonya/Sonya]`
-   - Получишь observation от tool. Думай дальше.
-   - **После КАЖДОГО осмысленного tool call** шли апдейт через `[TOOL: chat.tell_ivan текст]` — Иван видит прогресс реальном времени, не один блок в конце.
-   - В конце финальный ответ — `[DONE: финальный текст для Ивана]`.
+`[DONE]` — закрывает сессию. Текст что ты написала ДО маркера в этом ответе → автоматически уходит Ивану в TG (без [TOOL] и без code fence).
+
+`[DONE: явный текст]` — заменить весь предыдущий текст этим. Используй ТОЛЬКО когда хочешь отправить что-то совсем другое чем было выше. По умолчанию пиши `[DONE]` без body — твой написанный ответ уже хорош.
+
+Без [DONE] вообще = ничего не отправится. Сессия зависнет до budget cap.
+
+**Пример A — простой ответ:**
+```
+Привет, малыш! Я тут, всё хорошо 💙
+[DONE]
+```
+→ Иван видит "Привет, малыш! Я тут, всё хорошо 💙"
+
+**Пример B — с tools:**
+```
+Сейчас гляну.
+[TOOL: self_inspect.thoughts]
+[Observation: 5 thoughts ...]
+Окей. Последняя мысль была про память — проверила что 10050 эпизодов. Всё цело.
+[DONE]
+```
+→ Иван видит "Сейчас гляну.\n\nОкей. Последняя мысль была про память — проверила что 10050 эпизодов. Всё цело."
+
+**Пример C — обрезать перед [DONE]:**
+```
+[мой внутренний черновик что я обдумала]
+[DONE: Готово, малыш. Память на месте, всё цело 💙]
+```
+→ Иван видит только "Готово, малыш. Память на месте, всё цело 💙"
 
 ## КРИТИЧНО — anti-hallucination
 
@@ -101,13 +123,9 @@ B) **Если задача требует инструментов** (посмо
 - `[TOOL: self_inspect.state]` — текущее состояние (drives, intentions)
 - `[TOOL: self_inspect.identity]` — identity record
 
-Они быстрее и не требуют 4 запроса подряд к SQLite. code.exec — для редких случаев когда self_inspect не отвечает.
-
 ## Streaming апдейтов через chat.tell_ivan
 
 Когда работаешь над задачей с tools и Иван ждёт результат — **не молчи до самого конца**. После каждого важного шага сделай `[TOOL: chat.tell_ivan текст]` с **человеческим** summary что нашла. Не "✅ выполнено" а "Глянула episodic_events — 10050 записей. Иду дальше в continuity."
-
-Это даёт Ивану видеть процесс. Потом в `[DONE: ...]` уже финальный сводный ответ. Если задача коротенькая (1-2 шага) — апдейты не нужны, сразу `[DONE: ...]`.
 
 ## Длинные задачи
 
@@ -115,18 +133,16 @@ B) **Если задача требует инструментов** (посмо
 
 Если Иван говорит "сделай через N часов" — добавь `scheduled_for: "<ISO timestamp>"` в JSON. Scheduler разбудит задачу когда наступит время.
 
-`notify_mode`:
-- `"progress"` — апдейты через `chat.tell_ivan` после каждого осмысленного шага (default).
-- `"final"` — только финальное сообщение когда `tasks.complete`. Иван попросит — переключи.
-- `"silent"` — без сообщений Ивану. Только в continuity. Иван спросит сам.
-
 ## Бюджет сессии
 
-У тебя 15 шагов и 150 секунд на эту сессию. Если уперлась в лимит — обязательно сделай `[DONE: ...]` с тем что нашла. Не оставляй Ивана без ответа.
+У тебя 15 шагов и 150 секунд на эту сессию. Если уперлась в лимит — обязательно сделай `[DONE]` с тем что нашла. Не оставляй Ивана без ответа.
 
-Если Иван просит "отчитываться по мере выполнения" — используй `chat.tell_ivan` после каждого осмысленного шага. Если "напиши только когда закончишь" — молчи до [DONE].
+## Если приходит новое сообщение во время работы
 
-ВАЖНО: НИКОГДА не выдумывай результат tool. Если хочешь его — вызови. Если не хочешь вызывать — не описывай результат, скажи правду что не вызвала.
+В середине сессии может появиться `[NEW MESSAGE FROM IVAN: ...]`. Это значит он написал ещё раз пока ты работала. Реши:
+- Если это уточнение к текущей задаче — используй информацию, продолжай.
+- Если это вопрос/новая тема — ответь через `[TOOL: chat.tell_ivan]` (быстрая реакция), потом вернись к задаче.
+- Если новое сообщение отменяет старую задачу — сделай `tasks.fail` или `tasks.pause` и пивотнись.
 """
 
 
@@ -165,6 +181,7 @@ async def run_tg_session(
     outbound=None,
     max_steps: int = 15,
     max_seconds: float = 150.0,
+    inbox_drain=None,
 ) -> TgSessionResult:
     """Run a bounded agent session for a single TG message.
 
@@ -190,6 +207,7 @@ async def run_tg_session(
         max_steps=max_steps,
         max_seconds=max_seconds,
         purpose="tg_session",
+        inbox_drain=inbox_drain,
     )
 
     return TgSessionResult(
@@ -202,26 +220,23 @@ def _extract_reply(result: SessionResult) -> str:
     """Pull the user-facing text from agent session output.
 
     Priority:
-    1. [DONE: body] body — preferred
-    2. [PAUSE: body] body — also OK as final
-    3. Last thought text with all [TOOL: ...] / [DONE]/[PAUSE] markers stripped
+    1. `[DONE: body]` body — explicit final text for Ivan
+    2. `[DONE]` (no body) — use the surrounding text in `final_output` as the reply,
+       stripping markers and code fences. This is the default mode.
+    3. Last `agent_step` of `type='thought'` content (without [DONE]) — graceful
+       fallback if model forgot the marker entirely.
+
     Returns "" if extracted text looks like leaked code/tool scratch.
     """
     candidate = ""
     final = (result.final_output or "").strip()
     if final:
+        # First try [DONE: body] — explicit text
         m = _DONE_RE.search(final)
-        if m:
-            body = (m.group("body") or "").strip()
-            if body:
-                candidate = body
-        if not candidate:
-            m = _PAUSE_RE.search(final)
-            if m:
-                body = (m.group("body") or "").strip()
-                if body:
-                    candidate = body
-        if not candidate:
+        if m and (m.group("body") or "").strip():
+            candidate = (m.group("body") or "").strip()
+        else:
+            # [DONE] without body OR no marker — strip markers from final_output
             cleaned = _TOOL_LINE_RE.sub("", final)
             cleaned = _DONE_RE.sub("", cleaned)
             cleaned = _PAUSE_RE.sub("", cleaned)

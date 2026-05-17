@@ -168,6 +168,7 @@ async def run_agent_session(
     max_steps: int = 30,
     max_seconds: float = 1200.0,
     purpose: str = "agent_session",
+    inbox_drain = None,  # Optional callable () -> list[str] of new messages from user
 ) -> SessionResult:
     """Run a ReAct agent session within the single stream.
 
@@ -193,6 +194,23 @@ async def run_agent_session(
         if elapsed > max_seconds:
             result.budget_exceeded = True
             break
+
+        # Inbox: if Ivan sent a new message while we were working, inject it
+        # as a user turn so the agent can read+react mid-flight.
+        if inbox_drain is not None:
+            try:
+                new_msgs = inbox_drain() or []
+            except Exception:
+                new_msgs = []
+            for m in new_msgs:
+                messages.append({
+                    "role": "user",
+                    "content": f"[NEW MESSAGE FROM IVAN]: {m}",
+                })
+                stream.append(ContinuityEvent(
+                    kind="internal.inbox_injected",
+                    payload={"step": step, "preview": m[:300]},
+                ))
 
         # Send a wrap-up nudge in the last 2 steps OR when ~80% of time is gone.
         # This gives the model a chance to emit [DONE: ...] before hard-stop.
