@@ -1,4 +1,0 @@
-﻿data: {"choices":[{"delta":{"content":"Done. ","images":[{"image_url":{"url":"data:image/png;base64,ZmFrZQ=="}}]}}]}
-data: {"choices":[{"delta":{"content":"Image ready"},"finish_reason":"stop"}]}
-data: [DONE]
-

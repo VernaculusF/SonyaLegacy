@@ -33,7 +33,7 @@ else
     echo "!! systemd not configured — falling back to nohup"
     pkill -9 -f 'python.*sonya' 2>/dev/null || true
     sleep 2
-    PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/packages/tg-userbot/src:$PROJECT_DIR/packages/tg-bridge/src" \
+    PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/packages/tg-userbot/src" \
         nohup "$PROJECT_DIR/.venv/bin/python" -m sonya.admin \
         > /tmp/sonya-admin.log 2>&1 &
     echo "Admin started (nohup). Logs: /tmp/sonya-admin.log"

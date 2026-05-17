@@ -10,6 +10,24 @@
 
 ## 1. КРИТИЧНЫЕ (ломают работу)
 
+### 1.4 Память разделена между Telegram и Thoughts
+
+**Замечено:** при общении в Telegram Соня не помнит/не использует свои собственные мысли из thinking loop. И наоборот — thoughts генерируются без знания о недавних разговорах.
+
+**Где:** `src/sonya/planning/context_builder.py` + `src/sonya/subject/internal_loop.py`
+
+**Гипотеза причины:**
+1. `build_full_context` подтягивает episodic_memory через `get_recent(limit=15)` — там должны быть и `internal.thought`, и `incoming.telegram_message`, и `outgoing.response`. Но возможно фильтруется или важности слишком разные.
+2. Thinking loop использует свой собственный `thinking_prompt`, не зовёт `build_full_context` — у него свой short context без recent telegram conversations.
+3. Recent Telegram сообщения подтягиваются из API (`get_messages(chat_id, limit=12)`) — это история чата, но не история мыслей в этом чате.
+
+**Фикс:** Унифицировать context. И thinking loop, и tg-handler должны строиться через **один** `build_full_context`, который включает:
+- personality
+- episodic memory (последние N events ВСЕХ типов: thoughts, incoming, outgoing)
+- recent chat messages для текущего канала (если есть)
+- semantic facts
+- subject state / drives
+
 ### 1.2 SQLite permissions сбрасываются при git reset --hard ✅ ИСПРАВЛЕНО (commit pending)
 
 **Решение:** Создан `deploy/update.sh` — после git reset проверяет права на substrate и снимает stale locks. Также написан корректный systemd unit с `User=jester-sonya` и `ReadWritePaths=/home/jester-sonya/.sonya`. Все операции под одним пользователем — больше нет конфликта root vs jester-sonya.
@@ -77,13 +95,13 @@
 
 ### 4.4 Отсутствуют implementation plans для Phases 6, 8, 9
 
-### 4.5 `src/sonya_runtime/` — legacy директория
+### 4.5 `src/sonya_runtime/` ✅ УДАЛЕНО (commit pending)
 
-См. m-1, m-2.
+Папка `src/sonya_runtime/` удалена целиком (executor, tasks, actions, continuity duplicates). Никем не использовалась. Тесты в `tests/sonya_runtime/` тоже удалены.
 
-### 4.6 tg-bridge пакет не используется
+### 4.6 tg-bridge пакет ✅ УДАЛЕНО (commit pending)
 
-См. M-31, M-32.
+`packages/tg-bridge/` удалён целиком вместе с 14 тестами. Также удалены OpenClaw runner-скрипты в `scripts/` (`launch-openclaw-bridge.vbs`, `run-openclaw-bridge.ps1`, `run-openclaw-worker.ps1`). `pyproject.toml`, systemd unit-ы, deploy/update.sh, admin server PYTHONPATH очищены от ссылок на tg-bridge.
 
 ---
 
@@ -388,13 +406,9 @@ Bridge handler не работает на VPS. main.py использует `bui
 
 В пакете только `client.py` и `tool.py`.
 
-### M-31. tg-bridge тесты импортируют `sonya_runtime.*`
+### M-31. ✅ УДАЛЕНО (см. 4.6)
 
-Если убрать sonya_runtime — 14 тестов разваливаются.
-
-### M-32. tg-bridge/README.md описывает active OpenClaw role
-
-Уже неактуально. tg-bridge не используется.
+### M-32. ✅ УДАЛЕНО (см. 4.6)
 
 ### M-33. `test_main_integration.py` второй тест — тавтология
 
@@ -412,13 +426,9 @@ POSIX vs Windows path по-разному вызывают handler. Сейчас
 
 ## 10. МЕЛКИЕ / ТЕХДОЛГ
 
-### m-1. Dead file: `src/sonya_runtime/continuity/canonical_response.py`
+### m-1. ✅ УДАЛЕНО (см. 4.5)
 
-Дубликат `src/sonya/state/canonical_response.py`. Не импортируется.
-
-### m-2. Dead file: `src/sonya_runtime/continuity/events.py`
-
-Тот же класс что в `src/sonya/state/`. Не импортируется.
+### m-2. ✅ УДАЛЕНО (см. 4.5)
 
 ### m-3. Hardcoded `~/Sonya` в admin server
 

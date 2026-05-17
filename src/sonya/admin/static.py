@@ -75,7 +75,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="nav-item" data-page="core">⚙️ Core</div>
   </div>
   <div class="sidebar-footer">
-    Sonya Environment v0.1<br>Packages: tg-bridge, tg-userbot
+    Sonya Environment v0.1<br>Package: tg-userbot
   </div>
 </div>
 <div class="main">

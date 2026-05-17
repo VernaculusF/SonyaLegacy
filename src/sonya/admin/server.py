@@ -277,7 +277,7 @@ async def api_core_start(request: web.Request) -> web.Response:
     # Build env with PYTHONPATH and toggles
     env = os.environ.copy()
     project_root = os.path.expanduser("~/Sonya")
-    env["PYTHONPATH"] = f"{project_root}/src:{project_root}/packages/tg-userbot/src:{project_root}/packages/tg-bridge/src"
+    env["PYTHONPATH"] = f"{project_root}/src:{project_root}/packages/tg-userbot/src"
 
     if mode == "telegram_only":
         env["SONYA_ENABLE_TELEGRAM"] = "1"

@@ -23,9 +23,10 @@ _TERMINAL_CHARS = {".", "!", "?", ")", "]", "\"", "'", "»", "🖤", "💜", "�
 class OpenRouterProvider:
     """OpenAI-completions-compatible client for OpenRouter and similar gateways.
 
-    Ported from packages/tg-bridge/src/tg_bridge/model_client.py: same retry,
-    same continuation, same overlap trim, same event-stream parsing for image
-    generation. Differences:
+    Provides retry on 429/5xx, continuation when response gets cut off,
+    overlap trim between chunks, and event-stream parsing for image generation.
+
+    Notes:
       * api_key is passed as ProviderSecret, not plaintext dict;
       * complete_image_generation returns CompletionResult with raw images list
         in `raw["images"]`; saving to disk is the caller's responsibility;

@@ -13,8 +13,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["sonya*", "sonya_runtime*", "sonya_shared*"]
+include = ["sonya*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "packages/tg-bridge/src"]
+pythonpath = ["src", "packages/tg-userbot/src"]
 asyncio_mode = "auto"
