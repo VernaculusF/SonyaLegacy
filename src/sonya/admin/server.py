@@ -51,6 +51,17 @@ def _get_substrate(config: AppConfig) -> Substrate:
     return Substrate.open(config.substrate_path, read_only=core_running)
 
 
+def _get_substrate_writable(config: AppConfig) -> Substrate:
+    """Open substrate writable regardless of core status.
+
+    Safe for short admin transactions — SQLite WAL mode handles concurrent
+    writers via brief row-level locking. Core re-reads provider_keys on every
+    `acquire()`, so admin changes (status flips, adds, deletes) are visible
+    immediately without core restart.
+    """
+    return Substrate.open(config.substrate_path, read_only=False)
+
+
 def _is_core_running(config: AppConfig) -> bool:
     return WriteMaster.is_held(config.substrate_path)
 
@@ -635,16 +646,15 @@ async def api_providers_get(request: web.Request) -> web.Response:
 
 
 async def api_providers_settings(request: web.Request) -> web.Response:
-    """Update provider settings (active_provider, default_model, default_base_url)."""
+    """Update provider settings (active_provider, default_model, default_base_url).
+
+    No core-running gate — SQLite WAL handles concurrent admin writes safely.
+    Core re-reads settings on every LLM call.
+    """
     from sonya.providers import KeyStore
     config = request.app["config"]
-    if _is_core_running(config):
-        return web.json_response(
-            {"error": "core is running — substrate is read-only here. Stop core or restart it after changes."},
-            status=409,
-        )
     data = await request.json()
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         store = KeyStore(sub)
         settings = store.set_settings(
@@ -659,7 +669,6 @@ async def api_providers_settings(request: web.Request) -> web.Response:
                 "default_model": settings.default_model,
                 "default_base_url": settings.default_base_url,
             },
-            "note": "Soft-restart core to pick up changes.",
         })
     finally:
         sub.close()
@@ -669,17 +678,12 @@ async def api_providers_keys_add(request: web.Request) -> web.Response:
     """Add a new key. Body: {provider, name, api_key, base_url?, model?, priority?}"""
     from sonya.providers import KeyStore
     config = request.app["config"]
-    if _is_core_running(config):
-        return web.json_response(
-            {"error": "core is running — stop it first to modify keys."},
-            status=409,
-        )
     data = await request.json()
     required = ("provider", "name", "api_key")
     for f in required:
         if not str(data.get(f, "")).strip():
             return web.json_response({"error": f"missing required field: {f}"}, status=400)
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         store = KeyStore(sub)
         # Default base_url per provider
@@ -715,11 +719,9 @@ async def api_providers_keys_update(request: web.Request) -> web.Response:
     """Update a key's metadata. Body any of: name, base_url, model, priority"""
     from sonya.providers import KeyStore
     config = request.app["config"]
-    if _is_core_running(config):
-        return web.json_response({"error": "core is running"}, status=409)
     key_id = request.match_info["key_id"]
     data = await request.json()
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         store = KeyStore(sub)
         if not store.get_key(key_id):
@@ -739,10 +741,8 @@ async def api_providers_keys_update(request: web.Request) -> web.Response:
 async def api_providers_keys_delete(request: web.Request) -> web.Response:
     from sonya.providers import KeyStore
     config = request.app["config"]
-    if _is_core_running(config):
-        return web.json_response({"error": "core is running"}, status=409)
     key_id = request.match_info["key_id"]
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         store = KeyStore(sub)
         if not store.get_key(key_id):
@@ -757,14 +757,12 @@ async def api_providers_keys_status(request: web.Request) -> web.Response:
     """Set status manually: active / disabled / banned"""
     from sonya.providers import KeyStatus, KeyStore
     config = request.app["config"]
-    if _is_core_running(config):
-        return web.json_response({"error": "core is running"}, status=409)
     key_id = request.match_info["key_id"]
     data = await request.json()
     raw = (data.get("status") or "").strip().lower()
     if raw not in {"active", "disabled", "banned"}:
         return web.json_response({"error": "status must be active/disabled/banned"}, status=400)
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         store = KeyStore(sub)
         if not store.get_key(key_id):
