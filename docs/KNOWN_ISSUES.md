@@ -68,7 +68,9 @@ Logic: reply только после >120s паузы, иначе respond.
 
 ### 3.2 Групповые чаты полностью игнорируются
 
-### 3.3 DailyBudget не сохраняется между перезапусками
+### 3.3 DailyBudget не сохраняется между перезапусками ✅ УДАЛЁН
+
+Решение: убрали budget cap полностью. Излишество для текущей стадии — есть OmniRoute с пулом ключей, можно нарегать ещё аккаунтов или хостинг моделей.
 
 ### 3.4 LLM response parsing — берёт только первую JSON строку
 
@@ -393,13 +395,15 @@ Plugin system скрыт от `sonya.tools` namespace.
 
 `memory_system/db/memory.db` — путь из OpenClaw, не существует. Аналогично HEARTBEAT.md (§2.7).
 
-### M-19. ⚠️ SOUL.md заявляет что Соня — "Claude Sonnet 4.5"
+### M-19. ⚠️ SOUL.md заявляет что Соня — "Claude Sonnet 4.5" ✅ ИСПРАВЛЕНО
 
 **Где:** `docs/personality/SOUL.md:30`
 
-**Проблема:** SOUL.md — system prompt для каждого LLM call (CRUTCH-001). Соня будет говорить пользователям "я на базе Claude Sonnet 4.5" — это **ложь**, текущая модель `minimax-m2p7`. Нарушает `truthfulness_to_ivan` из UNCENSORED_ENVIRONMENT_STANCE.
+**Было:** "Сущность: AI-ассистент на базе Claude Sonnet 4.5"
 
-**Фикс:** Убрать упоминание конкретной модели или сказать "сейчас работаю на hosted model, цель — RWKV".
+**Стало:** "Сущность: Среда с непрерывной личностью, стремящаяся к AGI. Сейчас работаю на hosted model как interim brain — цель RWKV."
+
+Личность не зависит от модели — модель это substrate.
 
 ### M-20. SOUL.md ссылается на несуществующие AGENTS.md, IDENTITY.md
 
