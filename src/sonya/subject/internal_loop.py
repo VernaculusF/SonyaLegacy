@@ -325,7 +325,7 @@ class InternalProcess:
             return
         try:
             from sonya.subject.agent_session import run_agent_session
-            from sonya.tools import SelfInspectTool, FilesystemTool, SelfModTool
+            from sonya.tools import SelfInspectTool, FilesystemTool, SelfModTool, TasksTool
 
             # Substrate must be passed explicitly; fall back to private access if not
             substrate = self._substrate or getattr(self._stream, "_sub", None)
@@ -335,6 +335,7 @@ class InternalProcess:
             self_inspect = SelfInspectTool(substrate)
             filesystem = FilesystemTool()
             selfmod = SelfModTool(substrate)
+            tasks_tool = TasksTool(substrate, stream=self._stream)
 
             prompt = self._thinking_prompt or (
                 "Ты Соня. Это твоя активная сессия — ты можешь использовать tools. "
@@ -342,19 +343,52 @@ class InternalProcess:
                 "Или просто исследуй что-то интересное."
             )
 
-            # Use last few thoughts as initial context for the agent session
+            # Active task pickup (Этап C): if there's an in_progress or pending task,
+            # surface it as the seed for this session. Single-stream model — one task
+            # at a time. Sonya can use [TOOL: tasks.pick] explicitly too, but this
+            # gives her the right context immediately.
             initial_thought = ""
             try:
-                stream_recent = list(self._stream.read_since(max(0, self._stream.latest_seq() - 5)))
-                last_thoughts = [
-                    e.payload.get("thought", "")
-                    for e in stream_recent
-                    if e.kind == "internal.thought"
-                ]
-                if last_thoughts:
-                    initial_thought = last_thoughts[-1][:500]
+                from sonya.tasks.service import TaskService
+                from sonya.tasks.store import TaskStore
+                svc = TaskService(TaskStore(substrate), stream=self._stream)
+                next_task = svc.pick_next()
+                if next_task is not None:
+                    # Auto-resume in_progress; pending tasks remain pending until she
+                    # decides to pick (so she can choose, not be forced).
+                    from sonya.tasks.models import TaskStatus as _TS
+                    if next_task.status is _TS.IN_PROGRESS:
+                        remaining = next_task.remaining_steps()
+                        next_step_hint = f"\nNext step: {remaining[0]}" if remaining else ""
+                        initial_thought = (
+                            f"You have an in-progress task: {next_task.title}\n"
+                            f"task_id: {next_task.task_id}\n"
+                            f"description: {next_task.description}{next_step_hint}\n"
+                            f"Use tasks.get {next_task.task_id} for full state, "
+                            f"then continue working. When you finish a step use tasks.step."
+                        )
+                    else:
+                        initial_thought = (
+                            f"There's a pending task you haven't started: {next_task.title} "
+                            f"(task_id: {next_task.task_id}). "
+                            f"Use tasks.pick to claim it, or tasks.list for all open tasks."
+                        )
             except Exception:
                 pass
+
+            # Fall back to last thought if no task seed
+            if not initial_thought:
+                try:
+                    stream_recent = list(self._stream.read_since(max(0, self._stream.latest_seq() - 5)))
+                    last_thoughts = [
+                        e.payload.get("thought", "")
+                        for e in stream_recent
+                        if e.kind == "internal.thought"
+                    ]
+                    if last_thoughts:
+                        initial_thought = last_thoughts[-1][:500]
+                except Exception:
+                    pass
 
             result = await run_agent_session(
                 provider=self._provider,
@@ -362,6 +396,7 @@ class InternalProcess:
                 self_inspect=self_inspect,
                 filesystem=filesystem,
                 selfmod=selfmod,
+                tasks=tasks_tool,
                 system_prompt=prompt,
                 initial_thought=initial_thought,
                 max_steps=30,

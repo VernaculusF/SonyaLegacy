@@ -16,6 +16,7 @@ from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.self_inspect import SelfInspectTool
 from sonya.tools.selfmod_tool import SelfModTool
+from sonya.tools.tasks_tool import TasksTool
 
 
 class AgentProvider(Protocol):
@@ -58,6 +59,20 @@ TOOL_DESCRIPTIONS = """Available tools:
 - selfmod.rollback [proposal_id] [reason?] — restore pre-state from disk + hot-reload again
 - selfmod.soft_restart [reason?] — trigger soft-restart of runtime task (channels/internal_process re-built from reloaded modules; substrate + admin survive). Use after applying changes to main.py / config.py / core that don't hot-reload.
 
+- tasks.create [title | description? | step1; step2; ...] — create a new task. description and steps optional. Returns task_id.
+- tasks.list [status_filter?] — list tasks. status_filter: pending / in_progress / blocked / done / failed / open (= all unresolved). No filter = recent 50.
+- tasks.get [task_id] — full details of one task (plan, completed steps, result).
+- tasks.pick — pick the next task to work on (resumes in_progress, otherwise picks oldest pending) and marks it in_progress.
+- tasks.plan [task_id | step1; step2; ...] — set or replace the plan_steps for a task.
+- tasks.step [task_id | step_idx | summary] — mark one plan step as done with a short summary.
+- tasks.complete [task_id | result?] — mark task done with a final result string.
+- tasks.fail [task_id | reason] — mark task failed.
+- tasks.block [task_id | blocker] — block on Ivan / external. Use this when waiting on approval / OAuth / API key etc.
+- tasks.unblock [task_id] — unblock; resumes as in_progress.
+- tasks.pause [task_id] — return in_progress task to pending; you'll pick it up later.
+
+Tasks survive across sessions and restarts. When an active session starts you pick up your in_progress task. Use them for any work that takes longer than one session.
+
 IMPORTANT: Use exactly ONE tool per response. Write it as:
 [TOOL: tool_name arg]
 
@@ -76,6 +91,7 @@ async def run_agent_session(
     filesystem: FilesystemTool,
     system_prompt: str,
     selfmod: SelfModTool | None = None,
+    tasks: TasksTool | None = None,
     initial_thought: str = "",
     max_steps: int = 30,
     max_seconds: float = 1200.0,
@@ -126,7 +142,7 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks)
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -169,6 +185,7 @@ def _execute_tool(
     filesystem: FilesystemTool,
     stream: ContinuityStream | None = None,
     selfmod: SelfModTool | None = None,
+    tasks: TasksTool | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
@@ -276,6 +293,52 @@ def _execute_tool(
             if selfmod is None:
                 return "[ERROR] selfmod tool not configured"
             return selfmod.soft_restart_runtime(arg.strip())
+
+        # --- tasks.* family ---
+        elif name == "tasks.create":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.create(arg)
+        elif name == "tasks.list":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.list(arg)
+        elif name == "tasks.get":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.get(arg)
+        elif name == "tasks.pick":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.pick(arg)
+        elif name == "tasks.plan":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.plan(arg)
+        elif name == "tasks.step":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.step(arg)
+        elif name == "tasks.complete":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.complete(arg)
+        elif name == "tasks.fail":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.fail(arg)
+        elif name == "tasks.block":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.block(arg)
+        elif name == "tasks.unblock":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.unblock(arg)
+        elif name == "tasks.pause":
+            if tasks is None:
+                return "[ERROR] tasks tool not configured"
+            return tasks.pause(arg)
 
         else:
             return f"[ERROR] Unknown tool: {name}"

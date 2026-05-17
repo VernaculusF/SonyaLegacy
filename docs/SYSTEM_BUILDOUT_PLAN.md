@@ -109,37 +109,25 @@
 
 ---
 
-### Этап C: Task runtime — **+5 пунктов**
+### Этап C: Task runtime — **+5 пунктов** ✅ ЗАКРЫТ
 
-**Цель:** Соня получает задачу → работает над ней между сессиями → возвращается с результатом.
-
-**Артефакты:**
-
-- substrate v7: таблица `tasks`:
-  - `task_id, title, description, status (pending/in_progress/blocked/done/failed), created_at, updated_at, deadline, parent_task_id, result, plan_steps_json, completed_steps_json, principal_id`
-
-- `src/sonya/tasks/store.py` — TaskStore CRUD
-- `src/sonya/tasks/service.py` — TaskService:
-  - `create(title, description, deadline)`
-  - `set_in_progress(task_id)`
-  - `add_step(task_id, step)`
-  - `mark_step_done(task_id, step_idx, result)`
-  - `complete(task_id, final_result)`
-  - `fail(task_id, reason)`
-  - `block(task_id, blocker)` — например "ждёт ответа от Ивана"
-
-- Tool `tasks.create / .list / .pick / .step / .complete / .fail` — Соня сама управляет
-
-- Active session логика: при старте session проверяет `tasks.list status=in_progress` — если есть, работает над ней до DONE/PAUSE. Иначе свободный режим.
-
-- Idle thinking тоже видит pending tasks и может спланировать.
+**Что сделано:**
+- substrate v7: таблица `tasks` (task_id, title, description, status, principal_id, parent_task_id, deadline, plan_steps_json, completed_steps_json, blocker, result, created_at, updated_at) + 4 индекса
+- `src/sonya/tasks/models.py` — `Task` dataclass, `TaskStatus` enum (pending/in_progress/blocked/done/failed), `TaskNotFoundError`, `TaskTransitionError`, `Task.remaining_steps()` helper
+- `src/sonya/tasks/store.py` — `TaskStore` CRUD: `create`, `get`, `list_all`, `list_open`, `update_status`, `set_blocker`, `set_result`, `replace_plan_steps`, `append_completed_step`
+- `src/sonya/tasks/service.py` — `TaskService` business logic: `create / set_in_progress / pause / set_plan / mark_step_done / complete / fail / block / unblock / pick_next`. Emits `task.created / picked_up / step_done / completed / failed / blocked / unblocked / paused / plan_set` continuity events.
+- `src/sonya/tools/tasks_tool.py` — `TasksTool` agent-facing wrapper, all methods return strings: `create / list / get / pick / plan / step / complete / fail / block / unblock / pause`
+- Wired in `agent_session.run_agent_session` + dispatcher: `tasks.*` family in TOOL_DESCRIPTIONS
+- `internal_loop._run_active_session` теперь вызывает `TaskService.pick_next()` при старте: если есть `in_progress`, surfaces задачу как initial_thought с next-step hint и task_id; если только `pending` — даёт мягкую подсказку о доступных задачах. Pending не auto-picked — Соня сама решает через `tasks.pick`.
+- `context_builder.build_full_context` добавил блок "Мои текущие задачи" — список open tasks (pending/in_progress/blocked) виден И thinking-loop'у И telegram-replyю. Один поток = один task list.
+- 27 тестов в `tests/sonya/test_tasks.py` — store, service, tool, schema v7 fresh substrate
 
 **Что это даёт:**
+- Долгие задачи между сессиями: Соня может работать над "написать Discord канал" 3 сессии подряд, помня где остановилась.
+- Block on Ivan: при `tasks.block` задача переходит в blocked со ссылкой на блокер. Когда Иван разблокирует через admin (или Соня видит ответ) — `tasks.unblock` возвращает в in_progress.
+- Видимость задач в обоих контекстах: telegram reply знает что есть pending tasks; thinking loop видит in_progress на своём tick.
 
-- Иван даёт задачу "напиши Discord канал-адаптер" — Соня создаёт task, разбивает на шаги (read existing telegram channel, design discord shape, write file via selfmod, validate, apply), работает между сессиями.
-- Долгие задачи выживают рестарт.
-
-**Effort:** 6-8 часов.
+**Effort actual:** ~3 ч.
 
 ---
 
@@ -227,9 +215,9 @@
 
 | Этап | Прирост | Effort | Зависимости |
 |------|---------|--------|-------------|
-| A: Self-mod tools | +5 | 4-6 ч | — |
-| B: Channel abstraction | +3 | 3-4 ч | — |
-| C: Task runtime | +5 | 6-8 ч | A (selfmod for new code) |
+| A: Self-mod tools | +5 | 4-6 ч | — | ✅ |
+| B: Channel abstraction | +3 | 3-4 ч | — | ✅ |
+| C: Task runtime | +5 | 6-8 ч | A (selfmod for new code) | ✅ |
 | D: Initiative | +2 | 2-3 ч | B (channel.send) |
 | E: Tool ecosystem | +3-5 | 4-5 ч | A (для approval-gated) |
 | F: Consolidation+drift | +2-3 | 3-4 ч | A |

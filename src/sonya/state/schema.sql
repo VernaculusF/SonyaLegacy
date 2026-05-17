@@ -243,3 +243,30 @@ CREATE TABLE IF NOT EXISTS semantic_facts (
 
 CREATE INDEX IF NOT EXISTS idx_semantic_type ON semantic_facts(fact_type);
 CREATE INDEX IF NOT EXISTS idx_semantic_confidence ON semantic_facts(confidence);
+
+-- ====================================================================
+-- v7 additions: task runtime (long-running multi-session work).
+-- See [docs/SYSTEM_BUILDOUT_PLAN.md] Этап C.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    -- pending | in_progress | blocked | done | failed
+    principal_id TEXT,
+    parent_task_id TEXT,
+    deadline TEXT,
+    plan_steps_json TEXT NOT NULL DEFAULT '[]',
+    completed_steps_json TEXT NOT NULL DEFAULT '[]',
+    blocker TEXT NOT NULL DEFAULT '',
+    result TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_principal ON tasks(principal_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);

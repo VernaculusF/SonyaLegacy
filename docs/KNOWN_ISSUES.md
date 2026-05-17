@@ -557,3 +557,5 @@ S-12 — реальный риск, нужен тест на `..`/symlinks/forbi
 | `bd864d5` | C-6/7 anchor protection, S-12 filesystem sandbox, S-13 substrate read-only, S-14 episodic decay, S-11 tool error logging, S-16 graceful signals, S-8/9/10, M-5 |
 | `6a7b51b` | §9 batch — env.example, default model, drives, lock_path, hot_loader export, SOUL/HEARTBEAT cleanup, doc map, WAL+FK pragmas, admin packaging |
 | pending | 1.4 unified memory — thinking loop + telegram через один build_full_context, +recent thoughts/messages в context |
+| `3eb4d46` | logging: переименован key `module` → `channel_module`/`target_module` в `_log.extra` (LogRecord reserved attr — крашил core при старте после селфмода каналов) |
+| pending | Этап C — Task runtime: substrate v7 `tasks` table, `sonya/tasks/` (models/store/service), `tools/tasks_tool.py`, wired в agent_session + internal_loop, open tasks в `build_full_context` (+27 тестов, 329 passing) |

@@ -117,6 +117,25 @@ def build_full_context(
     if identity.self_model:
         system_prompt += f"\n\n## Self-model:\n{identity.self_model}"
 
+    # Open tasks (Этап C): surface unresolved tasks so thinking loop and telegram
+    # replies both know what's in progress / pending. Keeps "one stream of
+    # consciousness" — same task list visible everywhere.
+    try:
+        from sonya.tasks.store import TaskStore
+        open_tasks = TaskStore(substrate).list_open()
+        if open_tasks:
+            tasks_block = "\n\n## Мои текущие задачи:\n"
+            for t in open_tasks[:10]:
+                done = len(t.completed_steps)
+                total = len(t.plan_steps)
+                progress = f" [{done}/{total}]" if total else ""
+                tasks_block += f"- [{t.status.value}] {t.task_id}: {t.title}{progress}\n"
+                if t.status.value == "blocked" and t.blocker:
+                    tasks_block += f"    blocker: {t.blocker[:120]}\n"
+            system_prompt += tasks_block
+    except Exception:
+        pass
+
     # Crutch awareness
     system_prompt += (
         "\n\n## ⚠️ Ограничения текущей реализации:\n"

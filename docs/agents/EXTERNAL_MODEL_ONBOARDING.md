@@ -42,13 +42,19 @@ Read these in order to understand the stance:
 
 ## 4. Current overall progress
 
-**Realistic score: ~9/100 toward base AGI.**
+**Realistic score: ~17/100 toward base AGI.** (was ~9 before Этап A/B/C)
 
-The substrate exists. Identity exists. Telegram works. That's basically it operationally.
+The substrate exists. Identity exists. Telegram works as one of N channels (channel registry now lives, second channel is one `def build(config)` factory away). Self-modification has full hot-reload pipeline including main.py / config.py via supervisor soft-restart. Task runtime persists multi-session work.
 
-Most subsystems described in `docs/architecture/` and `docs/cognition/` exist as code in `src/sonya/` but **are not instantiated in the live runtime** (`src/sonya/main.py`). Tests pass on isolated modules; production calls them never.
+Most "cognitive" subsystems described in `docs/architecture/` and `docs/cognition/` (consolidation, drift detection, gap detection, drives integration) exist as code but **are still not wired into the live tick** (`internal_loop.py`). Tests pass on isolated modules; production calls them never. Этапы F (consolidation+drift) and G (drives) close those gaps.
 
-If you read a "Phase X closed ✅" claim in `docs/ROADMAP.md`, treat it as "code merged + isolated tests pass" not "running in production".
+If you read a "Phase X closed ✅" claim in `docs/ROADMAP.md`, treat it as "code merged + isolated tests pass" not "running in production". The honest closed list lives in `docs/SYSTEM_BUILDOUT_PLAN.md` §3.
+
+### Closed etapы (real, hot in runtime)
+
+- **A. Self-mod tools** — `selfmod.propose / test_sandbox / validate / apply / list / get / governed / check_governed / rollback / soft_restart`. `apply` does pre-state capture → write → `importlib.reload` → drop-and-recreate channels → 60s watch window with auto-rollback. `soft_restart` rebuilds `_RuntimeBundle` while substrate + admin survive. Sandbox enforced via `SELFMOD_WRITABLE_SUBPATHS` / `SELFMOD_FORBIDDEN_SUBPATHS`.
+- **B. Channel abstraction** — `src/sonya/channels/{base,registry,telegram}.py`. `Channel` Protocol, `ChannelRegistry`, auto-discovery via `_build_channels` sweeping `channels/*.py` for `def build(config)` factory. Telegram is the only live channel; Discord etc. is a single proposal away.
+- **C. Task runtime** — substrate v7 `tasks` table; `sonya/tasks/{models,store,service}.py`; `sonya/tools/tasks_tool.py`. `tasks.create / list / get / pick / plan / step / complete / fail / block / unblock / pause`. `internal_loop._run_active_session` auto-surfaces in_progress task as initial_thought; `build_full_context` shows open tasks block to thinking and telegram alike.
 
 ## 5. Operational reality
 
@@ -64,19 +70,19 @@ OpenClaw is **fully decoupled** as of mid-May 2026. No `.openclaw/`, no `memory.
 
 ### 5.2 Channels
 
-Only one: **Telegram userbot via Telethon**.
+`src/sonya/channels/`. `Channel` Protocol, `ChannelRegistry`, auto-discovery in `_build_channels`. Live channels right now: **Telegram userbot via Telethon** (`channels/telegram.py`). To add Discord/web/voice: write `channels/discord.py` with `def build(config) -> Channel`, soft-restart, done. No edits to `main.py` needed.
 
-Logic is hardcoded in `src/sonya/main.py` (`_start_userbot`, `_tg_handler`, `_on_incoming`). There is **no channel abstraction** — adding Discord/web/voice requires writing them inline in main.py.
-
-### 5.3 Substrate state (v6)
+### 5.3 Substrate state (v7)
 
 Tables that exist:
 
-- `subjects`, `principals`, `identity_record`
+- `subjects`, `principals`, `identity_record`, `relation_anchor_bindings`
 - `episodic_events`, `semantic_facts`
-- `continuity_events`, `pending_intentions`
+- `continuity_events`, `continuity_snapshots`, `pending_intentions`
 - `harness_policy_rules`, `approval_requests`, `audit_events`
-- `selfmod_proposals`, `skills`, `capability_gaps`, `drift_signals`
+- `self_mod_proposals`, `self_mod_validation_results`
+- `skills`, `capability_gaps`
+- `tasks` (v7: long-running multi-session work)
 
 Tables that do **not** exist (despite being promised in ROADMAP §14/§15):
 
