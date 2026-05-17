@@ -97,13 +97,14 @@ def build_full_context(
 
         # Recent INTERNAL thoughts — separate block so they're never crowded out by
         # tg-traffic. This is what Sonya was missing in the "I don't see my past
-        # thinking" complaint.
-        recent_thoughts = [e for e in recent_continuity if e.kind == "internal.thought"][-10:]
+        # thinking" complaint. Keep it tight — 5 thoughts × 400 chars max — to
+        # prevent the model from copying old thoughts verbatim into TG replies.
+        recent_thoughts = [e for e in recent_continuity if e.kind == "internal.thought"][-5:]
         thoughts_block = "\n\n## Мои недавние мысли (idle thinking ticks):\n"
         if recent_thoughts:
             for e in recent_thoughts:
                 ts = (e.created_at or "")[:16]
-                text = (e.payload.get("thought") or "")[:1500]
+                text = (e.payload.get("thought") or "")[:400]
                 thoughts_block += f"- [{ts}] {text}\n\n"
         else:
             thoughts_block += (
