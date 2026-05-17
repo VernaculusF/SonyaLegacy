@@ -1,9 +1,7 @@
 [Unit]
-Description=Sonya core runtime (substrate + thinking + telegram userbot)
+Description=Sonya admin web panel
 After=network-online.target
 Wants=network-online.target
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,17 +10,11 @@ Group=jester-sonya
 WorkingDirectory=/home/jester-sonya/Sonya
 EnvironmentFile=/home/jester-sonya/Sonya/.env
 Environment="PYTHONPATH=/home/jester-sonya/Sonya/src:/home/jester-sonya/Sonya/packages/tg-userbot/src:/home/jester-sonya/Sonya/packages/tg-bridge/src"
-ExecStart=/home/jester-sonya/Sonya/.venv/bin/python -m sonya
+ExecStart=/home/jester-sonya/Sonya/.venv/bin/python -m sonya.admin
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-KillSignal=SIGTERM
-TimeoutStopSec=15
-
-# Ensure ~/.sonya directory exists and is writable by sonya user
-ReadWritePaths=/home/jester-sonya/.sonya
-ReadWritePaths=/home/jester-sonya/Sonya
 
 [Install]
 WantedBy=multi-user.target

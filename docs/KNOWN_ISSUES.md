@@ -10,17 +10,13 @@
 
 ## 1. КРИТИЧНЫЕ (ломают работу)
 
-### 1.2 SQLite permissions сбрасываются при git reset --hard
+### 1.2 SQLite permissions сбрасываются при git reset --hard ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** VPS deploy flow
+**Решение:** Создан `deploy/update.sh` — после git reset проверяет права на substrate и снимает stale locks. Также написан корректный systemd unit с `User=jester-sonya` и `ReadWritePaths=/home/jester-sonya/.sonya`. Все операции под одним пользователем — больше нет конфликта root vs jester-sonya.
 
-**Проблема:** `chmod 666` на substrate db нужен после каждого reset.
+### 1.3 Зомби-процессы от nohup деплоев ✅ ИСПРАВЛЕНО (commit pending)
 
-**Фикс:** Сейчас обходим вручную в deploy команде. Правильно — systemd User или setup-script.
-
-### 1.3 Зомби-процессы от nohup деплоев
-
-**Статус:** Workaround — `pkill -9 -f 'python.*sonya'` вместо `pkill -9 python3`. Идеально — systemd.
+**Решение:** systemd unit-ы для `sonya.service` и `sonya-admin.service` с `KillSignal=SIGTERM` и `TimeoutStopSec=15`. При `systemctl stop` процесс получает SIGTERM, делает graceful shutdown (lifecycle.stopped event), затем kill. Зомби-shell от nohup устранены. Fallback на `pkill -9 -f 'python.*sonya'` остался в `update.sh` для случая когда systemd не настроен.
 
 ---
 
@@ -116,42 +112,6 @@ Thinking loop генерирует мысли, но не может отправ
 
 ## 7. КРИТИЧНЫЕ (security / data)
 
-### C-1. Реальные секреты закоммичены в git
-
-**Где:** `.env` (tracked), `tg.session` (tracked), `docs/operations/VPS.md` (открытым текстом).
-
-**Что внутри:** `SONYA_OPENROUTER_API_KEY`, `SONYA_TG_API_HASH`, `SONYA_TG_API_ID`, `SONYA_ADMIN_PASSWORD=1990`, plus session файл с правами доступа к Telegram аккаунту Сони.
-
-**Почему критично:** Даже приватный репо — если кто-то получит доступ или ты случайно сделаешь публичным, всё уйдёт. `.gitignore` НЕ содержит `.env`.
-
-**Фикс:**
-1. `git rm --cached .env tg.session`
-2. Добавить `.env`, `tg.session*` в `.gitignore`
-3. Ротировать **все** ключи (openrouter, telegram, admin password)
-4. Удалить секреты из VPS.md, заменить на placeholders
-
-### C-2. `httpx.AsyncClient(verify=False)` глобально
-
-**Где:** `src/sonya/main.py:66`, `src/sonya/admin/server.py:163`.
-
-**Проблема:** TLS verification выключен безусловно. Сейчас работает потому что OmniRoute локальный, но если когда-нибудь `SONYA_LLM_API_BASE` будет публичным — MITM-уязвимо.
-
-**Фикс:** Сделать env-флаг `SONYA_LLM_INSECURE=1`, по умолчанию `verify=True`.
-
-### C-3. Admin panel — 0.0.0.0:8877, no HTTPS, password=1990, cookie=password
-
-**Где:** `src/sonya/admin/server.py:354`, GCP firewall `allow-sonya-admin: 0.0.0.0/0`.
-
-**Проблемы:**
-1. Биндится на все интерфейсы → доступ из интернета
-2. Пароль `1990` (4-значное число)
-3. Cookie value буквально равен паролю (`set_cookie("sonya_auth", pwd)`) — единственная утечка даёт 30 дней доступа
-4. Нет HTTPS — всё в plaintext
-
-**Фикс:**
-- Bind на `127.0.0.1`, доступ через SSH-туннель (`ssh -L 8877:localhost:8877`)
-- Или: hashed password + signed token + Caddy/nginx с Let's Encrypt
-- Сменить пароль на нормальный
 
 ### C-4. Admin "stop core" использует SIGKILL без graceful shutdown
 

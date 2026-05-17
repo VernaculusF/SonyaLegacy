@@ -1,80 +1,103 @@
-# Sonya — Deployment notes
+# Sonya — Deployment
 
-This directory holds operational artefacts for running Sonya as a service.
-
-## Layout assumed on a VPS
+## Реальный layout на VPS
 
 ```
-/opt/sonya/
-  .git/                   # checkout of this repo
-  .venv/                  # virtualenv
-  .env                    # secrets and config (mode 600)
-  var/
-    sonya_substrate.db    # substrate
-    health.json           # health-ping
+/home/jester-sonya/
+├── Sonya/                    # git checkout (this repo)
+│   ├── .venv/                # virtualenv
+│   ├── .env                  # secrets and config (mode 600)
+│   ├── tg.session            # Telegram userbot auth (NOT in git)
+│   └── deploy/
+│       ├── systemd/
+│       │   ├── sonya.service        # core runtime
+│       │   └── sonya-admin.service  # web admin panel
+│       └── update.sh                # safe pull + restart
+└── .sonya/
+    ├── sonya_substrate.db    # subject substrate (memory, identity, state)
+    └── health.json           # health-ping
 ```
 
-## Local quick start
+## Установка systemd-юнитов (один раз)
+
+```bash
+sudo cp /home/jester-sonya/Sonya/deploy/systemd/sonya.service /etc/systemd/system/
+sudo cp /home/jester-sonya/Sonya/deploy/systemd/sonya-admin.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable sonya-admin    # admin запускается всегда
+# core запускается только когда нужно (через admin panel)
+sudo systemctl start sonya-admin
+```
+
+После этого admin панель будет доступна на `http://VPS_IP:8877` (если firewall открыт).
+
+Запуск/остановка ядра — через admin панель (вкладка `⚙️ Core`).
+
+## Обновление кода
+
+```bash
+ssh jester-sonya@VPS_IP
+bash ~/Sonya/deploy/update.sh
+```
+
+Скрипт:
+- pull latest develop
+- проверит права на substrate
+- удалит stale lock файлы
+- перезапустит systemd-сервисы (или nohup-fallback если systemd не настроен)
+
+## Запуск без systemd (fallback)
+
+Если systemd ещё не настроен — admin запускается вручную:
+
+```bash
+cd ~/Sonya
+PYTHONPATH=src:packages/tg-userbot/src:packages/tg-bridge/src \
+    nohup .venv/bin/python -m sonya.admin > /tmp/sonya-admin.log 2>&1 &
+```
+
+Затем core можно запустить через admin UI.
+
+## Локальная разработка
 
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate           # PowerShell: . .venv/Scripts/Activate.ps1
 pip install -e .
-SONYA_SUBSTRATE_PATH=$PWD/var/sonya_substrate.db \
-SONYA_HEALTH_PATH=$PWD/var/health.json \
-SONYA_LOG_LEVEL=INFO \
+
+# В одном терминале — admin (по умолчанию 127.0.0.1:8877):
+python -m sonya.admin
+
+# В другом — core напрямую (для отладки):
 python -m sonya
 ```
 
-`Ctrl+C` triggers a graceful shutdown (lifecycle.stopping → continuity event → lifecycle.stopped).
-
-## VPS install
-
-```bash
-sudo install -d -o sonya -g sonya /opt/sonya
-sudo -u sonya git clone <repo-url> /opt/sonya
-cd /opt/sonya
-sudo -u sonya python3.11 -m venv .venv
-sudo -u sonya .venv/bin/pip install -e .
-sudo install -m 600 -o sonya -g sonya /dev/stdin /opt/sonya/.env <<'EOF'
-SONYA_SUBSTRATE_PATH=/opt/sonya/var/sonya_substrate.db
-SONYA_HEALTH_PATH=/opt/sonya/var/health.json
-SONYA_LOG_LEVEL=INFO
-EOF
-sudo cp deploy/systemd/sonya.service /etc/systemd/system/sonya.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now sonya
-sudo systemctl status sonya
-journalctl -u sonya -f
-```
-
-## What is and is not in `.env`
-
-In `.env`:
-
-- `SONYA_SUBSTRATE_PATH` — path to substrate SQLite file.
-- `SONYA_HEALTH_PATH` — path to health-ping JSON.
-- `SONYA_LOG_LEVEL` — `DEBUG` / `INFO` / `WARNING` / `ERROR`.
-- Future provider/channel secrets land here in later phases.
-
-Not in `.env`:
-
-- subject identity, principals, relation anchors — these live inside the substrate, not the env.
-
-## Backup
-
-Substrate is one SQLite file; copy it while the process is stopped, or use `sqlite3 .backup` against a live process.
+## Backup substrate
 
 ```bash
 sudo systemctl stop sonya
-sudo -u sonya cp /opt/sonya/var/sonya_substrate.db /opt/sonya/var/backup-$(date +%F).db
+cp ~/.sonya/sonya_substrate.db ~/.sonya/backup-$(date +%F).db
 sudo systemctl start sonya
+```
+
+Hot backup (без остановки) — через `sqlite3 .backup`:
+
+```bash
+sqlite3 ~/.sonya/sonya_substrate.db ".backup ~/.sonya/backup-$(date +%F).db"
 ```
 
 ## Multi-process safety
 
-A single sonya process is the write-master at any time. Starting a second instance against the same substrate refuses with exit code 3 and a write-master contention log entry.
+Один core process — write-master substrate. Запуск второго инстанса против того же файла = exit code 3 + лог `write-master contention`.
+
+Admin панель открывает substrate отдельно для чтения (см. KNOWN_ISSUES C-5 — пока есть гонка при запущенном core).
 
 ## Stopping cleanly
 
-`systemctl stop sonya` sends `SIGTERM`. Sonya emits `subject.lifecycle.stopping`, appends `subject.lifecycle.stopped` to continuity, and exits within `TimeoutStopSec`.
+`systemctl stop sonya` → SIGTERM → `subject.lifecycle.stopping` → `subject.lifecycle.stopped` → exit в пределах `TimeoutStopSec=15`.
+
+## Что НЕ хранится в `.env`
+
+- subject identity, principals, relation anchors — они в substrate
+- conversation history — substrate (episodic memory)
+- session_secret админки — генерится в памяти процесса при старте
