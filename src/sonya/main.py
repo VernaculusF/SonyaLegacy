@@ -5,6 +5,13 @@ import signal
 import sys
 from typing import Any
 
+from sonya.channels import (
+    Channel,
+    ChannelDeps,
+    ChannelMessage,
+    ChannelRegistry,
+    OutgoingMessage,
+)
 from sonya.config import AppConfig, load_config
 from sonya.logging import get_logger, setup_logging
 from sonya.runtime import (
@@ -22,11 +29,7 @@ from sonya.state import (
     SubstrateVersionError,
     seed_identity_if_empty,
 )
-from sonya.subject import (
-    BusAwareContinuityStream,
-    BusAwareSubjectStateStore,
-    InternalProcess,
-)
+from sonya.subject import InternalProcess
 
 _log = get_logger("sonya.main")
 
@@ -71,16 +74,131 @@ def _create_thinking_provider(config: AppConfig):
                 resp.raise_for_status()
                 text = resp.text.strip()
                 import json as _json
-                # Robust parse: try whole text first, fall back to first JSON line
                 try:
                     data = _json.loads(text)
                 except _json.JSONDecodeError:
-                    # Some proxies return concatenated JSONL — take first valid object
                     first_line = text.split("\n", 1)[0].strip()
                     data = _json.loads(first_line)
                 return data["choices"][0]["message"]["content"]
 
     return _ThinkingProvider()
+
+
+def _build_incoming_handler(
+    *,
+    substrate: Substrate,
+    internal_process: InternalProcess,
+    provider: Any,
+    registry: ChannelRegistry,
+):
+    """Construct the channel-agnostic incoming-message handler.
+
+    The handler:
+      1. Records the incoming event in continuity_stream (under
+         `incoming.<channel>_message` kind).
+      2. Returns a planned OutgoingMessage if planner produced text, or None.
+
+    Per-channel session_messages are pulled from the channel itself when
+    available (handlers can read from raw event for transports that support
+    chat history fetch — currently only Telegram does).
+    """
+    async def _on_incoming(msg: ChannelMessage) -> OutgoingMessage | None:
+        from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
+
+        ContinuityStream(substrate).append(ContinuityEvent(
+            kind=f"incoming.{msg.channel}_message",
+            payload={
+                "channel": msg.channel,
+                "chat_id": msg.chat_id,
+                "sender_id": msg.sender_id,
+                "text": (msg.text or "")[:500],
+                "media_kind": msg.media_kind,
+                "is_private": msg.is_private,
+            },
+        ))
+
+        if not msg.text:
+            return None
+        if provider is None:
+            _log.warning("no_provider", extra={"channel": msg.channel})
+            return None
+
+        try:
+            from sonya.planning import build_full_context, plan_next
+            from sonya.planning.memory_wiring import record_response_as_memory
+
+            # Per-channel chat history fetch (Telegram supports it via raw event)
+            session_messages: list[dict[str, Any]] = []
+            if msg.channel == "telegram" and msg.raw is not None:
+                try:
+                    channel = registry.get("telegram")
+                    if channel is not None and hasattr(channel, "_client") and channel._client is not None:
+                        client = channel._client
+                        my_id = channel._my_id
+                        recent = await client.get_messages(int(msg.chat_id), limit=12)
+                        for m in reversed(recent):
+                            if m.text and (msg.msg_id is None or str(m.id) != msg.msg_id):
+                                role = "assistant" if m.sender_id == my_id else "user"
+                                session_messages.append({"role": role, "content": m.text})
+                except Exception as err:
+                    _log.warning("history_fetch_error", extra={"error": str(err)})
+
+            ctx = build_full_context(
+                substrate=substrate,
+                user_input=msg.text,
+                principal_id=msg.sender_id,
+                session_messages=session_messages,
+            )
+            response = await plan_next(ctx, provider)
+            _log.info(
+                "response_generated",
+                extra={
+                    "channel": msg.channel,
+                    "response_len": len(response.text) if response.text else 0,
+                    "preview": (response.text or "")[:80],
+                },
+            )
+            record_response_as_memory(
+                substrate, msg.text, response, channel=f"{msg.channel}_userbot"
+            )
+            if response.text:
+                return OutgoingMessage(text=response.text)
+            return None
+        except Exception as err:
+            _log.error(
+                "response_error",
+                extra={"channel": msg.channel, "error": str(err), "type": type(err).__name__},
+            )
+            import traceback
+            _log.error("response_traceback", extra={"tb": traceback.format_exc()})
+            return None
+
+    return _on_incoming
+
+
+def _build_channels(config: AppConfig) -> list[Channel]:
+    """Construct configured channel adapters. Add new channels here.
+
+    For Sonya-authored channels (via selfmod), they live in src/sonya/channels/
+    and can be hot-imported here once added (after process restart in MVP).
+    """
+    channels: list[Channel] = []
+
+    if config.enable_telegram and config.tg_api_id and config.tg_session_path:
+        try:
+            from sonya.channels.telegram import TelegramChannel
+            channels.append(TelegramChannel(
+                api_id=config.tg_api_id,
+                api_hash=config.tg_api_hash,
+                session_path=config.tg_session_path,
+            ))
+        except ImportError as err:
+            _log.warning(
+                "telegram_channel_unavailable",
+                extra={"error": str(err)},
+            )
+
+    return channels
 
 
 async def _run(config: AppConfig) -> int:
@@ -106,14 +224,10 @@ async def _run(config: AppConfig) -> int:
 
     bus = EventBus()
 
-    # Bus-aware wrappers for continuity and subject state
     raw_stream = ContinuityStream(substrate)
-    stream = BusAwareContinuityStream(raw_stream, bus)
     raw_state_store = SubjectStateStore(substrate)
-    state_store = BusAwareSubjectStateStore(raw_state_store, bus)
     intention_store = PendingIntentionStore(substrate)
 
-    # Internal cognitive process — with LLM provider for real thinking
     thinking_provider = _create_thinking_provider(config)
     internal_process = InternalProcess(
         stream=raw_stream,
@@ -133,6 +247,24 @@ async def _run(config: AppConfig) -> int:
     lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
     health = Health(path=config.health_path)
 
+    # Channel layer
+    registry = ChannelRegistry()
+    for channel in _build_channels(config):
+        registry.register(channel)
+
+    handler = _build_incoming_handler(
+        substrate=substrate,
+        internal_process=internal_process,
+        provider=thinking_provider,
+        registry=registry,
+    )
+    deps = ChannelDeps(
+        on_incoming=lambda msg: _wrapped_handler(msg, handler, internal_process),
+        notify_external_event=internal_process.notify_external_event,
+        config=config,
+        substrate=substrate,
+    )
+
     loop = asyncio.get_running_loop()
     stop_requested = asyncio.Event()
 
@@ -150,12 +282,10 @@ async def _run(config: AppConfig) -> int:
         else:
             _log.info("thinking_disabled", extra={"event": "thinking_loop_skipped"})
 
-        # Start Telegram userbot if configured AND enabled
-        userbot = None
-        if config.enable_telegram and config.tg_api_id and config.tg_session_path:
-            userbot = await _start_userbot(config, raw_stream, internal_process, thinking_provider, substrate)
-        elif not config.enable_telegram:
-            _log.info("telegram_disabled", extra={"event": "userbot_skipped"})
+        if registry.list_names():
+            await registry.start_all(deps)
+        else:
+            _log.info("no_channels_configured")
 
         await health.start(schema_version=substrate.schema_version)
         _log.info(
@@ -164,15 +294,14 @@ async def _run(config: AppConfig) -> int:
                 "event": "started",
                 "schema_version": substrate.schema_version,
                 "substrate_path": str(config.substrate_path),
-                "userbot": "running" if userbot else "disabled",
+                "channels": registry.list_names(),
                 "thinking": "enabled" if config.enable_thinking else "disabled",
             },
         )
 
         await stop_requested.wait()
 
-        if userbot:
-            await userbot.stop()
+        await registry.stop_all()
         if config.enable_thinking:
             await internal_process.stop()
         await health.stop()
@@ -184,232 +313,14 @@ async def _run(config: AppConfig) -> int:
         substrate.close()
 
 
-async def _start_userbot(config: AppConfig, stream, internal_process, provider, substrate):
-    """Start Telegram userbot if configured."""
-    try:
-        from tg_userbot.client import SonyaUserbot
-        from telethon import events as _tg_events
-        from telethon.tl.types import (
-            MessageMediaPhoto,
-            MessageMediaDocument,
-            DocumentAttributeSticker,
-            DocumentAttributeAudio,
-            DocumentAttributeVideo,
-            DocumentAttributeAnimated,
-        )
-    except ImportError:
-        _log.warning("telethon_not_installed", extra={"event": "userbot_disabled"})
-        return None
-
-    def _detect_media_kind(event) -> str | None:
-        """Return short user-visible label for media in event, or None."""
-        msg = event.message
-        if not msg or not msg.media:
-            return None
-
-        media = msg.media
-
-        # Photo
-        if isinstance(media, MessageMediaPhoto):
-            return "фото"
-
-        # Document — sticker / audio / video / gif / file
-        if isinstance(media, MessageMediaDocument) and media.document:
-            doc = media.document
-            attrs = doc.attributes or []
-            for attr in attrs:
-                if isinstance(attr, DocumentAttributeSticker):
-                    emoji = getattr(attr, "alt", "") or ""
-                    return f"стикер {emoji}".strip()
-                if isinstance(attr, DocumentAttributeAudio):
-                    return "голосовое сообщение" if attr.voice else "аудио"
-                if isinstance(attr, DocumentAttributeAnimated):
-                    return "гифка"
-                if isinstance(attr, DocumentAttributeVideo):
-                    return "видеосообщение" if attr.round_message else "видео"
-            return "файл"
-
-        return "медиа"
-
-    async def _on_incoming(msg_data, generate_response: bool = True):
-        """Handle incoming Telegram message — record + optionally plan response."""
-        _log.info("tg_incoming", extra={
-            "chat_id": msg_data.get("chat_id"),
-            "sender_id": msg_data.get("sender_id"),
-            "text_preview": (msg_data.get("text") or "")[:80],
-            "media_kind": msg_data.get("media_kind"),
-            "is_private": msg_data.get("is_private"),
-            "generate_response": generate_response,
-        })
-
-        internal_process.notify_external_event()
-        from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
-        ContinuityStream(substrate).append(ContinuityEvent(
-            kind="incoming.telegram_message",
-            payload={
-                "chat_id": msg_data.get("chat_id"),
-                "sender_id": msg_data.get("sender_id"),
-                "text": (msg_data.get("text") or "")[:500],
-                "media_kind": msg_data.get("media_kind"),
-                "is_private": msg_data.get("is_private"),
-            },
-        ))
-
-        if not generate_response:
-            return None
-
-        text = msg_data.get("text") or ""
-        if not text:
-            _log.info("tg_skip", extra={"reason": "empty_text"})
-            return None
-
-        if provider is None:
-            _log.warning("tg_no_provider", extra={"reason": "provider_is_none"})
-            return None
-
-        # Plan response using already-open substrate
-        try:
-            from sonya.planning import build_full_context, plan_next
-            from sonya.planning.memory_wiring import record_response_as_memory
-
-            # Fetch recent chat history for context
-            session_messages = []
-            try:
-                recent_msgs = await userbot._client.get_messages(msg_data["chat_id"], limit=12)
-                for m in reversed(recent_msgs):
-                    if m.text and m.id != msg_data.get("msg_id"):
-                        role = "assistant" if m.sender_id == my_id else "user"
-                        session_messages.append({"role": role, "content": m.text})
-            except Exception as e:
-                _log.warning("tg_history_fetch_error", extra={"error": str(e)})
-
-            ctx = build_full_context(
-                substrate=substrate,
-                user_input=text,
-                principal_id=str(msg_data.get("sender_id", "")),
-                session_messages=session_messages,
-            )
-            response = await plan_next(ctx, provider)
-            _log.info("tg_response_generated", extra={
-                "response_len": len(response.text) if response.text else 0,
-                "response_preview": (response.text or "")[:80],
-            })
-            record_response_as_memory(substrate, text, response, channel="telegram_userbot")
-            return response.text if response.text else None
-        except Exception as e:
-            _log.error("userbot_response_error", extra={"error": str(e), "type": type(e).__name__})
-            import traceback
-            _log.error("userbot_response_traceback", extra={"tb": traceback.format_exc()})
-            return None
-
-    userbot = SonyaUserbot(
-        api_id=config.tg_api_id,
-        api_hash=config.tg_api_hash,
-        session_path=config.tg_session_path.replace(".session", ""),
-        on_message=None,  # We register our own handler below
-    )
-
-    # Connect and verify authorization (no interactive prompts)
-    await userbot._client.connect()
-    if not await userbot._client.is_user_authorized():
-        _log.error("tg_not_authorized", extra={"event": "session_invalid"})
-        return None
-    _log.info("tg_authorized", extra={"event": "session_valid"})
-
-    # Cache own user info for mention detection in group chats
-    me = await userbot._client.get_me()
-    my_id = me.id
-    my_username = (me.username or "").lower()
-    my_first_name = (me.first_name or "").lower()
-    _log.info("tg_self_info", extra={"id": my_id, "username": my_username})
-
-    async def _should_respond_in_group(event, text: str) -> bool:
-        """Return True if Sonya should respond to this group message."""
-        if not text:
-            return False
-        text_lower = text.lower()
-        # 1. Direct username mention
-        if my_username and f"@{my_username}" in text_lower:
-            return True
-        # 2. First-name mention at the start of the message
-        if my_first_name and text_lower.startswith(my_first_name):
-            return True
-        # 3. Reply to one of Sonya's own messages
-        if event.reply_to_msg_id:
-            try:
-                replied = await event.get_reply_message()
-                if replied and replied.sender_id == my_id:
-                    return True
-            except Exception:
-                pass
-        return False
-
-    # Track last message time per chat for reply/respond logic
-    _last_msg_time: dict[int, float] = {}
-
-    # Register handler with full error handling
-    @userbot._client.on(_tg_events.NewMessage(incoming=True))
-    async def _tg_handler(event):
-        try:
-            await event.mark_read()
-
-            # Extract text or media description
-            text = event.text or ""
-            media_kind = _detect_media_kind(event)
-            if not text and media_kind:
-                text = f"[{media_kind}]"
-
-            msg_data = {
-                "chat_id": event.chat_id,
-                "sender_id": event.sender_id,
-                "text": text,
-                "media_kind": media_kind,
-                "date": str(event.date),
-                "is_private": event.is_private,
-                "reply_to": event.reply_to_msg_id,
-                "msg_id": event.id,
-            }
-
-            # Decide whether to respond
-            should_respond = False
-            if event.is_private and text:
-                should_respond = True
-            elif text and not event.is_private:
-                # Group chat — respond only when addressed
-                should_respond = await _should_respond_in_group(event, text)
-                if should_respond:
-                    _log.info("tg_group_address_detected", extra={"chat_id": event.chat_id})
-
-            if should_respond:
-                async with userbot._client.action(event.chat_id, 'typing'):
-                    response = await _on_incoming(msg_data, generate_response=True)
-                if response:
-                    # Reply only after >120s pause, otherwise send as new message
-                    import time as _time
-                    now = _time.time()
-                    last = _last_msg_time.get(event.chat_id, 0)
-                    if now - last > 120 or not event.is_private:
-                        # In groups, always reply for clarity who is addressed
-                        await event.reply(response)
-                    else:
-                        await event.respond(response)
-                    _last_msg_time[event.chat_id] = now
-            else:
-                await _on_incoming(msg_data, generate_response=False)
-        except Exception as e:
-            _log.error("tg_handler_crash", extra={"error": str(e), "type": type(e).__name__})
-            import traceback
-            _log.error("tg_handler_traceback", extra={"tb": traceback.format_exc()})
-
-    # Fetch dialogs to init update state (required for receiving updates)
-    dialogs = await userbot._client.get_dialogs(limit=5)
-    _log.info("tg_dialogs_loaded", extra={"count": len(dialogs)})
-
-    # Run update loop as background task — store task on userbot for graceful cancel
-    userbot._run_task = asyncio.create_task(userbot._client.run_until_disconnected())
-    userbot._running = True
-    _log.info("userbot_started", extra={"event": "userbot_running"})
-    return userbot
+async def _wrapped_handler(
+    msg: ChannelMessage,
+    handler,
+    internal_process: InternalProcess,
+) -> OutgoingMessage | None:
+    """Tiny wrapper that always notifies internal_process before delegating."""
+    internal_process.notify_external_event()
+    return await handler(msg)
 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop, handler) -> None:

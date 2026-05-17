@@ -66,39 +66,17 @@
 
 ---
 
-### Этап B: Channel abstraction — **+3 пункта**
+### Этап B: Channel abstraction — **+3 пункта** ✅ ЗАКРЫТ
 
-**Цель:** Telegram больше не hardcoded. Можно добавить второй канал не трогая main.py.
+**Commit:** pending
 
-**Артефакты:**
-
-- `src/sonya/channels/base.py` — `Channel` Protocol:
-  ```
-  class Channel(Protocol):
-      name: str
-      async def start(self, deps: ChannelDeps) -> None: ...
-      async def stop(self) -> None: ...
-      async def send(self, target: str, content: str, **opts) -> None: ...
-      # on_message колбэк регистрируется через ChannelDeps
-  ```
-
-- `src/sonya/channels/registry.py` — `ChannelRegistry`:
-  - `register(channel: Channel)`
-  - `start_all(deps)`
-  - `stop_all()`
-  - `get(name) -> Channel`
-  - Hot-add/remove (для self-modification)
-
-- `src/sonya/channels/telegram.py` — текущий Telegram handler из main.py переезжает сюда как `class TelegramChannel(Channel)`
-
-- main.py упрощается — создаёт ChannelRegistry, регистрирует TelegramChannel, идёт `registry.start_all()`
-
-**Что это разблокирует:**
-
-- Соня сможет через `selfmod.propose` создать `src/sonya/channels/discord.py` и зарегистрировать его без правки main.py
-- Тестируемость: можно создать `MockChannel` для тестов агентских сессий
-
-**Effort:** 3-4 часа.
+**Что сделано:**
+- `src/sonya/channels/base.py` — `Channel` Protocol, `ChannelMessage`, `OutgoingMessage`, `ChannelDeps`
+- `src/sonya/channels/registry.py` — `ChannelRegistry` с `register/start_all/stop_all/send` + hot-add hooks
+- `src/sonya/channels/telegram.py` — `TelegramChannel` имплементирующий Channel; вся логика media detection / group addressing / reply-vs-respond перенесена сюда из main.py
+- `src/sonya/main.py` сократился: вместо ~250-строчной `_start_userbot` теперь `_build_channels` + `_build_incoming_handler` + `registry.start_all(deps)`
+- Через `selfmod.propose src/sonya/channels/discord.py | ... | <full file>` Соня может писать новые каналы и подключать их при следующем рестарте
+- 11 тестов в `tests/sonya/test_channels.py` (Channel Protocol, registry lifecycle, send routing, MockChannel) — все проходят
 
 ---
 
