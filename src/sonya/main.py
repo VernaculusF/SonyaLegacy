@@ -278,7 +278,7 @@ class _RuntimeBundle:
             ),
             idle_interval_seconds=1800.0,   # 30 минут — idle thinking tick
             tick_interval_seconds=60.0,
-            active_interval_seconds=5400.0,  # 1.5 часа — active session с tools (экономим лимиты)
+            active_interval_seconds=7200.0,  # 2 часа — active session с tools (экономим лимиты)
         )
 
         self.lifecycle = Lifecycle(substrate=substrate, event_bus=self.bus)
@@ -288,6 +288,28 @@ class _RuntimeBundle:
         self.channel_registry = ChannelRegistry()
         for channel in _build_channels(config):
             self.channel_registry.register(channel)
+
+        # Этап D: outbound initiative gate
+        if config.primary_user_tg_id:
+            from sonya.initiative.outbound import OutboundGate
+            outbound = OutboundGate(
+                registry=self.channel_registry,
+                stream=raw_stream,
+                target_tg_chat_id=config.primary_user_tg_id,
+                max_per_day=config.initiative_max_per_day,
+                min_quiet_minutes=config.initiative_min_quiet_minutes,
+            )
+            self.internal_process.set_outbound_gate(outbound)
+            _log.info(
+                "initiative_enabled",
+                extra={
+                    "target": config.primary_user_tg_id,
+                    "max_per_day": config.initiative_max_per_day,
+                    "min_quiet_minutes": config.initiative_min_quiet_minutes,
+                },
+            )
+        else:
+            _log.info("initiative_disabled", extra={"reason": "SONYA_PRIMARY_USER_TG_ID not set"})
 
         handler = _build_incoming_handler(
             substrate=substrate,

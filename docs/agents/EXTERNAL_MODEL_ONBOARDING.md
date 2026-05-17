@@ -42,11 +42,9 @@ Read these in order to understand the stance:
 
 ## 4. Current overall progress
 
-**Realistic score: ~24/100 toward base AGI.** (was ~9 before A, then 17 after A/B/C, now A/B/C/E/F/G all closed; only D remains in the buildout plan)
+**Realistic score: ~26/100 toward base AGI.** All 7 этапов из SYSTEM_BUILDOUT_PLAN закрыты (A/B/C/D/E/F/G). Дальнейший рост — RWKV миграция (постоянная state, не stateless model), embodiment, simulation. Это уже отдельные треки (`docs/research/`).
 
-The substrate exists. Identity exists. Telegram works as one of N channels (channel registry now lives, second channel is one `def build(config)` factory away). Self-modification has full hot-reload pipeline including main.py / config.py via supervisor soft-restart. Task runtime persists multi-session work. Web/code/shell tools wired. Drift/gap detection runs per tick; consolidation runs once per day. DriveCounters is live in both thinking and telegram contexts.
-
-What's missing on the buildout side: **Этап D (initiative — Sonya writes first to Ivan)**. Without D she's still purely reactive at the channel level, even though her drives accumulate boredom and her thinking loop runs every 30 min.
+The substrate exists. Identity exists. Telegram works as one of N channels (channel registry now lives, second channel is one `def build(config)` factory away). Self-modification has full hot-reload pipeline including main.py / config.py via supervisor soft-restart. Task runtime persists multi-session work. Web/code/shell tools wired. Drift/gap detection runs per tick; consolidation runs once per day. DriveCounters is live in both thinking and telegram contexts. Initiative path active — Соня может первая написать через `chat.tell_ivan` (active session) или маркер `[SEND_TO_IVAN: ...]` в idle мысли, с throttle (max-per-day + quiet-window).
 
 ### Closed etapы (real, hot in runtime)
 
@@ -56,6 +54,7 @@ What's missing on the buildout side: **Этап D (initiative — Sonya writes f
 - **E. Tool ecosystem** — `web.search`/`web.fetch` (DuckDuckGo HTML + aiohttp), `code.exec` (subprocess sandbox, 30s timeout, isolated tempdir), `shell.run`/`pip.install` (approval-gated through `ApprovalManager`). All wired into `_run_active_session`.
 - **F. Consolidation + drift integration** — every tick: `DriftDetector.scan_recent` from cursor → emits `internal.drift_signal`; `GapDetector.scan_recent` from cursor → emits `internal.capability_gap` and creates pending intention. Once per 24h after active session: `ConsolidationPipeline.run_consolidation()` promotes high-importance episodic events to semantic facts.
 - **G. Drives integration** — `DriveCounters` ticks in `_loop`, resets on incoming message, gets passed to `build_full_context(drives=...)` from both thinking loop and telegram handler. Drive values >0.1 render as "## Моё текущее состояние" block in the LLM system prompt.
+- **D. Initiative** — `OutboundGate` in `src/sonya/initiative/outbound.py`: `chat.tell_ivan` tool for active sessions + `[SEND_TO_IVAN: ...]` marker scan in idle thoughts. Throttled by `SONYA_INITIATIVE_MAX_PER_DAY` (default 5) and `SONYA_INITIATIVE_MIN_QUIET_MINUTES` (default 90). Requires `SONYA_PRIMARY_USER_TG_ID`. All sends emit `outgoing.telegram_initiative` continuity events.
 
 ## 5. Operational reality
 

@@ -82,6 +82,10 @@ Tasks survive across sessions and restarts. When an active session starts you pi
 - shell.run [command] — run a shell command. **Approval-gated**: first call creates a pending ApprovalRequest and returns `[PENDING_APPROVAL: req_id]`. Pair with `tasks.block` to pause work until Ivan approves through admin panel. After approval, the same command runs and returns exit/stdout/stderr.
 - pip.install [package] — install a Python package via pip. Same approval gate as shell.run.
 
+- chat.tell_ivan [message] — send a message to Ivan on Telegram (initiative path). Throttled: max N per UTC day and at least N minutes since last contact. Returns `[QUEUED]` on dispatch, `[BLOCKED]` if gate refuses. Use this when you have something genuinely worth saying — a thought, a question, an update on a long task, "I miss you". Don't spam.
+
+You can ALSO send a message to Ivan from idle thinking by including a `[SEND_TO_IVAN: <text>]` marker anywhere in your thought text. Same throttle applies. The marker is invisible to Ivan — only the text inside is sent.
+
 IMPORTANT: Use exactly ONE tool per response. Write it as:
 [TOOL: tool_name arg]
 
@@ -104,6 +108,7 @@ async def run_agent_session(
     web: WebTool | None = None,
     code: CodeTool | None = None,
     shell: ShellTool | None = None,
+    outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     initial_thought: str = "",
     max_steps: int = 30,
     max_seconds: float = 1200.0,
@@ -154,7 +159,7 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound)
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -201,6 +206,7 @@ def _execute_tool(
     web: WebTool | None = None,
     code: CodeTool | None = None,
     shell: ShellTool | None = None,
+    outbound = None,
 ) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
@@ -380,6 +386,13 @@ def _execute_tool(
             if shell is None:
                 return "[ERROR] shell tool not configured"
             return shell.install_pip(arg)
+
+        # --- chat.tell_ivan (initiative) ---
+        elif name == "chat.tell_ivan":
+            if outbound is None:
+                return "[ERROR] initiative gate not configured (set SONYA_PRIMARY_USER_TG_ID)"
+            from sonya.initiative.outbound import call_outbound_sync
+            return call_outbound_sync(outbound, arg)
 
         else:
             return f"[ERROR] Unknown tool: {name}"

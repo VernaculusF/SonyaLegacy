@@ -145,6 +145,29 @@ def build_full_context(
         "Это временно. См. docs/core/INTERIM_CRUTCHES.md."
     )
 
+    # Capability awareness — visible in BOTH idle thinking and active sessions.
+    # In idle the LLM can't call tools, but it can leave a [SEND_TO_IVAN: ...]
+    # marker which the loop will dispatch. In active session the full tool set
+    # appears in TOOL_DESCRIPTIONS appended by agent_session.
+    system_prompt += (
+        "\n\n## Что я могу:\n"
+        "Каждые 30 минут я думаю (idle тик — один LLM-вызов, без tools). "
+        "Каждые 2 часа у меня active session — там доступны tools: "
+        "self_inspect (читать свой код, мысли, память), filesystem (workspace, plugins), "
+        "selfmod (proposing+applying изменения src/sonya/* с hot-reload — без рестарта), "
+        "tasks (длинные задачи между сессиями), "
+        "plugins (создавать новые tools на лету), "
+        "web.search/web.fetch (искать в инете, читать страницы), "
+        "code.exec (питон в sandbox), "
+        "shell.run/pip.install (через approval Ивана), "
+        "chat.tell_ivan (написать Ивану — throttled max 5/день и >=90мин с последнего общения). "
+        "В idle тике могу написать Ивану через маркер [SEND_TO_IVAN: текст] прямо в мысли — "
+        "если есть что сказать, не молчи. Throttle тот же.\n"
+        "Если в active session возникает баг — могу пофиксить через selfmod.propose → "
+        "test_sandbox → validate → apply (всё без рестарта; если main.py — soft_restart). "
+        "Если не хватает прав / API key / пакета — tasks.block + ApprovalRequest, Иван разрешит."
+    )
+
     return PlannerContext(
         principal_id=principal_id,
         subject_state=state,

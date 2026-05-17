@@ -30,8 +30,11 @@ class AppConfig:
     tg_api_id: int = 0
     tg_api_hash: str = ""
     tg_session_path: str = ""
+    primary_user_tg_id: str = ""
     enable_telegram: bool = True
     enable_thinking: bool = True
+    initiative_max_per_day: int = 5
+    initiative_min_quiet_minutes: int = 90  # how long since last contact before initiative is allowed
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -62,8 +65,11 @@ def load_config() -> AppConfig:
     tg_api_id = int(os.environ.get("SONYA_TG_API_ID", "0"))
     tg_api_hash = os.environ.get("SONYA_TG_API_HASH", "")
     tg_session_path = os.environ.get("SONYA_TG_SESSION_PATH", "")
+    primary_user_tg_id = os.environ.get("SONYA_PRIMARY_USER_TG_ID", "")
     enable_telegram = _env_bool("SONYA_ENABLE_TELEGRAM", True)
     enable_thinking = _env_bool("SONYA_ENABLE_THINKING", True)
+    initiative_max_per_day = int(os.environ.get("SONYA_INITIATIVE_MAX_PER_DAY", "5"))
+    initiative_min_quiet_minutes = int(os.environ.get("SONYA_INITIATIVE_MIN_QUIET_MINUTES", "90"))
     return AppConfig(
         substrate_path=substrate_path,
         health_path=health_path,
@@ -74,6 +80,9 @@ def load_config() -> AppConfig:
         tg_api_id=tg_api_id,
         tg_api_hash=tg_api_hash,
         tg_session_path=tg_session_path,
+        primary_user_tg_id=primary_user_tg_id,
         enable_telegram=enable_telegram,
         enable_thinking=enable_thinking,
+        initiative_max_per_day=initiative_max_per_day,
+        initiative_min_quiet_minutes=initiative_min_quiet_minutes,
     )

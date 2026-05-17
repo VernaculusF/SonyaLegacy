@@ -112,6 +112,8 @@ class InternalProcess:
         # tick cadence; resets on external messages / completed actions; values
         # passed into build_full_context so the LLM sees current drive state.
         self._drives = DriveCounters()
+        # Этап D: outbound initiative gate (set late by main after channels build).
+        self._outbound = None  # type: ignore[assignment]
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._tick_count: int = 0
@@ -130,6 +132,14 @@ class InternalProcess:
     @property
     def drives(self) -> DriveCounters:
         return self._drives
+
+    def set_outbound_gate(self, gate) -> None:
+        """Late-bind the OutboundGate so initiative can fire from idle thoughts."""
+        self._outbound = gate
+
+    @property
+    def outbound(self):
+        return self._outbound
 
     @property
     def tick_count(self) -> int:
@@ -284,6 +294,13 @@ class InternalProcess:
                 kind="internal.thought",
                 payload={"thought": thought_text, "tick": self._tick_count},
             ))
+            # Этап D: scan for [SEND_TO_IVAN: ...] marker in idle thought.
+            # Cheap — only fires the channel send if marker present and gates pass.
+            if self._outbound is not None:
+                try:
+                    await self._outbound.maybe_send_from_thought(thought_text)
+                except Exception:
+                    pass
 
         self._stream.append(ContinuityEvent(kind="internal.cognitive_tick", payload=payload))
         # M-5 fix: deadline_overdue is already in cognitive_tick.triggers — no separate event
@@ -446,6 +463,7 @@ class InternalProcess:
                 web=web_tool,
                 code=code_tool,
                 shell=shell_tool,
+                outbound=self._outbound,
                 system_prompt=prompt,
                 initial_thought=initial_thought,
                 max_steps=30,

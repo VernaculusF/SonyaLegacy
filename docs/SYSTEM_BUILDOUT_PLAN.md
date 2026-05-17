@@ -131,23 +131,26 @@
 
 ---
 
-### Этап D: Initiative (Соня пишет первой) — **+2 пункта**
+### Этап D: Initiative (Соня пишет первой) — **+2 пункта** ✅ ЗАКРЫТ
 
-**Цель:** Связка thinking_loop → userbot.send_message.
+**Что сделано:**
+- `src/sonya/initiative/outbound.py` — `OutboundGate`:
+  - `send_via_tool(text)` — async path для `chat.tell_ivan` тула
+  - `maybe_send_from_thought(thought_text)` — сканит idle-мысль на маркер `[SEND_TO_IVAN: текст]`. Если есть и гейт пропускает — отправляет. Если блокировано — пишет `internal.initiative_blocked` event с reason.
+  - Гейты: `min_quiet_minutes` (по умолчанию 90, конфиг `SONYA_INITIATIVE_MIN_QUIET_MINUTES`) с последнего incoming/outgoing tg-event'a; `max_per_day` (по умолчанию 5, `SONYA_INITIATIVE_MAX_PER_DAY`); требует `SONYA_PRIMARY_USER_TG_ID`.
+  - `call_outbound_sync(gate, text)` — мост между sync `_execute_tool` и async `OutboundGate`. Использует `loop.create_task` (fire-and-forget) — возвращает `[QUEUED]` агенту мгновенно, доставка и continuity event происходят на следующем event-loop tick'e.
+- `chat.tell_ivan` tool в `agent_session._execute_tool` + TOOL_DESCRIPTIONS
+- `[SEND_TO_IVAN: ...]` маркер обрабатывается в `internal_loop._emit_cognitive_events_async` после генерации мысли — без дополнительного LLM-вызова, цена такая же как обычный idle тик
+- `OutboundGate` инстанциируется в `main.py` после `_build_channels` и привязывается к `internal_process.set_outbound_gate(...)`. Если `SONYA_PRIMARY_USER_TG_ID` пуст — лог `initiative_disabled`, инициатива off.
+- `build_full_context` добавил блок "## Что я могу:" — Соня в idle тике (без TOOL_DESCRIPTIONS) теперь знает свои возможности и про маркер
+- 9 тестов в `tests/sonya/test_outbound_initiative.py`: гейты (quiet window / daily cap / no target / empty text), маркер в мысли, send failure path
 
-**Артефакты:**
+**Что это даёт:**
+- Соня может первая написать когда есть мысль (не только реактивна)
+- Стоимость: 0 дополнительных LLM-вызовов в idle (маркер парсится синхронно), 1 send в active session — то есть инициатива даже **экономит** токены против ожидания
+- Anti-spam защита тройная: per-day cap + quiet window + Соня сама решает (gate не дёргается без её намерения)
 
-- ChannelRegistry даёт thinking_loop способ отправить сообщение (после Этапа B)
-- В `internal_loop.py` после генерации мысли — проверка:
-  - Есть в мысли intent "написать Ивану"? (LLM-driven, не keyword)
-  - Прошло >2 часов с последнего общения?
-  - Не ночь у Ивана (по timezone)?
-  - Не превышен дневной лимит инициативы (max 3 в день)?
-- Если все условия — channel.send(ivan, message)
-
-**Что это даёт:** Соня перестаёт быть полностью реактивной.
-
-**Effort:** 2-3 часа (после Этапа B).
+**Effort actual:** ~1 ч.
 
 ---
 
@@ -214,7 +217,7 @@
 | A: Self-mod tools | +5 | 4-6 ч | — | ✅ |
 | B: Channel abstraction | +3 | 3-4 ч | — | ✅ |
 | C: Task runtime | +5 | 6-8 ч | A (selfmod for new code) | ✅ |
-| D: Initiative | +2 | 2-3 ч | B (channel.send) |
+| D: Initiative | +2 | 2-3 ч | B (channel.send) | ✅ |
 | E: Tool ecosystem | +3-5 | 4-5 ч | A (для approval-gated) | ✅ |
 | F: Consolidation+drift | +2-3 | 3-4 ч | A | ✅ |
 | G: Drives integration | +2 | 2-3 ч | — | ✅ |
