@@ -30,6 +30,7 @@ class TelegramChannel:
         api_id: int,
         api_hash: str,
         session_path: str,
+        allowed_sender_ids: tuple[str, ...] = (),
     ) -> None:
         self._api_id = api_id
         self._api_hash = api_hash
@@ -44,6 +45,10 @@ class TelegramChannel:
         # Per-chat last outgoing-time tracker for reply/respond logic
         self._last_msg_time: dict[int, float] = {}
         self._deps: ChannelDeps | None = None
+        # Sender allowlist for private DMs. Empty = open to anyone (legacy mode).
+        # When non-empty, only listed sender_ids get a planner-generated response;
+        # others are logged and ignored. Group chats unaffected (use addressing).
+        self._allowed_senders: set[str] = {s for s in allowed_sender_ids if s}
 
     @property
     def is_running(self) -> bool:
@@ -168,7 +173,22 @@ class TelegramChannel:
                 # Decide whether to invoke planner (i.e., generate a response)
                 should_respond = False
                 if event.is_private and text:
-                    should_respond = True
+                    # Allowlist gate: when configured, only respond to whitelisted
+                    # sender_ids in private DMs. Stops randoms from triggering
+                    # LLM calls (token waste + identity leak through generic replies).
+                    if self._allowed_senders and msg.sender_id not in self._allowed_senders:
+                        _log.info(
+                            "tg_unauthorized_private_dm",
+                            extra={
+                                "sender_id": msg.sender_id,
+                                "chat_id": msg.chat_id,
+                                "text_preview": msg.text[:80],
+                                "allowed": sorted(self._allowed_senders),
+                            },
+                        )
+                        should_respond = False
+                    else:
+                        should_respond = True
                 elif text and not event.is_private:
                     should_respond = await _should_respond_in_group(event, text)
                     if should_respond:
@@ -255,8 +275,13 @@ def build(config: Any) -> "TelegramChannel | None":
     api_id = getattr(config, "tg_api_id", 0)
     if not api_id:
         return None
+    primary_user = str(getattr(config, "primary_user_tg_id", "") or "").strip()
+    extras_raw = str(getattr(config, "tg_allowed_extra_senders", "") or "").strip()
+    extras = tuple(s.strip() for s in extras_raw.split(",") if s.strip())
+    allowed = tuple([primary_user] + list(extras)) if primary_user else extras
     return TelegramChannel(
         api_id=api_id,
         api_hash=getattr(config, "tg_api_hash", ""),
         session_path=getattr(config, "tg_session_path", "./tg.session"),
+        allowed_sender_ids=allowed,
     )
