@@ -109,7 +109,7 @@ class LLMProvider:
             payload = {
                 "model": model,
                 "messages": messages,
-                "max_tokens": kwargs.get("max_tokens", 1500),
+                "max_tokens": kwargs.get("max_tokens", 4000),
                 "temperature": kwargs.get("temperature", 0.9),
                 "stream": False,
             }

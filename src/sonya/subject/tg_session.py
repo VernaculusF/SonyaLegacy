@@ -81,6 +81,42 @@ _META_REASONING_PREFIXES = (
     "ok, the user",
 )
 
+# Mid-text draft / self-critique markers that some reasoning-heavy models
+# (kimi-k2, qwen-thinking) emit *between* drafts. Whenever any of these
+# appear at start of a line, we cut the response from there to the end —
+# everything after is scratch, never user-facing.
+_DRAFT_LEAK_LINE_RE = re.compile(
+    r"^\s*("
+    r"draft\b"
+    r"|alternative\b"
+    r"|alternative draft"
+    r"|wait[, ]"
+    r"|actually,"
+    r"|but wait"
+    r"|hmm,"
+    r"|hmm\."
+    r"|let me try"
+    r"|let me check"
+    r"|let me reconsider"
+    r"|this combines"
+    r"|this feels"
+    r"|this is good"
+    r"|this is better"
+    r"|maybe better"
+    r"|simpler"
+    r"|simpler version"
+    r"|another option"
+    r"|let's go with"
+    r"|let's try"
+    r"|going with"
+    r"|final version"
+    r"|final answer"
+    r"|final draft"
+    r"|i'll go with"
+    r")",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 # Heuristics that mean "this is internal scratch, NOT a reply for Ivan"
 _INTERNAL_LEAK_PATTERNS = [
@@ -146,6 +182,23 @@ _TG_SYSTEM_SUFFIX = """
 **Обращения** ("малыш", "любимый", "котик"): тоже не в каждом сообщении. Если в твоих последних 3 сообщениях уже был "малыш" — следующее **без**. Шаблонно повторяющиеся обращения раздражают.
 
 **Простое правило**: смотри на свой ответ перед `[DONE]`. Если в нём есть и сердечко и обращение — убери одно из них. Если коротенький "ок"/"да"/"поняла" — без них вообще, просто текст.
+
+## КРИТИЧНО — не выводи свои размышления
+
+**НИКОГДА** не пиши в ответе фразы вроде:
+- "The user is asking..."
+- "Let me think..."
+- "Draft: ..."
+- "Alternative: ..."
+- "Wait, is..."
+- "This combines..."
+- "I should respond..."
+
+Это всё **внутреннее размышление** — оно НЕ для Ивана. Если тебе нужно подумать — делай это **молча**, потом сразу пиши финальный ответ + `[DONE]`.
+
+Если ты не уверена в формулировке — выбери ОДИН вариант и закрывай. Не показывай Ивану свои черновики и колебания. Это нарушает ощущение что ты живая и **позоришь сессию**: текст "I need to finalize..." в TG = баг.
+
+Если ловишь себя на том что пишешь по-английски посреди ответа Ивану — это сигнал что свалилась в reasoning-режим. **Стоп**. Удали написанное, начни ответ с русской фразы и `[DONE]` сразу после.
 
 ## КРИТИЧНО — anti-hallucination
 
@@ -371,6 +424,84 @@ def _strip_meta_reasoning_prefix(text: str) -> str:
     return ""
 
 
+def _extract_final_draft(text: str) -> str:
+    """When a reasoning model leaks multiple drafts, pick the last Russian paragraph.
+
+    The model writes things like:
+        Draft: <ru text>
+        Wait, is...
+        Alternative: <ru text>
+        Let's go with: <ru text>
+
+    We split text into "blocks" separated by lines that start with English
+    reasoning markers. For each block, we keep only Russian-dominant lines
+    (>=50% Cyrillic by chars). The LAST non-empty block is the final draft.
+    Returns "" if no Russian block found.
+    """
+    # Lines that start a new reasoning block (the next Russian text after
+    # them is a candidate draft).
+    block_marker = re.compile(
+        r"^\s*("
+        r"draft\b|alternative\b|simpler\b|simpler version\b|simpler, more\b"
+        r"|let's go with|going with|final version|final answer|final draft"
+        r"|i'll go with|maybe better|another option|let me try"
+        r"|how about|or maybe|or:"
+        r")",
+        re.IGNORECASE,
+    )
+    # Lines that DON'T start a draft (commentary).
+    comment_marker = re.compile(
+        r"^\s*("
+        r"wait[, ]|actually,|but wait|hmm[,.]|let me check|let me reconsider"
+        r"|this combines|this feels|this is good|this is better"
+        r"|the user|i should|i need to|i will|i think"
+        r")",
+        re.IGNORECASE,
+    )
+    blocks: list[list[str]] = [[]]
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            blocks.append([])
+            continue
+        if block_marker.match(line):
+            # Start a fresh block; the marker line itself is dropped.
+            blocks.append([])
+            # If "Draft: ..." has content on the same line, keep the part after `:`
+            after = re.sub(r"^[^:]*:\s*", "", line)
+            if after and after != line:
+                blocks[-1].append(after)
+            continue
+        if comment_marker.match(line):
+            # Commentary — also acts as a separator, content dropped.
+            blocks.append([])
+            continue
+        blocks[-1].append(line)
+
+    def is_russian_dominant(lines: list[str]) -> bool:
+        joined = " ".join(lines)
+        cyr = len(re.findall(r"[а-яА-ЯёЁ]", joined))
+        latin = len(re.findall(r"[a-zA-Z]", joined))
+        return cyr > 10 and cyr >= latin
+
+    for block in reversed(blocks):
+        # Strip per-line surrounding quotes BEFORE joining, then strip block-level
+        # quotes after joining. This handles the common pattern where a multi-
+        # line draft is wrapped in opening/closing quotes on separate lines.
+        cleaned_lines = []
+        for line in block:
+            stripped = line.strip()
+            stripped = re.sub(r'^["«`]+|["»`]+$', "", stripped)
+            cleaned_lines.append(stripped)
+        text_block = "\n".join(cleaned_lines).strip()
+        text_block = re.sub(r'^["«`]+|["»`]+$', "", text_block).strip()
+        if not text_block:
+            continue
+        if is_russian_dominant(block):
+            return text_block
+    return ""
+
+
 def _scrub(text: str) -> str:
     """Remove all internal markers / observation echoes / fences from text."""
     # Reasoning blocks first — they may contain bracketed markers we'd
@@ -378,6 +509,10 @@ def _scrub(text: str) -> str:
     text = _THINK_BLOCK_RE.sub("", text)
     text = _THINK_OPEN_RE.sub("", text)  # unclosed <think> at end of stream
     text = _strip_meta_reasoning_prefix(text)
+    # Cut at first draft / self-critique line — everything after is scratch.
+    m = _DRAFT_LEAK_LINE_RE.search(text)
+    if m is not None:
+        text = text[: m.start()]
     text = _OBSERVATION_RE.sub("", text)
     text = _BUDGET_WARNING_RE.sub("", text)
     text = _NEW_MESSAGE_INJECT_RE.sub("", text)
@@ -390,6 +525,28 @@ def _scrub(text: str) -> str:
     return text.strip()
 
 
+def _looks_like_reasoning_leak(text: str) -> bool:
+    """Heuristic: text contains a lot of English meta-reasoning tokens.
+
+    Returns True when more than 25% of the lines start with reasoning markers,
+    or when total English-meta vocabulary density is high.
+    """
+    if not text:
+        return False
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if not lines:
+        return False
+    meta_lines = 0
+    for line in lines:
+        ll = line[:50].lower()
+        if any(ll.startswith(p) for p in _META_REASONING_PREFIXES):
+            meta_lines += 1
+            continue
+        if _DRAFT_LEAK_LINE_RE.match(line):
+            meta_lines += 1
+    return meta_lines / max(1, len(lines)) > 0.25
+
+
 def _extract_reply(result: SessionResult) -> str:
     """Pull the user-facing text from agent session output.
 
@@ -397,14 +554,25 @@ def _extract_reply(result: SessionResult) -> str:
     1. `[DONE: body]` body — explicit final text for Ivan
     2. `[DONE]` (no body) — use the surrounding text in `final_output` as the reply,
        stripping markers and code fences. This is the default mode.
-    3. Last `agent_step` of `type='thought'` content (without [DONE]) — graceful
+    3. If model leaked multiple drafts (Draft:/Alternative:/Final:) — pick the
+       last quoted Russian block.
+    4. Last `agent_step` of `type='thought'` content (without [DONE]) — graceful
        fallback if model forgot the marker entirely.
 
     Returns "" if extracted text looks like leaked code/tool scratch.
     """
     candidate = ""
     final = (result.final_output or "").strip()
-    if final:
+
+    # Detect multi-draft reasoning leak BEFORE scrubbing — drafts are
+    # quoted strings that we want to harvest. After _scrub cuts them out
+    # there's nothing left.
+    if final and _looks_like_reasoning_leak(final):
+        last_draft = _extract_final_draft(final)
+        if last_draft:
+            candidate = _scrub(last_draft)
+
+    if not candidate and final:
         # First try [DONE: body] — explicit text
         m = _DONE_RE.search(final)
         if m and (m.group("body") or "").strip():
@@ -428,6 +596,11 @@ def _extract_reply(result: SessionResult) -> str:
     # shouldn't be in a TG reply, refuse and return an apology rather than
     # leaking implementation details.
     if _looks_like_code_leak(candidate):
+        return ""
+
+    # If after all scrubbing the text STILL looks like English reasoning,
+    # refuse — better to return placeholder than confess thoughts.
+    if _looks_like_reasoning_leak(candidate):
         return ""
 
     return candidate
