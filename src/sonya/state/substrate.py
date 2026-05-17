@@ -33,6 +33,13 @@ class Substrate:
             path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(path)
 
+        # m-8 + m-25 fix: enforce per-connection pragmas
+        conn.execute("PRAGMA foreign_keys = ON")
+        if not read_only:
+            # WAL gives better concurrency for one writer + multiple readers
+            # (admin panel reads while core writes). Idempotent.
+            conn.execute("PRAGMA journal_mode = WAL")
+
         version = read_current_version(conn)
         if version == 0 and not read_only:
             apply_initial_schema(conn)

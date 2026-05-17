@@ -24,7 +24,7 @@ class DriveCounters:
     boredom_rate: float = 0.01
     curiosity_rate: float = 0.005
     relational_rate: float = 0.003
-    pending_debt_rate: float = 0.0  # only increments when intentions exist
+    pending_debt_rate: float = 0.02  # rate per active intention per tick
 
     threshold: float = 0.7
 
@@ -49,7 +49,7 @@ class DriveCounters:
 
         if active_intentions_count > 0:
             prev = self.pending_debt
-            self.pending_debt += 0.02 * active_intentions_count
+            self.pending_debt += self.pending_debt_rate * active_intentions_count
             if self.pending_debt >= self.threshold and prev < self.threshold:
                 crossed.append("pending_debt")
 

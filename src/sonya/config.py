@@ -26,7 +26,7 @@ class AppConfig:
     log_level: str = "INFO"
     openrouter_api_key: ProviderSecret | None = None
     llm_api_base: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "google/gemma-4-27b-it:free"
+    llm_model: str = "google/gemma-2-27b-it:free"
     tg_api_id: int = 0
     tg_api_hash: str = ""
     tg_session_path: str = ""
@@ -58,7 +58,7 @@ def load_config() -> AppConfig:
     )
     log_level = os.environ.get("SONYA_LOG_LEVEL", "INFO").upper()
     llm_api_base = os.environ.get("SONYA_LLM_API_BASE", "https://openrouter.ai/api/v1")
-    llm_model = os.environ.get("SONYA_LLM_MODEL", "google/gemma-4-27b-it:free")
+    llm_model = os.environ.get("SONYA_LLM_MODEL", "google/gemma-2-27b-it:free")
     tg_api_id = int(os.environ.get("SONYA_TG_API_ID", "0"))
     tg_api_hash = os.environ.get("SONYA_TG_API_HASH", "")
     tg_session_path = os.environ.get("SONYA_TG_SESSION_PATH", "")

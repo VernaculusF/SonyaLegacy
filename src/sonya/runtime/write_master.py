@@ -26,7 +26,9 @@ class WriteMaster:
     @classmethod
     def for_substrate(cls, substrate_path: Path | str) -> "WriteMaster":
         substrate_path = Path(substrate_path)
-        return cls(lock_path=substrate_path.with_suffix(substrate_path.suffix + ".lock"))
+        # M-9 fix: with_suffix(suffix + ".lock") raises ValueError on dotless paths.
+        # Use string concat instead — works for both dotted and dotless.
+        return cls(lock_path=Path(str(substrate_path) + ".lock"))
 
     @classmethod
     def is_held(cls, substrate_path: Path | str) -> bool:
@@ -36,7 +38,7 @@ class WriteMaster:
         processes (admin panel) to detect when core is running.
         """
         substrate_path = Path(substrate_path)
-        lock_path = substrate_path.with_suffix(substrate_path.suffix + ".lock")
+        lock_path = Path(str(substrate_path) + ".lock")
         try:
             data = json.loads(lock_path.read_text(encoding="utf-8"))
             pid = int(data.get("pid"))

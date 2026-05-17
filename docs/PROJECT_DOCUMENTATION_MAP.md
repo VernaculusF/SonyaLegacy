@@ -5,7 +5,7 @@
 **Scope:** Root navigation and role map for every living documentation file in the Sonya project
 **Depends on:** [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md), [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
 **Used by:** all readers, all planning, all implementation, all documentation maintenance
-**Last reviewed:** 2026-05-15
+**Last reviewed:** 2026-05-16
 
 ## Why This File Exists
 
@@ -55,21 +55,23 @@ Read in this order if you need the full project context:
 10. [core/SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
 11. [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md)
 12. [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md)
-12. [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md)
-13. [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md)
-14. [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
-15. [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md)
-16. [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
-17. [mvp/MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
-18. [cognition/MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md)
-19. [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
-20. [cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
-21. [skills/SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md)
-22. [architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-23. [research/STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
-24. [research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)
-25. [research/SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md)
-26. active work docs under `docs/work/`
+13. [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md)
+14. [KNOWN_ISSUES.md](C:/Users/Jester/Desktop/Sonya/docs/KNOWN_ISSUES.md)
+15. [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md)
+16. [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
+17. [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md)
+18. [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
+19. [operations/VPS.md](C:/Users/Jester/Desktop/Sonya/docs/operations/VPS.md)
+20. [mvp/MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
+21. [cognition/MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md)
+22. [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
+23. [cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
+24. [skills/SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md)
+25. [architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
+26. [research/STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
+27. [research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)
+28. [research/SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md)
+29. active work docs under `docs/work/`
 
 ## Core Layer
 
@@ -191,6 +193,16 @@ Use it to answer:
 - что ещё не построено.
 
 Это не TODO и не план. Это snapshot кода в ✅/🟡/⬜. Порядок секций зеркалит [ARCHITECTURE_PLAN.md §4](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md).
+
+### [KNOWN_ISSUES.md](C:/Users/Jester/Desktop/Sonya/docs/KNOWN_ISSUES.md)
+
+Реестр багов, недоработок и техдолга. В отличие от GLOBAL_PROJECT_CHECKLIST (что есть в коде) и INTERIM_CRUTCHES (архитектурные ограничения по дизайну) — здесь конкретные баги, что сломано и что криво. С приоритетами и с историей исправлений.
+
+Use it to answer:
+
+- какие баги известны прямо сейчас;
+- что было исправлено и в каком commit;
+- какой следующий приоритет.
 
 ## Agents Layer
 
@@ -475,60 +487,47 @@ New work docs must be created from the shared templates at `docs/work/TEMPLATES/
 
 Both templates carry the mandatory **Reference Check** (Phase 0 gate) section required by [architecture/ARCHITECTURE_PLAN.md §11](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md). A plan or design without this section is not allowed to govern implementation.
 
-### [work/designs/2026-04-30-telegram-bridge-extraction-design.md](C:/Users/Jester/Desktop/Sonya/docs/work/designs/2026-04-30-telegram-bridge-extraction-design.md)
+### Active work docs
 
-**Archived (2026-05-13).** Historical record of the extraction strategy for the Telegram bridge. Kept because it records:
+#### [work/implementation-plans/2026-05-16-telegram-userbot-fix-and-next.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-16-telegram-userbot-fix-and-next.md)
 
-- why the extraction was wrapper-first;
-- what needed to stay behavior-preserving;
-- what lived in `.openclaw` versus the Sonya repo.
+**Active.** Postmortem of telegram userbot debugging + plan for media support, group chats, initiative, persistent conversation history. Stable commit reference. See KNOWN_ISSUES.md for the live state.
 
-The current shape of the bridge is governed by [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md) and [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), not by this document.
+### Archived work docs
 
-### [work/implementation-plans/2026-04-29-first-runtime-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-04-29-first-runtime-implementation-plan.md)
+All Phase 1-7 implementation plans and the original telegram-bridge design are kept under `docs/work/implementation-plans/archive/`. They are historical reference only — the live truth is in code + KNOWN_ISSUES.md + ROADMAP.md.
 
-**Stale (2026-05-13).** Earliest first-runtime slice plan. Kept as historical planning context only. Its proposed `src/sonya/` file layout does not match reality, because the real path taken was narrower (extract bridge, then build `src/sonya_runtime`). Replaced by `2026-05-13-substrate-bootstrap-implementation-plan.md` (the plan that actually built `src/sonya/`). This document must not be used to drive new code.
+Archive contains:
 
-### [work/implementation-plans/2026-05-01-telegram-bridge-extraction-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-01-telegram-bridge-extraction-implementation-plan.md)
-
-**Archived (2026-05-13).** Step-by-step implementation plan for the extracted Telegram bridge. Every task was executed. Kept because it records:
-
-- what was built;
-- what parity constraints existed;
-- how the current `tg-bridge` package took shape.
-
-For the live bridge shape, read the architecture plans listed above. This document is historical reference only.
-
-### [work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-13-substrate-bootstrap-implementation-plan.md)
-
-**Archived (2026-05-13).** Phase 1 implementation plan: substrate v1 + bare runtime shell. All tasks executed. Code lives in `src/sonya/state/`, `src/sonya/runtime/`, `src/sonya/main.py`. First plan that passed through Reference Check gate without drift.
-
-### [work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-14-provider-principal-core-implementation-plan.md)
-
-**Archived (2026-05-15).** Phase 2 implementation plan: provider abstraction, substrate v2 with harness tables, authority policy, approval manager, audit log, channel-side principal resolver, identity seed. All 12 tasks executed. Code lives in `src/sonya/providers/`, `src/sonya/harness/`, `src/sonya/state/seed.py`, `src/sonya/state/principals.py`.
-
-### [work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-subject-core-internal-loop-implementation-plan.md)
-
-**Archived (2026-05-15).** Phase 3: CanonicalResponse, PendingIntention, substrate v3, SubjectState enrichment, event bus wiring, internal cognitive process. Code in `src/sonya/state/canonical_response.py`, `src/sonya/state/pending.py`, `src/sonya/subject/`.
-
-### [work/implementation-plans/2026-05-15-self-modification-framework-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-self-modification-framework-implementation-plan.md)
-
-**Archived (2026-05-15).** Phase 4: 4-layer self-modification pipeline, anchor integrity check, governed change protocol, watch window. Code in `src/sonya/selfmod/`.
-
-### [work/implementation-plans/2026-05-15-skills-substrate-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-15-skills-substrate-implementation-plan.md)
-
-**Archived (2026-05-15).** Phase 5: Skill registry, trust levels, activation policy, capability gap detection, skill injection. Code in `src/sonya/skills/`.
-
-### [work/implementation-plans/2026-05-16-planner-migration-implementation-plan.md](C:/Users/Jester/Desktop/Sonya/docs/work/implementation-plans/2026-05-16-planner-migration-implementation-plan.md)
-
-**Archived (2026-05-16).** Phase 7: Core planner (`plan_next -> CanonicalResponse`), bridge adapter migration. Code in `src/sonya/planning/`.
+- `2026-04-29-first-runtime-implementation-plan.md` (Stale — never realized as proposed)
+- `2026-04-30-telegram-bridge-extraction-design.md` (Archived — bridge later removed entirely)
+- `2026-05-01-telegram-bridge-extraction-implementation-plan.md` (Archived — bridge removed)
+- `2026-05-13-substrate-bootstrap-implementation-plan.md` (Phase 1 closed)
+- `2026-05-14-provider-principal-core-implementation-plan.md` (Phase 2 closed)
+- `2026-05-15-subject-core-internal-loop-implementation-plan.md` (Phase 3 closed)
+- `2026-05-15-self-modification-framework-implementation-plan.md` (Phase 4 closed)
+- `2026-05-15-skills-substrate-implementation-plan.md` (Phase 5 closed)
+- `2026-05-16-planner-migration-implementation-plan.md` (Phase 7 closed)
 
 ## Files That Were Deliberately Removed
 
-The following document classes were intentionally collapsed because they had become redundant after adding this root map and root checklist:
+The following directories and packages were intentionally removed:
 
 - local `INDEX.md` files that did nothing except restate directory contents;
-- the older `core/GLOBAL_CHECKLIST.md`, which is now superseded by the root-level [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md).
+- the older `core/GLOBAL_CHECKLIST.md`, superseded by [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md);
+- `packages/tg-bridge/` — обёртка над OpenClaw, заменена прямой интеграцией tg-userbot в `src/sonya/main.py` (commit 5916e3d);
+- `src/sonya_runtime/` — legacy task runtime, не использовался актуальным ядром (commit 5916e3d);
+- `scripts/run-openclaw-bridge.ps1`, `scripts/run-openclaw-worker.ps1`, `scripts/launch-openclaw-bridge.vbs` — runner-скрипты OpenClaw (commit 5916e3d).
+
+## Operations Layer
+
+### [operations/VPS.md](C:/Users/Jester/Desktop/Sonya/docs/operations/VPS.md)
+
+Где хостится Соня и как её обслуживать. IP, ssh, layout на сервере, systemd-юниты, deploy команды, backup. Practical operations cookbook.
+
+### [deploy/README.md](C:/Users/Jester/Desktop/Sonya/deploy/README.md)
+
+Deployment artifacts: systemd units (`sonya.service`, `sonya-admin.service`), `update.sh` для безопасного pull + restart. Конкретные пути и команды.
 
 ## Personality Layer
 

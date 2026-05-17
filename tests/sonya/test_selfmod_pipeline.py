@@ -75,7 +75,8 @@ def test_anchor_integrity_catches_truthfulness(pipeline) -> None:
     )
     results = pipe.validate(p)
     assert not results[3].passed
-    assert "truthfulness_to_ivan" in results[3].reason
+    # C-7 fix: built programmatically, can match shorter stem like "truthfulness_to"
+    assert "truthfulness" in results[3].reason
 
 
 def test_anchor_integrity_catches_non_corporate_refusal(pipeline) -> None:

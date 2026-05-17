@@ -248,21 +248,17 @@ Sync-версия переименована в `_emit_cognitive_events_sync_fal
 
 ## 9. СРЕДНИЕ
 
-### M-1. `.env.example` неполный
+### M-1. `.env.example` неполный ✅ ИСПРАВЛЕНО (commit pending)
 
-Не задокументированы: `SONYA_TG_API_ID`, `SONYA_TG_API_HASH`, `SONYA_TG_SESSION_PATH`, `SONYA_ENABLE_TELEGRAM`, `SONYA_ENABLE_THINKING`, `SONYA_ADMIN_PASSWORD`. Новый разработчик скопирует .env.example → .env → получит полусломанную систему.
+Добавлены все переменные: `SONYA_TG_API_ID`, `SONYA_TG_API_HASH`, `SONYA_TG_SESSION_PATH`, `SONYA_ENABLE_TELEGRAM`, `SONYA_ENABLE_THINKING`, `SONYA_ADMIN_PASSWORD`, `SONYA_ADMIN_BIND_HOST`, `SONYA_ADMIN_PORT`, `SONYA_PROJECT_ROOT`, `SONYA_VENV_PYTHON`, `SONYA_CORE_LOG_PATH`. Плюс комментарии про секреты и admin bind.
 
-### M-2. Default model в config.py — `google/gemma-4-27b-it:free` — НЕ СУЩЕСТВУЕТ
+### M-2. Default model ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** `config.py:25`, `.env.example`
+`config.py` и `.env.example` теперь дефолтят на `google/gemma-2-27b-it:free`.
 
-**Проблема:** Gemma 4 не существует. На OpenRouter free tier — `gemma-2-27b-it:free`. Первый запуск с дефолтами → 404.
+### M-3. `DriveCounters.pending_debt_rate` ✅ ИСПРАВЛЕНО (commit pending)
 
-**Фикс:** `gemma-2-27b-it:free` или указать конкретную доступную модель.
-
-### M-3. `DriveCounters.pending_debt_rate` — мёртвое поле
-
-`drives.py:25`: поле `0.0`, но `tick()` использует hardcoded `0.02 * N`. Поле никем не читается.
+`pending_debt_rate=0.02` теперь реально используется в `tick(active_intentions_count)`. Раньше был hardcoded `0.02 * N`.
 
 ### M-4. `ProposalStatus` — 11 значений, используется 5
 
@@ -286,11 +282,9 @@ Sync-версия переименована в `_emit_cognitive_events_sync_fal
 
 `migrations.py:33-72`: каждый migration step запускает полный `schema.sql`. Работает из-за `IF NOT EXISTS`, но wasteful.
 
-### M-9. `WriteMaster.lock_path` ломается на dotless paths
+### M-9. `WriteMaster.lock_path` ✅ ИСПРАВЛЕНО (commit pending)
 
-`path.with_suffix(suffix + ".lock")` падает с ValueError если path без расширения.
-
-**Фикс:** `Path(str(path) + ".lock")`.
+`Path(str(path) + ".lock")` вместо `with_suffix` — работает на любых путях.
 
 ### M-10. `Health._stop_event` пересоздаётся в start
 
@@ -312,39 +306,37 @@ read seq → read state → write snapshot — между шагами може�
 
 Replay одного change_id silently re-пишет identity.
 
-### M-15. Unused imports в `governed_change.py`
+### M-15. Unused imports в `governed_change.py` ✅ ИСПРАВЛЕНО (см. C-6)
 
-`ApprovalRequest`, `ApprovalStatus` импортированы, не используются.
+После rewrite в C-6 — все импорты используются.
 
 ### M-16. `SelfModificationProposal` — frozen dataclass, но `update_status` возвращает новый объект
 
 Caller's old reference stale. API gotcha, надо документировать.
 
-### M-17. `tools/__init__.py` не экспортирует `hot_loader`
+### M-17. `tools/__init__.py` не экспортирует `hot_loader` ✅ ИСПРАВЛЕНО (commit pending)
 
-Plugin system скрыт от `sonya.tools` namespace.
+`from sonya.tools import hot_loader` теперь работает.
 
-### M-18. SOUL.md содержит мёртвые ссылки на OpenClaw paths
+### M-18. SOUL.md содержит мёртвые ссылки на OpenClaw paths ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** `docs/personality/SOUL.md:106`
+`memory_system/db/memory.db` → `~/.sonya/sonya_substrate.db`. "Update database" → "substrate is updated by the core".
 
-`memory_system/db/memory.db` — путь из OpenClaw, не существует. Аналогично HEARTBEAT.md (§2.7).
+### M-20. SOUL.md ссылается на несуществующие AGENTS.md, IDENTITY.md ✅ ИСПРАВЛЕНО (commit pending)
 
-### M-20. SOUL.md ссылается на несуществующие AGENTS.md, IDENTITY.md
+В Continuity section перечислены только существующие файлы: SOUL/HEARTBEAT/USER/SELF/LESSONS + INTERIM_CRUTCHES.
 
-В personality/ только SOUL.md, USER.md, SELF.md, LESSONS.md, HEARTBEAT.md.
+### M-21. PROJECT_DOCUMENTATION_MAP — два пункта 12 ✅ ИСПРАВЛЕНО (commit pending)
 
-### M-21. PROJECT_DOCUMENTATION_MAP — два пункта 12
+Reading order перенумерован 1-29.
 
-ROADMAP и GLOBAL_PROJECT_CHECKLIST оба под номером 12.
+### M-22. PROJECT_DOCUMENTATION_MAP не упоминает live docs ✅ ИСПРАВЛЕНО (commit pending)
 
-### M-22. PROJECT_DOCUMENTATION_MAP не упоминает KNOWN_ISSUES.md, VPS.md, deploy/, план/
+Добавлены секции: KNOWN_ISSUES.md, operations/VPS.md, deploy/README.md, docs/план/, активные/архивные work docs.
 
-Карта не покрывает половину живых документов.
+### M-23. `docs/план/` — 4 файла без metadata ✅ ИСПРАВЛЕНО (commit pending)
 
-### M-23. `docs/план/` — 4 файла без metadata
-
-`модель.txt`, `тело.txt`, `эмоции.txt`, `ОСНОВА.md` — нет Status/Type/Last reviewed.
+`ОСНОВА.md` получил metadata header (Status: Legacy). `*.txt` — not markdown, оставлены как заметки.
 
 ### M-24. ROADMAP §14 обещает `working.py` — не реализован
 
@@ -366,9 +358,9 @@ Bridge handler не работает на VPS. main.py использует `bui
 
 Не auto-tracked. Нужно вручную не забыть.
 
-### M-29. SOUL.md без metadata header
+### M-29. SOUL.md без metadata header ✅ ИСПРАВЛЕНО (commit pending)
 
-Нет Status/Type/Last reviewed.
+Header добавлен (Status, Type, Last reviewed, Scope).
 
 ### M-30. `tg-userbot` без тестов и README
 
@@ -382,9 +374,7 @@ Bridge handler не работает на VPS. main.py использует `bui
 
 Cancel task, await CancelledError, return 0. Не тестирует clean-shutdown семантику.
 
-### M-34. Signal handler signature inconsistency
-
-POSIX vs Windows path по-разному вызывают handler. Сейчас работает по совпадению.
+### M-34. Signal handler signature ✅ ИСПРАВЛЕНО (см. S-16)
 
 ### M-35. `record_response_as_memory` хардкодит `importance_score=0.5/0.6`
 
@@ -414,9 +404,9 @@ Emit stopping → append stopped → publish → set state STOPPED. Если ч�
 
 ### m-7. `Lifecycle.wait_for_stop` без start — silent return
 
-### m-8. Substrate не включает `PRAGMA foreign_keys = ON` per-connection
+### m-8. Substrate `PRAGMA foreign_keys` ✅ ИСПРАВЛЕНО (commit pending)
 
-Pragma в schema.sql не применяется к каждому новому connection.
+`Substrate.open` теперь применяет `PRAGMA foreign_keys = ON` для каждого нового connection.
 
 ### m-9. EpisodicMemory `_row_to_event` ✅ ИСПРАВЛЕНО (см. S-14)
 
@@ -438,19 +428,17 @@ Pragma в schema.sql не применяется к каждому новому 
 
 ### m-17. `state/__init__.py` экспортирует `THINGS_NOT_TO_BETRAY_SEED` без причины
 
-### m-18. ⚠️ `*.egg-info/` в git
+### m-18. ⚠️ `*.egg-info/` в git ✅ ИСПРАВЛЕНО (см. cleanup commit 5916e3d)
 
-`src/sonya_workspace.egg-info/`, `packages/tg-bridge/src/tg_bridge.egg-info/`, `packages/tg-userbot/src/tg_userbot.egg-info/`.
+`tg_bridge.egg-info/` ушёл вместе с tg-bridge. Остальные не tracked.
 
-**Фикс:** `git rm -r --cached <paths>`.
+### m-19. ⚠️ `admin/__main__.py` ✅ ИСПРАВЛЕНО (commit pending)
 
-### m-19. ⚠️ `admin/__main__.py` запускает `main()` на import
+Обёрнут в `if __name__ == "__main__":`.
 
-Должно быть в `if __name__ == "__main__":`.
+### m-20. `admin/__init__.py` пустой ✅ ИСПРАВЛЕНО (commit pending)
 
-### m-20. `admin/__init__.py` пустой
-
-`from sonya.admin import create_app` не работает.
+Экспортирует `create_app` и `main`.
 
 ### m-21. Agent session DONE парсер ловит `[DONE` без двоеточия
 
@@ -460,9 +448,9 @@ Pragma в schema.sql не применяется к каждому новому 
 
 ### m-24. `WriteMaster.acquired_at` пишется но не читается
 
-### m-25. Substrate без `PRAGMA journal_mode = WAL`
+### m-25. Substrate без `PRAGMA journal_mode = WAL` ✅ ИСПРАВЛЕНО (commit pending)
 
-WAL лучше для concurrent reads (admin + main одновременно).
+`Substrate.open()` (writable) применяет `PRAGMA journal_mode = WAL`. Лучше concurrent reads (admin при работающем core).
 
 ---
 
