@@ -286,14 +286,25 @@ async def run_agent_session(
             messages.append({"role": "assistant", "content": response})
             messages.append({"role": "user", "content": "Continue. Use a tool or say [DONE] when finished."})
 
-    # Record session summary
+    # Record session summary. If the last agent_step already captured the
+    # full final_output (the common case: model emits [DONE] and the step
+    # content == final_output), skip the redundant `summary` field — keeps
+    # the continuity stream cleaner without losing information.
+    summary_value: str
+    if not result.final_output:
+        summary_value = "no explicit finish"
+    elif result.thoughts and result.thoughts[-1] == result.final_output:
+        summary_value = "(see prior agent_step)"
+    else:
+        summary_value = result.final_output[:4000]
+
     stream.append(ContinuityEvent(
         kind="internal.agent_session_complete",
         payload={
             "steps": result.steps,
             "actions": result.actions[:30],
             "budget_exceeded": result.budget_exceeded,
-            "summary": result.final_output[:4000] if result.final_output else "no explicit finish",
+            "summary": summary_value,
         },
     ))
 
