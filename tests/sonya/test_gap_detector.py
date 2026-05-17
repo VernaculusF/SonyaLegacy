@@ -18,8 +18,10 @@ def substrate(tmp_path: Path):
 
 def test_scan_detects_gap_from_failed_action(substrate: Substrate) -> None:
     stream = ContinuityStream(substrate)
+    # Use a non-skipped kind. cognitive_tick is intentionally skipped now —
+    # otherwise gap detector self-triggers on every idle tick.
     stream.append(ContinuityEvent(
-        kind="internal.cognitive_tick",
+        kind="harness.policy_decision",
         payload={"triggers": ["failed_action:reply_via_telegram"]},
     ))
 
@@ -32,7 +34,7 @@ def test_scan_detects_gap_from_failed_action(substrate: Substrate) -> None:
 def test_scan_ignores_normal_events(substrate: Substrate) -> None:
     stream = ContinuityStream(substrate)
     stream.append(ContinuityEvent(
-        kind="internal.cognitive_tick",
+        kind="harness.policy_decision",
         payload={"triggers": ["idle_timeout"], "counters": {"loneliness": 0.5}},
     ))
 
@@ -44,7 +46,7 @@ def test_scan_ignores_normal_events(substrate: Substrate) -> None:
 def test_create_proposal_from_gap(substrate: Substrate) -> None:
     stream = ContinuityStream(substrate)
     stream.append(ContinuityEvent(
-        kind="internal.cognitive_tick",
+        kind="harness.policy_decision",
         payload={"triggers": ["missing_capability:tg_reply"]},
     ))
 

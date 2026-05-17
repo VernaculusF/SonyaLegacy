@@ -49,15 +49,21 @@ class DriftDetector:
     def scan_recent(self, since_seq: int = 0) -> list[AnchorDriftSignal]:
         """Scan continuity events for drift indicators."""
         signals: list[AnchorDriftSignal] = []
-        # Exclude detector self-output: drift_signal events contain the very
-        # keywords we look for ('things_not_to_betray', etc.) in their payload
-        # — without this filter the detector triggers on itself every tick.
-        _SELF_KINDS = {
+        # Skip kinds whose payloads are inner monologue / agent traces — these
+        # naturally cite identity keywords from SOUL.md and are NOT drift signals.
+        # Drift should fire on behavioural mismatches (commands, policy
+        # decisions, outgoing actions), not on Sonya thinking ABOUT herself.
+        _SKIP_KINDS = {
             "internal.drift_signal",
             "internal.capability_gap",
+            "internal.agent_step",
+            "internal.agent_session_outcome",
+            "internal.agent_session_complete",
+            "internal.thought",
+            "internal.cognitive_tick",
         }
         for event in self._stream.read_since(since_seq):
-            if event.kind in _SELF_KINDS:
+            if event.kind in _SKIP_KINDS:
                 continue
             payload_text = str(event.payload).lower()
             for indicator, kind in _DRIFT_INDICATORS.items():

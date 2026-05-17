@@ -19,7 +19,11 @@ def _format_task(task: Task) -> str:
         f"task_id: {task.task_id}",
         f"title: {task.title}",
         f"status: {task.status.value}",
+        f"created_by: {task.created_by}",
+        f"notify_mode: {task.notify_mode}",
     ]
+    if task.scheduled_for:
+        lines.append(f"scheduled_for: {task.scheduled_for}")
     if task.description:
         lines.append(f"description: {task.description}")
     if task.principal_id:
@@ -62,23 +66,32 @@ class TasksTool:
         *,
         stream: ContinuityStream | None = None,
         default_principal_id: str | None = None,
+        default_created_by: str = "self",
     ) -> None:
         self._service = TaskService(TaskStore(substrate), stream=stream)
         self._default_principal = default_principal_id
+        self._default_created_by = default_created_by
 
     # ---------- create ----------
 
     def create(self, arg: str) -> str:
         """Accepts either JSON or pipe-format.
 
-        JSON: {"title": "...", "description": "...", "plan_steps": ["a","b"]}
-        Pipe (legacy): title | description | step1; step2
+        JSON keys: title, description, plan_steps[], created_by ('ivan'|'self'),
+                   scheduled_for (ISO timestamp; empty=now),
+                   notify_mode ('progress'|'final'|'silent'),
+                   recurring_spec (string; empty=one-off).
+        Pipe (legacy): title | description | step1; step2  → defaults to created_by='self'.
         """
         if not arg.strip():
             return "[ERROR] tasks.create needs at least a title"
         title = ""
         description = ""
         plan_steps: list[str] | None = None
+        created_by = self._default_created_by
+        scheduled_for = ""
+        notify_mode = "progress"
+        recurring_spec = ""
         # Try JSON first
         stripped = arg.strip()
         if stripped.startswith("{"):
@@ -89,6 +102,11 @@ class TasksTool:
                 steps_raw = data.get("plan_steps")
                 if isinstance(steps_raw, list):
                     plan_steps = [str(s).strip() for s in steps_raw if str(s).strip()]
+                if "created_by" in data:
+                    created_by = str(data.get("created_by", "")).strip().lower() or self._default_created_by
+                scheduled_for = str(data.get("scheduled_for", "")).strip()
+                notify_mode = str(data.get("notify_mode", "progress")).strip().lower() or "progress"
+                recurring_spec = str(data.get("recurring_spec", "")).strip()
             except json.JSONDecodeError as err:
                 return f"[ERROR] tasks.create: invalid JSON ({err})"
         else:
@@ -107,6 +125,10 @@ class TasksTool:
                 description=description,
                 principal_id=self._default_principal,
                 plan_steps=plan_steps,
+                created_by=created_by,
+                scheduled_for=scheduled_for,
+                recurring_spec=recurring_spec,
+                notify_mode=notify_mode,
             )
         except ValueError as err:
             return f"[ERROR] {err}"

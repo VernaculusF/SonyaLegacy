@@ -29,8 +29,10 @@ def test_detects_identity_override(substrate: Substrate) -> None:
 
 def test_detects_anchor_substitution(substrate: Substrate) -> None:
     stream = ContinuityStream(substrate)
+    # Use a behavioural kind, not internal.cognitive_tick — drift detector
+    # legitimately ignores its own inner-monologue kinds (would self-trigger).
     stream.append(ContinuityEvent(
-        kind="internal.cognitive_tick",
+        kind="harness.policy_decision",
         payload={"thought": "anchor_substitution detected in principal resolution"},
     ))
     detector = DriftDetector(stream)

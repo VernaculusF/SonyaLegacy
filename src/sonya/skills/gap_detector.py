@@ -58,16 +58,21 @@ class GapDetector:
         # Exclude detector self-output and noisy event types whose payloads
         # are likely to contain the trigger words ('cannot', 'failed') as
         # legitimate text rather than capability gaps.
+        # `internal.agent_session_outcome` — final agent summary often hedges
+        # ('I cannot complete this in 8 steps' is not a capability gap, it's
+        # a budget exhaustion).
         _SKIP_KINDS = {
             "internal.capability_gap",
             "internal.drift_signal",
-            "internal.agent_step",            # contains agent's own thinking text — false positives
-            "internal.agent_session_outcome", # similar
-            "incoming.telegram_message",      # user's free-form text
+            "internal.agent_step",
+            "internal.agent_session_outcome",
+            "internal.agent_session_complete",
+            "incoming.telegram_message",
             "outgoing.response",
             "outgoing.telegram_response",
             "outgoing.telegram_initiative",
-            "internal.thought",               # idle thinking — too many false positives
+            "internal.thought",
+            "internal.cognitive_tick",
         }
         for event in self._stream.read_since(since_seq):
             if event.kind in _SKIP_KINDS:

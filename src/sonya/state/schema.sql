@@ -263,13 +263,20 @@ CREATE TABLE IF NOT EXISTS tasks (
     blocker TEXT NOT NULL DEFAULT '',
     result TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    -- v9 additions
+    created_by TEXT NOT NULL DEFAULT 'self',          -- 'ivan' | 'self'
+    scheduled_for TEXT NOT NULL DEFAULT '',            -- ISO; empty = run now
+    recurring_spec TEXT NOT NULL DEFAULT '',           -- JSON; empty = one-off
+    notify_mode TEXT NOT NULL DEFAULT 'progress'       -- 'progress' | 'final' | 'silent'
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_principal ON tasks(principal_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
+CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_for ON tasks(scheduled_for);
 
 -- ====================================================================
 -- v8 additions: provider keys (own key pool, replacing OmniRoute).
@@ -307,3 +314,14 @@ CREATE TABLE IF NOT EXISTS provider_settings (
     default_base_url TEXT NOT NULL DEFAULT 'https://api.fireworks.ai/inference/v1',
     updated_at TEXT NOT NULL
 );
+
+-- ====================================================================
+-- v9 additions: task scheduling + ownership
+-- created_by: 'ivan' (Ivan-issued, worked on continuously by ivan-task-worker)
+--             'self' (Sonya's own ideas, worked on in active sessions)
+-- scheduled_for: ISO timestamp; null/empty = run immediately
+-- recurring_spec: JSON describing repeat pattern (or '' for one-off)
+-- notify_mode: 'progress' (chat.tell_ivan after each step) | 'final' (only at done) |
+--              'silent' (no progress messages, just continuity)
+-- These columns added via ALTER TABLE in migration v8 → v9.
+-- ====================================================================

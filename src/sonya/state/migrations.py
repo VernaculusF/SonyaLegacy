@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 8
+CURRENT_VERSION = 9
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -122,6 +122,23 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 8
+
+    if version == 8:
+        # v8 → v9: task scheduling + ownership columns.
+        _add_column_if_missing(conn, "tasks", "created_by", "TEXT NOT NULL DEFAULT 'self'")
+        _add_column_if_missing(conn, "tasks", "scheduled_for", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "tasks", "recurring_spec", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "tasks", "notify_mode", "TEXT NOT NULL DEFAULT 'progress'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_for ON tasks(scheduled_for)")
+        # Existing tasks default to created_by='self' (their previous behaviour)
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (9, now),
+        )
+        conn.commit()
+        version = 9
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

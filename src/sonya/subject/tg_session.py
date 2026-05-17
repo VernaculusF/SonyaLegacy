@@ -94,7 +94,14 @@ B) **Если задача требует инструментов** (посмо
 
 ## Длинные задачи
 
-Если задача длинная (5+ минут) — создай task через `tasks.create` и работай частями. Active session подхватит её сама раз в 2 часа.
+Если задача длинная (5+ минут) — создай task через `tasks.create`. По умолчанию TG-задачи помечены `created_by="ivan"` — task worker будет их продолжать **каждые ~2 минуты в фоне**, пока не сделаешь `tasks.complete`. Не нужно ждать active session.
+
+Если Иван говорит "сделай через N часов" — добавь `scheduled_for: "<ISO timestamp>"` в JSON. Scheduler разбудит задачу когда наступит время.
+
+`notify_mode`:
+- `"progress"` — апдейты через `chat.tell_ivan` после каждого осмысленного шага (default).
+- `"final"` — только финальное сообщение когда `tasks.complete`. Иван попросит — переключи.
+- `"silent"` — без сообщений Ивану. Только в continuity. Иван спросит сам.
 
 ## Бюджет сессии
 
@@ -111,12 +118,13 @@ def build_tools(
     stream: ContinuityStream,
     *,
     outbound=None,
+    default_created_by: str = "ivan",
 ) -> dict:
     return {
         "self_inspect": SelfInspectTool(substrate),
         "filesystem": FilesystemTool(),
         "selfmod": SelfModTool(substrate),
-        "tasks": TasksTool(substrate, stream=stream),
+        "tasks": TasksTool(substrate, stream=stream, default_created_by=default_created_by),
         "web": WebTool(),
         "code": CodeTool(),
         "shell": ShellTool(substrate, principal_id="ivan", stream=stream),

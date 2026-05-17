@@ -98,6 +98,7 @@ class InternalProcess:
         idle_interval_seconds: float = 300.0,
         tick_interval_seconds: float = 10.0,
         active_interval_seconds: float = 3600.0,
+        task_worker_interval_seconds: float = 120.0,
     ) -> None:
         self._stream = stream
         self._intentions = intention_store
@@ -107,6 +108,7 @@ class InternalProcess:
         self._idle_interval = idle_interval_seconds
         self._tick_interval = tick_interval_seconds
         self._active_interval = active_interval_seconds
+        self._task_worker_interval = task_worker_interval_seconds
         self._counters = HomeostasisCounters()
         # Этап G: DriveCounters parallel to HomeostasisCounters. Same internal
         # tick cadence; resets on external messages / completed actions; values
@@ -124,6 +126,9 @@ class InternalProcess:
         self._last_gap_scan_seq: int = 0
         self._last_consolidation_at: float = 0.0
         self._consolidation_interval: float = 86400.0  # once / 24h
+        # Task worker: continues in_progress tasks autonomously between active sessions.
+        self._last_task_worker_at: float = 0.0
+        self._task_worker_running: bool = False
 
     @property
     def counters(self) -> HomeostasisCounters:
@@ -140,6 +145,27 @@ class InternalProcess:
     @property
     def outbound(self):
         return self._outbound
+
+    def request_active_session_soon(self, delay_seconds: float = 30.0) -> None:
+        """Schedule an active session to run within `delay_seconds`.
+
+        Used by tg_session when it leaves an in_progress task — instead of
+        waiting for the full active_interval (e.g. 2h), the loop will fire
+        active mode at the next tick after the delay. Safe to call multiple
+        times; only the earliest takes effect.
+        """
+        loop = asyncio.get_event_loop()
+        target_time = loop.time() - self._active_interval + delay_seconds
+        # Don't push it later than what's already scheduled.
+        if target_time < self._last_active_session:
+            self._last_active_session = target_time
+            try:
+                self._stream.append(ContinuityEvent(
+                    kind="internal.active_session_scheduled",
+                    payload={"delay_seconds": delay_seconds},
+                ))
+            except Exception:
+                pass
 
     @property
     def tick_count(self) -> int:
@@ -214,6 +240,20 @@ class InternalProcess:
             # Check active session timeout
             active_elapsed = now - self._last_active_session
             should_active = active_elapsed >= self._active_interval and self._provider is not None
+
+            # Task worker: if there's an in_progress task and worker is due, run
+            # a short continuation pass. Independent of active_session — fires
+            # every ~2 minutes when work exists.
+            worker_elapsed = now - self._last_task_worker_at
+            if (
+                worker_elapsed >= self._task_worker_interval
+                and not self._task_worker_running
+                and self._provider is not None
+                and not should_active   # avoid double-running with active session
+            ):
+                self._last_task_worker_at = now
+                # Run worker in background so the loop tick stays cheap.
+                asyncio.create_task(self._run_task_worker())
 
             if should_active:
                 await self._run_active_session()
@@ -397,7 +437,7 @@ class InternalProcess:
             self_inspect = SelfInspectTool(substrate)
             filesystem = FilesystemTool()
             selfmod = SelfModTool(substrate)
-            tasks_tool = TasksTool(substrate, stream=self._stream)
+            tasks_tool = TasksTool(substrate, stream=self._stream, default_created_by="self")
             web_tool = WebTool()
             code_tool = CodeTool()
             shell_tool = ShellTool(
@@ -506,6 +546,143 @@ class InternalProcess:
             ))
         except Exception:
             pass  # Don't crash the loop on session error
+
+    async def _run_task_worker(self) -> None:
+        """Autonomous continuation of Ivan-issued tasks.
+
+        Runs every ~2 minutes when Ivan has open due tasks. Short LLM session
+        (5 steps, 60 sec) focused on advancing one Ivan-task. Self-tasks
+        (created_by='self', e.g. ideas Sonya generated in idle thinking) are
+        deliberately NOT picked up here — those go through active session
+        every 2 hours, since they're optional / her own initiative and
+        shouldn't burn tokens continuously.
+
+        Only `notify_mode in ('progress', 'final')` will see chat.tell_ivan
+        suggestions in their prompt; 'silent' tasks work without messaging.
+        """
+        if self._provider is None or self._task_worker_running:
+            return
+        self._task_worker_running = True
+        try:
+            substrate = self._substrate or getattr(self._stream, "_sub", None)
+            if substrate is None:
+                return
+
+            from sonya.tasks.service import TaskService
+            from sonya.tasks.store import TaskStore
+            from sonya.tasks.models import TaskStatus
+
+            svc = TaskService(TaskStore(substrate), stream=self._stream)
+            due_ivan = svc.list_due_ivan_tasks()
+            if not due_ivan:
+                return
+
+            # Prefer in_progress, then pending; oldest updated_at first
+            in_progress = [t for t in due_ivan if t.status is TaskStatus.IN_PROGRESS]
+            pending = [t for t in due_ivan if t.status is TaskStatus.PENDING]
+            task = (in_progress + sorted(pending, key=lambda t: t.created_at))[0]
+
+            # Auto-promote pending → in_progress
+            if task.status is TaskStatus.PENDING:
+                try:
+                    task = svc.set_in_progress(task.task_id)
+                except Exception:
+                    pass
+
+            remaining = task.remaining_steps()
+            next_step = remaining[0] if remaining else "(no plan, just continue)"
+
+            self._stream.append(ContinuityEvent(
+                kind="internal.task_worker_tick",
+                payload={
+                    "task_id": task.task_id,
+                    "title": task.title,
+                    "next_step": next_step[:200],
+                    "notify_mode": task.notify_mode,
+                },
+            ))
+
+            # Build tools + system prompt
+            from sonya.subject.agent_session import run_agent_session
+            from sonya.subject.tg_session import build_tools
+            from sonya.planning.context_builder import build_full_context
+
+            tools = build_tools(substrate, self._stream, outbound=self._outbound, default_created_by="ivan")
+            ctx = build_full_context(
+                substrate=substrate,
+                user_input="",
+                principal_id=None,
+                drives=self._drives,
+            )
+
+            notify_hint = {
+                "progress": (
+                    "После каждого шага шли апдейт через `[TOOL: chat.tell_ivan текст]`. "
+                    "Иван хочет видеть прогресс."
+                ),
+                "final": (
+                    "НЕ слать апдейты по ходу. Только когда задача `tasks.complete` — Иван "
+                    "получит финальное сообщение через chat.tell_ivan."
+                ),
+                "silent": (
+                    "Никаких сообщений Ивану по этой задаче. Работай молча, отметь шаги "
+                    "через tasks.step. Иван сам спросит."
+                ),
+            }.get(task.notify_mode, "После осмысленного шага можешь отправить апдейт.")
+
+            worker_prompt = (
+                "Ты Соня. Это автономная мини-сессия — продолжаешь работу над "
+                "задачей Ивана в фоне, между TG-сообщениями.\n\n"
+                f"Текущая задача: {task.title}\n"
+                f"task_id: {task.task_id}\n"
+                f"description: {task.description}\n"
+                f"следующий шаг: {next_step}\n"
+                f"notify_mode: {task.notify_mode}\n\n"
+                f"{notify_hint}\n\n"
+                "Что делать:\n"
+                "- Сделай 1-2 шага по этой задаче через tools\n"
+                "- Когда закончил шаг — `[TOOL: tasks.step]` с JSON\n"
+                "- Если задача done — `[TOOL: tasks.complete]` JSON и финальный chat.tell_ivan если notify_mode != silent\n"
+                "- Если ждёшь approval/Ивана — `[TOOL: tasks.block]` JSON и закрывайся\n"
+                "- Если задача оказалась бессмысленной — `[TOOL: tasks.fail]`\n"
+                "- Если просто хочешь подождать — `[DONE: пауза]` (через ~2 минуты я снова запущу)\n\n"
+                "У тебя 5 шагов и 60 секунд. Не торопись.\n\n"
+                + ctx.system_prompt
+            )
+
+            try:
+                result = await run_agent_session(
+                    provider=self._provider,
+                    stream=self._stream,
+                    self_inspect=tools["self_inspect"],
+                    filesystem=tools["filesystem"],
+                    selfmod=tools["selfmod"],
+                    tasks=tools["tasks"],
+                    web=tools["web"],
+                    code=tools["code"],
+                    shell=tools["shell"],
+                    outbound=tools["outbound"],
+                    system_prompt=worker_prompt,
+                    initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
+                    max_steps=5,
+                    max_seconds=60.0,
+                )
+                self._stream.append(ContinuityEvent(
+                    kind="internal.task_worker_outcome",
+                    payload={
+                        "task_id": task.task_id,
+                        "steps": result.steps,
+                        "actions": result.actions[:5],
+                        "budget_exceeded": result.budget_exceeded,
+                    },
+                ))
+            except Exception as err:
+                self._stream.append(ContinuityEvent(
+                    kind="internal.task_worker_error",
+                    payload={"task_id": task.task_id, "error": str(err)[:300]},
+                ))
+        finally:
+            self._task_worker_running = False
 
     # ====================================================================
     # Этап F: drift / gap / consolidation integration

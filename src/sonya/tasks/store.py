@@ -31,6 +31,10 @@ class TaskStore:
         parent_task_id: str | None = None,
         deadline: str | None = None,
         plan_steps: list[str] | None = None,
+        created_by: str = "self",
+        scheduled_for: str = "",
+        recurring_spec: str = "",
+        notify_mode: str = "progress",
     ) -> Task:
         task_id = f"task-{uuid4().hex[:12]}"
         now = _utc_now_iso()
@@ -38,21 +42,24 @@ class TaskStore:
         self._sub.connection.execute(
             "INSERT INTO tasks (task_id, title, description, status, principal_id, "
             "parent_task_id, deadline, plan_steps_json, completed_steps_json, "
-            "blocker, result, created_at, updated_at) "
-            "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, '[]', '', '', ?, ?)",
+            "blocker, result, created_at, updated_at, "
+            "created_by, scheduled_for, recurring_spec, notify_mode) "
+            "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, '[]', '', '', ?, ?, ?, ?, ?, ?)",
             (
                 task_id, title, description, principal_id, parent_task_id,
                 deadline, steps_json, now, now,
+                created_by, scheduled_for, recurring_spec, notify_mode,
             ),
         )
         self._sub.connection.commit()
-        return self.get(task_id)
+        return self.get(task_id)  # type: ignore[return-value]
 
     def get(self, task_id: str) -> Task:
         row = self._sub.connection.execute(
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-            "created_at, updated_at FROM tasks WHERE task_id = ?",
+            "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+            "FROM tasks WHERE task_id = ?",
             (task_id,),
         ).fetchone()
         if row is None:
@@ -64,16 +71,16 @@ class TaskStore:
             cursor = self._sub.connection.execute(
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-                "created_at, updated_at FROM tasks "
-                "WHERE status = ? ORDER BY updated_at DESC LIMIT ?",
+                "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+                "FROM tasks WHERE status = ? ORDER BY updated_at DESC LIMIT ?",
                 (status, limit),
             )
         else:
             cursor = self._sub.connection.execute(
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-                "created_at, updated_at FROM tasks "
-                "ORDER BY updated_at DESC LIMIT ?",
+                "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+                "FROM tasks ORDER BY updated_at DESC LIMIT ?",
                 (limit,),
             )
         return [_row_to_task(row) for row in cursor.fetchall()]
@@ -83,10 +90,16 @@ class TaskStore:
         cursor = self._sub.connection.execute(
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
-            "created_at, updated_at FROM tasks "
+            "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode "
+            "FROM tasks "
             "WHERE status IN ('pending','in_progress','blocked') ORDER BY updated_at DESC"
         )
         return [_row_to_task(row) for row in cursor.fetchall()]
+
+    def list_due_ivan_tasks(self) -> list[Task]:
+        """Tasks created by Ivan that are open AND scheduled_for <= now."""
+        all_open = self.list_open()
+        return [t for t in all_open if t.is_ivan_task() and t.is_due()]
 
     # ---------- update ----------
 
@@ -144,4 +157,8 @@ def _row_to_task(row) -> Task:
         result=row[10],
         created_at=row[11],
         updated_at=row[12],
+        created_by=row[13] if len(row) > 13 else "self",
+        scheduled_for=row[14] if len(row) > 14 else "",
+        recurring_spec=row[15] if len(row) > 15 else "",
+        notify_mode=row[16] if len(row) > 16 else "progress",
     )

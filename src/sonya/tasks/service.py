@@ -30,9 +30,17 @@ class TaskService:
         parent_task_id: str | None = None,
         deadline: str | None = None,
         plan_steps: list[str] | None = None,
+        created_by: str = "self",
+        scheduled_for: str = "",
+        recurring_spec: str = "",
+        notify_mode: str = "progress",
     ) -> Task:
         if not title.strip():
             raise ValueError("title cannot be empty")
+        if created_by not in ("ivan", "self"):
+            raise ValueError(f"created_by must be 'ivan' or 'self', got {created_by!r}")
+        if notify_mode not in ("progress", "final", "silent"):
+            raise ValueError(f"notify_mode must be progress/final/silent, got {notify_mode!r}")
         task = self._store.create(
             title=title,
             description=description,
@@ -40,8 +48,17 @@ class TaskService:
             parent_task_id=parent_task_id,
             deadline=deadline,
             plan_steps=plan_steps,
+            created_by=created_by,
+            scheduled_for=scheduled_for,
+            recurring_spec=recurring_spec,
+            notify_mode=notify_mode,
         )
-        self._emit("task.created", task, extra={"title": task.title})
+        self._emit("task.created", task, extra={
+            "title": task.title,
+            "created_by": created_by,
+            "scheduled_for": scheduled_for,
+            "notify_mode": notify_mode,
+        })
         return task
 
     # ---------- pickup / pause ----------
@@ -144,6 +161,10 @@ class TaskService:
 
     def list_open(self) -> list[Task]:
         return self._store.list_open()
+
+    def list_due_ivan_tasks(self) -> list[Task]:
+        """Ivan-issued tasks that are open AND scheduled_for <= now."""
+        return self._store.list_due_ivan_tasks()
 
     def pick_next(self) -> Task | None:
         """Pick the next task to work on:

@@ -36,6 +36,11 @@ class Task:
     result: str = ""
     created_at: str = ""
     updated_at: str = ""
+    # v9 additions
+    created_by: str = "self"          # 'ivan' or 'self'
+    scheduled_for: str = ""           # ISO; empty = run immediately
+    recurring_spec: str = ""          # JSON; empty = one-off
+    notify_mode: str = "progress"     # 'progress' | 'final' | 'silent'
 
     def is_open(self) -> bool:
         return self.status in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED}
@@ -46,3 +51,17 @@ class Task:
     def remaining_steps(self) -> list[str]:
         done_idx = {entry.get("step_idx") for entry in self.completed_steps}
         return [step for i, step in enumerate(self.plan_steps) if i not in done_idx]
+
+    def is_due(self) -> bool:
+        """Whether this task is ready to start now (scheduled_for <= now)."""
+        if not self.scheduled_for:
+            return True
+        try:
+            from datetime import datetime, timezone
+            sched = datetime.fromisoformat(self.scheduled_for.replace("Z", "+00:00"))
+            return datetime.now(timezone.utc) >= sched
+        except Exception:
+            return True
+
+    def is_ivan_task(self) -> bool:
+        return self.created_by == "ivan"

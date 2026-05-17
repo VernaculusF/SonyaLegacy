@@ -86,7 +86,18 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - selfmod.rollback [proposal_id] [reason?]
 - selfmod.soft_restart [reason?]
 
-- tasks.create — block form, JSON: {"title": "...", "description": "...", "plan_steps": ["step1", "step2"]}
+- tasks.create — block form, JSON: {
+    "title": "...",
+    "description": "...",
+    "plan_steps": ["step1", "step2"],
+    "created_by": "ivan" | "self",        // default depends on context
+    "scheduled_for": "2026-05-17T15:00:00Z",  // optional ISO timestamp; empty = run now
+    "notify_mode": "progress" | "final" | "silent"  // default "progress"
+  }
+  - created_by="ivan": worker runs every ~2 min (continuous)
+  - created_by="self": picked up by active session every 2 hours (her own ideas)
+  - scheduled_for=future: scheduler holds it until the time
+  - notify_mode=progress: chat.tell_ivan after each step. final: only on done. silent: never.
 - tasks.list [status_filter?] — pending / in_progress / blocked / done / failed / open
 - tasks.get [task_id]
 - tasks.pick — pick next open task and mark in_progress
