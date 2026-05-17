@@ -27,7 +27,7 @@ rm -f "$SUBSTRATE_DIR"/*.lock
 echo "=> Restarting services..."
 if systemctl --user list-units 2>/dev/null | grep -q sonya; then
     systemctl --user restart sonya sonya-admin 2>/dev/null || true
-elif command -v sudo >/dev/null && sudo -n systemctl status sonya >/dev/null 2>&1; then
+elif [ -f /etc/systemd/system/sonya.service ] && command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
     sudo systemctl restart sonya sonya-admin
 else
     echo "!! systemd not configured — falling back to nohup"
