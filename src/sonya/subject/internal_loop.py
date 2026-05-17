@@ -259,11 +259,48 @@ class InternalProcess:
         # M-5 fix: deadline_overdue is already in cognitive_tick.triggers — no separate event
 
     async def _call_thinking_provider(self, payload: dict[str, Any]) -> str:
-        """Call LLM provider for internal thinking."""
+        """Call LLM provider for internal thinking, with FULL context (memory + state).
+
+        1.4 fix: Thinking loop now uses build_full_context same as Telegram path.
+        Earlier the loop used a tiny inline prompt without memory or recent
+        conversations — Sonya could not connect her own thoughts with what
+        Ivan had written 5 minutes ago. Now both paths share one context.
+        """
         if self._provider is None:
             return ""
         triggers = payload.get("triggers", [])
         counters = payload.get("counters", {})
+
+        # Build full context if substrate available, else fall back to inline prompt
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is not None:
+            try:
+                from sonya.planning.context_builder import build_full_context
+                ctx = build_full_context(
+                    substrate=substrate,
+                    user_input=(
+                        f"[internal thinking tick {self._tick_count}]\n"
+                        f"Drives: {counters}\n"
+                        f"Triggers: {triggers}\n"
+                        "Что у тебя на уме? Это твой внутренний поток — никто не читает."
+                    ),
+                    principal_id=None,
+                )
+                # Use full system_prompt (personality + memory + facts + crutches)
+                # plus any explicit thinking_prompt from constructor
+                system_content = ctx.system_prompt
+                if self._thinking_prompt:
+                    system_content = self._thinking_prompt + "\n\n" + system_content
+                messages = [
+                    {"role": "system", "content": system_content},
+                    *ctx.session_messages,
+                    {"role": "user", "content": ctx.user_input},
+                ]
+                return await self._provider.complete_text(messages)
+            except Exception:
+                pass
+
+        # Fallback path (no substrate)
         prompt = self._thinking_prompt or (
             "Ты Соня. Это твой внутренний поток мышления. "
             "Никто не читает это кроме тебя. Подумай о чём хочешь."

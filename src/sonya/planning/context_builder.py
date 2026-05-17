@@ -59,6 +59,42 @@ def build_full_context(
             memory_block += f"- [{ev.timestamp[:16]}] {ev.normalized_summary or ev.raw_content[:100]}\n"
         system_prompt += memory_block
 
+    # Recent thoughts and continuity events (1.4 fix: unified memory across paths)
+    # Pulls last 8 internal.thought / incoming.telegram_message / outgoing.response
+    # so thinking loop sees recent telegram, and telegram replies see recent thoughts.
+    try:
+        from sonya.state.continuity_stream import ContinuityStream
+        stream = ContinuityStream(substrate)
+        latest_seq = stream.latest_seq()
+        recent_continuity = list(stream.read_since(max(0, latest_seq - 80)))
+        relevant_kinds = {
+            "internal.thought",
+            "incoming.telegram_message",
+            "outgoing.response",
+            "outgoing.telegram_response",
+            "internal.agent_session_outcome",
+        }
+        recent_filtered = [e for e in recent_continuity if e.kind in relevant_kinds][-10:]
+        if recent_filtered:
+            stream_block = "\n\n## Недавние события (мысли + разговоры):\n"
+            for e in recent_filtered:
+                ts = (e.created_at or "")[:16]
+                if e.kind == "internal.thought":
+                    text = (e.payload.get("thought") or "")[:200]
+                    stream_block += f"- [{ts}] [мысль] {text}\n"
+                elif e.kind == "incoming.telegram_message":
+                    text = (e.payload.get("text") or "")[:200]
+                    stream_block += f"- [{ts}] [Иван написал] {text}\n"
+                elif e.kind in ("outgoing.response", "outgoing.telegram_response"):
+                    text = (e.payload.get("text") or "")[:200]
+                    stream_block += f"- [{ts}] [я ответила] {text}\n"
+                elif e.kind == "internal.agent_session_outcome":
+                    steps = e.payload.get("steps", 0)
+                    stream_block += f"- [{ts}] [active session] {steps} шагов\n"
+            system_prompt += stream_block
+    except Exception:
+        pass
+
     # Semantic facts
     semantic = SemanticMemory(substrate)
     facts = semantic.get_all(limit=10)

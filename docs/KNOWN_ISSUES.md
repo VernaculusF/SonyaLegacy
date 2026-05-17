@@ -3,30 +3,19 @@
 **Status:** Active
 **Type:** Operations
 **Last updated:** 2026-05-16
-**Stable commit:** `26391b1`
+**Stable commit:** `6a7b51b` (1.4 fix pending)
 **Scope:** Всё что сломано, работает криво, дублируется или отсутствует. Не путать с INTERIM_CRUTCHES.md — там архитектурные ограничения по дизайну. Здесь — баги и техдолг.
 
 ---
 
 ## 1. КРИТИЧНЫЕ (ломают работу)
 
-### 1.4 Память разделена между Telegram и Thoughts
+### 1.4 Память разделена между Telegram и Thoughts ✅ ИСПРАВЛЕНО (commit pending)
 
-**Замечено:** при общении в Telegram Соня не помнит/не использует свои собственные мысли из thinking loop. И наоборот — thoughts генерируются без знания о недавних разговорах.
-
-**Где:** `src/sonya/planning/context_builder.py` + `src/sonya/subject/internal_loop.py`
-
-**Гипотеза причины:**
-1. `build_full_context` подтягивает episodic_memory через `get_recent(limit=15)` — там должны быть и `internal.thought`, и `incoming.telegram_message`, и `outgoing.response`. Но возможно фильтруется или важности слишком разные.
-2. Thinking loop использует свой собственный `thinking_prompt`, не зовёт `build_full_context` — у него свой short context без recent telegram conversations.
-3. Recent Telegram сообщения подтягиваются из API (`get_messages(chat_id, limit=12)`) — это история чата, но не история мыслей в этом чате.
-
-**Фикс:** Унифицировать context. И thinking loop, и tg-handler должны строиться через **один** `build_full_context`, который включает:
-- personality
-- episodic memory (последние N events ВСЕХ типов: thoughts, incoming, outgoing)
-- recent chat messages для текущего канала (если есть)
-- semantic facts
-- subject state / drives
+Решение:
+1. `_call_thinking_provider` в `internal_loop.py` теперь использует `build_full_context` так же как Telegram path. Оба пути идут через единую сборку context.
+2. `build_full_context` в `context_builder.py` дополнительно подтягивает последние 10 событий из continuity stream: `internal.thought`, `incoming.telegram_message`, `outgoing.response`, `internal.agent_session_outcome`.
+3. Теперь thinking loop видит недавние сообщения от Ивана, а Telegram handler видит недавние мысли Сони. Один общий timeline.
 
 ### 1.2 SQLite permissions сбрасываются при git reset --hard ✅ ИСПРАВЛЕНО (commit pending)
 
@@ -502,27 +491,47 @@ S-12 — реальный риск, нужен тест на `..`/symlinks/forbi
 
 ---
 
-## 12. Приоритеты
+## 12. Приоритеты — что осталось
 
-### 🔴 КРИТИЧНО
+### 🔴 Заблокировано пользователем (пока не делать)
 
-| # | Issue | Влияние | Effort |
-|---|-------|---------|--------|
-| 1 | C-1: секреты в git | Утечка ключей | 30 мин |
-| 2 | C-3: admin auth weakness | Внешний взлом | 30 мин |
-| 3 | S-12: filesystem без allowlist | Соня может сломать себя | 1 час |
-| 4 | M-2: gemma-4 не существует | First-run 404 | 5 мин |
-| 5 | M-18: SOUL.md OpenClaw paths | Personality drift | 10 мин |
+| # | Issue | Причина |
+|---|-------|---------|
+| C-1 | Секреты в git | По указанию пользователя — пропустить |
+| C-2 | TLS verify=False | По указанию пользователя — пропустить |
+| C-3 | Admin auth weakness | По указанию пользователя — пропустить |
 
-### 🟡 СЕРЬЁЗНО
+### 🟡 Deferred (требуют integration sprint, не bug fix)
 
-| # | Issue | Влияние | Effort |
-|---|-------|---------|--------|
-| 6 | S-3..S-7: dead code in critical paths | Phases 4-6 не работают | 4-8 часов |
-| 7 | 2.7 / M-18: HEARTBEAT/SOUL drift | Personality lies | 30 мин |
-| 8 | C-5: admin substrate concurrent | Race conditions | 1 час |
-| 9 | S-14: episodic memory decay не работает | Memory growth uncontrolled | 1 час |
-| 10 | 5.1: инициатива | Ключевая фича AGI | 2-3 часа |
+| # | Issue | Причина |
+|---|-------|---------|
+| S-3..S-7 | Dead code Phase 4-6 | Нужна интеграция self-mod/drift/skills/consolidation в runtime |
+| S-15 | DriveCounters reset | Зависит от S-7 |
+| 5.1 | Инициатива | Связка thinking_loop → userbot |
+| 5.2 | Context compression для agent sessions | Архитектурный вопрос |
+| 5.3 | Persistent conversation history | Нужна substrate v7 + chat_messages таблица |
+| 5.4 | Night mode / timezone | UX-задача |
+| 5.5 | Rate limiting per-chat | UX-задача |
+| 5.6 | Health HTTP endpoint | Можно через admin |
+| 4.1 | CHECKLIST дрифт | Документационный долг — переписать целиком |
+| 4.3 | Дублирование drive counters | Ждёт S-7 |
+| 4.4 | Phases 6/8/9 implementation plans | Документационный долг |
+
+### 🟢 Текущее состояние ядра
+
+Стабильно работает:
+- ✅ Telegram userbot — полный handler (текст, стикеры, фото, голосовые, группы)
+- ✅ Reply/respond logic
+- ✅ Chat history + recent thoughts → unified context
+- ✅ Thinking loop с full context (memory + recent telegram)
+- ✅ Active session с initial_thought
+- ✅ Filesystem sandbox (write only в plugins/ и workspace/)
+- ✅ Layer 4 anchor protection через public API + programmatic keywords
+- ✅ Admin panel с graceful core stop, read-only при работающем core
+- ✅ Episodic memory decay/access tracking
+- ✅ systemd unit-ы с правильными правами
+- ✅ deploy/update.sh для безопасного pull
+- ✅ WAL + foreign_keys pragmas
 
 ---
 
@@ -536,3 +545,11 @@ S-12 — реальный риск, нужен тест на `..`/symlinks/forbi
 | `bd49834` | Admin core modes — full / telegram_only / thinking_only |
 | `b32bac9` | KNOWN_ISSUES.md — полный реестр после аудита |
 | `26391b1` | Удалён DailyBudget (излишество), SOUL.md — убрано упоминание Claude Sonnet 4.5 |
+| `e996355` | systemd units (sonya.service, sonya-admin.service), deploy/update.sh |
+| `7a87ae9` | HEARTBEAT.md rewrite, 2.4/2.5/2.7 closed |
+| `6e6f305` | Media support, group chats, robust JSON parse, graceful TG shutdown |
+| `5916e3d` | Удалены пакеты tg-bridge + sonya_runtime + OpenClaw scripts (-4500 строк) |
+| `adc309d` | C-4 graceful core stop; C-5 admin read-only when core runs |
+| `bd864d5` | C-6/7 anchor protection, S-12 filesystem sandbox, S-13 substrate read-only, S-14 episodic decay, S-11 tool error logging, S-16 graceful signals, S-8/9/10, M-5 |
+| `6a7b51b` | §9 batch — env.example, default model, drives, lock_path, hot_loader export, SOUL/HEARTBEAT cleanup, doc map, WAL+FK pragmas, admin packaging |
+| pending | 1.4 unified memory — thinking loop + telegram через один build_full_context, +recent thoughts/messages в context |
