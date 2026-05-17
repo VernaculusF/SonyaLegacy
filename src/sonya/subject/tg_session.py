@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from sonya.channels.base import OutgoingMessage
 from sonya.subject.agent_session import run_agent_session, SessionResult, AgentProvider
@@ -158,6 +159,12 @@ _TG_SYSTEM_SUFFIX = """
 
 В TG если не уверена — скажи "не уверена, давай проверю позже" и `[DONE]`. Лучше короткий честный ответ, чем 15 шагов копания и утёкший Observation.
 
+## Изображения
+
+Если Иван присылает фото/стикер/гифку — **ты видишь содержимое напрямую**. Картинка прикреплена к этому сообщению как multimodal payload. Не нужно отдельных tool вызовов чтобы её "посмотреть". Опиши что видишь, отреагируй естественно.
+
+Если изображение **не** пришло (только текстовый placeholder "[фото]" / "[видео]" / "[стикер]" без visual content) — значит формат не поддерживается (видео, голосовые, tgs-стикеры). Скажи Ивану честно "это формат я пока не вижу" и спроси словами что там.
+
 ## Streaming апдейтов через chat.tell_ivan
 
 Когда работаешь над задачей с tools и Иван ждёт результат — **не молчи до самого конца**. После каждого важного шага сделай `[TOOL: chat.tell_ivan текст]` с **человеческим** summary что нашла. Не "✅ выполнено" а "Глянула episodic_events — 10050 записей. Иду дальше в continuity."
@@ -216,6 +223,8 @@ async def run_tg_session(
     substrate: Substrate,
     system_prompt: str,
     user_input: str,
+    media_path: str | None = None,
+    media_mime: str | None = None,
     outbound=None,
     max_steps: int = 15,
     max_seconds: float = 150.0,
@@ -224,10 +233,16 @@ async def run_tg_session(
     """Run a bounded agent session for a single TG message.
 
     Returns the extracted final reply text (from [DONE: ...] or fallback).
+    If media_path points to a downloaded image, it is attached to the initial
+    user message as an OpenAI-style image_url block so vision-capable models
+    can actually see it.
     """
     tools = build_tools(substrate, stream, outbound=outbound)
 
     full_prompt = system_prompt + _TG_SYSTEM_SUFFIX
+
+    initial_user_message = _build_initial_user_message(user_input, media_path, media_mime)
+    initial_thought = "" if initial_user_message is not None else f"Ivan написал: {user_input}"
 
     result = await run_agent_session(
         provider=provider,
@@ -242,7 +257,8 @@ async def run_tg_session(
         memory=tools["memory"],
         outbound=tools["outbound"],
         system_prompt=full_prompt,
-        initial_thought=f"Ivan написал: {user_input}",
+        initial_thought=initial_thought,
+        initial_user_message=initial_user_message,
         max_steps=max_steps,
         max_seconds=max_seconds,
         purpose="tg_session",
@@ -253,6 +269,51 @@ async def run_tg_session(
         reply_text=_extract_reply(result),
         raw=result,
     )
+
+
+# Image MIME types we know how to send to vision-capable LLMs.
+_VISION_MIME_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
+
+
+def _build_initial_user_message(
+    user_input: str,
+    media_path: str | None,
+    media_mime: str | None,
+) -> list[dict[str, Any]] | None:
+    """Construct an OpenAI-style multimodal user message if image is attached.
+
+    Returns None when there is no image — caller falls back to plain text.
+    Skips silently for non-image media (audio, video, files): vision models
+    can't consume them, so we leave the text placeholder ('[видео]' etc.) in
+    place.
+    """
+    if not media_path or not media_mime:
+        return None
+    if media_mime.lower() not in _VISION_MIME_TYPES:
+        return None
+    try:
+        import base64
+        from pathlib import Path
+        raw = Path(media_path).read_bytes()
+    except Exception:
+        return None
+    # Hard cap: 5 MB. Above that the request blows up token budgets and most
+    # provider HTTP limits. Sonya can still see the placeholder text.
+    if len(raw) > 5 * 1024 * 1024:
+        return None
+    b64 = base64.b64encode(raw).decode("ascii")
+    text_piece = (user_input or "").strip()
+    if not text_piece:
+        text_piece = "Ivan прислал картинку — посмотри что на ней."
+    else:
+        text_piece = f"Ivan написал: {text_piece}"
+    return [
+        {"type": "text", "text": text_piece},
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:{media_mime};base64,{b64}"},
+        },
+    ]
 
 
 def _scrub(text: str) -> str:

@@ -173,6 +173,7 @@ async def run_agent_session(
     memory: MemoryTool | None = None,
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     initial_thought: str = "",
+    initial_user_message: list[dict[str, Any]] | None = None,
     max_steps: int = 30,
     max_seconds: float = 1200.0,
     purpose: str = "agent_session",
@@ -189,7 +190,11 @@ async def run_agent_session(
         {"role": "system", "content": system_prompt + "\n\n" + TOOL_DESCRIPTIONS},
     ]
 
-    if initial_thought:
+    if initial_user_message is not None:
+        # Multimodal entry point — caller (e.g. tg_session with media attachment)
+        # constructed a list-style content message that goes straight to the LLM.
+        messages.append({"role": "user", "content": initial_user_message})
+    elif initial_thought:
         messages.append({"role": "user", "content": f"Your current thought: {initial_thought}\nWhat do you want to do?"})
     else:
         messages.append({"role": "user", "content": "What do you want to do? Think about what would be useful right now."})

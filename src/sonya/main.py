@@ -184,6 +184,8 @@ def _build_incoming_handler(
                     substrate=substrate,
                     system_prompt=system_prompt,
                     user_input=msg.text,
+                    media_path=msg.media_path,
+                    media_mime=msg.media_mime,
                     outbound=internal_process.outbound if internal_process else None,
                     max_steps=15,
                     max_seconds=150.0,

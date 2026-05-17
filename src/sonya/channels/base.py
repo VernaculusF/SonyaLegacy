@@ -16,6 +16,8 @@ class ChannelMessage:
     text: str  # text content or human-readable description (e.g. "[стикер 😏]")
     is_private: bool  # 1:1 chat (True) vs group (False)
     media_kind: str | None = None  # "фото", "стикер", "голосовое сообщение", etc.
+    media_path: str | None = None  # absolute path to downloaded media file, when available
+    media_mime: str | None = None  # MIME type of downloaded media (e.g. "image/jpeg")
     reply_to_id: str | None = None  # transport-specific id of replied-to message
     msg_id: str | None = None  # transport-specific id of this message
     raw: Any = None  # transport-specific event object for advanced handlers

@@ -31,6 +31,7 @@ class TelegramChannel:
         api_hash: str,
         session_path: str,
         allowed_sender_ids: tuple[str, ...] = (),
+        media_dir: str | None = None,
     ) -> None:
         self._api_id = api_id
         self._api_hash = api_hash
@@ -49,6 +50,11 @@ class TelegramChannel:
         # When non-empty, only listed sender_ids get a planner-generated response;
         # others are logged and ignored. Group chats unaffected (use addressing).
         self._allowed_senders: set[str] = {s for s in allowed_sender_ids if s}
+        # Where to download incoming media. None disables download (text-only mode).
+        self._media_dir: str | None = media_dir
+        if self._media_dir:
+            from pathlib import Path as _Path
+            _Path(self._media_dir).mkdir(parents=True, exist_ok=True)
 
     @property
     def is_running(self) -> bool:
@@ -144,6 +150,22 @@ class TelegramChannel:
                 if not text and media_kind:
                     text = f"[{media_kind}]"
 
+                # Download media into media_dir (if configured) so VLM-capable
+                # models can actually see images / stickers. Failure here is
+                # non-fatal — the message still reaches Sonya as text.
+                media_path: str | None = None
+                media_mime: str | None = None
+                if self._media_dir and event.media:
+                    try:
+                        media_path, media_mime = await _download_media(
+                            event, self._media_dir
+                        )
+                    except Exception as err:
+                        _log.warning(
+                            "tg_media_download_failed",
+                            extra={"error": str(err), "type": type(err).__name__},
+                        )
+
                 msg = ChannelMessage(
                     channel=self.name,
                     chat_id=str(event.chat_id),
@@ -151,6 +173,8 @@ class TelegramChannel:
                     text=text,
                     is_private=event.is_private,
                     media_kind=media_kind,
+                    media_path=media_path,
+                    media_mime=media_mime,
                     reply_to_id=str(event.reply_to_msg_id) if event.reply_to_msg_id else None,
                     msg_id=str(event.id),
                     raw=event,
@@ -163,6 +187,7 @@ class TelegramChannel:
                         "sender_id": msg.sender_id,
                         "text_preview": msg.text[:80],
                         "media_kind": msg.media_kind,
+                        "media_path": msg.media_path,
                         "is_private": msg.is_private,
                     },
                 )
@@ -302,4 +327,73 @@ def build(config: Any) -> "TelegramChannel | None":
         api_hash=getattr(config, "tg_api_hash", ""),
         session_path=getattr(config, "tg_session_path", "./tg.session"),
         allowed_sender_ids=allowed,
+        media_dir=str(getattr(config, "media_dir", "")) or None,
     )
+
+
+async def _download_media(event: Any, media_dir: str) -> tuple[str | None, str | None]:
+    """Download a Telegram message's media into media_dir.
+
+    Returns (absolute_path, mime_type) on success, (None, None) on no-op.
+    Skips audio/voice for now (they need different handling for transcription).
+
+    Filename: <msg_id>_<chat_id>.<ext>. Stable so re-downloads overwrite cleanly.
+    """
+    from pathlib import Path
+    from telethon.tl.types import (
+        DocumentAttributeAudio,
+        DocumentAttributeAnimated,
+        DocumentAttributeSticker,
+        DocumentAttributeVideo,
+        MessageMediaDocument,
+        MessageMediaPhoto,
+    )
+
+    media = event.media
+    if media is None:
+        return None, None
+
+    # Decide extension + skip set
+    ext = "bin"
+    mime = None
+    if isinstance(media, MessageMediaPhoto):
+        ext = "jpg"
+        mime = "image/jpeg"
+    elif isinstance(media, MessageMediaDocument) and media.document:
+        doc = media.document
+        mime = doc.mime_type or ""
+        attrs = doc.attributes or []
+        is_voice = False
+        for attr in attrs:
+            if isinstance(attr, DocumentAttributeAudio) and getattr(attr, "voice", False):
+                is_voice = True
+            if isinstance(attr, DocumentAttributeSticker):
+                # Sticker — webp or tgs (animated). Treat tgs as skip.
+                if mime == "application/x-tgsticker":
+                    return None, None
+                ext = "webp"
+            elif isinstance(attr, DocumentAttributeAnimated):
+                ext = "mp4"
+            elif isinstance(attr, DocumentAttributeVideo):
+                ext = "mp4"
+        if is_voice:
+            return None, None
+        # Fallback: derive from mime
+        if ext == "bin" and mime:
+            mime_to_ext = {
+                "image/jpeg": "jpg",
+                "image/png": "png",
+                "image/webp": "webp",
+                "image/gif": "gif",
+                "video/mp4": "mp4",
+            }
+            ext = mime_to_ext.get(mime, "bin")
+    else:
+        return None, None
+
+    out_path = Path(media_dir) / f"{event.id}_{event.chat_id}.{ext}"
+    # Telethon's download_media accepts a path string or file object
+    saved = await event.download_media(file=str(out_path))
+    if saved is None:
+        return None, None
+    return str(saved), mime
