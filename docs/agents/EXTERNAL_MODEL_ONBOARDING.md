@@ -42,19 +42,20 @@ Read these in order to understand the stance:
 
 ## 4. Current overall progress
 
-**Realistic score: ~17/100 toward base AGI.** (was ~9 before Этап A/B/C)
+**Realistic score: ~24/100 toward base AGI.** (was ~9 before A, then 17 after A/B/C, now A/B/C/E/F/G all closed; only D remains in the buildout plan)
 
-The substrate exists. Identity exists. Telegram works as one of N channels (channel registry now lives, second channel is one `def build(config)` factory away). Self-modification has full hot-reload pipeline including main.py / config.py via supervisor soft-restart. Task runtime persists multi-session work.
+The substrate exists. Identity exists. Telegram works as one of N channels (channel registry now lives, second channel is one `def build(config)` factory away). Self-modification has full hot-reload pipeline including main.py / config.py via supervisor soft-restart. Task runtime persists multi-session work. Web/code/shell tools wired. Drift/gap detection runs per tick; consolidation runs once per day. DriveCounters is live in both thinking and telegram contexts.
 
-Most "cognitive" subsystems described in `docs/architecture/` and `docs/cognition/` (consolidation, drift detection, gap detection, drives integration) exist as code but **are still not wired into the live tick** (`internal_loop.py`). Tests pass on isolated modules; production calls them never. Этапы F (consolidation+drift) and G (drives) close those gaps.
-
-If you read a "Phase X closed ✅" claim in `docs/ROADMAP.md`, treat it as "code merged + isolated tests pass" not "running in production". The honest closed list lives in `docs/SYSTEM_BUILDOUT_PLAN.md` §3.
+What's missing on the buildout side: **Этап D (initiative — Sonya writes first to Ivan)**. Without D she's still purely reactive at the channel level, even though her drives accumulate boredom and her thinking loop runs every 30 min.
 
 ### Closed etapы (real, hot in runtime)
 
 - **A. Self-mod tools** — `selfmod.propose / test_sandbox / validate / apply / list / get / governed / check_governed / rollback / soft_restart`. `apply` does pre-state capture → write → `importlib.reload` → drop-and-recreate channels → 60s watch window with auto-rollback. `soft_restart` rebuilds `_RuntimeBundle` while substrate + admin survive. Sandbox enforced via `SELFMOD_WRITABLE_SUBPATHS` / `SELFMOD_FORBIDDEN_SUBPATHS`.
 - **B. Channel abstraction** — `src/sonya/channels/{base,registry,telegram}.py`. `Channel` Protocol, `ChannelRegistry`, auto-discovery via `_build_channels` sweeping `channels/*.py` for `def build(config)` factory. Telegram is the only live channel; Discord etc. is a single proposal away.
 - **C. Task runtime** — substrate v7 `tasks` table; `sonya/tasks/{models,store,service}.py`; `sonya/tools/tasks_tool.py`. `tasks.create / list / get / pick / plan / step / complete / fail / block / unblock / pause`. `internal_loop._run_active_session` auto-surfaces in_progress task as initial_thought; `build_full_context` shows open tasks block to thinking and telegram alike.
+- **E. Tool ecosystem** — `web.search`/`web.fetch` (DuckDuckGo HTML + aiohttp), `code.exec` (subprocess sandbox, 30s timeout, isolated tempdir), `shell.run`/`pip.install` (approval-gated through `ApprovalManager`). All wired into `_run_active_session`.
+- **F. Consolidation + drift integration** — every tick: `DriftDetector.scan_recent` from cursor → emits `internal.drift_signal`; `GapDetector.scan_recent` from cursor → emits `internal.capability_gap` and creates pending intention. Once per 24h after active session: `ConsolidationPipeline.run_consolidation()` promotes high-importance episodic events to semantic facts.
+- **G. Drives integration** — `DriveCounters` ticks in `_loop`, resets on incoming message, gets passed to `build_full_context(drives=...)` from both thinking loop and telegram handler. Drive values >0.1 render as "## Моё текущее состояние" block in the LLM system prompt.
 
 ## 5. Operational reality
 

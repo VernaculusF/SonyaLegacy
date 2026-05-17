@@ -74,19 +74,19 @@ def build_full_context(
             "outgoing.telegram_response",
             "internal.agent_session_outcome",
         }
-        recent_filtered = [e for e in recent_continuity if e.kind in relevant_kinds][-10:]
+        recent_filtered = [e for e in recent_continuity if e.kind in relevant_kinds][-15:]
         if recent_filtered:
             stream_block = "\n\n## Недавние события (мысли + разговоры):\n"
             for e in recent_filtered:
                 ts = (e.created_at or "")[:16]
                 if e.kind == "internal.thought":
-                    text = (e.payload.get("thought") or "")[:200]
+                    text = (e.payload.get("thought") or "")[:1500]
                     stream_block += f"- [{ts}] [мысль] {text}\n"
                 elif e.kind == "incoming.telegram_message":
-                    text = (e.payload.get("text") or "")[:200]
+                    text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{ts}] [Иван написал] {text}\n"
                 elif e.kind in ("outgoing.response", "outgoing.telegram_response"):
-                    text = (e.payload.get("text") or "")[:200]
+                    text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{ts}] [я ответила] {text}\n"
                 elif e.kind == "internal.agent_session_outcome":
                     steps = e.payload.get("steps", 0)

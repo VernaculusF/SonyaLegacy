@@ -13,10 +13,13 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
+from sonya.tools.code_tool import CodeTool
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.self_inspect import SelfInspectTool
 from sonya.tools.selfmod_tool import SelfModTool
+from sonya.tools.shell_tool import ShellTool
 from sonya.tools.tasks_tool import TasksTool
+from sonya.tools.web_tool import WebTool
 
 
 class AgentProvider(Protocol):
@@ -73,6 +76,12 @@ TOOL_DESCRIPTIONS = """Available tools:
 
 Tasks survive across sessions and restarts. When an active session starts you pick up your in_progress task. Use them for any work that takes longer than one session.
 
+- web.search [query] — DuckDuckGo search; returns top 5 results (title, url, snippet).
+- web.fetch [url] — GET an http(s) URL; returns text-stripped body (capped at 200KB; first 8KB shown).
+- code.exec [python_code] — run a Python snippet in a fresh subprocess (30s timeout, fresh tempdir cwd, no environment inheritance). Use for compute / experimentation.
+- shell.run [command] — run a shell command. **Approval-gated**: first call creates a pending ApprovalRequest and returns `[PENDING_APPROVAL: req_id]`. Pair with `tasks.block` to pause work until Ivan approves through admin panel. After approval, the same command runs and returns exit/stdout/stderr.
+- pip.install [package] — install a Python package via pip. Same approval gate as shell.run.
+
 IMPORTANT: Use exactly ONE tool per response. Write it as:
 [TOOL: tool_name arg]
 
@@ -92,6 +101,9 @@ async def run_agent_session(
     system_prompt: str,
     selfmod: SelfModTool | None = None,
     tasks: TasksTool | None = None,
+    web: WebTool | None = None,
+    code: CodeTool | None = None,
+    shell: ShellTool | None = None,
     initial_thought: str = "",
     max_steps: int = 30,
     max_seconds: float = 1200.0,
@@ -129,7 +141,7 @@ async def run_agent_session(
             result.thoughts.append(response)
             stream.append(ContinuityEvent(
                 kind="internal.agent_step",
-                payload={"step": step, "type": "done", "content": response[:500]},
+                payload={"step": step, "type": "done", "content": response[:8000]},
             ))
             break
 
@@ -142,12 +154,12 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell)
 
             # Record in continuity
             stream.append(ContinuityEvent(
                 kind="internal.agent_step",
-                payload={"step": step, "type": "action", "tool": tool_name, "arg": tool_arg, "thought": response[:300]},
+                payload={"step": step, "type": "action", "tool": tool_name, "arg": tool_arg, "thought": response[:8000]},
             ))
 
             # Feed observation back
@@ -158,7 +170,7 @@ async def run_agent_session(
             result.thoughts.append(response)
             stream.append(ContinuityEvent(
                 kind="internal.agent_step",
-                payload={"step": step, "type": "thought", "content": response[:500]},
+                payload={"step": step, "type": "thought", "content": response[:8000]},
             ))
             # Ask what next
             messages.append({"role": "assistant", "content": response})
@@ -169,9 +181,9 @@ async def run_agent_session(
         kind="internal.agent_session_complete",
         payload={
             "steps": result.steps,
-            "actions": result.actions[:10],
+            "actions": result.actions[:30],
             "budget_exceeded": result.budget_exceeded,
-            "summary": result.final_output[:300] if result.final_output else "no explicit finish",
+            "summary": result.final_output[:4000] if result.final_output else "no explicit finish",
         },
     ))
 
@@ -186,6 +198,9 @@ def _execute_tool(
     stream: ContinuityStream | None = None,
     selfmod: SelfModTool | None = None,
     tasks: TasksTool | None = None,
+    web: WebTool | None = None,
+    code: CodeTool | None = None,
+    shell: ShellTool | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
@@ -339,6 +354,32 @@ def _execute_tool(
             if tasks is None:
                 return "[ERROR] tasks tool not configured"
             return tasks.pause(arg)
+
+        # --- web.* family ---
+        elif name == "web.search":
+            if web is None:
+                return "[ERROR] web tool not configured"
+            return web.search(arg)
+        elif name == "web.fetch":
+            if web is None:
+                return "[ERROR] web tool not configured"
+            return web.fetch(arg)
+
+        # --- code.exec ---
+        elif name == "code.exec":
+            if code is None:
+                return "[ERROR] code tool not configured"
+            return code.exec_python(arg)
+
+        # --- shell.run / pip.install (approval-gated) ---
+        elif name == "shell.run":
+            if shell is None:
+                return "[ERROR] shell tool not configured"
+            return shell.run_shell(arg)
+        elif name == "pip.install":
+            if shell is None:
+                return "[ERROR] shell tool not configured"
+            return shell.install_pip(arg)
 
         else:
             return f"[ERROR] Unknown tool: {name}"

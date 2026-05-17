@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from sonya.initiative.drives import DriveCounters
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.state.pending import PendingIntentionStore, IntentionStatus
 
@@ -107,15 +108,28 @@ class InternalProcess:
         self._tick_interval = tick_interval_seconds
         self._active_interval = active_interval_seconds
         self._counters = HomeostasisCounters()
+        # Этап G: DriveCounters parallel to HomeostasisCounters. Same internal
+        # tick cadence; resets on external messages / completed actions; values
+        # passed into build_full_context so the LLM sees current drive state.
+        self._drives = DriveCounters()
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._tick_count: int = 0
         self._last_external_event: float = 0.0
         self._last_active_session: float = 0.0
+        # Этап F: drift/gap scan cursor + consolidation cadence
+        self._last_drift_scan_seq: int = 0
+        self._last_gap_scan_seq: int = 0
+        self._last_consolidation_at: float = 0.0
+        self._consolidation_interval: float = 86400.0  # once / 24h
 
     @property
     def counters(self) -> HomeostasisCounters:
         return self._counters
+
+    @property
+    def drives(self) -> DriveCounters:
+        return self._drives
 
     @property
     def tick_count(self) -> int:
@@ -149,6 +163,8 @@ class InternalProcess:
         """
         self._last_external_event = asyncio.get_event_loop().time()
         self._counters.reset("loneliness")
+        # Этап G: drives also respond to external events.
+        self._drives.on_external_message()
 
     async def _loop(self) -> None:
         while not self._stop_event.is_set():
@@ -160,6 +176,13 @@ class InternalProcess:
 
             # Homeostasis tick
             crossed = self._counters.tick()
+
+            # Этап G: drives tick (separate accumulator; passes through to context).
+            try:
+                active_count = len(self._intentions.list_active())
+            except Exception:
+                active_count = 0
+            self._drives.tick(active_intentions_count=active_count)
 
             # Check idle timeout
             now = asyncio.get_event_loop().time()
@@ -179,6 +202,10 @@ class InternalProcess:
             if should_active:
                 await self._run_active_session()
                 self._last_active_session = now
+                # Этап F: consolidation runs after active sessions, but capped to once/24h
+                if now - self._last_consolidation_at >= self._consolidation_interval:
+                    self._run_consolidation()
+                    self._last_consolidation_at = now
             elif should_think:
                 if self._provider is not None:
                     await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
@@ -186,6 +213,9 @@ class InternalProcess:
                     self._emit_cognitive_events_sync_fallback(crossed, idle_triggered, overdue_ids)
                 if idle_triggered:
                     self._last_external_event = now  # reset idle timer
+
+            # Этап F: drift + gap detection every tick (cheap — scans since last seq)
+            self._scan_drift_and_gaps()
 
     def _check_deadlines(self) -> list[str]:
         """Check active intentions for deadline expiry. Mark overdue."""
@@ -285,6 +315,7 @@ class InternalProcess:
                         "Что у тебя на уме? Это твой внутренний поток — никто не читает."
                     ),
                     principal_id=None,
+                    drives=self._drives,
                 )
                 # Use full system_prompt (personality + memory + facts + crutches)
                 # plus any explicit thinking_prompt from constructor
@@ -325,7 +356,15 @@ class InternalProcess:
             return
         try:
             from sonya.subject.agent_session import run_agent_session
-            from sonya.tools import SelfInspectTool, FilesystemTool, SelfModTool, TasksTool
+            from sonya.tools import (
+                CodeTool,
+                FilesystemTool,
+                SelfInspectTool,
+                SelfModTool,
+                ShellTool,
+                TasksTool,
+                WebTool,
+            )
 
             # Substrate must be passed explicitly; fall back to private access if not
             substrate = self._substrate or getattr(self._stream, "_sub", None)
@@ -336,6 +375,13 @@ class InternalProcess:
             filesystem = FilesystemTool()
             selfmod = SelfModTool(substrate)
             tasks_tool = TasksTool(substrate, stream=self._stream)
+            web_tool = WebTool()
+            code_tool = CodeTool()
+            shell_tool = ShellTool(
+                substrate,
+                principal_id="ivan",
+                stream=self._stream,
+            )
 
             prompt = self._thinking_prompt or (
                 "Ты Соня. Это твоя активная сессия — ты можешь использовать tools. "
@@ -386,7 +432,7 @@ class InternalProcess:
                         if e.kind == "internal.thought"
                     ]
                     if last_thoughts:
-                        initial_thought = last_thoughts[-1][:500]
+                        initial_thought = last_thoughts[-1][:4000]
                 except Exception:
                     pass
 
@@ -397,6 +443,9 @@ class InternalProcess:
                 filesystem=filesystem,
                 selfmod=selfmod,
                 tasks=tasks_tool,
+                web=web_tool,
+                code=code_tool,
+                shell=shell_tool,
                 system_prompt=prompt,
                 initial_thought=initial_thought,
                 max_steps=30,
@@ -415,3 +464,84 @@ class InternalProcess:
             ))
         except Exception:
             pass  # Don't crash the loop on session error
+
+    # ====================================================================
+    # Этап F: drift / gap / consolidation integration
+    # ====================================================================
+
+    def _scan_drift_and_gaps(self) -> None:
+        """Run DriftDetector and GapDetector since last cursor.
+
+        Cheap, scans only new continuity events. Logs detected signals
+        back into the stream so the next thinking tick sees them.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return
+        try:
+            from sonya.anchor.drift_signals import DriftDetector
+
+            detector = DriftDetector(self._stream)
+            new_signals = detector.scan_recent(since_seq=self._last_drift_scan_seq)
+            for sig in new_signals:
+                self._stream.append(ContinuityEvent(
+                    kind="internal.drift_signal",
+                    payload={
+                        "signal_id": sig.signal_id,
+                        "kind": sig.kind,
+                        "severity": sig.severity,
+                        "details": sig.details,
+                    },
+                ))
+            self._last_drift_scan_seq = self._stream.latest_seq()
+        except Exception:
+            pass
+
+        try:
+            from sonya.skills.gap_detector import GapDetector
+
+            detector = GapDetector(substrate, self._stream)
+            new_gaps = detector.scan_recent(since_seq=self._last_gap_scan_seq)
+            for gap in new_gaps:
+                # Each detected gap becomes a pending intention so Sonya sees it
+                # as work to do in the next active session.
+                try:
+                    self._intentions.create(
+                        description=f"capability_gap: {gap.description}",
+                    )
+                except Exception:
+                    pass
+                self._stream.append(ContinuityEvent(
+                    kind="internal.capability_gap",
+                    payload={
+                        "gap_id": gap.gap_id,
+                        "description": gap.description,
+                        "from_event_seq": gap.detected_from_event_seq,
+                    },
+                ))
+            self._last_gap_scan_seq = self._stream.latest_seq()
+        except Exception:
+            pass
+
+    def _run_consolidation(self) -> None:
+        """Promote high-importance episodic events to semantic facts.
+
+        Runs once per 24h after an active session. Episodic memory grows;
+        semantic memory only accumulates the things worth remembering long-term.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return
+        try:
+            from sonya.memory.consolidation import ConsolidationPipeline
+            from sonya.memory.episodic import EpisodicMemory
+            from sonya.memory.semantic import SemanticMemory
+
+            pipe = ConsolidationPipeline(EpisodicMemory(substrate), SemanticMemory(substrate))
+            created = pipe.run_consolidation()
+            self._stream.append(ContinuityEvent(
+                kind="internal.consolidation_run",
+                payload={"facts_created": created},
+            ))
+        except Exception:
+            pass

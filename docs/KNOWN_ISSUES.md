@@ -559,3 +559,7 @@ S-12 — реальный риск, нужен тест на `..`/symlinks/forbi
 | pending | 1.4 unified memory — thinking loop + telegram через один build_full_context, +recent thoughts/messages в context |
 | `3eb4d46` | logging: переименован key `module` → `channel_module`/`target_module` в `_log.extra` (LogRecord reserved attr — крашил core при старте после селфмода каналов) |
 | pending | Этап C — Task runtime: substrate v7 `tasks` table, `sonya/tasks/` (models/store/service), `tools/tasks_tool.py`, wired в agent_session + internal_loop, open tasks в `build_full_context` (+27 тестов, 329 passing) |
+| pending | Thought truncation поднята: было 200/300/500 → 1500/4000/8000 chars (агент-степы перестали обрываться на полуслове); active interval 2h → 1.5h; idle 30 мин уже стояло |
+| pending | Этап E — Tool ecosystem: `web.search`/`web.fetch` (DuckDuckGo HTML, aiohttp, 200KB cap), `code.exec` (subprocess sandbox, 30s timeout), `shell.run`/`pip.install` (approval-gated через ApprovalManager) (+16 тестов, 345 passing) |
+| pending | Этап F — Consolidation + drift integration: `_scan_drift_and_gaps` каждый tick, gaps → pending_intentions, `_run_consolidation` после active session (1×/24h) |
+| pending | Этап G — Drives integration: DriveCounters параллельно HomeostasisCounters, `tick`/`on_external_message`, drives передаются в `build_full_context` из обоих путей (thinking + telegram) |

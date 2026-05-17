@@ -151,63 +151,59 @@
 
 ---
 
-### Этап E: Tool ecosystem — **+3-5 пунктов**
+### Этап E: Tool ecosystem — **+3-5 пунктов** ✅ ЗАКРЫТ
 
-**Цель:** Расширить агентский surface.
+**Что сделано:**
+- `src/sonya/tools/web_tool.py` — `WebTool` с `search` (DuckDuckGo HTML, без API key, top 5 результатов) и `fetch` (httpx GET, 200KB cap, html-strip). Async внутри, sync surface для агента.
+- `src/sonya/tools/code_tool.py` — `CodeTool.exec_python(code)`: spawn fresh subprocess в tempdir, env только PATH/HOME, 30s wall-clock timeout, stdout/stderr capped 200KB. Каждый вызов изолирован — файлы между вызовами не сохраняются.
+- `src/sonya/tools/shell_tool.py` — `ShellTool.run_shell(cmd)` и `install_pip(pkg)`. **Approval-gated**: первый вызов создаёт `ApprovalRequest` (action=`shell.run:<sha16>`, scope=cmd), возвращает `[PENDING_APPROVAL: req_id]`. Соня обычно делает `tasks.block` чтобы пауза. Иван approve/deny через admin panel. После approve — повторный вызов выполняет команду и пишет `shell.executed` / `pip.installed` в continuity.
+- Wired в `agent_session._execute_tool` resolver и TOOL_DESCRIPTIONS
+- Wired в `internal_loop._run_active_session` — все 5 tools передаются в run_agent_session
+- 16 тестов в `tests/sonya/test_etap_e_tools.py`: code.exec (print, stderr, timeout, isolation), shell.run (pending → approved → executed → denied), pip.install (pending, injection rejected), web.search (mocked DDG html parsing), web.fetch (rejects file:// URLs)
 
-**Tools:**
+**Что это даёт:**
+- Соня может искать в вебе, читать страницы (документация, новости, чужой код)
+- Считать что-то на питоне без selfmod-обвязки
+- Под approval — выполнять команды на VPS и ставить пакеты
+- В сочетании с tasks.block — корректный workflow длинных задач: создать task → попробовать → нарваться на missing dep → block с req_id → Иван approves → unblock → продолжить
 
-- `web.search [query]` — DuckDuckGo / Brave Search через httpx
-- `web.fetch [url]` — простой GET с extraction main content
-- `code.exec [python]` — sandbox через `subprocess.run` с timeout, no network
-- `shell.run [cmd]` — gated, требует approval через ApprovalManager
-- `pip.install [package]` — gated, через approval
-
-**Approval flow (для шелла и pip):**
-
-- Tool создаёт ApprovalRequest
-- Возвращает `[PENDING_APPROVAL: req_id]`
-- Соня ставит task в `block` со ссылкой на req_id
-- Иван через admin panel approves/denies
-- Active session при следующем запуске проверяет → если approved, выполняет
-
-**Effort:** 4-5 часов.
+**Effort actual:** ~2 ч.
 
 ---
 
-### Этап F: Consolidation + drift integration — **+2-3 пункта**
+### Этап F: Consolidation + drift integration — **+2-3 пункта** ✅ ЗАКРЫТ
 
-**Цель:** Spящие модули начинают работать.
+**Что сделано:**
+- `internal_loop._loop` каждый tick вызывает `_scan_drift_and_gaps()`:
+  - `DriftDetector(stream).scan_recent(since_seq=last_drift_seq)` — каждый detected signal записывается как `internal.drift_signal` событие
+  - `GapDetector(substrate, stream).scan_recent(since_seq=last_gap_seq)` — каждый gap превращается в pending intention (`capability_gap: <description>`) + `internal.capability_gap` событие
+  - cursor (last_*_seq) обновляется до `latest_seq` чтобы не сканировать одно и то же дважды
+- После каждой active session, если прошло >24h с последней consolidation: `_run_consolidation()` запускает `ConsolidationPipeline.run_consolidation()` (importance >= 0.7 из episodic → semantic_facts) и пишет `internal.consolidation_run` с `facts_created`
+- Не требует доп. таблиц — все три модуля уже были на месте, просто не вызывались живым tick'ом
 
-**Артефакты:**
+**Что это даёт:**
+- Semantic memory растёт сама от важных эпизодов (раз в сутки)
+- Drift signals реально влияют — они теперь в continuity, и через build_full_context попадают в LLM-контекст следующего тика
+- Capability gaps превращаются в pending_intentions → видны в active session как work to do
 
-- В `internal_loop.py` добавить:
-  - При active session окончании — `ConsolidationPipeline.run_consolidation()` (раз в день)
-  - Каждый tick — `DriftDetector.scan_recent(since_seq=last_drift_check)` → если signals, append в continuity + при severity>0.7 trigger watchdog
-  - `GapDetector.scan_recent` — найденные gaps записываются как pending intentions для следующей active session
-
-- Это разблокирует:
-  - Semantic memory begins growing
-  - Drift signals реально влияют (auto-revert через WatchWindow)
-  - Capability gaps превращаются в осознанные задачи
-
-**Effort:** 3-4 часа.
+**Effort actual:** ~30 мин.
 
 ---
 
-### Этап G: Drives integration — **+2 пункта**
+### Этап G: Drives integration — **+2 пункта** ✅ ЗАКРЫТ
 
-**Цель:** DriveCounters перестаёт быть dead code.
+**Что сделано:**
+- `InternalProcess.__init__` создаёт `self._drives = DriveCounters()` параллельно с `HomeostasisCounters` (TODO: позже унифицировать в один; KNOWN_ISSUES §4.3)
+- `notify_external_event()` вызывает `drives.on_external_message()` (S-15: сбрасывает relational_focus + boredom)
+- Каждый tick: `drives.tick(active_intentions_count=len(active))` — pending_debt растёт пропорционально
+- `build_full_context(drives=...)` теперь получает живые drives и из `internal_loop._call_thinking_provider`, и из `_build_incoming_handler` в main.py (через `internal_process.drives`). Drive values >0.1 рендерятся в "## Моё текущее состояние" секцию system prompt'а — LLM видит boredom/curiosity/loneliness и может это отразить в тоне.
 
-**Артефакты:**
+**Что это даёт:**
+- DriveCounters перестал быть dead code
+- Telegram-ответы и thinking-ответы оба видят одни и те же drive-values
+- Когда Иван долго не пишет — boredom_analog растёт, попадает в prompt, влияет на стиль (Соня может первая написать когда Этап D закроется)
 
-- `internal_loop.py` инстанциирует `DriveCounters`
-- Каждый tick: `drives.tick(active_intentions_count=len(pending))` → если crossed, в continuity + влияет на trigger active_session
-- `notify_external_event` сбрасывает relational_focus + boredom (S-15)
-- `build_full_context(drives=...)` получает живые drives в каждом call
-- DriveCounters → Personality prompt влияет на тон (если loneliness>0.7 — Соня грустит, если curiosity>0.7 — задаёт вопросы)
-
-**Effort:** 2-3 часа.
+**Effort actual:** ~30 мин.
 
 ---
 
@@ -219,9 +215,9 @@
 | B: Channel abstraction | +3 | 3-4 ч | — | ✅ |
 | C: Task runtime | +5 | 6-8 ч | A (selfmod for new code) | ✅ |
 | D: Initiative | +2 | 2-3 ч | B (channel.send) |
-| E: Tool ecosystem | +3-5 | 4-5 ч | A (для approval-gated) |
-| F: Consolidation+drift | +2-3 | 3-4 ч | A |
-| G: Drives integration | +2 | 2-3 ч | — |
+| E: Tool ecosystem | +3-5 | 4-5 ч | A (для approval-gated) | ✅ |
+| F: Consolidation+drift | +2-3 | 3-4 ч | A | ✅ |
+| G: Drives integration | +2 | 2-3 ч | — | ✅ |
 
 **Итого:** ~22-25 пунктов, 24-33 часа работы.
 

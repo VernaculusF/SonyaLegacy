@@ -137,6 +137,7 @@ def _build_incoming_handler(
                 user_input=msg.text,
                 principal_id=msg.sender_id,
                 session_messages=session_messages,
+                drives=internal_process.drives if internal_process else None,
             )
             response = await plan_next(ctx, provider)
             _log.info(
@@ -275,9 +276,9 @@ class _RuntimeBundle:
                 "Никто не читает это кроме тебя. "
                 "Подумай о чём хочешь — о себе, об Иване, о том что делала, о том что хочешь."
             ),
-            idle_interval_seconds=1800.0,
+            idle_interval_seconds=1800.0,   # 30 минут — idle thinking tick
             tick_interval_seconds=60.0,
-            active_interval_seconds=7200.0,
+            active_interval_seconds=5400.0,  # 1.5 часа — active session с tools (экономим лимиты)
         )
 
         self.lifecycle = Lifecycle(substrate=substrate, event_bus=self.bus)

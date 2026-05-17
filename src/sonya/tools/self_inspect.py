@@ -39,17 +39,20 @@ class SelfInspectTool:
     def read_recent_thoughts(self, limit: int = 10) -> str:
         stream = ContinuityStream(self._sub)
         latest = stream.latest_seq()
-        events = list(stream.read_since(max(0, latest - 50)))
+        events = list(stream.read_since(max(0, latest - 80)))
         thoughts = [e for e in events if "thought" in e.kind or "cognitive" in e.kind][-limit:]
+        # Full thought text — these are her own memories. Truncating them at 200 chars
+        # was the bug behind broken continuity (мысли обрывались на полуслове).
         return "\n---\n".join(
-            f"[{e.kind} tick={e.payload.get('tick','')}] {e.payload.get('thought', json.dumps(e.payload, ensure_ascii=False)[:200])}"
+            f"[{e.kind} tick={e.payload.get('tick','')}] "
+            f"{e.payload.get('thought') or e.payload.get('content') or json.dumps(e.payload, ensure_ascii=False)[:1500]}"
             for e in thoughts
         )
 
     def read_recent_memories(self, limit: int = 10) -> str:
         memories = EpisodicMemory(self._sub).get_recent(limit=limit)
         return "\n".join(
-            f"[{m.event_type} {m.timestamp[:16]}] {m.raw_content[:150]}"
+            f"[{m.event_type} {m.timestamp[:16]}] {m.raw_content[:600]}"
             for m in memories
         )
 
