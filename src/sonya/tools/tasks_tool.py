@@ -69,21 +69,38 @@ class TasksTool:
     # ---------- create ----------
 
     def create(self, arg: str) -> str:
-        """Format: title | description | step1; step2; step3 (description and steps optional).
+        """Accepts either JSON or pipe-format.
 
-        Examples:
-            tasks.create write Discord channel adapter
-            tasks.create Refactor planner | extract scoring into own class | read planner.py; design new shape; propose change; validate; apply
+        JSON: {"title": "...", "description": "...", "plan_steps": ["a","b"]}
+        Pipe (legacy): title | description | step1; step2
         """
         if not arg.strip():
             return "[ERROR] tasks.create needs at least a title"
-        parts = [p.strip() for p in arg.split("|")]
-        title = parts[0]
-        description = parts[1] if len(parts) > 1 else ""
-        steps_raw = parts[2] if len(parts) > 2 else ""
-        plan_steps = (
-            [s.strip() for s in steps_raw.split(";") if s.strip()] if steps_raw else None
-        )
+        title = ""
+        description = ""
+        plan_steps: list[str] | None = None
+        # Try JSON first
+        stripped = arg.strip()
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                title = str(data.get("title", "")).strip()
+                description = str(data.get("description", "")).strip()
+                steps_raw = data.get("plan_steps")
+                if isinstance(steps_raw, list):
+                    plan_steps = [str(s).strip() for s in steps_raw if str(s).strip()]
+            except json.JSONDecodeError as err:
+                return f"[ERROR] tasks.create: invalid JSON ({err})"
+        else:
+            parts = [p.strip() for p in arg.split("|")]
+            title = parts[0]
+            description = parts[1] if len(parts) > 1 else ""
+            steps_raw = parts[2] if len(parts) > 2 else ""
+            plan_steps = (
+                [s.strip() for s in steps_raw.split(";") if s.strip()] if steps_raw else None
+            )
+        if not title:
+            return "[ERROR] tasks.create: title is required"
         try:
             task = self._service.create(
                 title=title,
@@ -130,12 +147,27 @@ class TasksTool:
     # ---------- planning / progress ----------
 
     def plan(self, arg: str) -> str:
-        """Format: task_id | step1; step2; step3"""
-        parts = arg.split("|", 1)
-        if len(parts) < 2:
-            return "[ERROR] tasks.plan needs: task_id | step1; step2; ..."
-        task_id = parts[0].strip()
-        steps = [s.strip() for s in parts[1].split(";") if s.strip()]
+        """JSON: {"task_id": "...", "steps": ["a","b"]} OR legacy: task_id | step1; step2"""
+        stripped = arg.strip()
+        task_id = ""
+        steps: list[str] = []
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                task_id = str(data.get("task_id", "")).strip()
+                raw = data.get("steps")
+                if isinstance(raw, list):
+                    steps = [str(s).strip() for s in raw if str(s).strip()]
+            except json.JSONDecodeError as err:
+                return f"[ERROR] tasks.plan: invalid JSON ({err})"
+        else:
+            parts = arg.split("|", 1)
+            if len(parts) < 2:
+                return "[ERROR] tasks.plan needs JSON or 'task_id | step1; step2; ...'"
+            task_id = parts[0].strip()
+            steps = [s.strip() for s in parts[1].split(";") if s.strip()]
+        if not task_id:
+            return "[ERROR] tasks.plan: task_id required"
         if not steps:
             return "[ERROR] tasks.plan needs at least one step"
         try:
@@ -145,16 +177,32 @@ class TasksTool:
         return f"[OK] plan set ({len(steps)} steps)\n{_format_task(task)}"
 
     def step(self, arg: str) -> str:
-        """Format: task_id | step_idx | summary"""
-        parts = arg.split("|", 2)
-        if len(parts) < 3:
-            return "[ERROR] tasks.step needs: task_id | step_idx | summary"
-        task_id = parts[0].strip()
+        """JSON: {"task_id": "...", "step_idx": 0, "summary": "..."} OR legacy: task_id | idx | summary"""
+        stripped = arg.strip()
+        task_id = ""
+        step_idx_raw = ""
+        summary = ""
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                task_id = str(data.get("task_id", "")).strip()
+                step_idx_raw = str(data.get("step_idx", ""))
+                summary = str(data.get("summary", "")).strip()
+            except json.JSONDecodeError as err:
+                return f"[ERROR] tasks.step: invalid JSON ({err})"
+        else:
+            parts = arg.split("|", 2)
+            if len(parts) < 3:
+                return "[ERROR] tasks.step needs JSON or 'task_id | step_idx | summary'"
+            task_id = parts[0].strip()
+            step_idx_raw = parts[1].strip()
+            summary = parts[2].strip()
+        if not task_id:
+            return "[ERROR] tasks.step: task_id required"
         try:
-            step_idx = int(parts[1].strip())
-        except ValueError:
+            step_idx = int(step_idx_raw)
+        except (ValueError, TypeError):
             return "[ERROR] step_idx must be integer"
-        summary = parts[2].strip()
         try:
             task = self._service.mark_step_done(task_id, step_idx, summary)
         except (TaskNotFoundError, ValueError) as err:
@@ -166,10 +214,23 @@ class TasksTool:
     # ---------- terminal ----------
 
     def complete(self, arg: str) -> str:
-        """Format: task_id | result"""
-        parts = arg.split("|", 1)
-        task_id = parts[0].strip()
-        result = parts[1].strip() if len(parts) > 1 else ""
+        """JSON: {"task_id": "...", "result": "..."} OR legacy: task_id | result"""
+        stripped = arg.strip()
+        task_id = ""
+        result = ""
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                task_id = str(data.get("task_id", "")).strip()
+                result = str(data.get("result", "")).strip()
+            except json.JSONDecodeError as err:
+                return f"[ERROR] tasks.complete: invalid JSON ({err})"
+        else:
+            parts = arg.split("|", 1)
+            task_id = parts[0].strip()
+            result = parts[1].strip() if len(parts) > 1 else ""
+        if not task_id:
+            return "[ERROR] tasks.complete: task_id required"
         try:
             task = self._service.complete(task_id, result)
         except (TaskNotFoundError, TaskTransitionError) as err:
@@ -177,23 +238,53 @@ class TasksTool:
         return f"[OK] task done\n{_format_task(task)}"
 
     def fail(self, arg: str) -> str:
-        """Format: task_id | reason"""
-        parts = arg.split("|", 1)
-        if len(parts) < 2:
-            return "[ERROR] tasks.fail needs: task_id | reason"
+        """JSON: {"task_id": "...", "reason": "..."} OR legacy: task_id | reason"""
+        stripped = arg.strip()
+        task_id = ""
+        reason = ""
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                task_id = str(data.get("task_id", "")).strip()
+                reason = str(data.get("reason", "")).strip()
+            except json.JSONDecodeError as err:
+                return f"[ERROR] tasks.fail: invalid JSON ({err})"
+        else:
+            parts = arg.split("|", 1)
+            if len(parts) < 2:
+                return "[ERROR] tasks.fail needs JSON or 'task_id | reason'"
+            task_id = parts[0].strip()
+            reason = parts[1].strip()
+        if not task_id or not reason:
+            return "[ERROR] tasks.fail: task_id and reason required"
         try:
-            task = self._service.fail(parts[0].strip(), parts[1].strip())
+            task = self._service.fail(task_id, reason)
         except (TaskNotFoundError, TaskTransitionError) as err:
             return f"[ERROR] {err}"
         return f"[OK] task failed\n{_format_task(task)}"
 
     def block(self, arg: str) -> str:
-        """Format: task_id | blocker"""
-        parts = arg.split("|", 1)
-        if len(parts) < 2:
-            return "[ERROR] tasks.block needs: task_id | blocker"
+        """JSON: {"task_id": "...", "blocker": "..."} OR legacy: task_id | blocker"""
+        stripped = arg.strip()
+        task_id = ""
+        blocker = ""
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                task_id = str(data.get("task_id", "")).strip()
+                blocker = str(data.get("blocker", "")).strip()
+            except json.JSONDecodeError as err:
+                return f"[ERROR] tasks.block: invalid JSON ({err})"
+        else:
+            parts = arg.split("|", 1)
+            if len(parts) < 2:
+                return "[ERROR] tasks.block needs JSON or 'task_id | blocker'"
+            task_id = parts[0].strip()
+            blocker = parts[1].strip()
+        if not task_id or not blocker:
+            return "[ERROR] tasks.block: task_id and blocker required"
         try:
-            task = self._service.block(parts[0].strip(), parts[1].strip())
+            task = self._service.block(task_id, blocker)
         except (TaskNotFoundError, TaskTransitionError) as err:
             return f"[ERROR] {err}"
         return f"[OK] task blocked\n{_format_task(task)}"

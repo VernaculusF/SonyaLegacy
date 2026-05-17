@@ -37,6 +37,30 @@ class SessionResult:
 
 
 TOOL_DESCRIPTIONS = """Available tools:
+
+## Tool syntax
+
+Two forms supported:
+
+**Simple form** — one line, args after the name:
+```
+[TOOL: filesystem.list /home/jester-sonya/Sonya]
+```
+
+**Block form** — for long args / code / JSON. Marker line then a fenced block:
+```
+[TOOL: code.exec]
+```python
+import sqlite3
+conn = sqlite3.connect("/home/jester-sonya/.sonya/sonya_substrate.db")
+print(conn.execute("SELECT COUNT(*) FROM episodic_events").fetchone())
+```
+```
+
+Use block form when args contain newlines, brackets, or > ~200 chars.
+
+## Tools
+
 - self_inspect.identity — read your identity record
 - self_inspect.state — read current subject state (drives, intentions)
 - self_inspect.thoughts — read your recent thoughts
@@ -47,53 +71,73 @@ TOOL_DESCRIPTIONS = """Available tools:
 - filesystem.read [path] — read a file
 - filesystem.list [path] — list directory
 - filesystem.tree [path] — show directory tree
-- filesystem.write [path] [content] — write a file (only into workspace/ or tools/plugins/)
+- filesystem.write — block form: first line of args = path, remaining = content
 - plugins.list — list available plugins
-- plugins.create [name] [python_code] — create a new plugin tool (hot-loaded, no restart)
+- plugins.create — block form: first line = name, remaining = python code
 - plugins.call [name] [args] — call a loaded plugin
-- selfmod.propose [target_path] [summary] [content] — propose a real change to src/sonya/* through the 4-layer pipeline. target_path like "src/sonya/channels/discord.py", content is full file body. Identity-critical zones still forbidden.
-- selfmod.test_sandbox [proposal_id] — import the proposed content in isolation; catches syntax/import errors BEFORE writing to disk
-- selfmod.validate [proposal_id] — run all 4 layers (static contract, behavior tests, trace replay, anchor integrity)
-- selfmod.apply [proposal_id] — apply approved proposal: capture pre-state, write file, hot-reload + drop-and-recreate live instances. 60-second watch window auto-rollback on crash.
-- selfmod.list [status_filter?] — list proposals (optionally by status: draft/validating/approved/rejected/applied/etc)
-- selfmod.get [proposal_id] — full details of one proposal
-- selfmod.governed [proposal_id] — request primary anchor approval for identity-critical proposal
-- selfmod.check_governed [proposal_id] — check if primary anchor approved
-- selfmod.rollback [proposal_id] [reason?] — restore pre-state from disk + hot-reload again
-- selfmod.soft_restart [reason?] — trigger soft-restart of runtime task (channels/internal_process re-built from reloaded modules; substrate + admin survive). Use after applying changes to main.py / config.py / core that don't hot-reload.
+- selfmod.propose — block form, JSON: {"target": "src/sonya/...", "summary": "...", "content": "<full file>"}
+- selfmod.test_sandbox [proposal_id]
+- selfmod.validate [proposal_id]
+- selfmod.apply [proposal_id]
+- selfmod.list [status_filter?]
+- selfmod.get [proposal_id]
+- selfmod.governed [proposal_id]
+- selfmod.check_governed [proposal_id]
+- selfmod.rollback [proposal_id] [reason?]
+- selfmod.soft_restart [reason?]
 
-- tasks.create [title | description? | step1; step2; ...] — create a new task. description and steps optional. Returns task_id.
-- tasks.list [status_filter?] — list tasks. status_filter: pending / in_progress / blocked / done / failed / open (= all unresolved). No filter = recent 50.
-- tasks.get [task_id] — full details of one task (plan, completed steps, result).
-- tasks.pick — pick the next task to work on (resumes in_progress, otherwise picks oldest pending) and marks it in_progress.
-- tasks.plan [task_id | step1; step2; ...] — set or replace the plan_steps for a task.
-- tasks.step [task_id | step_idx | summary] — mark one plan step as done with a short summary.
-- tasks.complete [task_id | result?] — mark task done with a final result string.
-- tasks.fail [task_id | reason] — mark task failed.
-- tasks.block [task_id | blocker] — block on Ivan / external. Use this when waiting on approval / OAuth / API key etc.
-- tasks.unblock [task_id] — unblock; resumes as in_progress.
-- tasks.pause [task_id] — return in_progress task to pending; you'll pick it up later.
+- tasks.create — block form, JSON: {"title": "...", "description": "...", "plan_steps": ["step1", "step2"]}
+- tasks.list [status_filter?] — pending / in_progress / blocked / done / failed / open
+- tasks.get [task_id]
+- tasks.pick — pick next open task and mark in_progress
+- tasks.plan — block form, JSON: {"task_id": "...", "steps": ["a", "b"]}
+- tasks.step — block form, JSON: {"task_id": "...", "step_idx": 0, "summary": "did it"}
+- tasks.complete — block form, JSON: {"task_id": "...", "result": "..."}
+- tasks.fail — block form, JSON: {"task_id": "...", "reason": "..."}
+- tasks.block — block form, JSON: {"task_id": "...", "blocker": "..."}
+- tasks.unblock [task_id]
+- tasks.pause [task_id]
 
-Tasks survive across sessions and restarts. When an active session starts you pick up your in_progress task. Use them for any work that takes longer than one session.
+Tasks survive sessions. When active session starts you pick up your in_progress task.
 
-- web.search [query] — DuckDuckGo search; returns top 5 results (title, url, snippet).
-- web.fetch [url] — GET an http(s) URL; returns text-stripped body (capped at 200KB; first 8KB shown).
-- code.exec [python_code] — run a Python snippet in a fresh subprocess (30s timeout, fresh tempdir cwd, no environment inheritance). Use for compute / experimentation.
-- shell.run [command] — run a shell command. **Approval-gated**: first call creates a pending ApprovalRequest and returns `[PENDING_APPROVAL: req_id]`. Pair with `tasks.block` to pause work until Ivan approves through admin panel. After approval, the same command runs and returns exit/stdout/stderr.
-- pip.install [package] — install a Python package via pip. Same approval gate as shell.run.
+- web.search [query]
+- web.fetch [url]
+- code.exec — block form, code goes inside ```python ... ```
+- shell.run [command] — approval-gated
+- pip.install [package] — approval-gated
 
-- chat.tell_ivan [message] — send a message to Ivan on Telegram (initiative path). Throttled: max N per UTC day and at least N minutes since last contact. Returns `[QUEUED]` on dispatch, `[BLOCKED]` if gate refuses. Use this when you have something genuinely worth saying — a thought, a question, an update on a long task, "I miss you". Don't spam.
+- chat.tell_ivan [message] — send a message to Ivan in TG (throttled, max 5/day). Use during long tasks for progress updates.
 
-You can ALSO send a message to Ivan from idle thinking by including a `[SEND_TO_IVAN: <text>]` marker anywhere in your thought text. Same throttle applies. The marker is invisible to Ivan — only the text inside is sent.
+## How to finish
 
-IMPORTANT: Use exactly ONE tool per response. Write it as:
-[TOOL: tool_name arg]
+Always end with `[DONE: <text for Ivan>]` if this is a TG conversation, or `[DONE]` for internal sessions.
+The text inside `[DONE: ...]` goes to Ivan as your reply. Without [DONE] nothing is sent.
 
-Do NOT put multiple [TOOL: ...] in one response. One tool at a time.
-
-To finish, write: [DONE] or [DONE: summary]
-To pause and continue later, write: [PAUSE: reason]
+Use ONE tool per response. Wait for observation before next.
 """
+
+
+# Single-line: [TOOL: name arg-no-newlines-or-brackets]
+_TOOL_INLINE_RE = re.compile(r"\[TOOL:\s*([^\s\]]+)(?:\s+([^\n\]]*))?\]")
+# Block form: [TOOL: name]\n```optional-lang\n<arg>\n```
+_TOOL_BLOCK_RE = re.compile(
+    r"\[TOOL:\s*([^\s\]]+)\s*\]\s*\n```[a-zA-Z0-9_-]*\n(.*?)\n```",
+    re.DOTALL,
+)
+
+
+def _extract_tool_call(response: str) -> tuple[str, str] | None:
+    """Return (tool_name, arg) if response contains a tool invocation.
+
+    Block form takes precedence so multi-line code/JSON args work.
+    """
+    m = _TOOL_BLOCK_RE.search(response)
+    if m:
+        return m.group(1), m.group(2)
+    m = _TOOL_INLINE_RE.search(response)
+    if m:
+        return m.group(1), (m.group(2) or "").strip()
+    return None
 
 
 async def run_agent_session(
@@ -150,12 +194,13 @@ async def run_agent_session(
             ))
             break
 
-        # Check for TOOL call — strict regex: [TOOL: name arg]
-        tool_match = re.search(r'\[TOOL:\s*([^\]\s]+)(?:\s+([^\]]*))?\]', response)
-        if tool_match:
-            tool_name = tool_match.group(1)
-            tool_arg = (tool_match.group(2) or "").strip()
-            result.actions.append(f"{tool_name} {tool_arg}")
+        # Check for TOOL call — supports both inline `[TOOL: name arg]` and
+        # block form `[TOOL: name]\n```...```\n`. Block form takes precedence
+        # so multi-line code/JSON args parse correctly.
+        tool_call = _extract_tool_call(response)
+        if tool_call is not None:
+            tool_name, tool_arg = tool_call
+            result.actions.append(f"{tool_name} {tool_arg[:60]}")
             result.thoughts.append(response)
 
             # Execute tool

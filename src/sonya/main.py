@@ -158,6 +158,14 @@ def _build_incoming_handler(
             )
 
             response_text = tg_result.reply_text
+            if not response_text:
+                # Agent ran but produced no usable reply (no [DONE], or output
+                # contained code leaks that we refused to forward). Send a
+                # short apology so Ivan isn't left hanging.
+                response_text = (
+                    "Я пыталась что-то сделать через tools, но ответ получился сломанный. "
+                    "Дай мне шаг переформулировать — что конкретно нужно?"
+                )
             response = CanonicalResponse(
                 kind=ResponseKind.REPLY,
                 text=response_text,

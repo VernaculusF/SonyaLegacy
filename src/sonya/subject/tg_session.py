@@ -43,6 +43,26 @@ from sonya.state.substrate import Substrate
 _TOOL_LINE_RE = re.compile(r"\[TOOL:[^\]]*\]")
 _DONE_RE = re.compile(r"\[DONE(?::\s*(?P<body>.+?))?\]\s*$", re.DOTALL)
 _PAUSE_RE = re.compile(r"\[PAUSE(?::\s*(?P<body>.+?))?\]\s*$", re.DOTALL)
+_CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
+
+
+# Heuristics that mean "this is internal scratch, NOT a reply for Ivan"
+_INTERNAL_LEAK_PATTERNS = [
+    re.compile(r"\bsubprocess\b"),
+    re.compile(r"\bsqlite3\.connect\b"),
+    re.compile(r"\bcursor\.execute\b"),
+    re.compile(r"\bos\.system\b"),
+    re.compile(r"```python", re.IGNORECASE),
+    re.compile(r"^\s*import\s+\w", re.MULTILINE),
+    re.compile(r"^\s*from\s+\w+\s+import\s", re.MULTILINE),
+]
+
+
+def _looks_like_code_leak(text: str) -> bool:
+    if not text:
+        return False
+    matches = sum(1 for p in _INTERNAL_LEAK_PATTERNS if p.search(text))
+    return matches >= 2
 
 
 _TG_SYSTEM_SUFFIX = """
@@ -142,34 +162,50 @@ def _extract_reply(result: SessionResult) -> str:
     1. [DONE: body] body — preferred
     2. [PAUSE: body] body — also OK as final
     3. Last thought text with all [TOOL: ...] / [DONE]/[PAUSE] markers stripped
+    Returns "" if extracted text looks like leaked code/tool scratch.
     """
+    candidate = ""
     final = (result.final_output or "").strip()
     if final:
         m = _DONE_RE.search(final)
         if m:
             body = (m.group("body") or "").strip()
             if body:
-                return body
-        m = _PAUSE_RE.search(final)
-        if m:
-            body = (m.group("body") or "").strip()
-            if body:
-                return body
-        # No marker body but final present — strip markers and return rest
-        cleaned = _TOOL_LINE_RE.sub("", final)
-        cleaned = _DONE_RE.sub("", cleaned)
-        cleaned = _PAUSE_RE.sub("", cleaned)
-        cleaned = cleaned.strip()
-        if cleaned:
-            return cleaned
+                candidate = body
+        if not candidate:
+            m = _PAUSE_RE.search(final)
+            if m:
+                body = (m.group("body") or "").strip()
+                if body:
+                    candidate = body
+        if not candidate:
+            cleaned = _TOOL_LINE_RE.sub("", final)
+            cleaned = _DONE_RE.sub("", cleaned)
+            cleaned = _PAUSE_RE.sub("", cleaned)
+            cleaned = _CODE_FENCE_RE.sub("", cleaned)
+            cleaned = cleaned.strip()
+            if cleaned:
+                candidate = cleaned
 
-    # Fallback: last meaningful thought
-    for thought in reversed(result.thoughts):
-        cleaned = _TOOL_LINE_RE.sub("", thought)
-        cleaned = _DONE_RE.sub("", cleaned)
-        cleaned = _PAUSE_RE.sub("", cleaned)
-        cleaned = cleaned.strip()
-        if cleaned:
-            return cleaned
+    if not candidate:
+        # Fallback: last meaningful thought
+        for thought in reversed(result.thoughts):
+            cleaned = _TOOL_LINE_RE.sub("", thought)
+            cleaned = _DONE_RE.sub("", cleaned)
+            cleaned = _PAUSE_RE.sub("", cleaned)
+            cleaned = _CODE_FENCE_RE.sub("", cleaned)
+            cleaned = cleaned.strip()
+            if cleaned:
+                candidate = cleaned
+                break
 
-    return ""
+    if not candidate:
+        return ""
+
+    # Last-line defence: if the candidate clearly contains internal code that
+    # shouldn't be in a TG reply, refuse and return an apology rather than
+    # leaking implementation details.
+    if _looks_like_code_leak(candidate):
+        return ""
+
+    return candidate

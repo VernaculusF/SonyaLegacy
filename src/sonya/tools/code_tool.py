@@ -35,6 +35,17 @@ class CodeTool:
         if not code.strip():
             return "[ERROR] code.exec needs python code"
 
+        # Strip optional ```python ... ``` fence the model may emit defensively.
+        code = code.strip()
+        if code.startswith("```"):
+            # Remove first fence line
+            first_nl = code.find("\n")
+            if first_nl != -1:
+                code = code[first_nl + 1:]
+            # Remove trailing fence
+            if code.rstrip().endswith("```"):
+                code = code.rstrip()[:-3]
+
         with tempfile.TemporaryDirectory(prefix="sonya-code-") as tmp:
             script_path = Path(tmp) / "script.py"
             script_path.write_text(code, encoding="utf-8")
