@@ -233,11 +233,20 @@ class TelegramChannel:
                         now = time.time()
                         last = last_msg_time.get(event.chat_id, 0)
                         try:
-                            # In groups always reply (clarity); in private use 120s pause heuristic
-                            if not event.is_private or now - last > 120:
-                                await event.reply(response.text)
-                            else:
-                                await event.respond(response.text)
+                            chunks = _split_for_telegram(response.text)
+                            for i, chunk in enumerate(chunks):
+                                # In groups: reply on first chunk, respond on
+                                # follow-ups so they don't all quote the same
+                                # source message. In private with >120s pause:
+                                # always reply (one chunk usually).
+                                use_reply = (
+                                    i == 0
+                                    and (not event.is_private or now - last > 120)
+                                )
+                                if use_reply:
+                                    await event.reply(chunk)
+                                else:
+                                    await event.respond(chunk)
                             last_msg_time[event.chat_id] = now
                         except ConnectionError as conn_err:
                             _log.warning(
@@ -397,3 +406,52 @@ async def _download_media(event: Any, media_dir: str) -> tuple[str | None, str |
     if saved is None:
         return None, None
     return str(saved), mime
+
+
+# Telegram's text limit is 4096 chars per message. We leave a small margin for
+# safety (some entities expand server-side).
+_TG_HARD_LIMIT = 4000
+
+
+def _split_for_telegram(text: str) -> list[str]:
+    """Split a long reply into Telegram-safe chunks at natural boundaries.
+
+    Strategy:
+      1. If <= limit — return as-is.
+      2. Try to split on paragraph breaks (\\n\\n).
+      3. Fall back to sentence boundaries (. ! ?).
+      4. Last resort — hard char split.
+    Empty input returns [].
+    """
+    if not text:
+        return []
+    if len(text) <= _TG_HARD_LIMIT:
+        return [text]
+
+    out: list[str] = []
+    remainder = text
+    while remainder:
+        if len(remainder) <= _TG_HARD_LIMIT:
+            out.append(remainder)
+            break
+        window = remainder[:_TG_HARD_LIMIT]
+        # Prefer paragraph break
+        cut = window.rfind("\n\n")
+        if cut < _TG_HARD_LIMIT // 2:
+            cut = -1  # too early, look for sentence boundary instead
+        if cut < 0:
+            # Sentence boundary: last . ! ? followed by whitespace
+            for sep in (". ", "! ", "? ", ".\n", "!\n", "?\n"):
+                idx = window.rfind(sep)
+                if idx > _TG_HARD_LIMIT // 2:
+                    cut = idx + len(sep) - 1
+                    break
+        if cut < 0:
+            # Whitespace
+            cut = window.rfind(" ")
+        if cut <= 0:
+            # Hard split — no good boundary
+            cut = _TG_HARD_LIMIT
+        out.append(remainder[:cut].rstrip())
+        remainder = remainder[cut:].lstrip()
+    return out

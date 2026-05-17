@@ -60,6 +60,26 @@ _OBSERVATION_RE = re.compile(
 )
 _BUDGET_WARNING_RE = re.compile(r"\[BUDGET WARNING\][^\n]*(?:\n(?!\n).*)*", re.MULTILINE)
 _NEW_MESSAGE_INJECT_RE = re.compile(r"\[NEW MESSAGE FROM IVAN\][^\n]*(?:\n(?!\n).*)*", re.MULTILINE)
+# Reasoning-mode models sometimes leak <think>...</think> blocks. Strip them
+# wholesale — they're internal cogitation, not for the user.
+_THINK_BLOCK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+_THINK_OPEN_RE = re.compile(r"<think>[\s\S]*$", re.IGNORECASE)
+# Some models start with English meta-reasoning even when system prompt is
+# Russian ("The user is asking...", "I should respond..."). If the response
+# begins with such a paragraph, drop everything up to the first blank line
+# or first Russian sentence.
+_META_REASONING_PREFIXES = (
+    "the user is",
+    "the user asked",
+    "the user wants",
+    "the user said",
+    "i should",
+    "i need to",
+    "i will",
+    "let me",
+    "okay, the user",
+    "ok, the user",
+)
 
 
 # Heuristics that mean "this is internal scratch, NOT a reply for Ivan"
@@ -316,8 +336,48 @@ def _build_initial_user_message(
     ]
 
 
+def _strip_meta_reasoning_prefix(text: str) -> str:
+    """Drop a leading meta-reasoning paragraph if present.
+
+    Heuristic: if the first non-empty line starts with one of the known
+    English reasoning openers (case-insensitive), discard everything up to
+    the first blank line OR (if no blank line) the first line that looks
+    Cyrillic / starts with a non-English-meta token. If none of these — drop
+    the whole text (it's all reasoning).
+    """
+    if not text:
+        return text
+    head = text.lstrip()
+    head_lower = head[:80].lower()
+    if not any(head_lower.startswith(p) for p in _META_REASONING_PREFIXES):
+        return text
+    # Strategy 1: blank-line split
+    parts = re.split(r"\n\s*\n", text, maxsplit=1)
+    if len(parts) == 2 and parts[1].strip():
+        return parts[1].strip()
+    # Strategy 2: single-newline split — keep everything from the first
+    # line that doesn't start with another reasoning prefix and contains a
+    # Cyrillic letter (Sonya speaks Russian to Ivan).
+    lines = text.splitlines()
+    for i in range(1, len(lines)):
+        line = lines[i].strip()
+        if not line:
+            continue
+        line_lower = line[:80].lower()
+        if any(line_lower.startswith(p) for p in _META_REASONING_PREFIXES):
+            continue
+        if re.search(r"[а-яА-ЯёЁ]", line):
+            return "\n".join(lines[i:]).strip()
+    return ""
+
+
 def _scrub(text: str) -> str:
     """Remove all internal markers / observation echoes / fences from text."""
+    # Reasoning blocks first — they may contain bracketed markers we'd
+    # otherwise try to interpret.
+    text = _THINK_BLOCK_RE.sub("", text)
+    text = _THINK_OPEN_RE.sub("", text)  # unclosed <think> at end of stream
+    text = _strip_meta_reasoning_prefix(text)
     text = _OBSERVATION_RE.sub("", text)
     text = _BUDGET_WARNING_RE.sub("", text)
     text = _NEW_MESSAGE_INJECT_RE.sub("", text)
