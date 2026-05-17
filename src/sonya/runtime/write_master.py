@@ -28,6 +28,22 @@ class WriteMaster:
         substrate_path = Path(substrate_path)
         return cls(lock_path=substrate_path.with_suffix(substrate_path.suffix + ".lock"))
 
+    @classmethod
+    def is_held(cls, substrate_path: Path | str) -> bool:
+        """Check if substrate's write-master lock is held by a live process.
+
+        Read-only check: does not modify the lock file. Useful for non-master
+        processes (admin panel) to detect when core is running.
+        """
+        substrate_path = Path(substrate_path)
+        lock_path = substrate_path.with_suffix(substrate_path.suffix + ".lock")
+        try:
+            data = json.loads(lock_path.read_text(encoding="utf-8"))
+            pid = int(data.get("pid"))
+        except (FileNotFoundError, json.JSONDecodeError, TypeError, ValueError):
+            return False
+        return _pid_alive(pid)
+
     def acquire(self) -> None:
         existing_pid = self._read_lock_pid()
         if existing_pid is not None and _pid_alive(existing_pid):

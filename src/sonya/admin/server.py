@@ -15,6 +15,7 @@ from sonya.memory.episodic import EpisodicMemory
 from sonya.memory.semantic import SemanticMemory
 from sonya.planning import build_full_context, plan_next
 from sonya.planning.memory_wiring import record_response_as_memory
+from sonya.runtime import WriteMaster
 from sonya.state import ContinuityStream, Substrate, SubjectStateStore
 from sonya.state.pending import PendingIntentionStore
 from sonya.harness.audit import AuditLog
@@ -45,7 +46,13 @@ async def auth_middleware(request: web.Request, handler):
 
 
 def _get_substrate(config: AppConfig) -> Substrate:
-    return Substrate.open(config.substrate_path)
+    """Open substrate. Read-only if core process is running (avoids write race)."""
+    core_running = WriteMaster.is_held(config.substrate_path)
+    return Substrate.open(config.substrate_path, read_only=core_running)
+
+
+def _is_core_running(config: AppConfig) -> bool:
+    return WriteMaster.is_held(config.substrate_path)
 
 
 async def handle_index(request: web.Request) -> web.Response:
@@ -145,6 +152,18 @@ async def api_chat_send(request: web.Request) -> web.Response:
     message = data.get("message", "")
     if not message:
         return web.json_response({"response": ""})
+
+    # Refuse writes from admin if core is running — avoids substrate race
+    if _is_core_running(config):
+        return web.json_response(
+            {
+                "response": "",
+                "error": "core_running",
+                "detail": "Stop the core process first (admin panel → Core → Stop) "
+                          "to chat from admin. Otherwise message goes through telegram.",
+            },
+            status=409,
+        )
 
     sub = _get_substrate(config)
     try:
@@ -249,6 +268,19 @@ async def api_substrate(request: web.Request) -> web.Response:
 # --- Core process management ---
 
 _core_process: Any = None
+_core_log_file: Any = None  # tracked to close properly
+
+
+def _project_paths():
+    """Return (project_root, venv_python, log_path) from env or sensible defaults."""
+    import os
+    project_root = os.environ.get("SONYA_PROJECT_ROOT", os.path.expanduser("~/Sonya"))
+    venv_python = os.environ.get(
+        "SONYA_VENV_PYTHON",
+        os.path.join(project_root, ".venv", "bin", "python"),
+    )
+    log_path = os.environ.get("SONYA_CORE_LOG_PATH", "/tmp/sonya.log")
+    return project_root, venv_python, log_path
 
 
 async def api_core_status(request: web.Request) -> web.Response:
@@ -266,17 +298,17 @@ async def api_core_start(request: web.Request) -> web.Response:
     """
     import subprocess
     import os
-    global _core_process
+    global _core_process, _core_log_file
 
     # Check if already running
     if _core_process is not None and _core_process.returncode is None:
         return web.json_response({"status": "already_running", "pid": _core_process.pid})
 
     mode = request.query.get("mode", "full")
+    project_root, venv_python, log_path = _project_paths()
 
     # Build env with PYTHONPATH and toggles
     env = os.environ.copy()
-    project_root = os.path.expanduser("~/Sonya")
     env["PYTHONPATH"] = f"{project_root}/src:{project_root}/packages/tg-userbot/src"
 
     if mode == "telegram_only":
@@ -289,37 +321,77 @@ async def api_core_start(request: web.Request) -> web.Response:
         env["SONYA_ENABLE_TELEGRAM"] = "1"
         env["SONYA_ENABLE_THINKING"] = "1"
 
+    # Close any previous log file handle
+    if _core_log_file is not None and not _core_log_file.closed:
+        try:
+            _core_log_file.close()
+        except Exception:
+            pass
+
+    _core_log_file = open(log_path, "w")
+
     # Start core as subprocess
     _core_process = subprocess.Popen(
-        [os.path.expanduser("~/Sonya/.venv/bin/python"), "-m", "sonya"],
+        [venv_python, "-m", "sonya"],
         cwd=project_root,
         env=env,
-        stdout=open("/tmp/sonya.log", "w"),
+        stdout=_core_log_file,
         stderr=subprocess.STDOUT,
     )
     return web.json_response({"status": "started", "pid": _core_process.pid, "mode": mode})
 
 
 async def api_core_stop(request: web.Request) -> web.Response:
-    """Stop the core process."""
+    """Stop the core process: SIGTERM first, SIGKILL after 10s if still alive."""
     import signal
-    global _core_process
+    import asyncio
+    global _core_process, _core_log_file
 
     if _core_process is None or _core_process.returncode is not None:
         return web.json_response({"status": "not_running"})
 
-    _core_process.send_signal(signal.SIGKILL)
-    _core_process.wait(timeout=5)
     pid = _core_process.pid
+    proc = _core_process
+
+    # Graceful first
+    try:
+        proc.send_signal(signal.SIGTERM)
+    except ProcessLookupError:
+        _core_process = None
+        return web.json_response({"status": "already_dead", "pid": pid})
+
+    # Wait up to 10s for graceful exit
+    for _ in range(20):
+        await asyncio.sleep(0.5)
+        if proc.poll() is not None:
+            break
+
+    method = "sigterm"
+    if proc.poll() is None:
+        # Still alive — escalate
+        try:
+            proc.send_signal(signal.SIGKILL)
+            proc.wait(timeout=3)
+        except ProcessLookupError:
+            pass
+        method = "sigkill"
+
     _core_process = None
-    return web.json_response({"status": "stopped", "pid": pid})
+    if _core_log_file is not None and not _core_log_file.closed:
+        try:
+            _core_log_file.close()
+        except Exception:
+            pass
+        _core_log_file = None
+
+    return web.json_response({"status": "stopped", "pid": pid, "method": method})
 
 
 async def api_core_logs(request: web.Request) -> web.Response:
     """Get last N lines of core log."""
     import os
     lines = int(request.query.get("lines", "50"))
-    log_path = "/tmp/sonya.log"
+    _, _, log_path = _project_paths()
     if not os.path.exists(log_path):
         return web.json_response({"logs": ""})
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:

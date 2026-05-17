@@ -87,6 +87,12 @@
 
 ### 4.1 GLOBAL_PROJECT_CHECKLIST дрифт
 
+**Масштаб:** после удаления `tg-bridge` и `sonya_runtime` (пункты 4.5, 4.6) куча секций чеклиста ссылаются на несуществующие модули — §4 OpenClaw compatibility, §5 Runtime shell упоминает `python -m sonya_runtime.tasks.worker`, §8 Memory ссылается на `OpenClaw context_loader.py`, §9 Provider говорит про `tg_bridge.model_client`, §10 Action и §11 Reusable task runtime — всё через `sonya_runtime.*`.
+
+**Решение:** требуется полное переписывание чеклиста под текущую реальность. Сделаем в отдельной задаче после стабилизации основных функций (это не bug, это документационный долг).
+
+**Status:** deferred — не критично для работы Сони, но критично для будущей навигации.
+
 ### 4.2 Drift review cadence — следующий до 2026-05-29
 
 ### 4.3 Дублирование drive counters
@@ -136,27 +142,23 @@ Thinking loop генерирует мысли, но не может отправ
 ## 7. КРИТИЧНЫЕ (security / data)
 
 
-### C-4. Admin "stop core" использует SIGKILL без graceful shutdown
+### C-4. Admin "stop core" использует SIGKILL без graceful shutdown ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** `src/sonya/admin/server.py:312` (`api_core_stop`)
+Теперь:
+1. Сначала SIGTERM, ждём до 10 секунд (20 итераций по 0.5s) на graceful shutdown — Соня успевает дописать `lifecycle.stopped` event и release write-master lock
+2. Если процесс всё ещё жив — SIGKILL
+3. Возвращается `method: "sigterm" | "sigkill"` — видно какой путь сработал
+4. Paths берутся из env (`SONYA_PROJECT_ROOT`, `SONYA_VENV_PYTHON`, `SONYA_CORE_LOG_PATH`) с разумными дефолтами
+5. Log file handle сохраняется в `_core_log_file` и явно закрывается при stop / следующем start — больше нет leak
 
-**Проблемы:**
-1. SIGKILL → нет graceful shutdown, `lifecycle.stopped` не пишется в substrate, write-master lock может остаться
-2. Hardcoded paths (`~/Sonya`, `~/Sonya/.venv/bin/python`) — admin неюзабельна вне VPS
-3. `open("/tmp/sonya.log", "w")` без `with` — file handle leak при каждом старте
+### C-5. Admin открывает substrate параллельно с main процессом ✅ ИСПРАВЛЕНО (commit pending)
 
-**Фикс:**
-1. Сначала SIGTERM, ждать 5 сек, потом SIGKILL
-2. Paths из config (env vars)
-3. `with open(...)` или закрывать file handle
+Решение:
+1. `WriteMaster.is_held(path)` — новый classmethod, проверяет лок без acquire (читает PID и проверяет жив ли).
+2. `_get_substrate` в admin теперь открывает БД read-only когда core запущен (`Substrate.open(path, read_only=True)`).
+3. `api_chat_send` отказывает с HTTP 409 если core запущен — нельзя писать с двух процессов.
 
-### C-5. Admin открывает substrate параллельно с main процессом
-
-**Где:** Все `api_*` хендлеры в `admin/server.py`
-
-**Проблема:** Admin открывает второй `Substrate.open()` пока main держит write-master. SQLite работает в shared-mode, но WriteMaster guarantee из `SUBSTRATE_STANCE` нарушается. `api_chat_send` реально пишет (`record_response_as_memory`) — гонка двух писателей.
-
-**Фикс:** Либо admin переходит на read-only mode когда main работает, либо общая connection через IPC.
+Read-операции (dashboard, thoughts, memory, telegram, audit, substrate) работают одновременно с core — SQLite позволяет multiple readers + 1 writer.
 
 ### C-6. Layer 4 anchor protection обходит ApprovalManager API
 
@@ -430,9 +432,7 @@ POSIX vs Windows path по-разному вызывают handler. Сейчас
 
 ### m-2. ✅ УДАЛЕНО (см. 4.5)
 
-### m-3. Hardcoded `~/Sonya` в admin server
-
-`admin/server.py:278, 290`. Не работает на любом другом layout.
+### m-3. Hardcoded `~/Sonya` в admin server ✅ ИСПРАВЛЕНО (см. C-4)
 
 ### m-4. Конфликт deploy doc'ов
 
