@@ -194,7 +194,7 @@ def _build_channels(config: AppConfig) -> list[Channel]:
         except Exception as err:
             _log.warning(
                 "channel_module_import_failed",
-                extra={"module": dotted, "error": str(err)},
+                extra={"channel_module": dotted, "error": str(err)},
             )
             continue
 
@@ -205,20 +205,20 @@ def _build_channels(config: AppConfig) -> list[Channel]:
             except Exception as err:
                 _log.warning(
                     "channel_build_failed",
-                    extra={"module": dotted, "error": str(err)},
+                    extra={"channel_module": dotted, "error": str(err)},
                 )
                 continue
             if instance is not None:
                 channels.append(instance)
                 _log.info(
                     "channel_built",
-                    extra={"module": dotted, "name": getattr(instance, "name", "?")},
+                    extra={"channel_module": dotted, "channel_name": getattr(instance, "name", "?")},
                 )
             continue
 
         _log.debug(
             "channel_module_no_build_factory",
-            extra={"module": dotted, "hint": "add `def build(config): ...` to register"},
+            extra={"channel_module": dotted, "hint": "add `def build(config): ...` to register"},
         )
 
     return channels
@@ -502,7 +502,7 @@ def _reload_core_modules() -> None:
             except Exception as err:
                 _log.warning(
                     "module_reload_failed",
-                    extra={"module": dotted, "error": str(err)},
+                    extra={"target_module": dotted, "error": str(err)},
                 )
 
 
