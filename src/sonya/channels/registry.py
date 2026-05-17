@@ -86,7 +86,12 @@ class ChannelRegistry:
                     await channel.stop()
                     _log.info("channel_stopped", extra={"channel": name})
                 except Exception as err:
-                    _log.error(
+                    # Race window: in-flight handler may try to write to
+                    # continuity_stream after substrate has been switched to
+                    # read-only by the lifecycle. Logged as warning since the
+                    # process is shutting down anyway and the lost log entry
+                    # doesn't affect future behaviour.
+                    _log.warning(
                         "channel_stop_failed",
                         extra={"channel": name, "error": str(err)},
                     )

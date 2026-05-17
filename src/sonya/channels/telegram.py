@@ -195,20 +195,38 @@ class TelegramChannel:
                         _log.info("tg_group_address_detected", extra={"chat_id": msg.chat_id})
 
                 if should_respond:
-                    async with client.action(event.chat_id, "typing"):
+                    # Skip typing indicator if client just disconnected (race
+                    # with shutdown / network blip). The reply itself will
+                    # still be attempted below — Telethon retries connect on
+                    # send_message.
+                    try:
+                        async with client.action(event.chat_id, "typing"):
+                            response = await deps.on_incoming(msg)
+                    except ConnectionError:
                         response = await deps.on_incoming(msg)
                     if response and response.text:
                         now = time.time()
                         last = last_msg_time.get(event.chat_id, 0)
-                        # In groups always reply (clarity); in private use 120s pause heuristic
-                        if not event.is_private or now - last > 120:
-                            await event.reply(response.text)
-                        else:
-                            await event.respond(response.text)
-                        last_msg_time[event.chat_id] = now
+                        try:
+                            # In groups always reply (clarity); in private use 120s pause heuristic
+                            if not event.is_private or now - last > 120:
+                                await event.reply(response.text)
+                            else:
+                                await event.respond(response.text)
+                            last_msg_time[event.chat_id] = now
+                        except ConnectionError as conn_err:
+                            _log.warning(
+                                "tg_send_skipped_disconnected",
+                                extra={"chat_id": str(event.chat_id), "error": str(conn_err)},
+                            )
                 else:
                     # Still notify so handler can record/track without generating response
                     await deps.on_incoming(msg)
+            except ConnectionError as err:
+                _log.warning(
+                    "tg_handler_disconnected",
+                    extra={"error": str(err)},
+                )
             except Exception as err:
                 _log.error(
                     "tg_handler_crash",

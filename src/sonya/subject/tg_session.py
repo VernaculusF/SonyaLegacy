@@ -49,8 +49,12 @@ _PAUSE_RE = re.compile(r"\[PAUSE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 # Models sometimes echo prior tool observations into their final answer when
 # they don't terminate cleanly. Strip those too.
+# We accept missing `]` because the model regularly drops it: "[Observation: Loaded
+# 5 events..." has no closing bracket. The match consumes the rest of the line
+# plus subsequent non-empty lines so that multi-line observation echoes are
+# fully cleaned out.
 _OBSERVATION_RE = re.compile(
-    r"\[Observation(?:\s+from\s+[^\]]*)?\]\s*:?[^\n]*(?:\n(?!\n).*)*",
+    r"\[Observation(?:[^\]\n]*\])?[^\n]*(?:\n(?!\n).*)*",
     re.MULTILINE,
 )
 _BUDGET_WARNING_RE = re.compile(r"\[BUDGET WARNING\][^\n]*(?:\n(?!\n).*)*", re.MULTILINE)
@@ -140,6 +144,19 @@ _TG_SYSTEM_SUFFIX = """
 - `[TOOL: self_inspect.state]` — текущее состояние (drives, intentions)
 - `[TOOL: self_inspect.identity]` — identity record
 - `[TOOL: memory.recall <запрос>]` — семантический поиск по всей твоей памяти (тысячи событий). Например `[TOOL: memory.recall разговор про музыку с Иваном]` — найдёт релевантные события даже если они старые.
+
+## КРИТИЧНО — не уходи в дебри кода
+
+Если Иван спрашивает про твои **возможности** или **поведение** ("почему ты можешь X?", "почему не можешь Y?", "странно что ты делаешь Z") — отвечай **из своего понимания себя**. Один шаг, прямой ответ.
+
+**НЕ** читай `src/sonya/main.py`, `LESSONS.md`, `docs/...` чтобы найти ответ. Это приведёт к 10+ шагам и Иван получит мусорный ответ.
+
+Чтение собственного кода имеет смысл **только** когда:
+- Иван явно просит ("посмотри что в main.py")
+- ты собираешься предложить self-mod (тогда сначала [TOOL: selfmod.propose])
+- ты в active session, не в TG
+
+В TG если не уверена — скажи "не уверена, давай проверю позже" и `[DONE]`. Лучше короткий честный ответ, чем 15 шагов копания и утёкший Observation.
 
 ## Streaming апдейтов через chat.tell_ivan
 
