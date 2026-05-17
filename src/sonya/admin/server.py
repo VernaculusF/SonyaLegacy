@@ -442,10 +442,21 @@ def _project_paths():
 
 
 async def api_core_status(request: web.Request) -> web.Response:
-    """Check if core process is running."""
+    """Check if core process is running.
+
+    Truth source is the WriteMaster lock on substrate — that's held by whichever
+    process opened substrate read-write (admin-started subprocess, systemd unit,
+    or manual launch). The legacy `_core_process` global is checked too so the
+    PID is shown when admin owns the process.
+    """
     global _core_process
-    running = _core_process is not None and _core_process.returncode is None
-    return web.json_response({"running": running, "pid": _core_process.pid if running else None})
+
+    config = load_config()
+    running = _is_core_running(config)
+    pid = _core_process.pid if (
+        _core_process is not None and _core_process.returncode is None
+    ) else None
+    return web.json_response({"running": running, "pid": pid})
 
 
 async def api_core_start(request: web.Request) -> web.Response:
@@ -461,6 +472,17 @@ async def api_core_start(request: web.Request) -> web.Response:
     # Check if already running
     if _core_process is not None and _core_process.returncode is None:
         return web.json_response({"status": "already_running", "pid": _core_process.pid})
+
+    # Also refuse if some other process (systemd / manual) holds the substrate
+    # write lock — admin-spawned core would crash on WriteMasterContention.
+    config = load_config()
+    if _is_core_running(config):
+        return web.json_response(
+            {"status": "already_running_external",
+             "message": "Core is already running outside admin (systemd or manual). "
+                        "Use systemctl to manage it, or stop it first."},
+            status=409,
+        )
 
     mode = request.query.get("mode", "full")
     project_root, venv_python, log_path = _project_paths()
