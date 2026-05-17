@@ -147,7 +147,13 @@ class InternalProcess:
 
     async def start(self) -> None:
         self._stop_event.clear()
-        self._last_external_event = asyncio.get_event_loop().time()
+        now = asyncio.get_event_loop().time()
+        self._last_external_event = now
+        # Don't fire active session at boot — give Sonya at least one full
+        # interval to settle / accumulate context. This was the boot-time
+        # active-session bug: _last_active_session=0.0 vs loop.time() large
+        # made should_active==True on tick 1.
+        self._last_active_session = now
         self._task = asyncio.create_task(self._loop())
         # Emit initial cognitive event on start
         self._stream.append(
@@ -406,6 +412,24 @@ class InternalProcess:
                 "Или просто исследуй что-то интересное."
             )
 
+            # Build the FULL context (personality + memory + drives + tasks +
+            # awareness) so active session sees the same identity as TG replies.
+            # Without this Sonya was getting just the bare prompt + tool list and
+            # answered "I cannot proceed" because she had no idea who she was.
+            try:
+                from sonya.planning.context_builder import build_full_context
+                ctx = build_full_context(
+                    substrate=substrate,
+                    user_input="",  # filled by initial_thought instead
+                    principal_id=None,
+                    drives=self._drives,
+                )
+                # Stack: thinking-mode prefix → full context system block → TOOL_DESCRIPTIONS
+                # (TOOL_DESCRIPTIONS is appended by run_agent_session itself)
+                full_prompt = prompt + "\n\n" + ctx.system_prompt
+            except Exception:
+                full_prompt = prompt
+
             # Active task pickup (Этап C): if there's an in_progress or pending task,
             # surface it as the seed for this session. Single-stream model — one task
             # at a time. Sonya can use [TOOL: tasks.pick] explicitly too, but this
@@ -464,7 +488,7 @@ class InternalProcess:
                 code=code_tool,
                 shell=shell_tool,
                 outbound=self._outbound,
-                system_prompt=prompt,
+                system_prompt=full_prompt,
                 initial_thought=initial_thought,
                 max_steps=30,
                 max_seconds=1200.0,

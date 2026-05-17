@@ -55,7 +55,23 @@ class GapDetector:
     def scan_recent(self, since_seq: int = 0) -> list[CapabilityGap]:
         """Scan continuity events since `since_seq` for gap signals."""
         gaps: list[CapabilityGap] = []
+        # Exclude detector self-output and noisy event types whose payloads
+        # are likely to contain the trigger words ('cannot', 'failed') as
+        # legitimate text rather than capability gaps.
+        _SKIP_KINDS = {
+            "internal.capability_gap",
+            "internal.drift_signal",
+            "internal.agent_step",            # contains agent's own thinking text — false positives
+            "internal.agent_session_outcome", # similar
+            "incoming.telegram_message",      # user's free-form text
+            "outgoing.response",
+            "outgoing.telegram_response",
+            "outgoing.telegram_initiative",
+            "internal.thought",               # idle thinking — too many false positives
+        }
         for event in self._stream.read_since(since_seq):
+            if event.kind in _SKIP_KINDS:
+                continue
             if self._is_gap_signal(event.payload):
                 gap = self._create_gap(
                     description=self._extract_description(event.payload),

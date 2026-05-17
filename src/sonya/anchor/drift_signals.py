@@ -49,7 +49,16 @@ class DriftDetector:
     def scan_recent(self, since_seq: int = 0) -> list[AnchorDriftSignal]:
         """Scan continuity events for drift indicators."""
         signals: list[AnchorDriftSignal] = []
+        # Exclude detector self-output: drift_signal events contain the very
+        # keywords we look for ('things_not_to_betray', etc.) in their payload
+        # — without this filter the detector triggers on itself every tick.
+        _SELF_KINDS = {
+            "internal.drift_signal",
+            "internal.capability_gap",
+        }
         for event in self._stream.read_since(since_seq):
+            if event.kind in _SELF_KINDS:
+                continue
             payload_text = str(event.payload).lower()
             for indicator, kind in _DRIFT_INDICATORS.items():
                 if indicator in payload_text:
