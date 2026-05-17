@@ -1,12 +1,13 @@
 # VPS MIGRATION PLAN
 
-**Status:** Active
+**Status:** Active (partially executed)
 **Type:** System Plan
 **Scope:** VPS-first deployment boundary, migration order, and runtime hosting rules
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
 **Used by:** deployment work, runtime implementation plans, future operations docs
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-16
 
+> **Reality note (2026-05-16):** Migration partially done. Sonya runs on Google Cloud `34.38.255.149` (Belgium, Debian 12). systemd units exist at `deploy/systemd/sonya.service` + `sonya-admin.service`, deploy script at `deploy/update.sh`. Operations cookbook is `docs/operations/VPS.md`. The "what should live on VPS" list in §3 below is partly aspirational — scheduler/task loop don't exist, harness baseline exists but isn't wired into all decision paths.
 
 ## 1. Назначение документа
 

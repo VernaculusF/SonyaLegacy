@@ -1,11 +1,13 @@
 # HERMES ANALYSIS
 
-**Status:** Active
+**Status:** Stale (frozen as 2026-05-13 reference snapshot)
 **Type:** Reference Analysis
 **Scope:** Hermes as orchestration role, shell/brain split, and world-facing adapter logic
 **Depends on:** [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
 **Used by:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), future channel and embodiment work
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** Hermes-role analysis still useful as direction for future channel/scheduler/orchestration work. Path references in §8.4 to `sonya_runtime/channels/*` etc. are obsolete (`sonya_runtime` removed). Future channels go in `src/sonya/channels/*` — see `docs/SYSTEM_BUILDOUT_PLAN.md` Этап B. OpenClaw is fully decoupled — old §8.3 references to `telegram-bridge.mjs`, `flows/registry.sqlite`, `cron/jobs.json` are historical only.
 
 
 ## 1. Статус Hermes в текущем проекте

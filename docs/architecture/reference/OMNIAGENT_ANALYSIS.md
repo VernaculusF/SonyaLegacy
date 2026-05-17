@@ -1,11 +1,13 @@
 # OMNIAGENT ANALYSIS
 
-**Status:** Active
+**Status:** Active (reference, leave as-is)
 **Type:** Reference Analysis
 **Scope:** OmniAgent as vocabulary donor, warning source, and rejected direct runtime base
 **Depends on:** [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-**Used by:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), extraction plans, runtime plans
-**Last reviewed:** 2026-05-01
+**Used by:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), future runtime decisions
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** External-codebase analysis — findings stable. Note that current Sonya uses Telethon-based `tg_userbot` (MTProto, not bot API), which pulls Sonya further from OmniAgent's `python-telegram-bot` adapter pattern.
 
 
 ## 1. Что такое OmniAgent для проекта

@@ -45,33 +45,32 @@ Read in this order if you need the full project context:
 
 1. [agents/EXTERNAL_MODEL_ONBOARDING.md](C:/Users/Jester/Desktop/Sonya/docs/agents/EXTERNAL_MODEL_ONBOARDING.md)
 2. [agents/AGENT_OPERATING_RULES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_OPERATING_RULES.md)
-3. [agents/AGENT_TASK_RUNTIME_CONTRACT.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_TASK_RUNTIME_CONTRACT.md)
-4. [agents/AGENT_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_FAILURE_MODES.md)
-5. [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
-6. [core/SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md)
-7. [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md)
-8. [core/SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)
-9. [core/UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md)
-10. [core/SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
-11. [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md)
-12. [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md)
-13. [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md)
-14. [KNOWN_ISSUES.md](C:/Users/Jester/Desktop/Sonya/docs/KNOWN_ISSUES.md)
+3. [agents/AGENT_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_FAILURE_MODES.md)
+4. [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
+5. [core/SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md)
+6. [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md)
+7. [core/SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md)
+8. [core/UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md)
+9. [core/SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
+10. [core/INTERIM_CRUTCHES.md](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md)
+11. [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md)
+12. [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md)
+13. [KNOWN_ISSUES.md](C:/Users/Jester/Desktop/Sonya/docs/KNOWN_ISSUES.md)
+14. [SYSTEM_BUILDOUT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/SYSTEM_BUILDOUT_PLAN.md)
 15. [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md)
 16. [architecture/ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 17. [architecture/CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md)
-18. [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
-19. [operations/VPS.md](C:/Users/Jester/Desktop/Sonya/docs/operations/VPS.md)
-20. [mvp/MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
-21. [cognition/MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md)
-22. [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
-23. [cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
-24. [skills/SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md)
-25. [architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-26. [research/STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
-27. [research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)
-28. [research/SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md)
-29. active work docs under `docs/work/`
+18. [operations/VPS.md](C:/Users/Jester/Desktop/Sonya/docs/operations/VPS.md)
+19. [mvp/MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
+20. [cognition/MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md)
+21. [cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md)
+22. [cognition/ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
+23. [skills/SKILL_SYSTEM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/skills/SKILL_SYSTEM_PLAN.md)
+24. [architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
+25. [research/STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
+26. [research/BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md)
+27. [research/SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md)
+28. active work docs under `docs/work/`
 
 ## Core Layer
 
@@ -204,6 +203,19 @@ Use it to answer:
 - что было исправлено и в каком commit;
 - какой следующий приоритет.
 
+### [SYSTEM_BUILDOUT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/SYSTEM_BUILDOUT_PLAN.md)
+
+Конкретный план достройки системы от текущих ~9/100 к ~30/100 (уровень где Соня сама может расширять каркас).
+
+7 этапов: self-mod tools → channel abstraction → task runtime → initiative → tool ecosystem → consolidation+drift integration → drives integration. С зависимостями, effort estimates, и что они разблокируют.
+
+Use it to answer:
+
+- что делать следующим;
+- что блокирует что;
+- сколько примерно понадобится времени;
+- когда упрёмся в потолок hosted-model.
+
 ## Agents Layer
 
 This layer is the home for documentation aimed at any agent, external model, or replacement assistant that is expected to do real work inside this repo.
@@ -244,20 +256,6 @@ Use it to answer:
 
 It is the agent-facing counterpart to [core/SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md) and [core/DOCUMENTATION_SYSTEM.md](C:/Users/Jester/Desktop/Sonya/docs/core/DOCUMENTATION_SYSTEM.md): the theory lives there, this file tells the agent how to act.
 
-### [agents/AGENT_TASK_RUNTIME_CONTRACT.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_TASK_RUNTIME_CONTRACT.md)
-
-This file is the operational contract for any agent that emits runtime actions or creates tasks.
-
-Use it to answer:
-
-- which action types are allowed and what fields each one requires;
-- what shape a valid `task_payload` must have;
-- which task kinds the v1 executor actually supports;
-- how to pick between `reply`, image actions, task actions, `ask_clarification`, and `report_limitation`;
-- how not to invent fake `task_id` values or narrate non-existent task progress.
-
-The governing architectural plan is [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md). This file is the agent-facing contract derived from it.
-
 ### [agents/AGENT_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/agents/AGENT_FAILURE_MODES.md)
 
 This file catalogs the specific failure patterns that external models and replacement assistants repeatedly fall into on this project.
@@ -294,17 +292,6 @@ Use it to answer:
 - how principals, channels, and authority should be resolved;
 - how Telegram should work now without hard-coding Telegram assumptions into Sonya forever;
 - how image, vision, and future action routing should behave.
-
-### [architecture/TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md)
-
-This file defines the reusable action and task runtime.
-
-Use it to answer:
-
-- how runtime actions are represented outside any one channel;
-- how deferred work becomes a persisted task instead of fake narrative;
-- where the planner boundary ends and the executor boundary starts;
-- how the first reusable worker layer fits under future `sonya-core`.
 
 ### [architecture/VPS_MIGRATION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/VPS_MIGRATION_PLAN.md)
 

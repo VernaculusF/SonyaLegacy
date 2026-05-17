@@ -1,11 +1,13 @@
 # BRAINMODEL EVOLUTION PLAN
 
-**Status:** Active
-**Type:** System Plan
+**Status:** Active (research, mostly accurate)
+**Type:** Research Plan
 **Scope:** Transition path from hosted providers to Sonya-owned brain stack
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
 **Used by:** future research execution, provider abstraction design, self-hosted roadmap
-**Last reviewed:** 2026-05-15
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** Doc honest about current state — Этап 1 (hosted via OpenRouter) is real. Этап 2 `StatefulBackend` extension still aspirational. Self-modification pipeline referenced as prerequisite exists in code (`src/sonya/selfmod/`) but is NOT instantiated in `main.py` runtime — that gate must close before serious BrainModel work. See `docs/SYSTEM_BUILDOUT_PLAN.md` Этап A.
 
 
 ## 1. Назначение документа

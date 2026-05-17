@@ -1,11 +1,13 @@
 # SIMULATION AND EMBODIMENT PLAN
 
-**Status:** Active
-**Type:** System Plan
+**Status:** Research (no MVP-level implementation exists)
+**Type:** Research Plan
 **Scope:** Simulation path, virtual embodiment, and future physical grounding
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 **Used by:** future channel/body work, research execution, embodiment planning
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** §3 lists items that ROADMAP §15 promised "must exist in MVP": embodiment adapter contract, virtual body counters, world/sim interface contract, environment event schema, action emission schema, replay/test path. **None of these exist.** No `embodiment_events` or `world_events` tables in substrate v6. Module stubs exist in `src/sonya/embodiment/` and `src/sonya/simulation/` but are pure data classes with zero runtime use. Full physical body architecture (§11 — Loihi 2, ESP32, R-STDP) is far-future research.
 
 
 ## 1. Назначение документа

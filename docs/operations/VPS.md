@@ -12,7 +12,7 @@
 - **Machine:** e2-custom (4 vCPU / 8 GB RAM)
 - **OS:** Debian 12
 - **External IP:** `34.38.255.149`
-- **Disk:** 20 GB Balanced Persistent Disk
+- **Disk:** 50 GB Balanced Persistent Disk
 - **Budget:** $300 free credits (expires ~August 2026)
 
 ## Что там работает

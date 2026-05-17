@@ -1,12 +1,19 @@
 # MEMORY AND IDENTITY PLAN
 
-**Status:** Active
+**Status:** Active for identity (§3-§4); Stale for memory (§5-§7, §12)
 **Type:** System Plan
 **Scope:** Identity layer, self-model, episodic memory, semantic memory, and continuity mechanics
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 **Used by:** [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), runtime implementation work
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-16
 
+> **Reality note (2026-05-16):**
+> - **Identity (§3-§4):** Mostly real. `IdentityRecord` table exists, `things_not_to_betray` seeded, principals registry works.
+> - **Episodic memory (§5):** Single `episodic_events` table exists with `mark_accessed` + `apply_decay` (commit `bd864d5`). The class system (`dialogue_event / initiative_event / tool_event / ...`) is **aspirational** — current code uses freeform `event_type` string.
+> - **Semantic memory (§6):** `semantic_facts` table exists. ConsolidationPipeline code exists but **never runs** — semantic memory is effectively static.
+> - **Consolidation (§7):** Pipeline class exists, no trigger. See KNOWN_ISSUES G-11.
+> - **Forgetting curve (§12):** Mostly implemented in commit `bd864d5` — fields `retention_strength`, `last_accessed_at`, `access_count`, `archived` exist. `apply_decay()` works. Periodic trigger NOT wired.
+> - "Phase 8 (Memory Extraction)" referenced as future is partially done; `working_memory` table promised by ROADMAP §14 does NOT exist.
 
 ## 1. Назначение документа
 

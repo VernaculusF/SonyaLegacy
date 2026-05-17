@@ -1,12 +1,17 @@
 # ANCHORS AND FAILURE MODES
 
-**Status:** Active
+**Status:** Active (target architecture; runtime integration pending)
 **Type:** System Plan
 **Scope:** Anchors, relation protection, drift modes, proxy corruption, and harness protection targets
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 **Used by:** runtime design, harness implementation, self-modification controls, skill trust policy
-**Last reviewed:** 2026-05-13
+**Last reviewed:** 2026-05-16
 
+> **Reality note (2026-05-16):** Anchor/drift/failure-mode philosophy below is governing direction. Code-side state:
+> - Anchor integrity check (Layer 4 of selfmod pipeline) — exists in `src/sonya/selfmod/layers/anchor_integrity.py`, programmatically derived from `THINGS_NOT_TO_BETRAY_SEED` (commit `bd864d5`). NOT instantiated in runtime.
+> - DriftDetector — exists in `src/sonya/anchor/drift_signals.py`. **Never called outside tests.** "Anchor drift triggers auto-revert" is paper-only.
+> - Three-layer harness (technical/epistemic/anchor) — technical slice (`AuthorityPolicy`, `ApprovalManager`, `AuditLog`) exists. Epistemic + anchor harnesses exist as code, not exercised. See KNOWN_ISSUES M-7, S-7.
+> Failure modes don't go stale just because they aren't yet detected mechanically. Treat this doc as direction.
 
 ## 1. Назначение документа
 

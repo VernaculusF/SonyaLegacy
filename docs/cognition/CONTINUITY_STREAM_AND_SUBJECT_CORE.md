@@ -4,8 +4,14 @@
 **Type:** System Plan
 **Scope:** Cross-channel subjective continuity, canonical internal response state, and the architectural separation between one Sonya and many interface surfaces
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
-**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), future voice, avatar, multi-channel, and runtime plans
-**Last reviewed:** 2026-05-08
+**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), future voice, avatar, multi-channel, and runtime plans
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** Doc is mostly aligned with reality.
+> - `subject_state`, `continuity_event`, `pending_intention`, `canonical_response` — all exist in substrate v6.
+> - "Cross-channel" is theoretical — only Telegram exists. The principle that channels are surfaces above one subject is preserved by current code (build_full_context unifies thinking + telegram contexts as of commit `0e3314b`).
+> - `task_record_ref` (deferred work) — task runtime never landed; pending_intentions partially fills this role.
+> - `voice_profile_binding`, `avatar_profile_binding`, `channel_render_record` — not implemented.
 
 ## 1. Purpose
 

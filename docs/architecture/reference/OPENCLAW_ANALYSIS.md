@@ -1,11 +1,13 @@
 # OPENCLAW ANALYSIS
 
-**Status:** Active
+**Status:** Stale (historical reference; OpenClaw fully decoupled)
 **Type:** Reference Analysis
-**Scope:** What OpenClaw contributes operationally and what must not be copied as final Sonya architecture
+**Scope:** What OpenClaw contributed operationally — kept as memory of the operational ancestor
 **Depends on:** [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-**Used by:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), bridge extraction work, runtime migration work
-**Last reviewed:** 2026-05-01
+**Used by:** historical reference only
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** OpenClaw was Sonya's operational ancestor through ~2026-05-XX. Sonya is now fully decoupled — no `.openclaw/` dependency, no `memory.db`, no `context_loader.py`, no post-response hook, no `telegram-bridge.mjs`. The detailed code-level appendix (§7) is preserved as documentation of what a real lived agentic system looked like — useful as reference for future memory/scheduler/flows work, but no current Sonya code depends on it. Drop the prescriptive "must preserve / must carry" framing — Sonya didn't preserve most of it, and that's fine.
 
 
 ## 1. Что такое OpenClaw в контексте проекта

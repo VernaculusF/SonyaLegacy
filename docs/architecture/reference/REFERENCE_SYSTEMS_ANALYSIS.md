@@ -1,11 +1,13 @@
 # REFERENCE SYSTEMS ANALYSIS
 
-**Status:** Active
+**Status:** Stale (frozen as 2026-05-13 reference snapshot)
 **Type:** Reference Analysis
 **Scope:** High-level policy for using OpenClaw, Hermes, and OmniAgent as references instead of foundations
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)
-**Used by:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), extraction designs, implementation plans
-**Last reviewed:** 2026-05-01
+**Used by:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), historical reference
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** Frozen reference snapshot. Sonya is now decoupled from OpenClaw operationally — many "must carry" inheritance claims (provider capability matrix, compaction budget fields, per-channel policy, etc.) were not in fact carried into `src/sonya/`. The Hermes/OmniAgent posture analysis remains valid as direction. Don't read this as "what got inherited"; read it as "what was considered and what to remember when building forward."
 
 
 ## 1. Назначение документа

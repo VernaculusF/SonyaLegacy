@@ -1,12 +1,13 @@
 # ARCHITECTURE PLAN
 
-**Status:** Active
+**Status:** Active (with caveats)
 **Type:** System Plan
 **Scope:** Runtime-wide architecture, subsystem boundaries, and structural rules
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [REFERENCE_SYSTEMS_ANALYSIS.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/reference/REFERENCE_SYSTEMS_ANALYSIS.md)
-**Used by:** [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), [VPS_MIGRATION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/VPS_MIGRATION_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), cognition plans, skill plans, work implementation plans
-**Last reviewed:** 2026-05-13
+**Used by:** [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), [VPS_MIGRATION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/VPS_MIGRATION_PLAN.md), cognition plans, skill plans, work implementation plans
+**Last reviewed:** 2026-05-16
 
+> **Reality note (2026-05-16):** Layered architecture below is mostly correct as direction. But many subsystem boxes (`selfmod/`, `skills/`, `initiative/`, `anchor/`, `embodiment/`, `simulation/`) exist as code yet are NOT instantiated in `src/sonya/main.py`. Channel layer doesn't exist as abstraction at all (Telegram is hardcoded in main.py). For honest implementation status see `docs/agents/EXTERNAL_MODEL_ONBOARDING.md §6-§7`. References below to `TASK_AND_ACTION_RUNTIME_PLAN.md` are stale — that plan was archived; task runtime never landed.
 
 ## 1. Purpose
 

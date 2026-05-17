@@ -1,11 +1,13 @@
 # STATE TUNING PLAN
 
-**Status:** Active
-**Type:** System Plan
+**Status:** Research (forward direction; no slots in current code)
+**Type:** Research Plan
 **Scope:** Role, limits, and future place of state tuning in the Sonya trajectory
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
 **Used by:** [BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md), research work and future brain-stack design
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-16
+
+> **Reality note (2026-05-16):** Research-only document. State tuning will become relevant after RWKV self-host migration (Track E). Current Sonya runs on hosted models — `state_profile` slots described in §7/§9 do NOT exist in substrate or providers. Frame §7 as "должно появиться при переходе на self-hosted RWKV", not "должно быть в MVP уже сейчас".
 
 
 ## 1. Назначение документа

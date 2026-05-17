@@ -1,11 +1,31 @@
 ﻿# CHANNELS AND TELEGRAM PLAN
 
-**Status:** Active
+**Status:** Stale (target architecture, not implemented)
 **Type:** System Plan
-**Scope:** Governing plan for Telegram/Userbot integration, channel contracts, principal resolution, and channel-to-action flow
-**Depends on:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [TASK_AND_ACTION_RUNTIME_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/TASK_AND_ACTION_RUNTIME_PLAN.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
-**Used by:** Telegram bridge work, future channel implementations, principal resolution, runtime orchestration
-**Last reviewed:** 2026-05-13
+**Scope:** Target architecture for channel layer. Most of this is aspirational. **Implementation guide is `docs/SYSTEM_BUILDOUT_PLAN.md` Etap B.**
+**Depends on:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
+**Used by:** future channel work
+**Last reviewed:** 2026-05-16
+
+---
+
+## ⚠️ Reality check (2026-05-16)
+
+This doc describes a channel abstraction that **does not exist in code**. Current state:
+
+- Only Telegram works, hardcoded directly in `src/sonya/main.py` (`_start_userbot`, `_tg_handler`, `_on_incoming`)
+- No `Channel` Protocol, no `ChannelRegistry`, no normalized event contract
+- `packages/tg-bridge/` was removed entirely. `tg-userbot` is just a Telethon wrapper used inline from main.py
+- The "Action Routing Rule" / "Task Flow" sections below depend on a task/action runtime that also doesn't exist
+
+This file is preserved as **target shape**. When Etap B from `SYSTEM_BUILDOUT_PLAN.md` is executed, this doc becomes the spec. Until then, treat everything below as future direction, not current behavior.
+
+The principles that ARE still valid for current code:
+- Anti-fake-agency rules (do not narrate work that didn't happen)
+- Principal resolution conceptually (Telegram sender_id → Principal)
+- Authority boundary (replies vs side-effects)
+
+---
 
 ## Purpose
 
