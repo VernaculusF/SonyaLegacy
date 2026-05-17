@@ -207,7 +207,7 @@ async def api_chat_send(request: web.Request) -> web.Response:
                         data = _json.loads(first_line)
                     return data["choices"][0]["message"]["content"]
 
-        response = await plan_next(ctx, _Provider())
+        response = await plan_next(ctx, _Provider(), purpose="admin_chat")
         record_response_as_memory(sub, message, response, channel="admin")
         return web.json_response({"response": response.text})
     finally:
@@ -827,6 +827,141 @@ async def api_providers_keys_test(request: web.Request) -> web.Response:
         sub.close()
 
 
+# ============================================================
+# LLM call audit (token usage)
+# ============================================================
+
+async def api_llm_calls(request: web.Request) -> web.Response:
+    """Recent LLM calls + per-purpose / per-model totals."""
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        limit = int(request.query.get("limit", "100"))
+        rows = sub.connection.execute(
+            "SELECT call_id, timestamp, key_id, provider, model, purpose, "
+            "prompt_tokens, completion_tokens, total_tokens, latency_ms, "
+            "status, http_status, error "
+            "FROM llm_calls ORDER BY call_id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        recent = [
+            {
+                "call_id": r[0],
+                "timestamp": r[1],
+                "key_id": r[2],
+                "provider": r[3],
+                "model": r[4],
+                "purpose": r[5],
+                "prompt_tokens": r[6],
+                "completion_tokens": r[7],
+                "total_tokens": r[8],
+                "latency_ms": r[9],
+                "status": r[10],
+                "http_status": r[11],
+                "error": r[12],
+            }
+            for r in rows
+        ]
+
+        # Aggregate stats — last 24h, last hour, all-time totals
+        agg_24h = sub.connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), "
+            "COALESCE(SUM(total_tokens),0) "
+            "FROM llm_calls WHERE timestamp > datetime('now','-1 day') AND status='ok'"
+        ).fetchone()
+        agg_1h = sub.connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), "
+            "COALESCE(SUM(total_tokens),0) "
+            "FROM llm_calls WHERE timestamp > datetime('now','-1 hour') AND status='ok'"
+        ).fetchone()
+        agg_total = sub.connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), "
+            "COALESCE(SUM(total_tokens),0) "
+            "FROM llm_calls WHERE status='ok'"
+        ).fetchone()
+
+        by_purpose = sub.connection.execute(
+            "SELECT purpose, COUNT(*), COALESCE(SUM(total_tokens),0) "
+            "FROM llm_calls WHERE timestamp > datetime('now','-1 day') AND status='ok' "
+            "GROUP BY purpose ORDER BY 3 DESC"
+        ).fetchall()
+
+        by_model = sub.connection.execute(
+            "SELECT model, COUNT(*), COALESCE(SUM(total_tokens),0) "
+            "FROM llm_calls WHERE timestamp > datetime('now','-1 day') AND status='ok' "
+            "GROUP BY model ORDER BY 3 DESC"
+        ).fetchall()
+
+        errors_24h = sub.connection.execute(
+            "SELECT COUNT(*) FROM llm_calls "
+            "WHERE timestamp > datetime('now','-1 day') AND status != 'ok'"
+        ).fetchone()[0]
+
+        return web.json_response({
+            "totals": {
+                "all_time": {"calls": agg_total[0], "prompt_tokens": agg_total[1],
+                             "completion_tokens": agg_total[2], "total_tokens": agg_total[3]},
+                "last_24h": {"calls": agg_24h[0], "prompt_tokens": agg_24h[1],
+                             "completion_tokens": agg_24h[2], "total_tokens": agg_24h[3]},
+                "last_1h": {"calls": agg_1h[0], "prompt_tokens": agg_1h[1],
+                            "completion_tokens": agg_1h[2], "total_tokens": agg_1h[3]},
+                "errors_24h": errors_24h,
+            },
+            "by_purpose_24h": [
+                {"purpose": r[0], "calls": r[1], "tokens": r[2]} for r in by_purpose
+            ],
+            "by_model_24h": [
+                {"model": r[0], "calls": r[1], "tokens": r[2]} for r in by_model
+            ],
+            "recent": recent,
+        })
+    finally:
+        sub.close()
+
+
+# ============================================================
+# Tasks (admin view of task runtime)
+# ============================================================
+
+async def api_tasks(request: web.Request) -> web.Response:
+    """List recent tasks with full state."""
+    from sonya.tasks.store import TaskStore
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        store = TaskStore(sub)
+        tasks = store.list_all(limit=100)
+        return web.json_response({
+            "tasks": [
+                {
+                    "task_id": t.task_id,
+                    "title": t.title,
+                    "description": t.description,
+                    "status": t.status.value,
+                    "created_by": t.created_by,
+                    "scheduled_for": t.scheduled_for,
+                    "notify_mode": t.notify_mode,
+                    "plan_steps": t.plan_steps,
+                    "completed_count": len(t.completed_steps),
+                    "total_steps": len(t.plan_steps),
+                    "blocker": t.blocker,
+                    "result": t.result[:300],
+                    "principal_id": t.principal_id,
+                    "created_at": t.created_at,
+                    "updated_at": t.updated_at,
+                }
+                for t in tasks
+            ]
+        })
+    finally:
+        sub.close()
+
+
+async def _placeholder_kt(request: web.Request) -> web.Response:
+    # Removed duplicate; real handler is api_providers_keys_test above.
+    return web.json_response({"error": "not used"}, status=404)
+
+
 def create_app() -> web.Application:
     config = load_config()
     import os
@@ -859,6 +994,9 @@ def create_app() -> web.Application:
     app.router.add_post("/api/providers/keys/{key_id}/delete", api_providers_keys_delete)
     app.router.add_post("/api/providers/keys/{key_id}/test", api_providers_keys_test)
     app.router.add_post("/api/providers/keys/{key_id}/status", api_providers_keys_status)
+    # LLM call audit + tasks (admin observability)
+    app.router.add_get("/api/llm_calls", api_llm_calls)
+    app.router.add_get("/api/tasks", api_tasks)
     return app
 
 

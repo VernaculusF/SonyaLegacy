@@ -167,6 +167,7 @@ async def run_agent_session(
     initial_thought: str = "",
     max_steps: int = 30,
     max_seconds: float = 1200.0,
+    purpose: str = "agent_session",
 ) -> SessionResult:
     """Run a ReAct agent session within the single stream.
 
@@ -209,7 +210,7 @@ async def run_agent_session(
             budget_warning_sent = True
 
         # LLM call
-        response = await provider.complete_text(messages)
+        response = await provider.complete_text(messages, purpose=purpose)
         result.steps += 1
 
         # Check for DONE or PAUSE

@@ -32,6 +32,8 @@ class PlannerContext:
 async def plan_next(
     context: PlannerContext,
     provider: CompletionProvider,
+    *,
+    purpose: str = "planner",
 ) -> CanonicalResponse:
     """Core planner: decides what Sonya does next.
 
@@ -45,7 +47,7 @@ async def plan_next(
     messages = _build_messages(context)
 
     # Call provider
-    raw_response = await provider.complete_text(messages)
+    raw_response = await provider.complete_text(messages, purpose=purpose)
 
     # Determine response kind
     kind = _determine_kind(context, raw_response)

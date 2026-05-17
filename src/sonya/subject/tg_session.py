@@ -172,6 +172,7 @@ async def run_tg_session(
         initial_thought=f"Ivan написал: {user_input}",
         max_steps=max_steps,
         max_seconds=max_seconds,
+        purpose="tg_session",
     )
 
     return TgSessionResult(

@@ -390,7 +390,7 @@ class InternalProcess:
                     *ctx.session_messages,
                     {"role": "user", "content": ctx.user_input},
                 ]
-                return await self._provider.complete_text(messages)
+                return await self._provider.complete_text(messages, purpose="idle_thinking")
             except Exception:
                 pass
 
@@ -409,7 +409,7 @@ class InternalProcess:
             )},
         ]
         try:
-            return await self._provider.complete_text(messages)
+            return await self._provider.complete_text(messages, purpose="idle_thinking")
         except Exception:
             return ""
 
@@ -532,6 +532,7 @@ class InternalProcess:
                 initial_thought=initial_thought,
                 max_steps=30,
                 max_seconds=1200.0,
+                purpose="active_session",
             )
 
             # Log session outcome including budget_exceeded flag (S-10 fix)
@@ -666,6 +667,7 @@ class InternalProcess:
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
                     max_steps=5,
                     max_seconds=60.0,
+                    purpose="task_worker",
                 )
                 self._stream.append(ContinuityEvent(
                     kind="internal.task_worker_outcome",

@@ -66,6 +66,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </div>
   <div class="nav">
     <div class="nav-item" data-page="providers">🔑 Providers</div>
+    <div class="nav-item" data-page="usage">💸 Usage</div>
+    <div class="nav-item" data-page="tasks">📋 Tasks</div>
     <div class="nav-item active" data-page="dashboard">⚡ Dashboard</div>
     <div class="nav-item" data-page="thoughts">💭 Thoughts</div>
     <div class="nav-item" data-page="memory">🧠 Memory</div>
@@ -124,6 +126,28 @@ async function loadPage(page) {
         const resp = await fetch(`${API}/api/providers`);
         const data = await resp.json();
         content.innerHTML = renderers.providers(data);
+      } catch(e) {
+        content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+      }
+      return;
+    }
+
+    if (page === 'usage') {
+      try {
+        const resp = await fetch(`${API}/api/llm_calls?limit=50`);
+        const data = await resp.json();
+        content.innerHTML = renderers.usage(data);
+      } catch(e) {
+        content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+      }
+      return;
+    }
+
+    if (page === 'tasks') {
+      try {
+        const resp = await fetch(`${API}/api/tasks`);
+        const data = await resp.json();
+        content.innerHTML = renderers.tasks(data);
       } catch(e) {
         content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
       }
@@ -318,6 +342,64 @@ const renderers = {
         </div>`;
 
     return settingsCard + addCard + keysCard;
+  },
+  usage(d) {
+    const t = d.totals || {};
+    const rec = d.recent || [];
+    const byPurpose = d.by_purpose_24h || [];
+    const byModel = d.by_model_24h || [];
+    const fmt = (n) => (n || 0).toLocaleString();
+    const totalsCard = `
+      <div class="card"><h3>Token Usage</h3>
+        <div class="stat">last 1h: <b>${t.last_1h?.calls || 0}</b> calls / <b>${fmt(t.last_1h?.total_tokens)}</b> tokens</div>
+        <div class="stat">last 24h: <b>${t.last_24h?.calls || 0}</b> calls / <b>${fmt(t.last_24h?.total_tokens)}</b> tokens</div>
+        <div class="stat">all time: <b>${fmt(t.all_time?.calls)}</b> calls / <b>${fmt(t.all_time?.total_tokens)}</b> tokens</div>
+        <div class="stat" style="background:#5d1421;color:#f85149">errors 24h: <b>${t.errors_24h || 0}</b></div>
+      </div>`;
+    const purposeCard = byPurpose.length ? `
+      <div class="card"><h3>By purpose (24h)</h3>
+        ${byPurpose.map(p => `<div class="stat">${p.purpose}: <b>${p.calls}</b> calls, <b>${fmt(p.tokens)}</b> tokens</div>`).join('')}
+      </div>` : '';
+    const modelCard = byModel.length ? `
+      <div class="card"><h3>By model (24h)</h3>
+        ${byModel.map(m => `<div class="stat">${m.model || '?'}: <b>${m.calls}</b> calls, <b>${fmt(m.tokens)}</b> tokens</div>`).join('')}
+      </div>` : '';
+    const recentCard = `
+      <div class="card"><h3>Recent calls (last ${rec.length})</h3>
+        ${rec.length === 0 ? '<p>No calls recorded yet.</p>' : rec.map(c => {
+          const colour = c.status === 'ok' ? '#3fb950' : '#f85149';
+          return `<div class="event" style="border-left-color:${colour}">
+            <div class="meta">[${c.call_id}] ${c.timestamp.slice(0,19)} • ${c.provider}/${c.model.slice(-30)} • ${c.purpose}</div>
+            <div class="body" style="font-size:12px">
+              ${c.status === 'ok' ? `tokens: <b>${c.prompt_tokens}</b> in / <b>${c.completion_tokens}</b> out / <b>${c.total_tokens}</b> total` : `<span style="color:#f85149">status: ${c.status} (${c.http_status})${c.error ? ' — ' + c.error.slice(0,100) : ''}</span>`}
+              <span style="color:#8b949e;margin-left:8px">${c.latency_ms}ms</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    return totalsCard + purposeCard + modelCard + recentCard;
+  },
+  tasks(d) {
+    const tasks = d.tasks || [];
+    if (tasks.length === 0) return '<div class="card"><h3>No tasks yet</h3></div>';
+    const statusColor = {
+      pending: '#8b949e', in_progress: '#3fb950', blocked: '#d29922',
+      done: '#1f6feb', failed: '#f85149',
+    };
+    return `<div class="card"><h3>Tasks (${tasks.length})</h3>
+      ${tasks.map(t => `
+        <div class="event" style="border-left-color:${statusColor[t.status] || '#30363d'}">
+          <div class="meta">[${t.task_id}] ${t.created_by === 'ivan' ? '👤 Ivan' : '🤖 Sonya'} • ${t.notify_mode} • ${t.created_at.slice(0,19)}</div>
+          <div class="body"><b>${t.title}</b>${t.description ? '<br><span style="color:#8b949e">' + t.description.slice(0,200) + '</span>' : ''}</div>
+          <div style="margin-top:6px;font-size:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <span class="stat" style="background:${(statusColor[t.status]||'#30363d')}33;color:${statusColor[t.status]||'#c9d1d9'};padding:2px 8px;border-radius:3px">${t.status}</span>
+            ${t.total_steps ? `<span>${t.completed_count}/${t.total_steps} steps</span>` : ''}
+            ${t.scheduled_for ? `<span style="color:#d29922">⏰ ${t.scheduled_for.slice(0,16)}</span>` : ''}
+            ${t.blocker ? `<span style="color:#f85149">🔒 ${t.blocker.slice(0,80)}</span>` : ''}
+          </div>
+          ${t.result ? `<div style="margin-top:6px;font-size:12px;color:#7ee787">result: ${t.result.slice(0,200)}</div>` : ''}
+        </div>`).join('')}
+    </div>`;
   }
 };
 

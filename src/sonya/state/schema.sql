@@ -315,6 +315,28 @@ CREATE TABLE IF NOT EXISTS provider_settings (
     updated_at TEXT NOT NULL
 );
 
+-- LLM call audit log (v10)
+CREATE TABLE IF NOT EXISTS llm_calls (
+    call_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    key_id TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    purpose TEXT NOT NULL DEFAULT '',         -- 'tg_session' | 'idle_thinking' | 'active_session' | 'task_worker' | 'admin_chat' | 'unknown'
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT '',          -- 'ok' | 'error' | 'auth' | 'rate_limit' | 'server_error'
+    http_status INTEGER NOT NULL DEFAULT 0,
+    error TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_calls_timestamp ON llm_calls(timestamp);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_key_id ON llm_calls(key_id);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_purpose ON llm_calls(purpose);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_status ON llm_calls(status);
+
 -- ====================================================================
 -- v9 additions: task scheduling + ownership
 -- created_by: 'ivan' (Ivan-issued, worked on continuously by ivan-task-worker)
