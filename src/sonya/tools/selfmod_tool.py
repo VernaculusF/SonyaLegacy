@@ -442,6 +442,39 @@ class SelfModTool:
             "note": "waiting for primary anchor approval via admin panel",
         })
 
+    def soft_restart_runtime(self, reason: str = "") -> str:
+        """Trigger soft-restart of inner runtime task (without killing the process).
+
+        Used after applying changes to main.py / config.py / core modules
+        that don't hot-reload cleanly. Substrate + write-master + admin
+        survive; channels / internal_process get recreated from reloaded
+        modules.
+
+        Returns immediately; restart happens asynchronously.
+        """
+        live = get_live_runtime()
+        if live is None:
+            return json.dumps({"status": "error", "reason": "no live runtime registered"})
+        restart_event = live.extras.get("restart_event")
+        if restart_event is None:
+            return json.dumps({
+                "status": "error",
+                "reason": "supervisor not running (legacy main.py?). Process restart required.",
+            })
+        try:
+            restart_event.set()
+        except Exception as err:
+            return json.dumps({"status": "error", "reason": f"failed to signal: {err}"})
+        self._stream.append(ContinuityEvent(
+            kind="self_mod.soft_restart_requested",
+            payload={"reason": reason or "manual"},
+        ))
+        return json.dumps({
+            "status": "restart_scheduled",
+            "reason": reason,
+            "note": "runtime will restart in current event loop tick. Channels / internal_process re-built from reloaded modules.",
+        })
+
     def check_governed(self, proposal_id: str) -> str:
         try:
             p = self._store.get(proposal_id)
@@ -474,9 +507,7 @@ class SelfModTool:
 
         target = target_module.replace("\\", "/").lstrip("/")
 
-        # Files that need full-process restart (cannot hot-reload)
-        # main.py + config.py drive the event loop itself
-        # logging.py / runtime/live.py affect process-wide state
+        # Files that need full-process restart or soft-restart of runtime task
         restart_only = {
             "src/sonya/main.py",
             "src/sonya/config.py",
@@ -485,9 +516,10 @@ class SelfModTool:
         }
         if target in restart_only:
             result["soft_restart_required"] = True
+            result["success"] = False
             result["errors"].append(
-                f"{target} requires soft-restart of runtime task; "
-                "use selfmod.soft_restart_runtime when supervisor pattern is enabled"
+                f"{target} requires soft-restart of runtime task. "
+                "Call selfmod.soft_restart to trigger; substrate + admin survive."
             )
             return result
 

@@ -52,7 +52,7 @@ def test_main_returns_zero_on_clean_run_via_in_process(tmp_path: Path) -> None:
     composition root by invoking _run directly with an immediate stop event.
     """
     from sonya.config import AppConfig
-    from sonya.main import _run
+    from sonya.main import _supervisor as _run
 
     cfg = AppConfig(
         substrate_path=tmp_path / "s.db",

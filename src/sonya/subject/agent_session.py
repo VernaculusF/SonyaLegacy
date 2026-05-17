@@ -56,6 +56,7 @@ TOOL_DESCRIPTIONS = """Available tools:
 - selfmod.governed [proposal_id] — request primary anchor approval for identity-critical proposal
 - selfmod.check_governed [proposal_id] — check if primary anchor approved
 - selfmod.rollback [proposal_id] [reason?] — restore pre-state from disk + hot-reload again
+- selfmod.soft_restart [reason?] — trigger soft-restart of runtime task (channels/internal_process re-built from reloaded modules; substrate + admin survive). Use after applying changes to main.py / config.py / core that don't hot-reload.
 
 IMPORTANT: Use exactly ONE tool per response. Write it as:
 [TOOL: tool_name arg]
@@ -271,6 +272,10 @@ def _execute_tool(
             pid = parts[0].strip()
             reason = parts[1].strip() if len(parts) > 1 else ""
             return selfmod.rollback(pid, reason=reason)
+        elif name == "selfmod.soft_restart":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.soft_restart_runtime(arg.strip())
 
         else:
             return f"[ERROR] Unknown tool: {name}"

@@ -181,3 +181,63 @@ def test_status() -> None:
 
 async def _none_handler(_msg: ChannelMessage) -> OutgoingMessage | None:
     return None
+
+
+
+# --- Auto-discovery via _build_channels in main ---
+
+
+def test_build_channels_discovers_telegram_when_configured(tmp_path) -> None:
+    """_build_channels finds telegram.py and calls its build(config)."""
+    from sonya.config import AppConfig
+    from sonya.main import _build_channels
+
+    # Telegram needs api_id; with 0 the build returns None
+    cfg = AppConfig(
+        substrate_path=tmp_path / "s.db",
+        health_path=tmp_path / "h.json",
+        log_level="WARNING",
+        tg_api_id=0,  # build() returns None
+        tg_api_hash="",
+        tg_session_path="",
+        enable_telegram=True,
+    )
+    channels = _build_channels(cfg)
+    # Should be empty because tg_api_id=0 means build() returned None
+    assert channels == []
+
+
+def test_build_channels_returns_telegram_when_credentials_present(tmp_path) -> None:
+    from sonya.config import AppConfig
+    from sonya.main import _build_channels
+
+    cfg = AppConfig(
+        substrate_path=tmp_path / "s.db",
+        health_path=tmp_path / "h.json",
+        log_level="WARNING",
+        tg_api_id=12345,
+        tg_api_hash="testhash",
+        tg_session_path="./tg.session",
+        enable_telegram=True,
+    )
+    channels = _build_channels(cfg)
+    # TelegramChannel should be present
+    names = [c.name for c in channels]
+    assert "telegram" in names
+
+
+def test_build_channels_skips_disabled_telegram(tmp_path) -> None:
+    from sonya.config import AppConfig
+    from sonya.main import _build_channels
+
+    cfg = AppConfig(
+        substrate_path=tmp_path / "s.db",
+        health_path=tmp_path / "h.json",
+        log_level="WARNING",
+        tg_api_id=12345,
+        tg_api_hash="testhash",
+        tg_session_path="./tg.session",
+        enable_telegram=False,  # disabled
+    )
+    channels = _build_channels(cfg)
+    assert channels == []

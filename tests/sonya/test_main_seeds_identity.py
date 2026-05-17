@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from sonya.config import AppConfig
-from sonya.main import _run
+from sonya.main import _supervisor
 from sonya.state import (
     ContinuityStream,
     IdentityWriter,
@@ -15,9 +15,9 @@ from sonya.state import (
 from sonya.state.seed import THINGS_NOT_TO_BETRAY_SEED
 
 
-def _drive_short_run(config: AppConfig) -> int:
+def _drive_short_supervisor(config: AppConfig) -> int:
     async def driver() -> int:
-        run_task = asyncio.create_task(_run(config))
+        run_task = asyncio.create_task(_supervisor(config))
         await asyncio.sleep(0.3)
         run_task.cancel()
         try:
@@ -36,7 +36,7 @@ def test_first_run_seeds_things_not_to_betray(tmp_path: Path) -> None:
         log_level="WARNING",
     )
 
-    _drive_short_run(cfg)
+    _drive_short_supervisor(cfg)
 
     sub = Substrate.open(cfg.substrate_path)
     try:
@@ -53,7 +53,7 @@ def test_first_run_records_governed_change_event(tmp_path: Path) -> None:
         log_level="WARNING",
     )
 
-    _drive_short_run(cfg)
+    _drive_short_supervisor(cfg)
 
     sub = Substrate.open(cfg.substrate_path)
     try:
@@ -76,7 +76,7 @@ def test_substrate_is_at_v2(tmp_path: Path) -> None:
         log_level="WARNING",
     )
 
-    _drive_short_run(cfg)
+    _drive_short_supervisor(cfg)
 
     sub = Substrate.open(cfg.substrate_path)
     try:
@@ -85,7 +85,7 @@ def test_substrate_is_at_v2(tmp_path: Path) -> None:
         sub.close()
 
 
-def test_internal_process_writes_events_on_run(tmp_path: Path) -> None:
+def test_internal_process_writes_events_on_supervisor(tmp_path: Path) -> None:
     cfg = AppConfig(
         substrate_path=tmp_path / "s.db",
         health_path=tmp_path / "h.json",
@@ -94,7 +94,7 @@ def test_internal_process_writes_events_on_run(tmp_path: Path) -> None:
 
     # Use longer sleep to let internal process tick
     async def driver() -> int:
-        run_task = asyncio.create_task(_run(cfg))
+        run_task = asyncio.create_task(_supervisor(cfg))
         await asyncio.sleep(0.5)
         run_task.cancel()
         try:
@@ -122,8 +122,8 @@ def test_second_run_does_not_re_seed(tmp_path: Path) -> None:
         log_level="WARNING",
     )
 
-    _drive_short_run(cfg)
-    _drive_short_run(cfg)
+    _drive_short_supervisor(cfg)
+    _drive_short_supervisor(cfg)
 
     sub = Substrate.open(cfg.substrate_path)
     try:

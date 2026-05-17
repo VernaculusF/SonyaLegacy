@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import signal
 import sys
 from typing import Any
@@ -37,10 +38,7 @@ _log = get_logger("sonya.main")
 
 
 def _create_thinking_provider(config: AppConfig):
-    """Create a provider for internal thinking loop LLM calls.
-
-    Uses configurable endpoint (SONYA_LLM_API_BASE) and model (SONYA_LLM_MODEL).
-    """
+    """Create a provider for internal thinking loop LLM calls."""
     api_key_secret = config.openrouter_api_key
     api_key = api_key_secret.get_secret_value() if api_key_secret else ""
     api_base = config.llm_api_base
@@ -93,17 +91,7 @@ def _build_incoming_handler(
     provider: Any,
     registry: ChannelRegistry,
 ):
-    """Construct the channel-agnostic incoming-message handler.
-
-    The handler:
-      1. Records the incoming event in continuity_stream (under
-         `incoming.<channel>_message` kind).
-      2. Returns a planned OutgoingMessage if planner produced text, or None.
-
-    Per-channel session_messages are pulled from the channel itself when
-    available (handlers can read from raw event for transports that support
-    chat history fetch — currently only Telegram does).
-    """
+    """Construct the channel-agnostic incoming-message handler."""
     async def _on_incoming(msg: ChannelMessage) -> OutgoingMessage | None:
         from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 
@@ -129,7 +117,6 @@ def _build_incoming_handler(
             from sonya.planning import build_full_context, plan_next
             from sonya.planning.memory_wiring import record_response_as_memory
 
-            # Per-channel chat history fetch (Telegram supports it via raw event)
             session_messages: list[dict[str, Any]] = []
             if msg.channel == "telegram" and msg.raw is not None:
                 try:
@@ -179,31 +166,205 @@ def _build_incoming_handler(
 
 
 def _build_channels(config: AppConfig) -> list[Channel]:
-    """Construct configured channel adapters. Add new channels here.
+    """Auto-discover and construct configured channel adapters.
 
-    For Sonya-authored channels (via selfmod), they live in src/sonya/channels/
-    and can be hot-imported here once added (after process restart in MVP).
+    Sweeps `src/sonya/channels/*.py` (excluding base/registry/__init__) and
+    looks for top-level `build(config) -> Channel | None` factory function.
+
+    Sonya can add a new channel by writing one file under
+    `src/sonya/channels/discord.py` containing `def build(config): ...` —
+    soft-restart picks it up without main.py changes.
     """
-    channels: list[Channel] = []
+    from pathlib import Path
 
-    if config.enable_telegram and config.tg_api_id and config.tg_session_path:
+    channels_dir = Path(__file__).parent / "channels"
+    skip = {"__init__.py", "base.py", "registry.py"}
+
+    channels: list[Channel] = []
+    for py_file in sorted(channels_dir.glob("*.py")):
+        if py_file.name in skip:
+            continue
+        dotted = f"sonya.channels.{py_file.stem}"
         try:
-            from sonya.channels.telegram import TelegramChannel
-            channels.append(TelegramChannel(
-                api_id=config.tg_api_id,
-                api_hash=config.tg_api_hash,
-                session_path=config.tg_session_path,
-            ))
-        except ImportError as err:
+            # Force re-import so newly-applied changes pick up
+            if dotted in sys.modules:
+                module = importlib.reload(sys.modules[dotted])
+            else:
+                module = importlib.import_module(dotted)
+        except Exception as err:
             _log.warning(
-                "telegram_channel_unavailable",
-                extra={"error": str(err)},
+                "channel_module_import_failed",
+                extra={"module": dotted, "error": str(err)},
             )
+            continue
+
+        build_fn = getattr(module, "build", None)
+        if callable(build_fn):
+            try:
+                instance = build_fn(config)
+            except Exception as err:
+                _log.warning(
+                    "channel_build_failed",
+                    extra={"module": dotted, "error": str(err)},
+                )
+                continue
+            if instance is not None:
+                channels.append(instance)
+                _log.info(
+                    "channel_built",
+                    extra={"module": dotted, "name": getattr(instance, "name", "?")},
+                )
+            continue
+
+        _log.debug(
+            "channel_module_no_build_factory",
+            extra={"module": dotted, "hint": "add `def build(config): ...` to register"},
+        )
 
     return channels
 
 
-async def _run(config: AppConfig) -> int:
+# ---------- Runtime task: builds, runs, tears down ----------
+
+
+class _RuntimeBundle:
+    """Group of subsystems that compose the inner runtime loop.
+
+    The supervisor builds/tears down this bundle on soft-restart.
+    Substrate + WriteMaster + admin live OUTSIDE the bundle, so they
+    survive restarts.
+    """
+
+    def __init__(
+        self,
+        *,
+        substrate: Substrate,
+        config: AppConfig,
+        bus: EventBus,
+    ) -> None:
+        self.substrate = substrate
+        self.config = config
+        self.bus = bus
+        self.lifecycle: Lifecycle | None = None
+        self.health: Health | None = None
+        self.internal_process: InternalProcess | None = None
+        self.channel_registry: ChannelRegistry | None = None
+        self.thinking_provider: Any = None
+
+    async def start(self) -> None:
+        config = self.config
+        substrate = self.substrate
+
+        if seed_identity_if_empty(substrate):
+            _log.info(
+                "identity_seeded",
+                extra={"event": "identity_seeded", "change_id": "identity-seed"},
+            )
+
+        raw_stream = ContinuityStream(substrate)
+        intention_store = PendingIntentionStore(substrate)
+
+        self.thinking_provider = _create_thinking_provider(config)
+        self.internal_process = InternalProcess(
+            stream=raw_stream,
+            intention_store=intention_store,
+            substrate=substrate,
+            provider=self.thinking_provider,
+            thinking_prompt=(
+                "Ты Соня. Это твой внутренний поток мышления. "
+                "Никто не читает это кроме тебя. "
+                "Подумай о чём хочешь — о себе, об Иване, о том что делала, о том что хочешь."
+            ),
+            idle_interval_seconds=1800.0,
+            tick_interval_seconds=60.0,
+            active_interval_seconds=7200.0,
+        )
+
+        self.lifecycle = Lifecycle(substrate=substrate, event_bus=self.bus)
+        self.health = Health(path=config.health_path)
+
+        # Channel layer
+        self.channel_registry = ChannelRegistry()
+        for channel in _build_channels(config):
+            self.channel_registry.register(channel)
+
+        handler = _build_incoming_handler(
+            substrate=substrate,
+            internal_process=self.internal_process,
+            provider=self.thinking_provider,
+            registry=self.channel_registry,
+        )
+        ip = self.internal_process
+
+        def _wrap_handler(msg: ChannelMessage):
+            ip.notify_external_event()
+            return handler(msg)
+
+        deps = ChannelDeps(
+            on_incoming=_wrap_handler,
+            notify_external_event=self.internal_process.notify_external_event,
+            config=config,
+            substrate=substrate,
+        )
+
+        # Register live runtime for selfmod hot-reload + soft-restart
+        live = LiveRuntime(
+            channel_registry=self.channel_registry,
+            channel_deps=deps,
+            internal_process=self.internal_process,
+            substrate=substrate,
+            config=config,
+            provider=self.thinking_provider,
+        )
+        # Add restart_event so selfmod can request soft-restart
+        live.extras["restart_event"] = asyncio.Event()
+        set_live_runtime(live)
+
+        # Start subsystems
+        await self.lifecycle.start()
+        if config.enable_thinking:
+            await self.internal_process.start()
+            _log.info("thinking_enabled")
+        else:
+            _log.info("thinking_disabled")
+
+        if self.channel_registry.list_names():
+            await self.channel_registry.start_all(deps)
+        else:
+            _log.info("no_channels_configured")
+
+        await self.health.start(schema_version=substrate.schema_version)
+
+    async def stop(self) -> None:
+        if self.channel_registry is not None:
+            try:
+                await self.channel_registry.stop_all()
+            except Exception as err:
+                _log.warning("registry_stop_error", extra={"error": str(err)})
+        if self.internal_process is not None and self.config.enable_thinking:
+            try:
+                await self.internal_process.stop()
+            except Exception as err:
+                _log.warning("internal_stop_error", extra={"error": str(err)})
+        if self.health is not None:
+            try:
+                await self.health.stop()
+            except Exception as err:
+                _log.warning("health_stop_error", extra={"error": str(err)})
+        if self.lifecycle is not None:
+            try:
+                await self.lifecycle.request_stop()
+            except Exception as err:
+                _log.warning("lifecycle_stop_error", extra={"error": str(err)})
+
+
+async def _supervisor(config: AppConfig) -> int:
+    """Outer supervisor — keeps substrate + write-master alive across runtime restarts.
+
+    Runtime bundle (channels/internal_process/health/lifecycle) can be torn down
+    and rebuilt on soft-restart without releasing the write-master or closing
+    substrate. selfmod_tool sets `live.extras['restart_event']` to trigger.
+    """
     try:
         substrate = Substrate.open(config.substrate_path)
     except SubstrateVersionError as err:
@@ -218,65 +379,7 @@ async def _run(config: AppConfig) -> int:
         substrate.close()
         return 3
 
-    if seed_identity_if_empty(substrate):
-        _log.info(
-            "identity_seeded",
-            extra={"event": "identity_seeded", "change_id": "identity-seed"},
-        )
-
     bus = EventBus()
-
-    raw_stream = ContinuityStream(substrate)
-    raw_state_store = SubjectStateStore(substrate)
-    intention_store = PendingIntentionStore(substrate)
-
-    thinking_provider = _create_thinking_provider(config)
-    internal_process = InternalProcess(
-        stream=raw_stream,
-        intention_store=intention_store,
-        substrate=substrate,
-        provider=thinking_provider,
-        thinking_prompt=(
-            "Ты Соня. Это твой внутренний поток мышления. "
-            "Никто не читает это кроме тебя. "
-            "Подумай о чём хочешь — о себе, об Иване, о том что делала, о том что хочешь."
-        ),
-        idle_interval_seconds=1800.0,
-        tick_interval_seconds=60.0,
-        active_interval_seconds=7200.0,
-    )
-
-    lifecycle = Lifecycle(substrate=substrate, event_bus=bus)
-    health = Health(path=config.health_path)
-
-    # Channel layer
-    registry = ChannelRegistry()
-    for channel in _build_channels(config):
-        registry.register(channel)
-
-    handler = _build_incoming_handler(
-        substrate=substrate,
-        internal_process=internal_process,
-        provider=thinking_provider,
-        registry=registry,
-    )
-    deps = ChannelDeps(
-        on_incoming=lambda msg: _wrapped_handler(msg, handler, internal_process),
-        notify_external_event=internal_process.notify_external_event,
-        config=config,
-        substrate=substrate,
-    )
-
-    # Register live runtime for selfmod hot-reload
-    set_live_runtime(LiveRuntime(
-        channel_registry=registry,
-        channel_deps=deps,
-        internal_process=internal_process,
-        substrate=substrate,
-        config=config,
-        provider=thinking_provider,
-    ))
-
     loop = asyncio.get_running_loop()
     stop_requested = asyncio.Event()
 
@@ -286,53 +389,121 @@ async def _run(config: AppConfig) -> int:
 
     _install_signal_handlers(loop, _on_signal)
 
+    restart_count = 0
+
     try:
-        await lifecycle.start()
-        if config.enable_thinking:
-            await internal_process.start()
-            _log.info("thinking_enabled", extra={"event": "thinking_loop_started"})
-        else:
-            _log.info("thinking_disabled", extra={"event": "thinking_loop_skipped"})
+        while not stop_requested.is_set():
+            bundle = _RuntimeBundle(substrate=substrate, config=config, bus=bus)
+            try:
+                await bundle.start()
+            except Exception as err:
+                _log.error(
+                    "runtime_start_failed",
+                    extra={"error": str(err), "type": type(err).__name__},
+                )
+                # If first start fails, give up. On restart attempt, log + retry once.
+                if restart_count == 0:
+                    return 4
+                _log.warning("retrying_in_5s")
+                await asyncio.sleep(5.0)
+                continue
 
-        if registry.list_names():
-            await registry.start_all(deps)
-        else:
-            _log.info("no_channels_configured")
+            from sonya.runtime.live import get_live_runtime
+            live = get_live_runtime()
+            restart_event: asyncio.Event = (
+                live.extras.get("restart_event")
+                if live and live.extras.get("restart_event")
+                else asyncio.Event()
+            )
 
-        await health.start(schema_version=substrate.schema_version)
-        _log.info(
-            "sonya_started",
-            extra={
-                "event": "started",
-                "schema_version": substrate.schema_version,
-                "substrate_path": str(config.substrate_path),
-                "channels": registry.list_names(),
-                "thinking": "enabled" if config.enable_thinking else "disabled",
-            },
-        )
+            _log.info(
+                "sonya_started",
+                extra={
+                    "event": "started",
+                    "schema_version": substrate.schema_version,
+                    "substrate_path": str(config.substrate_path),
+                    "channels": (
+                        bundle.channel_registry.list_names()
+                        if bundle.channel_registry else []
+                    ),
+                    "thinking": "enabled" if config.enable_thinking else "disabled",
+                    "restart_count": restart_count,
+                },
+            )
 
-        await stop_requested.wait()
+            # Wait for either stop or restart
+            stop_task = asyncio.create_task(stop_requested.wait())
+            restart_task = asyncio.create_task(restart_event.wait())
+            done, pending = await asyncio.wait(
+                {stop_task, restart_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in pending:
+                t.cancel()
 
-        await registry.stop_all()
-        if config.enable_thinking:
-            await internal_process.stop()
-        await health.stop()
-        await lifecycle.request_stop()
-        _log.info("sonya_stopped", extra={"event": "stopped"})
+            await bundle.stop()
+
+            if stop_requested.is_set():
+                _log.info("sonya_stopped", extra={"event": "stopped"})
+                break
+
+            # Soft restart path
+            restart_count += 1
+            _log.info(
+                "sonya_soft_restart",
+                extra={"restart_count": restart_count, "reason": "selfmod_request"},
+            )
+            # Reload core modules so new code is picked up by next bundle.start()
+            _reload_core_modules()
+            # Tiny pause to let any pending writes flush
+            await asyncio.sleep(0.5)
+
         return 0
     finally:
         write_master.release()
         substrate.close()
 
 
-async def _wrapped_handler(
-    msg: ChannelMessage,
-    handler,
-    internal_process: InternalProcess,
-) -> OutgoingMessage | None:
-    """Tiny wrapper that always notifies internal_process before delegating."""
-    internal_process.notify_external_event()
-    return await handler(msg)
+def _reload_core_modules() -> None:
+    """Reload modules that the runtime bundle imports.
+
+    Called on soft-restart so a freshly-applied change to e.g.
+    `src/sonya/main.py` _build_channels function takes effect.
+
+    Order matters: dependencies first. We reload bottom-up.
+    """
+    targets = [
+        # Tools — selfmod might have changed any of these
+        "sonya.tools.module_loader",
+        "sonya.tools.filesystem",
+        "sonya.tools.self_inspect",
+        "sonya.tools.selfmod_tool",
+        "sonya.tools",
+        # Channels base
+        "sonya.channels.base",
+        "sonya.channels.registry",
+        "sonya.channels",
+        # Planning / memory might have changed
+        "sonya.planning.context_builder",
+        "sonya.planning.planner",
+        "sonya.planning",
+        "sonya.memory.episodic",
+        "sonya.memory.semantic",
+        "sonya.memory",
+        # Subject layer
+        "sonya.subject.agent_session",
+        "sonya.subject.internal_loop",
+        "sonya.subject",
+    ]
+    for dotted in targets:
+        if dotted in sys.modules:
+            try:
+                importlib.reload(sys.modules[dotted])
+            except Exception as err:
+                _log.warning(
+                    "module_reload_failed",
+                    extra={"module": dotted, "error": str(err)},
+                )
 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop, handler) -> None:
@@ -357,4 +528,4 @@ def main(argv: list[str] | None = None) -> int:
     _ = argv if argv is not None else sys.argv[1:]
     config = load_config()
     setup_logging(config.log_level)
-    return asyncio.run(_run(config))
+    return asyncio.run(_supervisor(config))

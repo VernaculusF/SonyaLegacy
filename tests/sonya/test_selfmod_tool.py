@@ -306,3 +306,50 @@ def test_rollback_deletes_new_file(selfmod: SelfModTool, tmp_path: Path) -> None
     assert rb["status"] == "reverted"
     assert "deleted" in rb["file_action"]
     assert not target.exists()
+
+
+
+# --- Soft-restart trigger ---
+
+
+def test_soft_restart_returns_error_when_no_live_runtime(selfmod: SelfModTool) -> None:
+    from sonya.runtime.live import clear_live_runtime
+    clear_live_runtime()
+    res = json.loads(selfmod.soft_restart_runtime("test"))
+    assert res["status"] == "error"
+
+
+def test_soft_restart_signals_event_when_live_runtime_present(
+    selfmod: SelfModTool,
+) -> None:
+    import asyncio
+    from sonya.runtime.live import LiveRuntime, set_live_runtime, clear_live_runtime
+
+    # Need a running event loop for asyncio.Event.set()
+    async def run() -> dict:
+        live = LiveRuntime()
+        live.extras["restart_event"] = asyncio.Event()
+        set_live_runtime(live)
+        try:
+            res = json.loads(selfmod.soft_restart_runtime("apply main.py change"))
+            return {"res": res, "is_set": live.extras["restart_event"].is_set()}
+        finally:
+            clear_live_runtime()
+
+    out = asyncio.run(run())
+    assert out["res"]["status"] == "restart_scheduled"
+    assert out["is_set"] is True
+
+
+def test_apply_to_main_py_returns_soft_restart_required(
+    selfmod: SelfModTool, tmp_path: Path
+) -> None:
+    """Changes to main.py / config.py / logging.py / live.py mark soft_restart_required.
+
+    Validation will reject as identity-critical (anchor pillars in main may match),
+    so we mock by directly calling _hot_reload."""
+    # Test the _hot_reload internal path directly
+    res = selfmod._hot_reload("src/sonya/main.py")
+    assert res["soft_restart_required"] is True
+    assert res["success"] is False
+    assert any("soft-restart" in e for e in res["errors"])

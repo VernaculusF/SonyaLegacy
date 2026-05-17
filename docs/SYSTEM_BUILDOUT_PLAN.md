@@ -71,18 +71,27 @@
 - Admin panel: вкладка 🔧 SelfMod с просмотром diff + approve/deny для governed-change proposals
 - 20 тестов в `tests/sonya/test_selfmod_tool.py` + 8 в `tests/sonya/test_module_loader.py` — все проходят
 
-**Что НЕ требует рестарта:**
-- Любые изменения в `src/sonya/channels/*` (drop-and-recreate активного channel'а)
-- Любые изменения в `src/sonya/tools/*` (re-import; agent_session создаёт fresh instances каждую сессию)
+**Что НЕ требует рестарта (всё):**
+- Любые изменения в `src/sonya/channels/*` — drop-and-recreate активного channel'а через `_replace_channel`
+- Любые изменения в `src/sonya/tools/*` — re-import; agent_session создаёт fresh instances каждую сессию
 - Изменения в `planning/`, `memory/`, `skills/`, `initiative/`, `anchor/`, `subject/`, `harness/` — модуль перезагружается через importlib.reload
+- **Изменения в `main.py` / `config.py` / `logging.py`** — через `selfmod.soft_restart`: supervisor останавливает inner runtime task, перечитывает все core-модули через `_reload_core_modules`, поднимает новый _RuntimeBundle. Substrate + WriteMaster + admin сохраняются. Telegram переподключается.
 
-**Что всё ещё требует рестарта (помечено в hot_reload result):**
-- `src/sonya/main.py` — управляет event loop; нужен soft-restart supervisor
-- `src/sonya/config.py` — config считывается один раз
-- `src/sonya/logging.py` — глобальные handlers
-- `src/sonya/runtime/live.py` — сама регистрация runtime
+**Channel auto-discovery:**
+- `_build_channels` сканирует `src/sonya/channels/*.py`, ищет `def build(config)` factory
+- Сонья пишет `channels/discord.py` с `build()` функцией → soft_restart → discord канал стартует
+- Без правок main.py
 
 **Sandbox:** `SELFMOD_WRITABLE_SUBPATHS` (channels, tools, planning, ...) — разрешено. `SELFMOD_FORBIDDEN_SUBPATHS` (state/seed.py, schema.sql, identity.py, anchor_integrity.py, .env, .git, SOUL.md, docs/core) — запрещено даже через pipeline.
+
+**Полный цикл self-improvement без рестарта:**
+1. `selfmod.propose` создаёт proposal
+2. `selfmod.test_sandbox` — ловит syntax/import errors заранее
+3. `selfmod.validate` — Layers 1-4
+4. `selfmod.apply` — pre-state captured, файл записан, hot-reload + drop-and-recreate
+5. (если main.py / core) `selfmod.soft_restart` — supervisor перезапускает runtime
+6. 60-сек watch window: при crash auto-rollback из pre-state
+7. `selfmod.rollback` для ручного отката
 
 ---
 

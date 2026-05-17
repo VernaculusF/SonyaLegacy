@@ -242,3 +242,21 @@ class TelegramChannel:
                 pass  # fall through to non-reply send
         await self._client.send_message(tg_chat_id, message.text)
         self._last_msg_time[tg_chat_id] = time.time()
+
+
+def build(config: Any) -> "TelegramChannel | None":
+    """Auto-discovery factory for main._build_channels.
+
+    Returns a TelegramChannel if Telegram is enabled and credentials are present,
+    else None (channel is silently skipped).
+    """
+    if not getattr(config, "enable_telegram", True):
+        return None
+    api_id = getattr(config, "tg_api_id", 0)
+    if not api_id:
+        return None
+    return TelegramChannel(
+        api_id=api_id,
+        api_hash=getattr(config, "tg_api_hash", ""),
+        session_path=getattr(config, "tg_session_path", "./tg.session"),
+    )
