@@ -265,6 +265,164 @@ async def api_substrate(request: web.Request) -> web.Response:
         sub.close()
 
 
+# --- Self-modification proposals ---
+
+
+async def api_selfmod_list(request: web.Request) -> web.Response:
+    """List all self-modification proposals (read-only — admin can read while core runs)."""
+    config = request.app["config"]
+    status_filter = request.query.get("status", "")
+    sub = _get_substrate(config)
+    try:
+        from sonya.selfmod import ProposalStatus, ProposalStore
+        store = ProposalStore(sub)
+        if status_filter:
+            try:
+                status = ProposalStatus(status_filter)
+                proposals = store.list_by_status(status)
+            except ValueError:
+                return web.json_response({"error": f"unknown status: {status_filter}"}, status=400)
+        else:
+            proposals = []
+            for s in ProposalStatus:
+                proposals.extend(store.list_by_status(s))
+            proposals.sort(key=lambda p: p.created_at, reverse=True)
+            proposals = proposals[:100]
+
+        return web.json_response({
+            "count": len(proposals),
+            "proposals": [
+                {
+                    "proposal_id": p.proposal_id,
+                    "target_module": p.target_module,
+                    "summary": p.change_summary,
+                    "status": p.status.value,
+                    "proposed_by": p.proposed_by_principal_id,
+                    "created_at": p.created_at,
+                    "updated_at": p.updated_at,
+                }
+                for p in proposals
+            ],
+        })
+    finally:
+        sub.close()
+
+
+async def api_selfmod_get(request: web.Request) -> web.Response:
+    """Get full proposal details including diff_blob."""
+    config = request.app["config"]
+    proposal_id = request.match_info.get("proposal_id", "")
+    sub = _get_substrate(config)
+    try:
+        from sonya.selfmod import ProposalStore
+        from sonya.selfmod.proposal import ProposalNotFoundError
+        store = ProposalStore(sub)
+        try:
+            p = store.get(proposal_id)
+        except ProposalNotFoundError:
+            return web.json_response({"error": "not found"}, status=404)
+        return web.json_response({
+            "proposal_id": p.proposal_id,
+            "target_module": p.target_module,
+            "summary": p.change_summary,
+            "diff_blob": p.diff_blob,
+            "status": p.status.value,
+            "proposed_by": p.proposed_by_principal_id,
+            "created_at": p.created_at,
+            "updated_at": p.updated_at,
+        })
+    finally:
+        sub.close()
+
+
+async def api_selfmod_approve(request: web.Request) -> web.Response:
+    """Primary anchor (Ivan) approves a REQUIRES_GOVERNED_CHANGE proposal."""
+    config = request.app["config"]
+    proposal_id = request.match_info.get("proposal_id", "")
+
+    if _is_core_running(config):
+        return web.json_response(
+            {"error": "stop core first; admin cannot write while core runs"},
+            status=409,
+        )
+
+    sub = _get_substrate(config)
+    try:
+        from sonya.harness.approval import ApprovalManager
+        from sonya.selfmod import ProposalStore
+        from sonya.selfmod.proposal import ProposalNotFoundError, ProposalStatus
+
+        store = ProposalStore(sub)
+        try:
+            p = store.get(proposal_id)
+        except ProposalNotFoundError:
+            return web.json_response({"error": "not found"}, status=404)
+
+        if p.status != ProposalStatus.REQUIRES_GOVERNED_CHANGE:
+            return web.json_response({
+                "error": f"proposal status is {p.status.value}, expected requires_governed_change",
+            }, status=400)
+
+        # Find the associated approval request and approve it
+        approvals = ApprovalManager(sub)
+        reqs = approvals.find_by_action_pattern(f"%{proposal_id}%")
+        if not reqs:
+            return web.json_response({
+                "error": "no approval request found for this proposal — call selfmod.governed first",
+            }, status=400)
+
+        target_req = next((r for r in reqs if r.status.value == "pending"), None)
+        if target_req is None:
+            return web.json_response({"error": "no pending request"}, status=400)
+
+        approvals.approve(target_req.request_id, by_principal_id="ivan")
+        # Update proposal status
+        store.update_status(proposal_id, ProposalStatus.GOVERNED_APPROVED)
+
+        return web.json_response({
+            "status": "approved",
+            "proposal_id": proposal_id,
+            "approval_request_id": target_req.request_id,
+        })
+    finally:
+        sub.close()
+
+
+async def api_selfmod_deny(request: web.Request) -> web.Response:
+    """Primary anchor denies a proposal."""
+    config = request.app["config"]
+    proposal_id = request.match_info.get("proposal_id", "")
+
+    if _is_core_running(config):
+        return web.json_response(
+            {"error": "stop core first; admin cannot write while core runs"},
+            status=409,
+        )
+
+    sub = _get_substrate(config)
+    try:
+        from sonya.harness.approval import ApprovalManager
+        from sonya.selfmod import ProposalStore
+        from sonya.selfmod.proposal import ProposalNotFoundError, ProposalStatus
+
+        store = ProposalStore(sub)
+        try:
+            p = store.get(proposal_id)
+        except ProposalNotFoundError:
+            return web.json_response({"error": "not found"}, status=404)
+
+        approvals = ApprovalManager(sub)
+        reqs = approvals.find_by_action_pattern(f"%{proposal_id}%")
+        target_req = next((r for r in reqs if r.status.value == "pending"), None)
+        if target_req:
+            approvals.deny(target_req.request_id, by_principal_id="ivan")
+
+        store.update_status(proposal_id, ProposalStatus.REJECTED)
+        return web.json_response({"status": "rejected", "proposal_id": proposal_id})
+    finally:
+        sub.close()
+
+
 # --- Core process management ---
 
 _core_process: Any = None
@@ -419,6 +577,10 @@ def create_app() -> web.Application:
     app.router.add_post("/api/core/start", api_core_start)
     app.router.add_post("/api/core/stop", api_core_stop)
     app.router.add_get("/api/core/logs", api_core_logs)
+    app.router.add_get("/api/selfmod/list", api_selfmod_list)
+    app.router.add_get("/api/selfmod/{proposal_id}", api_selfmod_get)
+    app.router.add_post("/api/selfmod/{proposal_id}/approve", api_selfmod_approve)
+    app.router.add_post("/api/selfmod/{proposal_id}/deny", api_selfmod_deny)
     return app
 
 

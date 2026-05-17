@@ -72,6 +72,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="nav-item" data-page="chat">💬 Chat</div>
     <div class="nav-item" data-page="audit">📋 Audit</div>
     <div class="nav-item" data-page="substrate">💾 Substrate</div>
+    <div class="nav-item" data-page="selfmod">🔧 SelfMod</div>
     <div class="nav-item" data-page="core">⚙️ Core</div>
   </div>
   <div class="sidebar-footer">
@@ -111,6 +112,17 @@ async function loadPage(page) {
       const status = await statusResp.json();
       const logs = await logsResp.json();
       content.innerHTML = renderers.core({...status, logs: logs.logs});
+    } catch(e) {
+      content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+    }
+    return;
+  }
+
+  if (page === 'selfmod') {
+    try {
+      const resp = await fetch(`${API}/api/selfmod/list`);
+      const data = await resp.json();
+      content.innerHTML = renderers.selfmod(data);
     } catch(e) {
       content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
     }
@@ -205,8 +217,61 @@ const renderers = {
         <button onclick="loadPage('core')" style="background:#30363d;color:#c9d1d9;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;font-size:14px">🔄 Refresh</button>
       </div>
       <div class="card"><h3>Logs (last 40 lines)</h3><pre id="core-logs" style="font-size:11px;max-height:400px;overflow-y:auto">${d.logs || 'No logs'}</pre></div>`;
+  },
+  selfmod(d) {
+    if (!d.proposals || d.proposals.length === 0) {
+      return '<div class="card"><h3>No self-mod proposals yet</h3><p>When Sonya proposes changes to her own code via <code>selfmod.propose</code>, they appear here for review.</p></div>';
+    }
+    const statusColor = {
+      draft: '#8b949e', validating: '#d29922', approved: '#3fb950', applied: '#3fb950',
+      rejected: '#f85149', requires_governed_change: '#f0883e', governed_approved: '#3fb950',
+      reverted: '#a371f7',
+    };
+    return `<div class="card"><h3>Self-modification proposals (${d.count})</h3>
+      ${d.proposals.map(p => `
+        <div class="event" style="border-left-color:${statusColor[p.status] || '#30363d'}">
+          <div class="meta">[${p.proposal_id.slice(0,16)}...] ${p.target_module} • by ${p.proposed_by} • ${p.created_at.slice(0,19)}</div>
+          <div class="body">${p.summary}</div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="stat" style="background:${statusColor[p.status] || '#30363d'}33;color:${statusColor[p.status] || '#c9d1d9'}">${p.status}</span>
+            <button onclick="selfmodView('${p.proposal_id}')" style="background:#30363d;color:#c9d1d9;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px">View diff</button>
+            ${p.status === 'requires_governed_change' ? `
+              <button onclick="selfmodAction('${p.proposal_id}','approve')" style="background:#238636;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px">✓ Approve</button>
+              <button onclick="selfmodAction('${p.proposal_id}','deny')" style="background:#da3633;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px">✗ Deny</button>
+            ` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`;
   }
 };
+
+async function selfmodView(proposalId) {
+  try {
+    const resp = await fetch(`${API}/api/selfmod/${proposalId}`);
+    const data = await resp.json();
+    const win = window.open('', '_blank', 'width=900,height=700');
+    win.document.write(`<html><head><title>Proposal ${proposalId}</title>
+      <style>body{font-family:monospace;background:#0d1117;color:#c9d1d9;padding:20px}
+      h2{color:#f0f}pre{background:#161b22;padding:15px;border-radius:6px;overflow:auto;white-space:pre-wrap;word-break:break-all}</style>
+      </head><body>
+      <h2>${data.target_module}</h2>
+      <p><b>Status:</b> ${data.status} | <b>By:</b> ${data.proposed_by} | <b>Created:</b> ${data.created_at}</p>
+      <p><b>Summary:</b> ${data.summary}</p>
+      <h3>diff_blob:</h3>
+      <pre>${(data.diff_blob || '').replace(/</g,'&lt;')}</pre>
+      </body></html>`);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function selfmodAction(proposalId, action) {
+  if (!confirm(`${action.toUpperCase()} proposal ${proposalId.slice(0,16)}...?`)) return;
+  try {
+    const resp = await fetch(`${API}/api/selfmod/${proposalId}/${action}`, {method:'POST'});
+    const data = await resp.json();
+    alert(JSON.stringify(data, null, 2));
+    setTimeout(() => loadPage('selfmod'), 500);
+  } catch(e) { alert('Error: ' + e.message); }
+}
 
 function renderChat() {
   const content = document.getElementById('content');

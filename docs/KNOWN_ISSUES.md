@@ -181,9 +181,13 @@ Read-операции (dashboard, thoughts, memory, telegram, audit, substrate) 
 
 **Статус:** deferred — нужен когда будет больше одной модели одновременно (text + vision + image-gen). Сейчас одна модель — registry излишен.
 
-### S-6. Self-modification pipeline не подключён в runtime
+### S-6. Self-modification pipeline не подключён в runtime ✅ ИСПРАВЛЕНО (commit pending)
 
-**Статус:** deferred — нужно интегрировать в active_session flow. Это большая задача (Phase 4 → production), не bug fix. Ждёт отдельного sprint.
+`SelfModTool` написан в `src/sonya/tools/selfmod_tool.py`. Wired в `_run_active_session` через `agent_session.run_agent_session(selfmod=...)`. Tool surface в agent_session: `selfmod.propose / .validate / .apply / .list / .get / .governed / .check_governed / .rollback`. `Pipeline`, `WatchWindow`, `GovernedChangeProtocol`, `ApprovalManager` теперь живые — инстанциируются при каждой active session.
+
+Admin panel получил вкладку 🔧 SelfMod с просмотром diff + approve/deny для governed-change proposals. Endpoint-ы `/api/selfmod/list`, `/api/selfmod/{id}`, `/api/selfmod/{id}/approve`, `/api/selfmod/{id}/deny`.
+
+Sandbox: `SELFMOD_WRITABLE_SUBPATHS` (channels, tools, planning, ...) — разрешено. `SELFMOD_FORBIDDEN_SUBPATHS` (state/seed.py, schema.sql, identity.py, anchor_integrity.py, .env, .git, SOUL.md, docs/core) — запрещено даже через pipeline.
 
 ### S-7. Dead код Phase 4-6
 

@@ -325,7 +325,7 @@ class InternalProcess:
             return
         try:
             from sonya.subject.agent_session import run_agent_session
-            from sonya.tools import SelfInspectTool, FilesystemTool
+            from sonya.tools import SelfInspectTool, FilesystemTool, SelfModTool
 
             # Substrate must be passed explicitly; fall back to private access if not
             substrate = self._substrate or getattr(self._stream, "_sub", None)
@@ -334,6 +334,7 @@ class InternalProcess:
 
             self_inspect = SelfInspectTool(substrate)
             filesystem = FilesystemTool()
+            selfmod = SelfModTool(substrate)
 
             prompt = self._thinking_prompt or (
                 "Ты Соня. Это твоя активная сессия — ты можешь использовать tools. "
@@ -360,6 +361,7 @@ class InternalProcess:
                 stream=self._stream,
                 self_inspect=self_inspect,
                 filesystem=filesystem,
+                selfmod=selfmod,
                 system_prompt=prompt,
                 initial_thought=initial_thought,
                 max_steps=30,

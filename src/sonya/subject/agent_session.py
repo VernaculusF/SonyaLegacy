@@ -15,6 +15,7 @@ from typing import Any, Protocol
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.self_inspect import SelfInspectTool
+from sonya.tools.selfmod_tool import SelfModTool
 
 
 class AgentProvider(Protocol):
@@ -42,10 +43,18 @@ TOOL_DESCRIPTIONS = """Available tools:
 - filesystem.read [path] — read a file
 - filesystem.list [path] — list directory
 - filesystem.tree [path] — show directory tree
-- filesystem.write [path] [content] — write a file
+- filesystem.write [path] [content] — write a file (only into workspace/ or tools/plugins/)
 - plugins.list — list available plugins
 - plugins.create [name] [python_code] — create a new plugin tool (hot-loaded, no restart)
 - plugins.call [name] [args] — call a loaded plugin
+- selfmod.propose [target_path] [summary] [content] — propose a real change to src/sonya/* through the 4-layer pipeline. target_path like "src/sonya/channels/discord.py", content is full file body. Identity-critical zones still forbidden.
+- selfmod.validate [proposal_id] — run all 4 layers (static contract, behavior tests, trace replay, anchor integrity)
+- selfmod.apply [proposal_id] — apply approved proposal to disk (writes target file). Process restart needed unless target is a hot-loaded module.
+- selfmod.list [status_filter?] — list proposals (optionally by status: draft/validating/approved/rejected/applied/etc)
+- selfmod.get [proposal_id] — full details of one proposal
+- selfmod.governed [proposal_id] — request primary anchor approval for identity-critical proposal
+- selfmod.check_governed [proposal_id] — check if primary anchor approved
+- selfmod.rollback [proposal_id] [reason?] — mark applied proposal as REVERTED (manual file revert still needed)
 
 IMPORTANT: Use exactly ONE tool per response. Write it as:
 [TOOL: tool_name arg]
@@ -64,6 +73,7 @@ async def run_agent_session(
     self_inspect: SelfInspectTool,
     filesystem: FilesystemTool,
     system_prompt: str,
+    selfmod: SelfModTool | None = None,
     initial_thought: str = "",
     max_steps: int = 30,
     max_seconds: float = 1200.0,
@@ -114,7 +124,7 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod)
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -150,7 +160,14 @@ async def run_agent_session(
     return result
 
 
-def _execute_tool(name: str, arg: str, self_inspect: SelfInspectTool, filesystem: FilesystemTool, stream: ContinuityStream | None = None) -> str:
+def _execute_tool(
+    name: str,
+    arg: str,
+    self_inspect: SelfInspectTool,
+    filesystem: FilesystemTool,
+    stream: ContinuityStream | None = None,
+    selfmod: SelfModTool | None = None,
+) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
         if name == "self_inspect.identity":
@@ -205,6 +222,51 @@ def _execute_tool(name: str, arg: str, self_inspect: SelfInspectTool, filesystem
                 result = module.run(plugin_args)
                 return str(result)
             return f"[ERROR] Plugin '{plugin_name}' has no run() function"
+
+        # --- selfmod.* family ---
+        elif name == "selfmod.propose":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            # Format: target_path | summary | content (pipe-separated to allow multiline content)
+            parts = arg.split("|", 2)
+            if len(parts) < 3:
+                return "[ERROR] selfmod.propose needs: target_path | summary | content (pipe-separated)"
+            target = parts[0].strip()
+            summary = parts[1].strip()
+            content = parts[2]
+            return selfmod.propose(target, summary, new_content=content)
+        elif name == "selfmod.validate":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.validate(arg.strip())
+        elif name == "selfmod.apply":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.apply(arg.strip())
+        elif name == "selfmod.list":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.list_proposals(arg.strip())
+        elif name == "selfmod.get":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.get_proposal(arg.strip())
+        elif name == "selfmod.governed":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.request_governed(arg.strip())
+        elif name == "selfmod.check_governed":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.check_governed(arg.strip())
+        elif name == "selfmod.rollback":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            parts = arg.split(" ", 1)
+            pid = parts[0].strip()
+            reason = parts[1].strip() if len(parts) > 1 else ""
+            return selfmod.rollback(pid, reason=reason)
+
         else:
             return f"[ERROR] Unknown tool: {name}"
     except Exception as e:

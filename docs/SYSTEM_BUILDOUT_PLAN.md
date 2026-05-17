@@ -52,31 +52,17 @@
 
 Каждый этап даёт примерный прирост по шкале из обсуждения.
 
-### Этап A: Self-mod tools — **+5 пунктов**
+### Этап A: Self-mod tools — **+5 пунктов** ✅ ЗАКРЫТ
 
-**Цель:** Соня получает tool-ы для запуска self-modification pipeline изнутри agent_session.
+**Commit:** pending
 
-**Артефакты:**
-
-- `src/sonya/tools/selfmod_tool.py` — новый tool с командами:
-  - `selfmod.propose [target_module] [change_summary] [diff]` → создаёт `SelfModificationProposal` в substrate
-  - `selfmod.validate [proposal_id]` → гоняет через `Pipeline.validate` (Layer 1-4)
-  - `selfmod.apply [proposal_id]` → применяет approved change (пока через manual diff apply)
-  - `selfmod.list [status]` → листинг proposals по статусу
-  - `selfmod.rollback [proposal_id]` → откатывает через WatchWindow
-
-- Добавить `Pipeline`, `ApprovalManager`, `WatchWindow` в `_run_active_session` setup
-- Добавить tool в `agent_session.py` `TOOL_DESCRIPTIONS` + `_execute_tool` resolver
-- `SelfInspectTool.list_proposals()` — посмотреть свои proposals
-
-**Sandbox расширение:**
-
-- FilesystemTool получает новый mode `via_selfmod`: write в `src/sonya/` разрешён ТОЛЬКО если идёт через `selfmod.apply`. Сам по себе `filesystem.write src/sonya/...` — отказ.
-- `plugins.create` тоже идёт через selfmod pipeline (Layer 1-4) для повторяемости.
-
-**Что закрывает:** S-6, S-7 (частично — pipeline становится живым).
-
-**Effort:** 4-6 часов (большая часть кода уже есть, нужна интеграция).
+**Что сделано:**
+- `src/sonya/tools/selfmod_tool.py` — `SelfModTool` класс с methods: `propose`, `validate`, `apply`, `list_proposals`, `get_proposal`, `request_governed`, `check_governed`, `rollback`
+- Wired в agent_session через `selfmod=` parameter; agent tools: `selfmod.propose / .validate / .apply / .list / .get / .governed / .check_governed / .rollback`
+- В `internal_loop._run_active_session` создаётся `SelfModTool(substrate)` при каждом запуске
+- Admin panel: вкладка 🔧 SelfMod, endpoint-ы `/api/selfmod/list`, `/api/selfmod/{id}`, `/api/selfmod/{id}/approve`, `/api/selfmod/{id}/deny`
+- 14 tests в `tests/sonya/test_selfmod_tool.py` — все проходят
+- Sandbox через `SELFMOD_WRITABLE_SUBPATHS` / `SELFMOD_FORBIDDEN_SUBPATHS`
 
 ---
 
