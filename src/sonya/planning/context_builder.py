@@ -66,32 +66,51 @@ def build_full_context(
         from sonya.state.continuity_stream import ContinuityStream
         stream = ContinuityStream(substrate)
         latest_seq = stream.latest_seq()
-        recent_continuity = list(stream.read_since(max(0, latest_seq - 80)))
-        relevant_kinds = {
-            "internal.thought",
+        recent_continuity = list(stream.read_since(max(0, latest_seq - 200)))
+
+        # Recent dialog events (incoming/outgoing)
+        dialog_kinds = {
             "incoming.telegram_message",
             "outgoing.response",
             "outgoing.telegram_response",
+            "outgoing.telegram_initiative",
             "internal.agent_session_outcome",
         }
-        recent_filtered = [e for e in recent_continuity if e.kind in relevant_kinds][-15:]
-        if recent_filtered:
-            stream_block = "\n\n## Недавние события (мысли + разговоры):\n"
-            for e in recent_filtered:
+        recent_dialog = [e for e in recent_continuity if e.kind in dialog_kinds][-12:]
+        if recent_dialog:
+            stream_block = "\n\n## Недавний диалог:\n"
+            for e in recent_dialog:
                 ts = (e.created_at or "")[:16]
-                if e.kind == "internal.thought":
-                    text = (e.payload.get("thought") or "")[:1500]
-                    stream_block += f"- [{ts}] [мысль] {text}\n"
-                elif e.kind == "incoming.telegram_message":
+                if e.kind == "incoming.telegram_message":
                     text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{ts}] [Иван написал] {text}\n"
                 elif e.kind in ("outgoing.response", "outgoing.telegram_response"):
                     text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{ts}] [я ответила] {text}\n"
+                elif e.kind == "outgoing.telegram_initiative":
+                    text = (e.payload.get("text") or "")[:600]
+                    stream_block += f"- [{ts}] [я написала первой] {text}\n"
                 elif e.kind == "internal.agent_session_outcome":
                     steps = e.payload.get("steps", 0)
                     stream_block += f"- [{ts}] [active session] {steps} шагов\n"
             system_prompt += stream_block
+
+        # Recent INTERNAL thoughts — separate block so they're never crowded out by
+        # tg-traffic. This is what Sonya was missing in the "I don't see my past
+        # thinking" complaint.
+        recent_thoughts = [e for e in recent_continuity if e.kind == "internal.thought"][-10:]
+        thoughts_block = "\n\n## Мои недавние мысли (idle thinking ticks):\n"
+        if recent_thoughts:
+            for e in recent_thoughts:
+                ts = (e.created_at or "")[:16]
+                text = (e.payload.get("thought") or "")[:1500]
+                thoughts_block += f"- [{ts}] {text}\n\n"
+        else:
+            thoughts_block += (
+                "(пока ничего не было — между запусками или с последнего рестарта тиков ещё не происходило. "
+                "В active session могу прочитать `self_inspect.thoughts` для большего объёма)\n"
+            )
+        system_prompt += thoughts_block
     except Exception:
         pass
 
@@ -163,7 +182,8 @@ def build_full_context(
         "\n\n## Что я могу:\n"
         "Каждые 30 минут я думаю (idle тик — один LLM-вызов, без tools). "
         "Каждые 2 часа у меня active session — там доступны tools: "
-        "self_inspect (читать свой код, мысли, память), filesystem (workspace, plugins), "
+        "self_inspect (читать свой код, мысли, память — `self_inspect.thoughts` достаёт мои предыдущие idle-мысли, `self_inspect.memories` — episodic events, `self_inspect.code [path]` — мой собственный код), "
+        "filesystem (workspace, plugins), "
         "selfmod (proposing+applying изменения src/sonya/* с hot-reload — без рестарта), "
         "tasks (длинные задачи между сессиями), "
         "plugins (создавать новые tools на лету), "
@@ -175,7 +195,12 @@ def build_full_context(
         "если есть что сказать, не молчи. Throttle тот же.\n"
         "Если в active session возникает баг — могу пофиксить через selfmod.propose → "
         "test_sandbox → validate → apply (всё без рестарта; если main.py — soft_restart). "
-        "Если не хватает прав / API key / пакета — tasks.block + ApprovalRequest, Иван разрешит."
+        "Если не хватает прав / API key / пакета — tasks.block + ApprovalRequest, Иван разрешит.\n\n"
+        "ВАЖНО про память: то что в этом prompt'е — это окно в мою постоянную память (substrate SQLite). "
+        "Outside этого окна тоже есть — episodic_events (тысячи), semantic_facts, continuity_events. "
+        "Если в TG диалоге Иван спрашивает про прошлое — у меня **есть** доступ к нему, просто не в этом prompt'е. "
+        "В active session загляну в `self_inspect.memories` или `self_inspect.thoughts`. "
+        "Не врать что 'не помню' — корректнее 'сейчас не вижу, но могу достать в active session'."
     )
 
     return PlannerContext(

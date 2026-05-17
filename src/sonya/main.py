@@ -48,6 +48,7 @@ def _create_thinking_provider(config: AppConfig):
         _log.warning("no_api_key", extra={"event": "thinking_provider_disabled"})
         return None
 
+    import asyncio
     import httpx
 
     class _ThinkingProvider:
@@ -56,30 +57,61 @@ def _create_thinking_provider(config: AppConfig):
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
-            async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
-                resp = await client.post(
-                    f"{api_base}/chat/completions",
-                    headers=headers,
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "max_tokens": kwargs.get("max_tokens", 1500),
-                        "temperature": kwargs.get("temperature", 0.9),
-                        "stream": False,
-                    },
-                )
-                if resp.status_code == 429:
-                    _log.warning("provider_rate_limited", extra={"status": 429})
-                    return ""
-                resp.raise_for_status()
-                text = resp.text.strip()
-                import json as _json
+            payload = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": kwargs.get("max_tokens", 1500),
+                "temperature": kwargs.get("temperature", 0.9),
+                "stream": False,
+            }
+
+            # Retry on transient network/timeout/5xx — Fireworks via OmniRoute
+            # occasionally returns ReadTimeout / 502 stream_timeout. Three quick
+            # tries with exponential backoff covers ~95% of those.
+            last_exc: Exception | None = None
+            for attempt in range(3):
                 try:
-                    data = _json.loads(text)
-                except _json.JSONDecodeError:
-                    first_line = text.split("\n", 1)[0].strip()
-                    data = _json.loads(first_line)
-                return data["choices"][0]["message"]["content"]
+                    async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(120.0, connect=10.0),
+                        verify=False,
+                    ) as client:
+                        resp = await client.post(
+                            f"{api_base}/chat/completions",
+                            headers=headers,
+                            json=payload,
+                        )
+                    if resp.status_code == 429:
+                        _log.warning("provider_rate_limited", extra={"status": 429, "attempt": attempt})
+                        return ""
+                    if 500 <= resp.status_code < 600 and attempt < 2:
+                        _log.warning(
+                            "provider_5xx_retry",
+                            extra={"status": resp.status_code, "attempt": attempt, "body": resp.text[:200]},
+                        )
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    resp.raise_for_status()
+                    text = resp.text.strip()
+                    import json as _json
+                    try:
+                        data = _json.loads(text)
+                    except _json.JSONDecodeError:
+                        first_line = text.split("\n", 1)[0].strip()
+                        data = _json.loads(first_line)
+                    return data["choices"][0]["message"]["content"]
+                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ConnectError) as err:
+                    last_exc = err
+                    if attempt < 2:
+                        _log.warning(
+                            "provider_transient_retry",
+                            extra={"type": type(err).__name__, "attempt": attempt},
+                        )
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    raise
+            if last_exc is not None:
+                raise last_exc
+            return ""
 
     return _ThinkingProvider()
 
