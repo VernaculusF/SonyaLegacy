@@ -637,10 +637,51 @@ async def api_providers_get(request: web.Request) -> web.Response:
                     "error_count": k.error_count,
                     "created_at": k.created_at,
                     "updated_at": k.updated_at,
+                    "account_id": k.account_id,
+                    "balance": k.balance(),
+                    "balance_checked_at": k.balance_checked_at,
                 }
                 for k in keys
             ],
         })
+    finally:
+        sub.close()
+
+
+async def api_providers_balance_refresh(request: web.Request) -> web.Response:
+    """Force refresh balance for one key (or all active fireworks keys if no key_id).
+
+    Inline call to fireworks API; returns the fresh snapshot. Admin can press
+    a button to refresh without waiting for the periodic 10-min loop.
+    """
+    from sonya.providers import KeyStore, KeyStatus
+    from sonya.providers.fireworks_balance import fetch_fireworks_balance
+
+    config = request.app["config"]
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        target_key_id = request.match_info.get("key_id")
+        if target_key_id:
+            k = store.get_key(target_key_id)
+            if k is None:
+                return web.json_response({"error": "not found"}, status=404)
+            keys = [k]
+        else:
+            keys = [k for k in store.list_keys("fireworks") if k.status is KeyStatus.ACTIVE]
+        results = []
+        for k in keys:
+            if k.provider != "fireworks":
+                results.append({"key_id": k.key_id, "skipped": "provider not supported"})
+                continue
+            snap = await fetch_fireworks_balance(k.api_key)
+            store.update_balance(
+                k.key_id,
+                account_id=snap.get("account_id", "") or k.account_id,
+                balance=snap,
+            )
+            results.append({"key_id": k.key_id, "balance": snap})
+        return web.json_response({"refreshed": len(results), "results": results})
     finally:
         sub.close()
 
@@ -994,6 +1035,8 @@ def create_app() -> web.Application:
     app.router.add_post("/api/providers/keys/{key_id}/delete", api_providers_keys_delete)
     app.router.add_post("/api/providers/keys/{key_id}/test", api_providers_keys_test)
     app.router.add_post("/api/providers/keys/{key_id}/status", api_providers_keys_status)
+    app.router.add_post("/api/providers/balance/refresh", api_providers_balance_refresh)
+    app.router.add_post("/api/providers/keys/{key_id}/balance/refresh", api_providers_balance_refresh)
     # LLM call audit + tasks (admin observability)
     app.router.add_get("/api/llm_calls", api_llm_calls)
     app.router.add_get("/api/tasks", api_tasks)

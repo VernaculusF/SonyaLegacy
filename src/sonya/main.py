@@ -285,6 +285,8 @@ class _RuntimeBundle:
         self.internal_process: InternalProcess | None = None
         self.channel_registry: ChannelRegistry | None = None
         self.thinking_provider: Any = None
+        self._balance_refresher_task: asyncio.Task | None = None
+        self._balance_refresher_stop: asyncio.Event = asyncio.Event()
 
     async def start(self) -> None:
         config = self.config
@@ -392,7 +394,23 @@ class _RuntimeBundle:
 
         await self.health.start(schema_version=substrate.schema_version)
 
+        # Provider balance refresher: poll Fireworks accounts/quotas every ~10 min
+        # so admin can show actual remaining credits + monthly spend.
+        self._balance_refresher_stop.clear()
+        self._balance_refresher_task = asyncio.create_task(
+            self._balance_refresher_loop()
+        )
+
     async def stop(self) -> None:
+        # Stop balance refresher first — it's lowest-priority, easy to interrupt.
+        self._balance_refresher_stop.set()
+        if self._balance_refresher_task is not None:
+            try:
+                await asyncio.wait_for(self._balance_refresher_task, timeout=2.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self._balance_refresher_task.cancel()
+            self._balance_refresher_task = None
+
         if self.channel_registry is not None:
             try:
                 await self.channel_registry.stop_all()
@@ -413,6 +431,59 @@ class _RuntimeBundle:
                 await self.lifecycle.request_stop()
             except Exception as err:
                 _log.warning("lifecycle_stop_error", extra={"error": str(err)})
+
+    async def _balance_refresher_loop(self) -> None:
+        """Refresh fireworks balance every ~10 min for active fireworks keys.
+
+        Pulls /v1/accounts + /quotas via the same API key, parses
+        monthly-spend-usd usage and limit, stores snapshot on the
+        provider_keys row. Admin reads it from there.
+        """
+        from sonya.providers.fireworks_balance import fetch_fireworks_balance
+        from sonya.providers.keystore import KeyStore, KeyStatus
+
+        store = KeyStore(self.substrate)
+        # Initial delay so we don't hammer right at boot.
+        try:
+            await asyncio.wait_for(self._balance_refresher_stop.wait(), timeout=20.0)
+            return
+        except asyncio.TimeoutError:
+            pass
+
+        while not self._balance_refresher_stop.is_set():
+            keys = [
+                k for k in store.list_keys("fireworks")
+                if k.status is KeyStatus.ACTIVE
+            ]
+            for k in keys:
+                if self._balance_refresher_stop.is_set():
+                    break
+                try:
+                    snap = await fetch_fireworks_balance(k.api_key)
+                    store.update_balance(
+                        k.key_id,
+                        account_id=snap.get("account_id", "") or k.account_id,
+                        balance=snap,
+                    )
+                except Exception as err:
+                    _log.warning(
+                        "balance_refresh_failed",
+                        extra={"key_id": k.key_id, "error": str(err)},
+                    )
+                # Small delay between keys to be gentle on the API
+                try:
+                    await asyncio.wait_for(self._balance_refresher_stop.wait(), timeout=2.0)
+                    return
+                except asyncio.TimeoutError:
+                    pass
+            # Wait for next cycle (10 min) or stop signal
+            try:
+                await asyncio.wait_for(
+                    self._balance_refresher_stop.wait(), timeout=600.0
+                )
+                return
+            except asyncio.TimeoutError:
+                continue
 
 
 async def _supervisor(config: AppConfig) -> int:

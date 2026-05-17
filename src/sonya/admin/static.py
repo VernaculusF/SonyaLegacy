@@ -320,20 +320,38 @@ const renderers = {
         <button onclick="providersAddKey()" style="margin-top:10px;background:#238636;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer">Add key</button>
       </div>`;
 
+    const fmtBalance = (k) => {
+      const b = k.balance || {};
+      if (!b || (!b.ok && !b.monthly_spend_usd)) {
+        if (b && b.error) return `<span style="color:#f85149" title="${b.error.replace(/"/g,'&quot;')}">balance: error</span>`;
+        return `<span style="color:#8b949e">balance: ?</span>`;
+      }
+      const ms = b.monthly_spend_usd || {};
+      const usage = (typeof ms.usage === 'number') ? ms.usage.toFixed(2) : '?';
+      const limit = (typeof ms.limit === 'number') ? ms.limit.toFixed(0) : '?';
+      const remaining = (typeof ms.remaining === 'number') ? ms.remaining.toFixed(2) : '?';
+      const pct = (ms.usage && ms.limit) ? Math.round((ms.usage / ms.limit) * 100) : 0;
+      const colour = pct > 80 ? '#f85149' : (pct > 50 ? '#d29922' : '#3fb950');
+      return `<span style="color:${colour}">$${usage}/${limit}</span><span style="color:#8b949e"> (left: $${remaining})</span>`;
+    };
+
     const keysCard = keys.length === 0
       ? '<div class="card"><h3>No keys yet</h3><p>Add at least one above. Without keys, core can\'t run thinking.</p></div>'
       : `<div class="card"><h3>Keys (${keys.length})</h3>
+          <button onclick="providersRefreshAll()" style="background:#1f6feb;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;margin-bottom:10px">↻ Refresh all balances</button>
           ${keys.map(k => `
             <div class="event" style="border-left-color:${statusColor[k.status] || '#30363d'};margin-bottom:10px">
               <div class="meta">${k.provider} • ${k.name} • ${k.key_masked} • created ${k.created_at.slice(0,16)}</div>
               <div class="body" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
                 ${statusBadge(k.status)}
+                ${k.provider === 'fireworks' ? fmtBalance(k) : ''}
                 <span>req=${k.request_count} ok=${k.success_count} err=${k.error_count}</span>
                 ${k.last_used_at ? `<span style="color:#8b949e">last_used=${k.last_used_at.slice(0,19)}</span>` : ''}
                 ${k.last_error ? `<span style="color:#f85149" title="${k.last_error.replace(/"/g,'&quot;')}">err: ${k.last_error.slice(0,60)}</span>` : ''}
               </div>
               <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
                 <button onclick="providersTestKey('${k.key_id}')" style="background:#1f6feb;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Test</button>
+                ${k.provider === 'fireworks' ? `<button onclick="providersRefreshOne('${k.key_id}')" style="background:#30363d;color:#c9d1d9;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">↻ Balance</button>` : ''}
                 ${k.status !== 'active' ? `<button onclick="providersSetStatus('${k.key_id}','active')" style="background:#238636;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Activate</button>` : ''}
                 ${k.status !== 'disabled' ? `<button onclick="providersSetStatus('${k.key_id}','disabled')" style="background:#6e7681;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Disable</button>` : ''}
                 <button onclick="providersDeleteKey('${k.key_id}')" style="background:#da3633;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Delete</button>
@@ -501,6 +519,22 @@ async function providersSetStatus(keyId, status) {
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({status}),
     });
+    const data = await resp.json();
+    if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersRefreshOne(keyId) {
+  try {
+    const resp = await fetch(`${API}/api/providers/keys/${keyId}/balance/refresh`, {method:'POST'});
+    const data = await resp.json();
+    if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersRefreshAll() {
+  try {
+    const resp = await fetch(`${API}/api/providers/balance/refresh`, {method:'POST'});
     const data = await resp.json();
     if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
   } catch(e) { alert('Error: ' + e.message); }

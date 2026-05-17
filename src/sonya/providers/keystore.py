@@ -63,6 +63,10 @@ class ProviderKey:
     error_count: int
     created_at: str
     updated_at: str
+    # v11 additions
+    account_id: str = ""
+    balance_json: str = "{}"
+    balance_checked_at: str = ""
 
     def is_eligible(self, now: datetime | None = None) -> bool:
         if self.status is not KeyStatus.ACTIVE:
@@ -76,6 +80,14 @@ class ProviderKey:
 
     def masked(self) -> str:
         return self.api_key[:6] + "..." + self.api_key[-4:] if len(self.api_key) > 12 else "***"
+
+    def balance(self) -> dict:
+        """Decoded balance snapshot. Empty dict if never refreshed."""
+        try:
+            import json as _json
+            return _json.loads(self.balance_json or "{}")
+        except Exception:
+            return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +169,8 @@ class KeyStore:
         row = self._sub.connection.execute(
             "SELECT key_id, provider, name, api_key, base_url, model, status, priority, "
             "cooldown_until, last_used_at, last_error, last_error_at, request_count, "
-            "success_count, error_count, created_at, updated_at "
+            "success_count, error_count, created_at, updated_at, "
+            "account_id, balance_json, balance_checked_at "
             "FROM provider_keys WHERE key_id = ?",
             (key_id,),
         ).fetchone()
@@ -170,7 +183,8 @@ class KeyStore:
             rows = self._sub.connection.execute(
                 "SELECT key_id, provider, name, api_key, base_url, model, status, priority, "
                 "cooldown_until, last_used_at, last_error, last_error_at, request_count, "
-                "success_count, error_count, created_at, updated_at "
+                "success_count, error_count, created_at, updated_at, "
+                "account_id, balance_json, balance_checked_at "
                 "FROM provider_keys WHERE provider = ? ORDER BY priority DESC, created_at ASC",
                 (provider,),
             ).fetchall()
@@ -178,7 +192,8 @@ class KeyStore:
             rows = self._sub.connection.execute(
                 "SELECT key_id, provider, name, api_key, base_url, model, status, priority, "
                 "cooldown_until, last_used_at, last_error, last_error_at, request_count, "
-                "success_count, error_count, created_at, updated_at "
+                "success_count, error_count, created_at, updated_at, "
+                "account_id, balance_json, balance_checked_at "
                 "FROM provider_keys ORDER BY provider, priority DESC, created_at ASC"
             ).fetchall()
         return [_row_to_key(r) for r in rows]
@@ -227,6 +242,17 @@ class KeyStore:
         self._sub.connection.execute(
             f"UPDATE provider_keys SET {', '.join(fields)} WHERE key_id = ?",
             params,
+        )
+        self._sub.connection.commit()
+
+    def update_balance(self, key_id: str, *, account_id: str, balance: dict) -> None:
+        """Persist a fresh balance snapshot for a key."""
+        import json as _json
+        now = _utc_now_iso()
+        self._sub.connection.execute(
+            "UPDATE provider_keys SET account_id = ?, balance_json = ?, "
+            "balance_checked_at = ?, updated_at = ? WHERE key_id = ?",
+            (account_id or "", _json.dumps(balance, ensure_ascii=False), now, now, key_id),
         )
         self._sub.connection.commit()
 
@@ -311,4 +337,7 @@ def _row_to_key(row: Iterable[Any]) -> ProviderKey:
         last_error=r[10] or "", last_error_at=r[11] or "",
         request_count=int(r[12] or 0), success_count=int(r[13] or 0),
         error_count=int(r[14] or 0), created_at=r[15], updated_at=r[16],
+        account_id=(r[17] if len(r) > 17 else "") or "",
+        balance_json=(r[18] if len(r) > 18 else "{}") or "{}",
+        balance_checked_at=(r[19] if len(r) > 19 else "") or "",
     )

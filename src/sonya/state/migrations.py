@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 10
+CURRENT_VERSION = 11
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -150,6 +150,19 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 10
+
+    if version == 10:
+        # v10 → v11: provider_keys balance/quota snapshot columns.
+        _add_column_if_missing(conn, "provider_keys", "account_id", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_keys", "balance_json", "TEXT NOT NULL DEFAULT '{}'")
+        _add_column_if_missing(conn, "provider_keys", "balance_checked_at", "TEXT NOT NULL DEFAULT ''")
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (11, now),
+        )
+        conn.commit()
+        version = 11
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
