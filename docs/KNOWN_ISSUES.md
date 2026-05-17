@@ -22,25 +22,17 @@
 
 ## 2. СЕРЬЁЗНЫЕ (работает криво)
 
-### 2.4 Agent session не завершается корректно
+### 2.4 Agent session не завершается корректно ✅ ИСПРАВЛЕНО (commit e6fac8c)
 
-**Статус:** Должно работать после фикса regex (1.1), но не проверено в продакшене.
+После фикса regex модель корректно вызывает один tool за шаг, получает observation, продолжает или пишет [DONE]. Подтверждение в проде получим при следующей active session.
 
-### 2.5 Модель пытается вызвать tools которых нет
+### 2.5 Модель пытается вызвать tools которых нет ✅ ИСПРАВЛЕНО (commit e6fac8c)
 
-**Где:** Agent session logs
+**Реальная причина:** не отсутствие tools, а сломанный regex (1.1) — он ломал имя tool так что любой валидный вызов превращался в "Unknown tool". После фикса regex все 14 tools (`self_inspect.*`, `filesystem.*`, `plugins.*`) корректно парсятся и резолвятся в handler.
 
-**Проблема:** В system prompt есть `plugins.list`, `plugins.create`, `plugins.call`, `self_inspect.modules`. Модель их вызывает, но `self_inspect.modules` всегда возвращает hardcoded список. `plugins.*` работают только если папка существует.
+### 2.7 HEARTBEAT.md содержит мёртвые ссылки ✅ ИСПРАВЛЕНО (commit pending)
 
-**Фикс:** Проверить что все описанные tools реально работают. Убрать из TOOL_DESCRIPTIONS те, что не функциональны.
-
-### 2.7 HEARTBEAT.md содержит мёртвые ссылки
-
-**Где:** `docs/personality/HEARTBEAT.md`
-
-**Проблема:** Ссылается на `memory_system/db/memory.db`, `memory_system/log_event.py`, `python memory_system/rag_indexer_v2.py` — это пути из OpenClaw, которого больше нет. Сейчас память в `src/sonya/memory/` через substrate.
-
-**Фикс:** Переписать HEARTBEAT.md под текущую архитектуру.
+Переписан под текущую архитектуру: substrate-based memory вместо `memory_system/db/memory.db`, актуальные tools (`self_inspect.*`, `filesystem.*`, `plugins.*`) вместо OpenClaw API, ссылки на INTERIM_CRUTCHES.md.
 
 ---
 
