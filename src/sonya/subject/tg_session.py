@@ -46,6 +46,14 @@ _TOOL_LINE_RE = re.compile(r"\[TOOL:[^\]]*\]")
 _DONE_RE = re.compile(r"\[DONE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
 _PAUSE_RE = re.compile(r"\[PAUSE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
+# Models sometimes echo prior tool observations into their final answer when
+# they don't terminate cleanly. Strip those too.
+_OBSERVATION_RE = re.compile(
+    r"\[Observation(?:\s+from\s+[^\]]*)?\]\s*:?[^\n]*(?:\n(?!\n).*)*",
+    re.MULTILINE,
+)
+_BUDGET_WARNING_RE = re.compile(r"\[BUDGET WARNING\][^\n]*(?:\n(?!\n).*)*", re.MULTILINE)
+_NEW_MESSAGE_INJECT_RE = re.compile(r"\[NEW MESSAGE FROM IVAN\][^\n]*(?:\n(?!\n).*)*", re.MULTILINE)
 
 
 # Heuristics that mean "this is internal scratch, NOT a reply for Ivan"
@@ -216,6 +224,20 @@ async def run_tg_session(
     )
 
 
+def _scrub(text: str) -> str:
+    """Remove all internal markers / observation echoes / fences from text."""
+    text = _OBSERVATION_RE.sub("", text)
+    text = _BUDGET_WARNING_RE.sub("", text)
+    text = _NEW_MESSAGE_INJECT_RE.sub("", text)
+    text = _CODE_FENCE_RE.sub("", text)
+    text = _TOOL_LINE_RE.sub("", text)
+    text = _DONE_RE.sub("", text)
+    text = _PAUSE_RE.sub("", text)
+    # Collapse triple+ newlines down to double
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _extract_reply(result: SessionResult) -> str:
     """Pull the user-facing text from agent session output.
 
@@ -234,25 +256,15 @@ def _extract_reply(result: SessionResult) -> str:
         # First try [DONE: body] — explicit text
         m = _DONE_RE.search(final)
         if m and (m.group("body") or "").strip():
-            candidate = (m.group("body") or "").strip()
+            candidate = _scrub(m.group("body"))
         else:
-            # [DONE] without body OR no marker — strip markers from final_output
-            cleaned = _TOOL_LINE_RE.sub("", final)
-            cleaned = _DONE_RE.sub("", cleaned)
-            cleaned = _PAUSE_RE.sub("", cleaned)
-            cleaned = _CODE_FENCE_RE.sub("", cleaned)
-            cleaned = cleaned.strip()
-            if cleaned:
-                candidate = cleaned
+            # [DONE] without body OR no marker — strip everything internal
+            candidate = _scrub(final)
 
     if not candidate:
         # Fallback: last meaningful thought
         for thought in reversed(result.thoughts):
-            cleaned = _TOOL_LINE_RE.sub("", thought)
-            cleaned = _DONE_RE.sub("", cleaned)
-            cleaned = _PAUSE_RE.sub("", cleaned)
-            cleaned = _CODE_FENCE_RE.sub("", cleaned)
-            cleaned = cleaned.strip()
+            cleaned = _scrub(thought)
             if cleaned:
                 candidate = cleaned
                 break
