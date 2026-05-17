@@ -48,13 +48,14 @@ TOOL_DESCRIPTIONS = """Available tools:
 - plugins.create [name] [python_code] — create a new plugin tool (hot-loaded, no restart)
 - plugins.call [name] [args] — call a loaded plugin
 - selfmod.propose [target_path] [summary] [content] — propose a real change to src/sonya/* through the 4-layer pipeline. target_path like "src/sonya/channels/discord.py", content is full file body. Identity-critical zones still forbidden.
+- selfmod.test_sandbox [proposal_id] — import the proposed content in isolation; catches syntax/import errors BEFORE writing to disk
 - selfmod.validate [proposal_id] — run all 4 layers (static contract, behavior tests, trace replay, anchor integrity)
-- selfmod.apply [proposal_id] — apply approved proposal to disk (writes target file). Process restart needed unless target is a hot-loaded module.
+- selfmod.apply [proposal_id] — apply approved proposal: capture pre-state, write file, hot-reload + drop-and-recreate live instances. 60-second watch window auto-rollback on crash.
 - selfmod.list [status_filter?] — list proposals (optionally by status: draft/validating/approved/rejected/applied/etc)
 - selfmod.get [proposal_id] — full details of one proposal
 - selfmod.governed [proposal_id] — request primary anchor approval for identity-critical proposal
 - selfmod.check_governed [proposal_id] — check if primary anchor approved
-- selfmod.rollback [proposal_id] [reason?] — mark applied proposal as REVERTED (manual file revert still needed)
+- selfmod.rollback [proposal_id] [reason?] — restore pre-state from disk + hot-reload again
 
 IMPORTANT: Use exactly ONE tool per response. Write it as:
 [TOOL: tool_name arg]
@@ -239,6 +240,10 @@ def _execute_tool(
             if selfmod is None:
                 return "[ERROR] selfmod tool not configured"
             return selfmod.validate(arg.strip())
+        elif name == "selfmod.test_sandbox":
+            if selfmod is None:
+                return "[ERROR] selfmod tool not configured"
+            return selfmod.test_sandbox(arg.strip())
         elif name == "selfmod.apply":
             if selfmod is None:
                 return "[ERROR] selfmod tool not configured"

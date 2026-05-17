@@ -52,17 +52,37 @@
 
 Каждый этап даёт примерный прирост по шкале из обсуждения.
 
-### Этап A: Self-mod tools — **+5 пунктов** ✅ ЗАКРЫТ
-
-**Commit:** pending
+### Этап A: Self-mod tools — **+5 пунктов** ✅ ЗАКРЫТ + расширен hot-reload (commit pending)
 
 **Что сделано:**
-- `src/sonya/tools/selfmod_tool.py` — `SelfModTool` класс с methods: `propose`, `validate`, `apply`, `list_proposals`, `get_proposal`, `request_governed`, `check_governed`, `rollback`
-- Wired в agent_session через `selfmod=` parameter; agent tools: `selfmod.propose / .validate / .apply / .list / .get / .governed / .check_governed / .rollback`
-- В `internal_loop._run_active_session` создаётся `SelfModTool(substrate)` при каждом запуске
-- Admin panel: вкладка 🔧 SelfMod, endpoint-ы `/api/selfmod/list`, `/api/selfmod/{id}`, `/api/selfmod/{id}/approve`, `/api/selfmod/{id}/deny`
-- 14 tests в `tests/sonya/test_selfmod_tool.py` — все проходят
-- Sandbox через `SELFMOD_WRITABLE_SUBPATHS` / `SELFMOD_FORBIDDEN_SUBPATHS`
+- `src/sonya/tools/selfmod_tool.py` — `SelfModTool` класс с methods: `propose`, `test_sandbox`, `validate`, `apply`, `list_proposals`, `get_proposal`, `request_governed`, `check_governed`, `rollback`
+- `src/sonya/tools/module_loader.py` — `sandbox_test`, `reload_module`, `path_to_dotted`, `discover_subclasses`
+- `src/sonya/runtime/live.py` — `LiveRuntime` с handles на ChannelRegistry/InternalProcess/Substrate; `set_live_runtime` / `get_live_runtime`
+- `selfmod.apply` теперь:
+  1. Захватывает pre-state (текущее содержимое файла) в proposal.diff_blob (для rollback)
+  2. Пишет файл на диск
+  3. Hot-reload через `importlib.reload()`
+  4. Drop-and-recreate live channel instances (для `src/sonya/channels/*`)
+  5. Запускает 60-сек watch window
+  6. Auto-rollback при `internal.tool_error` / `tg_handler_crash` / `self_mod.hot_reload_failed` событиях, упоминающих изменённый модуль
+- `selfmod.test_sandbox` — изолированный import-тест в temp-dir; ловит SyntaxError, ImportError, top-level exceptions ДО `apply`
+- `selfmod.rollback` — реально восстанавливает файл из pre-state (или удаляет если был new file) + hot-reload
+- Wired в agent_session: новый tool `selfmod.test_sandbox`
+- Admin panel: вкладка 🔧 SelfMod с просмотром diff + approve/deny для governed-change proposals
+- 20 тестов в `tests/sonya/test_selfmod_tool.py` + 8 в `tests/sonya/test_module_loader.py` — все проходят
+
+**Что НЕ требует рестарта:**
+- Любые изменения в `src/sonya/channels/*` (drop-and-recreate активного channel'а)
+- Любые изменения в `src/sonya/tools/*` (re-import; agent_session создаёт fresh instances каждую сессию)
+- Изменения в `planning/`, `memory/`, `skills/`, `initiative/`, `anchor/`, `subject/`, `harness/` — модуль перезагружается через importlib.reload
+
+**Что всё ещё требует рестарта (помечено в hot_reload result):**
+- `src/sonya/main.py` — управляет event loop; нужен soft-restart supervisor
+- `src/sonya/config.py` — config считывается один раз
+- `src/sonya/logging.py` — глобальные handlers
+- `src/sonya/runtime/live.py` — сама регистрация runtime
+
+**Sandbox:** `SELFMOD_WRITABLE_SUBPATHS` (channels, tools, planning, ...) — разрешено. `SELFMOD_FORBIDDEN_SUBPATHS` (state/seed.py, schema.sql, identity.py, anchor_integrity.py, .env, .git, SOUL.md, docs/core) — запрещено даже через pipeline.
 
 ---
 

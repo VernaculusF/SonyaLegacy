@@ -1,30 +1,37 @@
 """Self-modification tool surface for Sonya.
 
 Exposes the 4-layer self-modification pipeline as agent-callable tools.
-This is the primary mechanism by which Sonya extends her own system.
+This is the primary mechanism by which Sonya extends her own system
+**without process restart**.
 
 Flow:
-  1. Sonya writes proposed change as a diff (or new-file content)
-  2. `selfmod.propose` records it as a SelfModificationProposal in substrate
-  3. `selfmod.validate` runs Layers 1-4
-     - Layer 1 (static_contract): syntax/imports/contract preserved
-     - Layer 2 (behavioral_test): existing tests still pass on the change
-     - Layer 3 (trace_replay): canonical traces produce same outcome
-     - Layer 4 (anchor_integrity): doesn't touch identity-critical zones
-  4. If APPROVED -> `selfmod.apply` writes to disk
-  5. If REQUIRES_GOVERNED_CHANGE -> Ivan must approve via admin
-  6. If REJECTED -> can amend & re-propose
+  1. `selfmod.propose target | summary | new_content` — записывает в substrate
+  2. `selfmod.test_sandbox proposal_id` — изолированный import-test (опционально, рекомендовано)
+  3. `selfmod.validate proposal_id` — Layers 1-4
+  4. Если REQUIRES_GOVERNED_CHANGE → `selfmod.governed proposal_id` → ждать approve
+  5. Если APPROVED/GOVERNED_APPROVED → `selfmod.apply proposal_id`
+     - сохраняет pre-state (текущее содержимое файла) в proposal
+     - пишет файл на диск
+     - вызывает hot-reload через LiveRuntime
+     - запускает 60-секундный watch window
+     - при crash в этом окне → auto-rollback из pre-state
 
-See: docs/SYSTEM_BUILDOUT_PLAN.md Этап A, SUBSTRATE_STANCE §9.
+  6. `selfmod.rollback proposal_id [reason]` — ручной откат (восстанавливает pre-state)
+
+См.: docs/SYSTEM_BUILDOUT_PLAN.md Этап A, SUBSTRATE_STANCE §9.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from pathlib import Path
+from typing import Any
 
 from sonya.harness.approval import ApprovalManager
 from sonya.harness.audit import AuditLog
+from sonya.runtime.live import get_live_runtime
 from sonya.selfmod import (
     GovernedChangeProtocol,
     Pipeline,
@@ -36,10 +43,15 @@ from sonya.selfmod import (
 from sonya.selfmod.proposal import ProposalNotFoundError
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.state.substrate import Substrate
+from sonya.tools.module_loader import (
+    discover_subclasses,
+    path_to_dotted,
+    reload_module,
+    sandbox_test,
+)
 
 
 # Subpaths inside src/sonya/ that selfmod is allowed to modify.
-# Outside of these — the proposal will fail Layer 4 even before anchor check.
 SELFMOD_WRITABLE_SUBPATHS: tuple[str, ...] = (
     "src/sonya/channels",
     "src/sonya/tools",
@@ -76,11 +88,13 @@ SELFMOD_FORBIDDEN_SUBPATHS: tuple[str, ...] = (
 )
 
 
-class SelfModTool:
-    """Agent-callable wrapper for the self-modification pipeline.
+# Marker prefixes used inside diff_blob to distinguish content types
+_NEW_CONTENT_MARKER = "FULL_CONTENT:\n"
+_PRE_STATE_MARKER = "\n\n---PRE_STATE_BEFORE_APPLY---\n"
 
-    Invoked from agent_session through `selfmod.*` tool calls.
-    """
+
+class SelfModTool:
+    """Agent-callable wrapper for the self-modification pipeline."""
 
     def __init__(
         self,
@@ -108,24 +122,33 @@ class SelfModTool:
     # --- safety helpers ---
 
     def _check_target_writable(self, target_module: str) -> str | None:
-        """Return error message if target_module is not writable via selfmod, else None."""
-        # Normalize path separator
         target = target_module.replace("\\", "/").lstrip("/")
-
-        # Forbidden first
         for forbidden in SELFMOD_FORBIDDEN_SUBPATHS:
             if target == forbidden or target.startswith(forbidden + "/"):
                 return f"target_module '{target}' is in SELFMOD_FORBIDDEN_SUBPATHS"
-
-        # Must match one of writable subpaths
         for allowed in SELFMOD_WRITABLE_SUBPATHS:
             if target == allowed or target.startswith(allowed + "/"):
                 return None
-
         return (
             f"target_module '{target}' not in SELFMOD_WRITABLE_SUBPATHS. "
             f"Use plugins/ or workspace/ for unstructured changes."
         )
+
+    def _extract_new_content(self, diff_blob: str) -> str | None:
+        """Extract the new file content from a proposal's diff_blob."""
+        if not diff_blob.startswith(_NEW_CONTENT_MARKER):
+            return None
+        body = diff_blob[len(_NEW_CONTENT_MARKER):]
+        # Strip pre-state if it was already appended (after first apply)
+        if _PRE_STATE_MARKER in body:
+            body = body.split(_PRE_STATE_MARKER, 1)[0]
+        return body
+
+    def _extract_pre_state(self, diff_blob: str) -> str | None:
+        """Extract pre-state content captured at apply time."""
+        if _PRE_STATE_MARKER not in diff_blob:
+            return None
+        return diff_blob.split(_PRE_STATE_MARKER, 1)[1]
 
     # --- public tool methods ---
 
@@ -137,30 +160,15 @@ class SelfModTool:
         diff_blob: str = "",
         proposed_by: str | None = None,
     ) -> str:
-        """Create a new SelfModificationProposal.
-
-        target_module: relative path like 'src/sonya/channels/discord.py'
-        change_summary: human-readable description
-        new_content: full file content (for new files or full overwrite)
-        diff_blob: alternative — unified diff string
-        proposed_by: principal_id of proposer (defaults to 'sonya' for self-proposed)
-
-        Returns: result JSON
-        """
         err = self._check_target_writable(target_module)
         if err:
             return json.dumps({"status": "rejected_pre_pipeline", "reason": err})
-
         if not new_content and not diff_blob:
             return json.dumps({
                 "status": "error",
                 "reason": "either new_content or diff_blob required",
             })
-
-        # Use new_content as diff_blob if no diff provided
-        # (Layer 1 will treat it as a full-file replacement when applied)
-        blob = diff_blob or f"FULL_CONTENT:\n{new_content}"
-
+        blob = diff_blob or f"{_NEW_CONTENT_MARKER}{new_content}"
         proposal = self._store.create(
             target_module=target_module,
             change_summary=change_summary,
@@ -174,16 +182,47 @@ class SelfModTool:
             "current_status": proposal.status.value,
         })
 
+    def test_sandbox(self, proposal_id: str) -> str:
+        """Import the proposed content in an isolated namespace.
+
+        Catches syntax errors, import errors, top-level exceptions BEFORE writing to disk.
+        Does NOT modify any live module.
+        """
+        try:
+            p = self._store.get(proposal_id)
+        except ProposalNotFoundError:
+            return json.dumps({"status": "error", "reason": f"proposal {proposal_id} not found"})
+
+        content = self._extract_new_content(p.diff_blob)
+        if content is None:
+            return json.dumps({"status": "error", "reason": "diff_blob missing FULL_CONTENT marker"})
+
+        result = sandbox_test(p.target_module, content)
+        self._stream.append(ContinuityEvent(
+            kind="self_mod.sandbox_test",
+            payload={
+                "proposal_id": proposal_id,
+                "target_module": p.target_module,
+                "ok": result["ok"],
+                "error": result["error"][:200] if result.get("error") else "",
+            },
+        ))
+        return json.dumps({
+            "status": "tested",
+            "proposal_id": proposal_id,
+            "ok": result["ok"],
+            "error": result["error"],
+            "traceback": result["traceback"][:2000],
+            "exports": result["exports"],
+        })
+
     def validate(self, proposal_id: str) -> str:
-        """Run all 4 layers on a proposal. Returns layer-by-layer results."""
         try:
             proposal = self._store.get(proposal_id)
         except ProposalNotFoundError:
             return json.dumps({"status": "error", "reason": f"proposal {proposal_id} not found"})
-
         results = self._pipeline.validate(proposal)
         final = self._store.get(proposal_id)
-
         return json.dumps({
             "status": "validated",
             "proposal_id": proposal_id,
@@ -195,9 +234,11 @@ class SelfModTool:
         })
 
     def apply(self, proposal_id: str) -> str:
-        """Apply an APPROVED or GOVERNED_APPROVED proposal to disk.
+        """Apply approved proposal: capture pre-state, write file, hot-reload.
 
-        Writes target_module file with new content. Records apply event.
+        Returns JSON with hot_reload result and watch_window scheduling info.
+        Process restart is NOT required for most subpaths — see the
+        `hot_reload` field in the result.
         """
         try:
             proposal = self._store.get(proposal_id)
@@ -210,30 +251,44 @@ class SelfModTool:
                 "reason": f"proposal status is {proposal.status.value}, must be approved or governed_approved",
             })
 
-        # Re-check target writable (defense in depth)
         err = self._check_target_writable(proposal.target_module)
         if err:
             return json.dumps({"status": "error", "reason": err})
 
-        # Extract content
-        diff_blob = proposal.diff_blob
-        if diff_blob.startswith("FULL_CONTENT:\n"):
-            content = diff_blob[len("FULL_CONTENT:\n"):]
-        else:
+        new_content = self._extract_new_content(proposal.diff_blob)
+        if new_content is None:
             return json.dumps({
                 "status": "error",
-                "reason": "only FULL_CONTENT proposals are applicable in MVP. Use new_content parameter.",
+                "reason": "only FULL_CONTENT proposals are applicable. Use new_content parameter.",
             })
 
-        # Write to disk
         target_path = (self._root / proposal.target_module).resolve()
         try:
             target_path.relative_to(self._root)
         except ValueError:
             return json.dumps({"status": "error", "reason": "target outside project root"})
 
+        # Capture pre-state (None if file didn't exist)
+        pre_state: str | None = None
+        if target_path.exists():
+            try:
+                pre_state = target_path.read_text(encoding="utf-8")
+            except Exception:
+                pre_state = None
+
+        # Persist pre-state into the proposal so rollback can use it
+        new_blob = proposal.diff_blob
+        if pre_state is not None and _PRE_STATE_MARKER not in new_blob:
+            new_blob = new_blob + _PRE_STATE_MARKER + pre_state
+            self._sub.connection.execute(
+                "UPDATE self_mod_proposals SET diff_blob = ? WHERE proposal_id = ?",
+                (new_blob, proposal_id),
+            )
+            self._sub.connection.commit()
+
+        # Write to disk
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(content, encoding="utf-8")
+        target_path.write_text(new_content, encoding="utf-8")
 
         # Mark applied
         self._store.update_status(proposal_id, ProposalStatus.APPLIED)
@@ -243,7 +298,8 @@ class SelfModTool:
                 "proposal_id": proposal_id,
                 "target_module": proposal.target_module,
                 "summary": proposal.change_summary,
-                "size": len(content),
+                "size": len(new_content),
+                "had_pre_state": pre_state is not None,
             },
         ))
         self._audit.append(
@@ -254,38 +310,82 @@ class SelfModTool:
             metadata={"proposal_id": proposal_id},
         )
 
+        # Hot-reload + drop-and-recreate
+        reload_result = self._hot_reload(proposal.target_module)
+
+        # Schedule watch window (rollback on crash within window)
+        self._schedule_watch_window(proposal_id, proposal.target_module, watch_seconds=60)
+
         return json.dumps({
             "status": "applied",
             "proposal_id": proposal_id,
             "target_module": proposal.target_module,
-            "bytes_written": len(content),
-            "note": "process restart may be required for the change to take effect (hot-reload only works for tools/plugins/)",
+            "bytes_written": len(new_content),
+            "pre_state_captured": pre_state is not None,
+            "hot_reload": reload_result,
+            "watch_window_seconds": 60,
+            "note": "if hot_reload.success=true, change is live; otherwise restart still needed",
+        })
+
+    def rollback(self, proposal_id: str, reason: str = "") -> str:
+        """Restore pre-state captured at apply time."""
+        try:
+            proposal = self._store.get(proposal_id)
+        except ProposalNotFoundError:
+            return json.dumps({"status": "error", "reason": f"proposal {proposal_id} not found"})
+
+        if proposal.status != ProposalStatus.APPLIED:
+            return json.dumps({
+                "status": "error",
+                "reason": f"can only rollback APPLIED proposals (current: {proposal.status.value})",
+            })
+
+        pre_state = self._extract_pre_state(proposal.diff_blob)
+        target_path = (self._root / proposal.target_module).resolve()
+        try:
+            target_path.relative_to(self._root)
+        except ValueError:
+            return json.dumps({"status": "error", "reason": "target outside project root"})
+
+        # Restore file
+        if pre_state is None:
+            # File didn't exist before — delete it
+            if target_path.exists():
+                target_path.unlink()
+            file_action = "deleted (was new file)"
+        else:
+            target_path.write_text(pre_state, encoding="utf-8")
+            file_action = f"restored ({len(pre_state)} bytes)"
+
+        self._watchdog.trigger_revert(proposal, reason=reason or "manual rollback")
+
+        # Hot-reload again to pick up restored content
+        reload_result = self._hot_reload(proposal.target_module)
+
+        return json.dumps({
+            "status": "reverted",
+            "proposal_id": proposal_id,
+            "file_action": file_action,
+            "hot_reload": reload_result,
+            "reason": reason,
         })
 
     def list_proposals(self, status_filter: str = "") -> str:
-        """List proposals, optionally filtered by status.
-
-        Status values: draft, validating, passed_layer_1, passed_layer_2,
-        passed_layer_3, passed_layer_4, requires_governed_change,
-        governed_approved, approved, rejected, applied, reverted.
-        """
         if status_filter:
             try:
                 status = ProposalStatus(status_filter.strip().lower())
             except ValueError:
                 return json.dumps({
                     "status": "error",
-                    "reason": f"unknown status: {status_filter}. Valid: {[s.value for s in ProposalStatus]}",
+                    "reason": f"unknown status: {status_filter}",
                 })
             proposals = self._store.list_by_status(status)
         else:
-            # List all by querying every status
             proposals = []
             for s in ProposalStatus:
                 proposals.extend(self._store.list_by_status(s))
             proposals.sort(key=lambda p: p.created_at, reverse=True)
-            proposals = proposals[:50]  # cap
-
+            proposals = proposals[:50]
         return json.dumps({
             "status": "ok",
             "count": len(proposals),
@@ -302,19 +402,22 @@ class SelfModTool:
         })
 
     def get_proposal(self, proposal_id: str) -> str:
-        """Get full details of one proposal including diff_blob."""
         try:
             p = self._store.get(proposal_id)
         except ProposalNotFoundError:
             return json.dumps({"status": "error", "reason": f"proposal {proposal_id} not found"})
-
+        # Strip pre-state from displayed diff_blob (it bloats output)
+        display_blob = p.diff_blob
+        if _PRE_STATE_MARKER in display_blob:
+            display_blob = display_blob.split(_PRE_STATE_MARKER, 1)[0]
         return json.dumps({
             "status": "ok",
             "proposal_id": p.proposal_id,
             "target_module": p.target_module,
             "change_summary": p.change_summary,
-            "diff_blob": p.diff_blob[:5000],  # cap
-            "diff_blob_truncated": len(p.diff_blob) > 5000,
+            "diff_blob": display_blob[:5000],
+            "diff_blob_truncated": len(display_blob) > 5000,
+            "has_pre_state": _PRE_STATE_MARKER in p.diff_blob,
             "proposed_by": p.proposed_by_principal_id,
             "current_status": p.status.value,
             "created_at": p.created_at,
@@ -322,18 +425,15 @@ class SelfModTool:
         })
 
     def request_governed(self, proposal_id: str) -> str:
-        """For REQUIRES_GOVERNED_CHANGE proposals — create approval request."""
         try:
             p = self._store.get(proposal_id)
         except ProposalNotFoundError:
             return json.dumps({"status": "error", "reason": f"proposal {proposal_id} not found"})
-
         if p.status != ProposalStatus.REQUIRES_GOVERNED_CHANGE:
             return json.dumps({
                 "status": "error",
                 "reason": f"proposal status is {p.status.value}, expected requires_governed_change",
             })
-
         req = self._governed.request_governed_change(p)
         return json.dumps({
             "status": "approval_requested",
@@ -343,16 +443,12 @@ class SelfModTool:
         })
 
     def check_governed(self, proposal_id: str) -> str:
-        """Check if a previously requested governed change has been approved."""
         try:
             p = self._store.get(proposal_id)
         except ProposalNotFoundError:
             return json.dumps({"status": "error", "reason": f"proposal {proposal_id} not found"})
-
         approved = self._governed.check_governed_approval(p)
-        # Reload to see if status changed
         p_after = self._store.get(proposal_id)
-
         return json.dumps({
             "status": "checked",
             "proposal_id": proposal_id,
@@ -360,23 +456,199 @@ class SelfModTool:
             "current_status": p_after.status.value,
         })
 
-    def rollback(self, proposal_id: str, reason: str = "") -> str:
-        """Mark a proposal as REVERTED. Does not currently restore file content
-        (that would require keeping pre-state — TODO for next iteration)."""
+    # --- hot-reload internals ---
+
+    def _hot_reload(self, target_module: str) -> dict[str, Any]:
+        """Reload the changed module + drop-and-recreate live instances.
+
+        Returns dict with: success, dotted_name, channels_replaced, errors.
+        """
+        result: dict[str, Any] = {
+            "success": False,
+            "dotted_name": "",
+            "channels_replaced": [],
+            "tools_replaced": [],
+            "soft_restart_required": False,
+            "errors": [],
+        }
+
+        target = target_module.replace("\\", "/").lstrip("/")
+
+        # Files that need full-process restart (cannot hot-reload)
+        # main.py + config.py drive the event loop itself
+        # logging.py / runtime/live.py affect process-wide state
+        restart_only = {
+            "src/sonya/main.py",
+            "src/sonya/config.py",
+            "src/sonya/logging.py",
+            "src/sonya/runtime/live.py",
+        }
+        if target in restart_only:
+            result["soft_restart_required"] = True
+            result["errors"].append(
+                f"{target} requires soft-restart of runtime task; "
+                "use selfmod.soft_restart_runtime when supervisor pattern is enabled"
+            )
+            return result
+
+        # Skip non-Python files (schema.sql, .md, etc.)
+        if not target.endswith(".py"):
+            result["success"] = True  # nothing to reload
+            return result
+
+        dotted = path_to_dotted(target)
+        result["dotted_name"] = dotted
+
+        # Reload the module
         try:
-            p = self._store.get(proposal_id)
-        except ProposalNotFoundError:
-            return json.dumps({"status": "error", "reason": f"proposal {proposal_id} not found"})
+            module = reload_module(dotted)
+        except Exception as err:
+            result["errors"].append(f"reload failed: {type(err).__name__}: {err}")
+            self._stream.append(ContinuityEvent(
+                kind="self_mod.hot_reload_failed",
+                payload={"dotted": dotted, "error": str(err)},
+            ))
+            return result
 
-        if p.status != ProposalStatus.APPLIED:
-            return json.dumps({
-                "status": "error",
-                "reason": f"can only rollback APPLIED proposals (current: {p.status.value})",
-            })
+        # Reconcile live subsystems
+        live = get_live_runtime()
+        if live is None:
+            # No live runtime registered (e.g. tests) — module reload succeeded, that's it
+            result["success"] = True
+            return result
 
-        self._watchdog.trigger_revert(p, reason=reason or "manual rollback")
-        return json.dumps({
-            "status": "reverted",
-            "proposal_id": proposal_id,
-            "note": "status marked REVERTED. File content NOT auto-restored (manual revert needed for now).",
-        })
+        # Channel reconciliation
+        if target.startswith("src/sonya/channels/") and target != "src/sonya/channels/__init__.py":
+            try:
+                self._reconcile_channels(module, live, result)
+            except Exception as err:
+                result["errors"].append(f"channel reconcile failed: {type(err).__name__}: {err}")
+
+        # Tool reconciliation: for tools/, reloading the module is enough
+        # because agent_session creates fresh instances each session.
+        if target.startswith("src/sonya/tools/") and not target.endswith("/__init__.py"):
+            result["tools_replaced"].append(dotted)
+
+        result["success"] = not result["errors"]
+        self._stream.append(ContinuityEvent(
+            kind="self_mod.hot_reloaded",
+            payload={
+                "target": target,
+                "dotted": dotted,
+                "success": result["success"],
+                "channels_replaced": result["channels_replaced"],
+                "errors": result["errors"][:3],
+            },
+        ))
+        return result
+
+    def _reconcile_channels(self, module: Any, live: Any, result: dict[str, Any]) -> None:
+        """Discover Channel implementations in module, drop-and-recreate.
+
+        For each Channel subclass found:
+          - if same name already in registry → stop old, instantiate new from class, start
+          - if new name → instantiate with default args (channel may need config; if so it needs a factory)
+        """
+        from sonya.channels import Channel, ChannelRegistry
+
+        registry: ChannelRegistry | None = live.channel_registry
+        deps = live.channel_deps
+        if registry is None or deps is None:
+            return
+
+        channel_classes = discover_subclasses(module, Channel)
+        if not channel_classes:
+            return
+
+        loop = asyncio.get_event_loop()
+
+        for cls in channel_classes:
+            # Channels need __init__ args; we can only auto-replace channels
+            # that already exist (we know their config).
+            # New channels need an explicit registration call from agent code.
+            existing_name = getattr(cls, "name", None)
+            if existing_name and registry.get(existing_name) is not None:
+                # Stop and recreate
+                old = registry.get(existing_name)
+                try:
+                    if loop.is_running():
+                        # We're inside the loop — schedule
+                        asyncio.create_task(self._replace_channel(registry, deps, existing_name, cls, result))
+                        result["channels_replaced"].append(f"{existing_name} (scheduled)")
+                    else:
+                        loop.run_until_complete(self._replace_channel(registry, deps, existing_name, cls, result))
+                        result["channels_replaced"].append(existing_name)
+                except Exception as err:
+                    result["errors"].append(f"replace {existing_name}: {err}")
+
+    async def _replace_channel(self, registry: Any, deps: Any, name: str, new_cls: type, result: dict[str, Any]) -> None:
+        """Stop old channel instance, instantiate new class with same constructor args, start."""
+        try:
+            old = registry.get(name)
+            if old is None:
+                return
+            # Capture old's __init__ args from its slots/dict
+            init_args = {}
+            for attr in ("_api_id", "_api_hash", "_session_path"):
+                if hasattr(old, attr):
+                    # Strip leading underscore for kwarg name
+                    init_args[attr.lstrip("_")] = getattr(old, attr)
+
+            await old.stop()
+            registry.unregister(name)
+
+            new_instance = new_cls(**init_args)
+            registry.register(new_instance)
+            await registry.start_one(name)
+        except Exception as err:
+            result["errors"].append(f"replace {name} failed: {type(err).__name__}: {err}")
+            self._stream.append(ContinuityEvent(
+                kind="self_mod.channel_replace_failed",
+                payload={"name": name, "error": str(err)},
+            ))
+
+    def _schedule_watch_window(self, proposal_id: str, target_module: str, watch_seconds: int = 60) -> None:
+        """Watch for crash signals over `watch_seconds`; auto-rollback if detected.
+
+        For now the only signal is: subsequent `internal.tool_error` or
+        `tg_handler_crash` event in continuity within the window AND
+        mentioning the same dotted path.
+
+        Real rollback logic runs only when an event loop is available.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._watch_loop(proposal_id, target_module, watch_seconds))
+        except RuntimeError:
+            # No event loop — running in tests or sync context. Skip.
+            pass
+
+    async def _watch_loop(self, proposal_id: str, target_module: str, watch_seconds: int) -> None:
+        """Background task: poll continuity for crash signals; auto-rollback if found."""
+        start_seq = self._stream.latest_seq()
+        deadline = time.time() + watch_seconds
+        dotted = path_to_dotted(target_module)
+        crash_kinds = {"internal.tool_error", "tg_handler_crash", "self_mod.hot_reload_failed", "self_mod.channel_replace_failed"}
+
+        while time.time() < deadline:
+            await asyncio.sleep(5.0)
+            try:
+                events = list(self._stream.read_since(start_seq))
+                for e in events:
+                    if e.kind in crash_kinds:
+                        # Heuristic: crash event mentions our dotted name OR target_module
+                        payload_str = json.dumps(e.payload, ensure_ascii=False)
+                        if dotted in payload_str or target_module in payload_str or e.kind == "self_mod.hot_reload_failed":
+                            self._stream.append(ContinuityEvent(
+                                kind="self_mod.auto_rollback_triggered",
+                                payload={
+                                    "proposal_id": proposal_id,
+                                    "trigger_kind": e.kind,
+                                    "trigger_seq": e.seq,
+                                },
+                            ))
+                            self.rollback(proposal_id, reason=f"auto-rollback: {e.kind}")
+                            return
+            except Exception:
+                pass

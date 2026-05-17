@@ -18,8 +18,10 @@ from sonya.runtime import (
     EventBus,
     Health,
     Lifecycle,
+    LiveRuntime,
     WriteMaster,
     WriteMasterContention,
+    set_live_runtime,
 )
 from sonya.state import (
     ContinuityStream,
@@ -264,6 +266,16 @@ async def _run(config: AppConfig) -> int:
         config=config,
         substrate=substrate,
     )
+
+    # Register live runtime for selfmod hot-reload
+    set_live_runtime(LiveRuntime(
+        channel_registry=registry,
+        channel_deps=deps,
+        internal_process=internal_process,
+        substrate=substrate,
+        config=config,
+        provider=thinking_provider,
+    ))
 
     loop = asyncio.get_running_loop()
     stop_requested = asyncio.Event()

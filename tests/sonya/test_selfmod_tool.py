@@ -190,3 +190,119 @@ def test_rollback_only_applied(selfmod: SelfModTool) -> None:
     rb = json.loads(selfmod.rollback(pid, reason="unwanted"))
     assert rb["status"] == "error"
     assert "APPLIED" in rb["reason"]
+
+
+
+# --- Hot-reload + sandbox + rollback tests ---
+
+
+def test_sandbox_test_passes_clean_module(selfmod: SelfModTool) -> None:
+    create_result = json.loads(selfmod.propose(
+        target_module="src/sonya/tools/clean_test.py",
+        change_summary="clean module",
+        new_content="VALUE = 42\n\ndef ping():\n    return 'pong'\n",
+    ))
+    pid = create_result["proposal_id"]
+    res = json.loads(selfmod.test_sandbox(pid))
+    assert res["status"] == "tested"
+    assert res["ok"] is True
+    assert "VALUE" in res["exports"] or "ping" in res["exports"]
+
+
+def test_sandbox_test_catches_syntax_error(selfmod: SelfModTool) -> None:
+    create_result = json.loads(selfmod.propose(
+        target_module="src/sonya/tools/broken.py",
+        change_summary="broken syntax",
+        new_content="this is :::: not python\n",
+    ))
+    pid = create_result["proposal_id"]
+    res = json.loads(selfmod.test_sandbox(pid))
+    assert res["status"] == "tested"
+    assert res["ok"] is False
+    assert "SyntaxError" in res["error"] or "syntax" in res["error"].lower()
+
+
+def test_sandbox_test_catches_runtime_exception(selfmod: SelfModTool) -> None:
+    create_result = json.loads(selfmod.propose(
+        target_module="src/sonya/tools/runtime_err.py",
+        change_summary="raises at import",
+        new_content="raise RuntimeError('boom at import')\n",
+    ))
+    pid = create_result["proposal_id"]
+    res = json.loads(selfmod.test_sandbox(pid))
+    assert res["status"] == "tested"
+    assert res["ok"] is False
+    assert "RuntimeError" in res["error"]
+
+
+def test_apply_captures_pre_state_for_existing_file(
+    selfmod: SelfModTool, tmp_path: Path
+) -> None:
+    # Pre-create the target file
+    target = tmp_path / "src/sonya/tools/existing.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("OLD = 'pre-state value'\n", encoding="utf-8")
+
+    create_result = json.loads(selfmod.propose(
+        target_module="src/sonya/tools/existing.py",
+        change_summary="overwrite",
+        new_content="NEW = 'post-state value'\n",
+    ))
+    pid = create_result["proposal_id"]
+    val = json.loads(selfmod.validate(pid))
+    if val["final_status"] != "approved":
+        pytest.skip(f"validation didn't approve: {val['final_status']}")
+
+    apply_result = json.loads(selfmod.apply(pid))
+    assert apply_result["status"] == "applied"
+    assert apply_result["pre_state_captured"] is True
+
+    # File now has new content
+    assert "NEW = 'post-state value'" in target.read_text(encoding="utf-8")
+
+
+def test_rollback_restores_pre_state(selfmod: SelfModTool, tmp_path: Path) -> None:
+    target = tmp_path / "src/sonya/tools/rollback_test.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("ORIG = 1\n", encoding="utf-8")
+
+    create_result = json.loads(selfmod.propose(
+        target_module="src/sonya/tools/rollback_test.py",
+        change_summary="overwrite for rollback test",
+        new_content="REPLACED = 2\n",
+    ))
+    pid = create_result["proposal_id"]
+    val = json.loads(selfmod.validate(pid))
+    if val["final_status"] != "approved":
+        pytest.skip(f"validation didn't approve: {val['final_status']}")
+
+    json.loads(selfmod.apply(pid))
+    assert "REPLACED = 2" in target.read_text(encoding="utf-8")
+
+    # Now rollback
+    rb = json.loads(selfmod.rollback(pid, reason="testing"))
+    assert rb["status"] == "reverted"
+    # Pre-state restored
+    assert "ORIG = 1" in target.read_text(encoding="utf-8")
+
+
+def test_rollback_deletes_new_file(selfmod: SelfModTool, tmp_path: Path) -> None:
+    # File didn't exist before — apply should create, rollback should delete
+    create_result = json.loads(selfmod.propose(
+        target_module="src/sonya/tools/new_file.py",
+        change_summary="create new file",
+        new_content="NEW_FILE = True\n",
+    ))
+    pid = create_result["proposal_id"]
+    val = json.loads(selfmod.validate(pid))
+    if val["final_status"] != "approved":
+        pytest.skip(f"validation didn't approve: {val['final_status']}")
+
+    json.loads(selfmod.apply(pid))
+    target = tmp_path / "src/sonya/tools/new_file.py"
+    assert target.exists()
+
+    rb = json.loads(selfmod.rollback(pid, reason="undo creation"))
+    assert rb["status"] == "reverted"
+    assert "deleted" in rb["file_action"]
+    assert not target.exists()
