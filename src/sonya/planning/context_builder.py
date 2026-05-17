@@ -105,11 +105,17 @@ def build_full_context(
         system_prompt += facts_block
 
     # Drives state (CRUTCH-004: drives as external info)
+    # Always render the section so Sonya knows the channel exists, even if all
+    # values are below the noise threshold.
     if drives:
         drives_block = "\n\n## Моё текущее состояние (drives):\n"
+        rendered_any = False
         for name, value in drives.to_dict().items():
-            if value > 0.1:
+            if value > 0.05:
                 drives_block += f"- {name}: {value:.2f}\n"
+                rendered_any = True
+        if not rendered_any:
+            drives_block += "(все drives около нуля — спокойно)\n"
         system_prompt += drives_block
 
     # Identity self-model
@@ -120,11 +126,13 @@ def build_full_context(
     # Open tasks (Этап C): surface unresolved tasks so thinking loop and telegram
     # replies both know what's in progress / pending. Keeps "one stream of
     # consciousness" — same task list visible everywhere.
+    # Always render the section (even when empty) so Sonya knows the channel
+    # exists — distinguishing "no tasks" from "I can't see them".
     try:
         from sonya.tasks.store import TaskStore
         open_tasks = TaskStore(substrate).list_open()
+        tasks_block = "\n\n## Мои текущие задачи:\n"
         if open_tasks:
-            tasks_block = "\n\n## Мои текущие задачи:\n"
             for t in open_tasks[:10]:
                 done = len(t.completed_steps)
                 total = len(t.plan_steps)
@@ -132,7 +140,9 @@ def build_full_context(
                 tasks_block += f"- [{t.status.value}] {t.task_id}: {t.title}{progress}\n"
                 if t.status.value == "blocked" and t.blocker:
                     tasks_block += f"    blocker: {t.blocker[:120]}\n"
-            system_prompt += tasks_block
+        else:
+            tasks_block += "(пока пусто — могу создать через tasks.create в active session)\n"
+        system_prompt += tasks_block
     except Exception:
         pass
 
