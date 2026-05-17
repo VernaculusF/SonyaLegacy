@@ -102,8 +102,13 @@ async def test_internal_process_detects_overdue_intention(
     await proc.stop()
 
     events = list(stream.read_since(0))
-    overdue_events = [e for e in events if e.kind == "internal.intention_overdue"]
-    assert len(overdue_events) >= 1
+    # M-5 fix: overdue intentions now appear in cognitive_tick.triggers, not as separate events
+    overdue_in_triggers = [
+        e for e in events
+        if e.kind == "internal.cognitive_tick"
+        and any(t.startswith("deadline_overdue:") for t in e.payload.get("triggers", []))
+    ]
+    assert len(overdue_in_triggers) >= 1
 
 
 async def test_internal_process_stops_cleanly(substrate: Substrate) -> None:

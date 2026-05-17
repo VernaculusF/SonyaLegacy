@@ -42,21 +42,20 @@ class GovernedChangeProtocol:
         Returns True only if an approval exists for this proposal AND
         the approver is the primary anchor.
         """
-        pending = self._approvals.list_pending()
-        for req in pending:
-            if proposal.proposal_id in req.action:
-                return False  # still pending
+        # Find all approval requests for this specific proposal_id via public API
+        requests = self._approvals.find_by_action_pattern(
+            f"%{proposal.proposal_id}%"
+        )
+        if not requests:
+            return False
 
-        # Check if there's an approved request for this proposal
-        # (search through all approval requests via raw query)
-        rows = self._proposals._sub.connection.execute(
-            "SELECT status, decided_by_principal_id FROM approval_requests "
-            "WHERE action LIKE ?",
-            (f"%{proposal.proposal_id}%",),
-        ).fetchall()
-
-        for status, decided_by in rows:
-            if status == "approved" and decided_by == self._anchor_id:
+        for req in requests:
+            if req.status is ApprovalStatus.PENDING:
+                return False  # still waiting on a decision
+            if (
+                req.status is ApprovalStatus.APPROVED
+                and req.decided_by_principal_id == self._anchor_id
+            ):
                 self._proposals.update_status(
                     proposal.proposal_id, ProposalStatus.GOVERNED_APPROVED
                 )

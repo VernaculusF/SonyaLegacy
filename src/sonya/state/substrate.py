@@ -45,6 +45,14 @@ class Substrate:
                 f"Substrate at {path} has schema version {version}, "
                 f"reader supports {sorted(cls.READABLE_VERSIONS)}"
             )
+        # S-13 fix: even in read-only mode, schema must be at WRITABLE_VERSION.
+        # Otherwise reader could open a v1 db and crash on missing v6 tables.
+        if read_only and version < cls.WRITABLE_VERSION:
+            conn.close()
+            raise SubstrateVersionError(
+                f"Read-only open of v{version} substrate not supported "
+                f"(needs v{cls.WRITABLE_VERSION}+ schema). Open writable to migrate."
+            )
         return cls(path, conn, version)
 
     @property

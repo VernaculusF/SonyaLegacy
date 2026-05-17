@@ -91,6 +91,7 @@ class InternalProcess:
         stream: ContinuityStream,
         intention_store: PendingIntentionStore,
         *,
+        substrate=None,
         provider: ThinkingProvider | None = None,
         thinking_prompt: str = "",
         idle_interval_seconds: float = 300.0,
@@ -99,6 +100,7 @@ class InternalProcess:
     ) -> None:
         self._stream = stream
         self._intentions = intention_store
+        self._substrate = substrate
         self._provider = provider
         self._thinking_prompt = thinking_prompt
         self._idle_interval = idle_interval_seconds
@@ -178,7 +180,10 @@ class InternalProcess:
                 await self._run_active_session()
                 self._last_active_session = now
             elif should_think:
-                await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
+                if self._provider is not None:
+                    await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
+                else:
+                    self._emit_cognitive_events_sync_fallback(crossed, idle_triggered, overdue_ids)
                 if idle_triggered:
                     self._last_external_event = now  # reset idle timer
 
@@ -195,13 +200,13 @@ class InternalProcess:
                     pass  # already resolved
         return overdue
 
-    def _emit_cognitive_events(
+    def _emit_cognitive_events_sync_fallback(
         self,
         crossed_thresholds: list[str],
         idle_triggered: bool,
         overdue_ids: list[str],
     ) -> None:
-        """Write continuity events based on triggers (sync fallback)."""
+        """Sync fallback used when no provider is configured (writes events without LLM call)."""
         payload: dict[str, Any] = {
             "tick": self._tick_count,
             "counters": self._counters.to_dict(),
@@ -216,8 +221,8 @@ class InternalProcess:
             payload["triggers"].extend([f"deadline_overdue:{iid}" for iid in overdue_ids])
 
         self._stream.append(ContinuityEvent(kind="internal.cognitive_tick", payload=payload))
-        for iid in overdue_ids:
-            self._stream.append(ContinuityEvent(kind="internal.intention_overdue", payload={"intention_id": iid}))
+        # M-5 fix: do NOT emit separate intention_overdue events when triggers list already has them
+        # (was causing triple recording)
 
     async def _emit_cognitive_events_async(
         self,
@@ -251,8 +256,7 @@ class InternalProcess:
             ))
 
         self._stream.append(ContinuityEvent(kind="internal.cognitive_tick", payload=payload))
-        for iid in overdue_ids:
-            self._stream.append(ContinuityEvent(kind="internal.intention_overdue", payload={"intention_id": iid}))
+        # M-5 fix: deadline_overdue is already in cognitive_tick.triggers — no separate event
 
     async def _call_thinking_provider(self, payload: dict[str, Any]) -> str:
         """Call LLM provider for internal thinking."""
@@ -286,8 +290,10 @@ class InternalProcess:
             from sonya.subject.agent_session import run_agent_session
             from sonya.tools import SelfInspectTool, FilesystemTool
 
-            # Get substrate from stream (it holds the connection)
-            substrate = self._stream._sub
+            # Substrate must be passed explicitly; fall back to private access if not
+            substrate = self._substrate or getattr(self._stream, "_sub", None)
+            if substrate is None:
+                return
 
             self_inspect = SelfInspectTool(substrate)
             filesystem = FilesystemTool()
@@ -298,14 +304,40 @@ class InternalProcess:
                 "Или просто исследуй что-то интересное."
             )
 
-            await run_agent_session(
+            # Use last few thoughts as initial context for the agent session
+            initial_thought = ""
+            try:
+                stream_recent = list(self._stream.read_since(max(0, self._stream.latest_seq() - 5)))
+                last_thoughts = [
+                    e.payload.get("thought", "")
+                    for e in stream_recent
+                    if e.kind == "internal.thought"
+                ]
+                if last_thoughts:
+                    initial_thought = last_thoughts[-1][:500]
+            except Exception:
+                pass
+
+            result = await run_agent_session(
                 provider=self._provider,
                 stream=self._stream,
                 self_inspect=self_inspect,
                 filesystem=filesystem,
                 system_prompt=prompt,
+                initial_thought=initial_thought,
                 max_steps=30,
                 max_seconds=1200.0,
             )
+
+            # Log session outcome including budget_exceeded flag (S-10 fix)
+            self._stream.append(ContinuityEvent(
+                kind="internal.agent_session_outcome",
+                payload={
+                    "steps": result.steps,
+                    "budget_exceeded": result.budget_exceeded,
+                    "tools_used": result.actions[:10],
+                    "had_initial_thought": bool(initial_thought),
+                },
+            ))
         except Exception:
             pass  # Don't crash the loop on session error

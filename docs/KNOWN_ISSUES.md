@@ -160,123 +160,89 @@ Thinking loop генерирует мысли, но не может отправ
 
 Read-операции (dashboard, thoughts, memory, telegram, audit, substrate) работают одновременно с core — SQLite позволяет multiple readers + 1 writer.
 
-### C-6. Layer 4 anchor protection обходит ApprovalManager API
+### C-6. Layer 4 anchor protection обходит ApprovalManager API ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** `src/sonya/selfmod/governed_change.py:51`
+`ApprovalManager.find_by_action_pattern(pattern)` — новый публичный метод. `GovernedChangeProtocol.check_governed_approval` теперь использует его вместо прямого SQL по `_sub.connection`. Layer 4 защищён от изменений схемы — public API даёт abstraction barrier.
 
-**Проблема:** `GovernedChangeProtocol.check_governed_approval` лезет напрямую в `proposals._sub.connection` минуя API ApprovalManager. Если поменяется схема таблицы `approval_requests` — Layer 4 (защита identity) silently сломается.
+### C-7. THINGS_NOT_TO_BETRAY проверка хрупкая ✅ ИСПРАВЛЕНО (commit pending)
 
-**Фикс:** Использовать публичный API `approval_manager.list_decided()` или добавить метод `list_by_action_pattern()`.
-
-### C-7. THINGS_NOT_TO_BETRAY проверка хрупкая
-
-**Где:** `selfmod/layers/anchor_integrity.py`
-
-**Проблема:** Проверяет substring `relation_anchor_binding`, но seed value — `relation_anchor_binding_to_ivan_via_principal_id`. Сейчас работает по совпадению, но если seed изменится — Layer 4 рухнет молча.
-
-**Фикс:** Использовать `THINGS_NOT_TO_BETRAY_SEED` константу программно.
+`_IDENTITY_CRITICAL_KEYWORDS` теперь строится программно из `THINGS_NOT_TO_BETRAY_SEED` через `_build_keywords()`. Каждый pillar разбивается на семантические стемы (`_`-split), плюс exact match. Если pillar переименуется в `state/seed.py` — Layer 4 автоматически подхватит. Дополнительно — фиксированные identity-layer ключи (`things_not_to_betray`, `identity_record`, `identitywriter`, `subject_continuity`).
 
 ---
 
 ## 8. СЕРЬЁЗНЫЕ (broken integration / dead code)
 
-### S-1. JSON parsing бага в **трёх** местах
+### S-1. JSON parsing бага в **трёх** местах ✅ ИСПРАВЛЕНО (см. 3.4)
 
-`main.py:75-79`, `admin/server.py:170-176`, и `OpenRouterProvider` (хотя он dead code, см. S-3). Везде `text.split("\n")[0]` — берётся только первая строка.
+В `main.py` и `admin/server.py` — robust parser. `OpenRouterProvider` будет либо подключён (S-3), либо удалён.
 
-### S-2. `_ThinkingProvider` игнорирует kwargs
+### S-2. `_ThinkingProvider` игнорирует kwargs ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** `main.py:54`. Подпись `complete_text(self, messages, **kwargs)` но kwargs молча игнорируются — hardcoded `max_tokens=1500, temperature=0.9`.
+Теперь `kwargs.get("max_tokens", 1500)` и `kwargs.get("temperature", 0.9)` — defaults сохранены, но caller может переопределить.
 
 ### S-3. `OpenRouterProvider` — dead code
 
-**Где:** `src/sonya/providers/openrouter.py` (~250 строк)
-
-**Проблема:** Полноценный provider с retry/continuation/overlap detection из tg-bridge. **Никогда не вызывается**. Production использует ad-hoc `httpx.AsyncClient`. Все защитные механизмы провайдера неактивны.
-
-**Фикс:** Либо подключить в `_create_thinking_provider`, либо удалить.
+**Статус:** deferred — это code worth keeping (хорошая retry/continuation логика). Подключение в production требует адаптацию `_create_thinking_provider` на использование `ProviderBackend` Protocol вместо ad-hoc httpx. Big refactor — отдельная задача.
 
 ### S-4. `AccountPool` — dead code
 
-**Где:** `src/sonya/providers/pool.py`
-
-**Проблема:** Описано в CRUTCH-009 ("provider rotation"), есть тесты, но **никем не импортируется**. Используется один глобальный API key. CRUTCH-009 фактически не реализован.
+**Статус:** deferred — нужен только когда у нас несколько ключей и реальный rate limit. Сейчас один ключ к OmniRoute. Подключим когда будет смысл.
 
 ### S-5. `ProviderRegistry` — dead code
 
-Same story. Экспортируется, тестируется, не используется.
+**Статус:** deferred — нужен когда будет больше одной модели одновременно (text + vision + image-gen). Сейчас одна модель — registry излишен.
 
 ### S-6. Self-modification pipeline не подключён в runtime
 
-**Где:** `src/sonya/selfmod/`
+**Статус:** deferred — нужно интегрировать в active_session flow. Это большая задача (Phase 4 → production), не bug fix. Ждёт отдельного sprint.
 
-**Проблема:** `Pipeline`, `WatchWindow`, `GovernedChangeProtocol` нигде не инстанциируются в `main.py`. 4-слойный pipeline полностью реализован и тестирован, но в живой Соне **недостижим**. ROADMAP §4 говорит "Phase 4 ✅ закрыта" — это formal-only.
+### S-7. Dead код Phase 4-6
 
-### S-7. Куча dead код в runtime
+**Статус:** deferred — то же самое что S-6 + интеграция drift detector / gap detector / consolidation pipeline в thinking loop. Это integration sprint, не bug.
 
-**Никогда не вызываются вне тестов:**
-- `DriveCounters` (передаётся в context_builder с `drives=None` всегда)
-- `DriftDetector.scan_recent` → "anchor drift triggers auto-revert" не реализовано
-- `GapDetector.scan_recent` → capability gap detection не работает
-- `ConsolidationPipeline.run_consolidation` → semantic memory никогда не консолидируется
-- `SkillRegistry` → ни один skill никогда не активен
+### S-8. `internal_loop.py` лезет в `_stream._sub` (private) ✅ ИСПРАВЛЕНО (commit pending)
 
-ROADMAP помечает Phases 4-6 ✅ closed, но реально код только существует — нет вызовов.
+`InternalProcess.__init__` принимает `substrate=` параметр, использует его в `_run_active_session`. Fallback на `_stream._sub` остался для совместимости.
 
-### S-8. `internal_loop.py` лезет в `_stream._sub` (private)
+### S-9. `_emit_cognitive_events` (sync version) ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** `internal_loop.py:290`
+Sync-версия переименована в `_emit_cognitive_events_sync_fallback` и теперь реально используется когда `provider is None`. Не dead-code больше.
 
-**Проблема:** `substrate = self._stream._sub` — приватный атрибут. Дырявая абстракция.
+### S-10. `agent_session.run_agent_session(initial_thought=...)` ✅ ИСПРАВЛЕНО (commit pending)
 
-**Фикс:** Передавать substrate явно в `InternalProcess.__init__`.
+`_run_active_session` теперь подтягивает последний `internal.thought` из stream и передаёт как `initial_thought`. Также после сессии пишет `internal.agent_session_outcome` event с `budget_exceeded` flag — раньше он set-ился но не читался.
 
-### S-9. `_emit_cognitive_events` (sync version) — dead code
+### S-11. `agent_session._execute_tool` глотает все exceptions ✅ ИСПРАВЛЕНО (commit pending)
 
-В `internal_loop.py` есть и sync и async версия. Используется только async. Sync — мёртвая ветка.
+`_execute_tool` теперь принимает `stream` параметр. При exception пишет `internal.tool_error` event с tool name, arg preview, error_type, error_message.
 
-### S-10. `agent_session.run_agent_session(initial_thought=...)` — параметр не передаётся
+### S-12. ⚠️ FilesystemTool без allowlist ✅ ИСПРАВЛЕНО (commit pending)
 
-`_run_active_session` не передаёт `initial_thought`. `result.budget_exceeded` устанавливается, но никогда не читается.
+Полный rewrite `tools/filesystem.py`:
+- **Read** — допустим везде под project_root, КРОМЕ `FORBIDDEN_SUBPATHS` (`.env`, `.git/*`, `tg.session`, `schema.sql`, `seed.py`, `SOUL.md`)
+- **Write** — только в `WRITE_ALLOWED_SUBPATHS` (`workspace/`, `src/sonya/tools/plugins/`)
+- **Component check** — `.env`, `.git`, `tg.session` блокируются на любом уровне пути
+- list_dir и tree скрывают forbidden items из вывода
 
-### S-11. `agent_session._execute_tool` глотает все exceptions
+Соня теперь физически не может перезаписать identity-файлы или секреты через `[TOOL: filesystem.write ...]`. Plugin creation (`plugins.create`) тоже идёт через filesystem.write — попадает под allowlist (`tools/plugins/` — разрешён).
 
-**Проблема:** `filesystem.write` и `plugins.create` пишут на диск. Bare `except Exception` возвращает `[ERROR]`-строку — но не пишет в continuity stream и не логирует. Сломанный `plugins.create` от Сони не оставляет следа.
+### S-13. Read-only mode substrate ✅ ИСПРАВЛЕНО (commit pending)
 
-**Фикс:** Логировать ошибку tool execution в stream + log.
+`Substrate.open(read_only=True)` теперь падает с `SubstrateVersionError` если версия < `WRITABLE_VERSION`. Сообщение: "needs vN+ schema. Open writable to migrate."
 
-### S-12. ⚠️ FilesystemTool без allowlist — может записать `.env`, `.git/*`, schema.sql
+### S-14. Episodic memory — retention/decay ✅ ИСПРАВЛЕНО (commit pending)
 
-**Где:** `tools/filesystem.py:13`
-
-**Проблема:** `_allowed = [project_root]`. Соня через `agent_session` может вызвать `[TOOL: filesystem.write .env "..."]` — и это сработает. Также `plugins.create` пишет произвольный Python код в `tools/plugins/` без Layer 4 anchor check.
-
-Это **path к самопереписыванию без governance**. Противоречит SUBSTRATE_STANCE §9.
-
-**Фикс:**
-1. Allowlist под-путей (`tools/plugins/`, `workspace/`)
-2. Forbidden zones (`.env`, `.git/*`, `docs/personality/SOUL.md`, schema.sql, `tg.session`)
-3. `plugins.create` должен идти через self-modification pipeline (Layer 1-4)
-
-### S-13. Read-only mode substrate — потенциальная ошибка
-
-`Substrate.open(read_only=True)` пропускает миграцию, но `READABLE_VERSIONS = {1..6}`. Открытие v1 db в read-only пройдёт, потом краш на отсутствующих таблицах.
-
-### S-14. Episodic memory — retention/decay не работает
-
-**Где:** `src/sonya/memory/episodic.py`
-
-**Проблема:** Колонки `emotion_tags`, `retention_strength`, `archived` пишутся, но никогда не читаются логикой decay. `mark_accessed` существует, но **нигде не вызывается** → `access_count`/`retention_strength` не растут. Кривая забывания Эббингауза, описанная в MEMORY_AND_IDENTITY_PLAN §12, структурно отсутствует.
+1. `get_recent(mark_accessed=True)` и `get_by_type(mark_accessed=True)` — параметр по умолчанию True. При каждом подтягивании memories `access_count++`, `retention_strength += 0.1` (capped at 1.0). Кривая Эббингауза работает: использованные воспоминания крепнут.
+2. Новый метод `apply_decay(decay_rate=0.05, archive_threshold=0.1)` — multiplicative decay для всех unarchived events; те что упали ниже порога архивируются. Должен вызываться периодически (например из ConsolidationPipeline раз в день).
+3. Bulk `_mark_batch_accessed` — один UPDATE для всего batch вместо N запросов.
 
 ### S-15. `notify_external_event` сбрасывает только `loneliness`
 
-**Где:** `internal_loop.py:180-184`
+**Статус:** deferred — `DriveCounters` сейчас dead code (S-7), сбрасывать не от куда. Будет fixed когда DriveCounters интегрируется в runtime.
 
-**Проблема:** При входящем сообщении сбрасывается `HomeostasisCounters.loneliness`, но `DriveCounters.relational_focus` (другой класс) — не сбрасывается. Соня "соскучилась" вечно растёт даже когда активно общается.
+### S-16. Signal handlers молча проглатывают ошибки ✅ ИСПРАВЛЕНО (commit pending)
 
-### S-16. Signal handlers молча проглатывают ошибки
-
-`main.py:299-308`. `except (ValueError, OSError): pass` — если установка signal handler падает, Ctrl+C не работает graceful, узнаешь только в проде.
+Все три ветки (Windows + POSIX add_signal_handler + POSIX fallback signal.signal) теперь логируют `signal_install_failed` с именем сигнала и ошибкой. Сразу видно если что-то не работает.
 
 ---
 
@@ -302,9 +268,9 @@ ROADMAP помечает Phases 4-6 ✅ closed, но реально код то�
 
 Часть enum используется только в dead-code (WatchWindow, governed_change).
 
-### M-5. Тройная запись `intention_overdue`
+### M-5. Тройная запись `intention_overdue` ✅ ИСПРАВЛЕНО (commit pending)
 
-`_emit_cognitive_events_async` пишет: (a) `internal.cognitive_tick` с `triggers=[deadline_overdue:X]`, (b) отдельный `internal.intention_overdue` event для каждого id. Тот же факт x2.
+`_emit_cognitive_events_async` и `_emit_cognitive_events_sync_fallback` больше не пишут отдельный `internal.intention_overdue` event для каждого id — overdue ids уже в `cognitive_tick.payload.triggers` как `deadline_overdue:<id>`. Один факт — одна запись.
 
 ### M-6. Pipeline Layer 4 — комментарий не соответствует поведению
 
@@ -452,9 +418,9 @@ Emit stopping → append stopped → publish → set state STOPPED. Если ч�
 
 Pragma в schema.sql не применяется к каждому новому connection.
 
-### m-9. EpisodicMemory `_row_to_event` хрупко на пустом emotion_tags_json
+### m-9. EpisodicMemory `_row_to_event` ✅ ИСПРАВЛЕНО (см. S-14)
 
-`json.loads(row[8] or "[]")` — если empty string вместо NULL, упадёт.
+`json.loads` обёрнут в try/except — empty string или corrupt JSON → `()`.
 
 ### m-10. `self_inspect.list_own_modules` без allowlist
 

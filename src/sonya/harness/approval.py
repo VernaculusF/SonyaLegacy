@@ -93,6 +93,22 @@ class ApprovalManager:
         )
         return [_row_to_request(row) for row in cursor.fetchall()]
 
+    def find_by_action_pattern(self, pattern: str) -> list[ApprovalRequest]:
+        """Find all requests whose action matches the given LIKE pattern.
+
+        Pattern uses SQL LIKE syntax (`%` for wildcards). Used by
+        GovernedChangeProtocol to find approval requests for a specific
+        proposal_id without bypassing this manager's API.
+        """
+        cursor = self._sub.connection.execute(
+            "SELECT request_id, principal_id, action, scope, status, "
+            "created_at, decided_at, decided_by_principal_id "
+            "FROM approval_requests WHERE action LIKE ? "
+            "ORDER BY created_at ASC",
+            (pattern,),
+        )
+        return [_row_to_request(row) for row in cursor.fetchall()]
+
     def approve(self, request_id: str, *, by_principal_id: str) -> ApprovalRequest:
         return self._decide(request_id, ApprovalStatus.APPROVED, by_principal_id)
 

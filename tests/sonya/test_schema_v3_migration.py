@@ -235,9 +235,10 @@ def test_v1_to_v3_migration_chain(tmp_path: Path) -> None:
     sub.close()
 
 
-def test_read_only_open_v2_succeeds(tmp_path: Path) -> None:
+def test_read_only_open_v2_refuses(tmp_path: Path) -> None:
+    """S-13 fix: read-only open requires writable schema version."""
     db = tmp_path / "s.db"
     _create_v2_db(db)
-    sub = Substrate.open(db, read_only=True)
-    assert sub.schema_version == 2
-    sub.close()
+    from sonya.state import SubstrateVersionError
+    with pytest.raises(SubstrateVersionError, match="Read-only open"):
+        Substrate.open(db, read_only=True)

@@ -109,14 +109,13 @@ def test_v1_db_migrates_to_v2_preserving_data(tmp_path: Path) -> None:
         sub.close()
 
 
-def test_v1_read_only_open_succeeds(tmp_path: Path) -> None:
+def test_v1_read_only_open_refuses(tmp_path: Path) -> None:
+    """S-13 fix: read-only open of pre-WRITABLE_VERSION db must fail explicitly."""
     db = tmp_path / "old.db"
     _create_v1_substrate(db)
-    sub = Substrate.open(db, read_only=True)
-    try:
-        assert sub.schema_version == 1
-    finally:
-        sub.close()
+    from sonya.state import SubstrateVersionError
+    with pytest.raises(SubstrateVersionError, match="Read-only open"):
+        Substrate.open(db, read_only=True)
 
 
 def test_unknown_future_version_refuses(tmp_path: Path) -> None:

@@ -62,7 +62,9 @@ def test_anchor_integrity_catches_relation_anchor_binding(pipeline) -> None:
     )
     results = pipe.validate(p)
     assert not results[3].passed
-    assert "relation_anchor_binding" in results[3].reason
+    # C-7 fix: keyword set is built programmatically from THINGS_NOT_TO_BETRAY_SEED,
+    # so the matched stem can be "relation_anchor" or longer.
+    assert "relation_anchor" in results[3].reason
 
 
 def test_anchor_integrity_catches_truthfulness(pipeline) -> None:

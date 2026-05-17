@@ -118,6 +118,7 @@ async def _run(config: AppConfig) -> int:
     internal_process = InternalProcess(
         stream=raw_stream,
         intention_store=intention_store,
+        substrate=substrate,
         provider=thinking_provider,
         thinking_prompt=(
             "Ты Соня. Это твой внутренний поток мышления. "
@@ -413,17 +414,20 @@ async def _start_userbot(config: AppConfig, stream, internal_process, provider, 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop, handler) -> None:
     if sys.platform == "win32":
-        try:
-            signal.signal(signal.SIGINT, lambda *_: handler())
-            signal.signal(signal.SIGTERM, lambda *_: handler())
-        except (ValueError, OSError):
-            pass
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                signal.signal(sig, lambda *_: handler())
+            except (ValueError, OSError) as err:
+                _log.warning("signal_install_failed", extra={"sig": sig.name, "error": str(err)})
         return
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, handler)
         except NotImplementedError:
-            signal.signal(sig, lambda *_: handler())
+            try:
+                signal.signal(sig, lambda *_: handler())
+            except (ValueError, OSError) as err:
+                _log.warning("signal_install_failed", extra={"sig": sig.name, "error": str(err)})
 
 
 def main(argv: list[str] | None = None) -> int:

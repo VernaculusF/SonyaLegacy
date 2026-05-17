@@ -81,7 +81,7 @@ class EpisodicMemory:
             retention_strength=1.0, last_accessed_at=now,
         )
 
-    def get_recent(self, limit: int = 20) -> list[EpisodicEvent]:
+    def get_recent(self, limit: int = 20, *, mark_accessed: bool = True) -> list[EpisodicEvent]:
         cursor = self._sub.connection.execute(
             "SELECT event_id, event_type, timestamp, source, channel, actor, "
             "raw_content, normalized_summary, emotion_tags_json, importance_score, "
@@ -90,9 +90,12 @@ class EpisodicMemory:
             "ORDER BY timestamp DESC LIMIT ?",
             (limit,),
         )
-        return [_row_to_event(r) for r in cursor.fetchall()]
+        events = [_row_to_event(r) for r in cursor.fetchall()]
+        if mark_accessed and events:
+            self._mark_batch_accessed([e.event_id for e in events])
+        return events
 
-    def get_by_type(self, event_type: str, limit: int = 20) -> list[EpisodicEvent]:
+    def get_by_type(self, event_type: str, limit: int = 20, *, mark_accessed: bool = True) -> list[EpisodicEvent]:
         cursor = self._sub.connection.execute(
             "SELECT event_id, event_type, timestamp, source, channel, actor, "
             "raw_content, normalized_summary, emotion_tags_json, importance_score, "
@@ -101,26 +104,67 @@ class EpisodicMemory:
             "ORDER BY timestamp DESC LIMIT ?",
             (event_type, limit),
         )
-        return [_row_to_event(r) for r in cursor.fetchall()]
+        events = [_row_to_event(r) for r in cursor.fetchall()]
+        if mark_accessed and events:
+            self._mark_batch_accessed([e.event_id for e in events])
+        return events
 
     def mark_accessed(self, event_id: str) -> None:
         """Increment access_count and update last_accessed_at (strengthens retention)."""
+        self._mark_batch_accessed([event_id])
+
+    def _mark_batch_accessed(self, event_ids: list[str]) -> None:
+        """Bulk update for multiple events accessed together (e.g. in get_recent)."""
+        if not event_ids:
+            return
         now = _utc_now_iso()
+        placeholders = ",".join("?" * len(event_ids))
         self._sub.connection.execute(
-            "UPDATE episodic_events SET access_count = access_count + 1, "
-            "last_accessed_at = ?, retention_strength = MIN(1.0, retention_strength + 0.1) "
-            "WHERE event_id = ?",
-            (now, event_id),
+            f"UPDATE episodic_events SET access_count = access_count + 1, "
+            f"last_accessed_at = ?, retention_strength = MIN(1.0, retention_strength + 0.1) "
+            f"WHERE event_id IN ({placeholders})",
+            (now, *event_ids),
         )
         self._sub.connection.commit()
 
+    def apply_decay(self, *, decay_rate: float = 0.05, archive_threshold: float = 0.1) -> int:
+        """Apply Ebbinghaus-style decay to all unarchived events.
+
+        Each call multiplies retention_strength by (1 - decay_rate). When a
+        retention_strength drops below archive_threshold, the event is archived
+        (excluded from future recall but kept for audit). Should be called
+        periodically (e.g. once per day from consolidation pipeline).
+
+        Returns number of events archived in this pass.
+        """
+        # Decay all unarchived
+        self._sub.connection.execute(
+            "UPDATE episodic_events SET retention_strength = retention_strength * ? "
+            "WHERE archived = 0",
+            (1.0 - decay_rate,),
+        )
+        # Archive those that fell below threshold
+        cursor = self._sub.connection.execute(
+            "UPDATE episodic_events SET archived = 1 "
+            "WHERE archived = 0 AND retention_strength < ?",
+            (archive_threshold,),
+        )
+        archived_count = cursor.rowcount
+        self._sub.connection.commit()
+        return archived_count
+
 
 def _row_to_event(row) -> EpisodicEvent:
+    raw_tags = row[8] or "[]"
+    try:
+        emotion_tags = tuple(json.loads(raw_tags))
+    except (json.JSONDecodeError, TypeError):
+        emotion_tags = ()
     return EpisodicEvent(
         event_id=row[0], event_type=row[1], timestamp=row[2],
         source=row[3], channel=row[4], actor=row[5],
         raw_content=row[6], normalized_summary=row[7],
-        emotion_tags=tuple(json.loads(row[8] or "[]")),
+        emotion_tags=emotion_tags,
         importance_score=row[9], retention_strength=row[10],
         last_accessed_at=row[11], access_count=row[12], archived=bool(row[13]),
     )

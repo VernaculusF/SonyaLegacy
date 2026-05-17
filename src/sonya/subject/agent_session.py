@@ -114,7 +114,7 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream)
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -150,8 +150,8 @@ async def run_agent_session(
     return result
 
 
-def _execute_tool(name: str, arg: str, self_inspect: SelfInspectTool, filesystem: FilesystemTool) -> str:
-    """Execute a tool by name. Returns observation string."""
+def _execute_tool(name: str, arg: str, self_inspect: SelfInspectTool, filesystem: FilesystemTool, stream: ContinuityStream | None = None) -> str:
+    """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
         if name == "self_inspect.identity":
             return self_inspect.read_identity()
@@ -208,4 +208,19 @@ def _execute_tool(name: str, arg: str, self_inspect: SelfInspectTool, filesystem
         else:
             return f"[ERROR] Unknown tool: {name}"
     except Exception as e:
-        return f"[ERROR] {type(e).__name__}: {e}"
+        # S-11 fix: log tool failures to continuity stream so Sonya can see what broke
+        err_msg = f"[ERROR] {type(e).__name__}: {e}"
+        if stream is not None:
+            try:
+                stream.append(ContinuityEvent(
+                    kind="internal.tool_error",
+                    payload={
+                        "tool": name,
+                        "arg": arg[:200] if arg else "",
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)[:500],
+                    },
+                ))
+            except Exception:
+                pass
+        return err_msg
