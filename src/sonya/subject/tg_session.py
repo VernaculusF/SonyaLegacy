@@ -461,9 +461,6 @@ def _extract_final_draft(text: str) -> str:
     blocks: list[list[str]] = [[]]
     for raw_line in text.splitlines():
         line = raw_line.rstrip()
-        if not line.strip():
-            blocks.append([])
-            continue
         if block_marker.match(line):
             # Start a fresh block; the marker line itself is dropped.
             blocks.append([])
@@ -476,6 +473,10 @@ def _extract_final_draft(text: str) -> str:
             # Commentary — also acts as a separator, content dropped.
             blocks.append([])
             continue
+        # IMPORTANT: blank lines stay within the block so that draft formatting
+        # (paragraph breaks between *action* and text) is preserved. Old code
+        # treated blank lines as block separators, which split a multi-line
+        # draft into pieces and discarded the *action* prefix.
         blocks[-1].append(line)
 
     def is_russian_dominant(lines: list[str]) -> bool:
@@ -485,19 +486,25 @@ def _extract_final_draft(text: str) -> str:
         return cyr > 10 and cyr >= latin
 
     for block in reversed(blocks):
-        # Strip per-line surrounding quotes BEFORE joining, then strip block-level
-        # quotes after joining. This handles the common pattern where a multi-
-        # line draft is wrapped in opening/closing quotes on separate lines.
+        # Strip per-line surrounding quotes (handle multi-line drafts where
+        # opening quote is at line start and closing quote at line end).
         cleaned_lines = []
         for line in block:
-            stripped = line.strip()
-            stripped = re.sub(r'^["«`]+|["»`]+$', "", stripped)
+            stripped = line  # preserve internal whitespace; only trim edges
+            # Remove only single leading/trailing quote chars per line — not
+            # all of them, to keep e.g. legit quoted speech inside the draft.
+            stripped = re.sub(r'^["«`]|["»`]$', "", stripped)
             cleaned_lines.append(stripped)
+        # Drop leading/trailing empty lines but keep interior blank lines so
+        # paragraph structure is preserved.
+        while cleaned_lines and not cleaned_lines[0].strip():
+            cleaned_lines.pop(0)
+        while cleaned_lines and not cleaned_lines[-1].strip():
+            cleaned_lines.pop()
         text_block = "\n".join(cleaned_lines).strip()
-        text_block = re.sub(r'^["«`]+|["»`]+$', "", text_block).strip()
         if not text_block:
             continue
-        if is_russian_dominant(block):
+        if is_russian_dominant(cleaned_lines):
             return text_block
     return ""
 
