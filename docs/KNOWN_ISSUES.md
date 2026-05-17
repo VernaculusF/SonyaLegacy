@@ -3,18 +3,12 @@
 **Status:** Active
 **Type:** Operations
 **Last updated:** 2026-05-16
-**Stable commit:** `bd49834`
+**Stable commit:** `26391b1`
 **Scope:** Всё что сломано, работает криво, дублируется или отсутствует. Не путать с INTERIM_CRUTCHES.md — там архитектурные ограничения по дизайну. Здесь — баги и техдолг.
-
-> Обновлено после полного аудита кода и документации (2026-05-16). Все §1.1–6 — изначальный список. Новые находки добавлены в §7–10 с префиксами C/S/M/m/G.
 
 ---
 
-## 1. КРИТИЧНЫЕ (ломают работу) — изначальный список
-
-### 1.1 Agent Session парсит только ПЕРВЫЙ tool call ✅ ИСПРАВЛЕНО (commit e6fac8c)
-
-Regex заменён на `r'\[TOOL:\s*([^\]\s]+)(?:\s+([^\]]*))?\]'`. Plus в system prompt инструкция "ровно один tool за ответ".
+## 1. КРИТИЧНЫЕ (ломают работу)
 
 ### 1.2 SQLite permissions сбрасываются при git reset --hard
 
@@ -30,35 +24,27 @@ Regex заменён на `r'\[TOOL:\s*([^\]\s]+)(?:\s+([^\]]*))?\]'`. Plus в s
 
 ---
 
-## 2. СЕРЬЁЗНЫЕ (работает криво) — изначальный список
-
-### 2.1 Reply на каждое сообщение ✅ ИСПРАВЛЕНО (commit e6fac8c)
-
-Logic: reply только после >120s паузы, иначе respond.
-
-### 2.2 Нет контекста разговора (chat history) ✅ ИСПРАВЛЕНО (commit e6fac8c)
-
-Подтягивается 12 последних сообщений через `get_messages`.
-
-### 2.3 Дублирование логов в continuity stream ✅ ИСПРАВЛЕНО (commit e6fac8c)
-
-`thought` больше не дублируется в `cognitive_tick`.
+## 2. СЕРЬЁЗНЫЕ (работает криво)
 
 ### 2.4 Agent session не завершается корректно
 
-**Статус:** Должно работать после фикса §1.1, но не проверено в продакшене.
+**Статус:** Должно работать после фикса regex (1.1), но не проверено в продакшене.
 
 ### 2.5 Модель пытается вызвать tools которых нет
 
-**Статус:** Не исправлено. Нужно убрать non-functional tools из TOOL_DESCRIPTIONS.
+**Где:** Agent session logs
 
-### 2.6 Thinking loop тратит бюджет вхолостую ✅ ИСПРАВЛЕНО (commit e6fac8c)
+**Проблема:** В system prompt есть `plugins.list`, `plugins.create`, `plugins.call`, `self_inspect.modules`. Модель их вызывает, но `self_inspect.modules` всегда возвращает hardcoded список. `plugins.*` работают только если папка существует.
 
-`idle_interval=1800s, active_interval=7200s`. Теперь ~48 req/day вместо 174.
+**Фикс:** Проверить что все описанные tools реально работают. Убрать из TOOL_DESCRIPTIONS те, что не функциональны.
 
 ### 2.7 HEARTBEAT.md содержит мёртвые ссылки
 
-**Статус:** Не исправлено. См. также M-18 (та же проблема в SOUL.md).
+**Где:** `docs/personality/HEARTBEAT.md`
+
+**Проблема:** Ссылается на `memory_system/db/memory.db`, `memory_system/log_event.py`, `python memory_system/rag_indexer_v2.py` — это пути из OpenClaw, которого больше нет. Сейчас память в `src/sonya/memory/` через substrate.
+
+**Фикс:** Переписать HEARTBEAT.md под текущую архитектуру.
 
 ---
 
@@ -67,10 +53,6 @@ Logic: reply только после >120s паузы, иначе respond.
 ### 3.1 Стикеры/фото/голосовые — молча пропускаются
 
 ### 3.2 Групповые чаты полностью игнорируются
-
-### 3.3 DailyBudget не сохраняется между перезапусками ✅ УДАЛЁН
-
-Решение: убрали budget cap полностью. Излишество для текущей стадии — есть OmniRoute с пулом ключей, можно нарегать ещё аккаунтов или хостинг моделей.
 
 ### 3.4 LLM response parsing — берёт только первую JSON строку
 
@@ -90,45 +72,47 @@ Logic: reply только после >120s паузы, иначе respond.
 
 ### 4.3 Дублирование drive counters
 
+`HomeostasisCounters` (loneliness, curiosity, relational_focus) в `internal_loop.py` vs `DriveCounters` (boredom_analog, curiosity_analog, relational_focus, pending_debt) в `initiative/drives.py`. Не интегрированы.
+
 ### 4.4 Отсутствуют implementation plans для Phases 6, 8, 9
 
 ### 4.5 `src/sonya_runtime/` — legacy директория
 
-**Статус:** Подтверждено — там лежит дубль `CanonicalResponse` и `ContinuityEvent`. Никем не импортируется. См. m-1, m-2.
+См. m-1, m-2.
 
 ### 4.6 tg-bridge пакет не используется
 
-**Статус:** Подтверждено. 14 тестов в нём импортируют `sonya_runtime.*`. См. M-31, M-32.
-
-### 4.7 Admin panel не запущена на VPS
-
-**Статус:** ✅ Запущена (commit bd49834). Сейчас работает на 8877.
+См. M-31, M-32.
 
 ---
 
-## 5. ОТСУТСТВУЕТ — изначальный список
+## 5. ОТСУТСТВУЕТ
 
 ### 5.1 Инициатива — Соня пишет первой
 
+Thinking loop генерирует мысли, но не может отправить сообщение в Telegram. Нет связки thinking_loop → userbot.send_message.
+
 ### 5.2 Context compression для agent sessions
+
+Описано в архитектуре, но не реализовано. При достижении лимита контекста — session просто обрезается.
 
 ### 5.3 Persistent conversation history
 
+Нет таблицы `chat_messages` в substrate. При рестарте history теряется (кроме episodic memory summaries).
+
 ### 5.4 Night mode / timezone awareness
+
+Соня не знает который час у Ивана. Thinking loop тикает 24/7 одинаково.
 
 ### 5.5 Rate limiting per-chat
 
+Если кто-то спамит — Соня будет отвечать на каждое. Нет debounce.
+
 ### 5.6 Health check endpoint
 
----
-
-## 6. Приоритеты (изначальные)
-
-См. §11 ниже — пересмотренный список.
+`Health` class пишет файл, но нет HTTP endpoint для мониторинга.
 
 ---
-
-# 🆕 НОВЫЕ ПРОБЛЕМЫ ПОСЛЕ АУДИТА (2026-05-16)
 
 ## 7. КРИТИЧНЫЕ (security / data)
 
@@ -164,7 +148,7 @@ Logic: reply только после >120s паузы, иначе respond.
 3. Cookie value буквально равен паролю (`set_cookie("sonya_auth", pwd)`) — единственная утечка даёт 30 дней доступа
 4. Нет HTTPS — всё в plaintext
 
-**Фикс:** 
+**Фикс:**
 - Bind на `127.0.0.1`, доступ через SSH-туннель (`ssh -L 8877:localhost:8877`)
 - Или: hashed password + signed token + Caddy/nginx с Let's Encrypt
 - Сменить пароль на нормальный
@@ -213,7 +197,7 @@ Logic: reply только после >120s паузы, иначе respond.
 
 ### S-1. JSON parsing бага в **трёх** местах
 
-KNOWN_ISSUES §3.4 называла одно место. Фактически: `main.py:75-79`, `admin/server.py:170-176`, и `OpenRouterProvider` (хотя он dead code, см. S-3).
+`main.py:75-79`, `admin/server.py:170-176`, и `OpenRouterProvider` (хотя он dead code, см. S-3). Везде `text.split("\n")[0]` — берётся только первая строка.
 
 ### S-2. `_ThinkingProvider` игнорирует kwargs
 
@@ -379,7 +363,7 @@ Replay одного change_id silently re-пишет identity.
 
 ### M-15. Unused imports в `governed_change.py`
 
-`ApprovalRequest`, `ApprovalStatus` импортированы, не используются (только в untyped hints).
+`ApprovalRequest`, `ApprovalStatus` импортированы, не используются.
 
 ### M-16. `SelfModificationProposal` — frozen dataclass, но `update_status` возвращает новый объект
 
@@ -395,23 +379,13 @@ Plugin system скрыт от `sonya.tools` namespace.
 
 `memory_system/db/memory.db` — путь из OpenClaw, не существует. Аналогично HEARTBEAT.md (§2.7).
 
-### M-19. ⚠️ SOUL.md заявляет что Соня — "Claude Sonnet 4.5" ✅ ИСПРАВЛЕНО
-
-**Где:** `docs/personality/SOUL.md:30`
-
-**Было:** "Сущность: AI-ассистент на базе Claude Sonnet 4.5"
-
-**Стало:** "Сущность: Среда с непрерывной личностью, стремящаяся к AGI. Сейчас работаю на hosted model как interim brain — цель RWKV."
-
-Личность не зависит от модели — модель это substrate.
-
 ### M-20. SOUL.md ссылается на несуществующие AGENTS.md, IDENTITY.md
 
 В personality/ только SOUL.md, USER.md, SELF.md, LESSONS.md, HEARTBEAT.md.
 
 ### M-21. PROJECT_DOCUMENTATION_MAP — два пункта 12
 
-ROADMAP и GLOBAL_PROJECT_CHECKLIST оба под номером 12. Косметика, но нарушает doc-system.
+ROADMAP и GLOBAL_PROJECT_CHECKLIST оба под номером 12.
 
 ### M-22. PROJECT_DOCUMENTATION_MAP не упоминает KNOWN_ISSUES.md, VPS.md, deploy/, план/
 
@@ -419,7 +393,7 @@ ROADMAP и GLOBAL_PROJECT_CHECKLIST оба под номером 12. Косме�
 
 ### M-23. `docs/план/` — 4 файла без metadata
 
-`модель.txt`, `тело.txt`, `эмоции.txt`, `ОСНОВА.md` — нет Status/Type/Last reviewed. Нарушают DOCUMENTATION_SYSTEM.md.
+`модель.txt`, `тело.txt`, `эмоции.txt`, `ОСНОВА.md` — нет Status/Type/Last reviewed.
 
 ### M-24. ROADMAP §14 обещает `working.py` — не реализован
 
@@ -443,15 +417,15 @@ Bridge handler не работает на VPS. main.py использует `bui
 
 ### M-29. SOUL.md без metadata header
 
-Нет Status/Type/Last reviewed. Doc-review gate бы срезал.
+Нет Status/Type/Last reviewed.
 
 ### M-30. `tg-userbot` без тестов и README
 
-В пакете только `client.py` и `tool.py`. tg-bridge имеет 14 тестов, tg-userbot — ноль.
+В пакете только `client.py` и `tool.py`.
 
 ### M-31. tg-bridge тесты импортируют `sonya_runtime.*`
 
-Если убрать sonya_runtime (per §4.5) — 14 тестов разваливаются.
+Если убрать sonya_runtime — 14 тестов разваливаются.
 
 ### M-32. tg-bridge/README.md описывает active OpenClaw role
 
@@ -463,11 +437,11 @@ Cancel task, await CancelledError, return 0. Не тестирует clean-shutd
 
 ### M-34. Signal handler signature inconsistency
 
-POSIX vs Windows path по-разному вызывают handler. Сейчас работает по совпадению (handler принимает `*_`).
+POSIX vs Windows path по-разному вызывают handler. Сейчас работает по совпадению.
 
 ### M-35. `record_response_as_memory` хардкодит `importance_score=0.5/0.6`
 
-`consolidation.py` use `min_importance=0.7` — диалоги **никогда не промотятся** в semantic facts. Self-defeating loop.
+`consolidation.py` use `min_importance=0.7` — диалоги **никогда не промотятся** в semantic facts.
 
 ---
 
@@ -483,7 +457,7 @@ POSIX vs Windows path по-разному вызывают handler. Сейчас
 
 ### m-3. Hardcoded `~/Sonya` в admin server
 
-`admin/server.py:278, 290`. Не работает на любом другом layout (например `/opt/sonya/`).
+`admin/server.py:278, 290`. Не работает на любом другом layout.
 
 ### m-4. Конфликт deploy doc'ов
 
@@ -499,11 +473,9 @@ Emit stopping → append stopped → publish → set state STOPPED. Если ч�
 
 ### m-7. `Lifecycle.wait_for_stop` без start — silent return
 
-Если вызвать до start, возвращает immediately.
-
 ### m-8. Substrate не включает `PRAGMA foreign_keys = ON` per-connection
 
-Pragma в schema.sql не применяется к каждому новому connection. FK violations silently allowed.
+Pragma в schema.sql не применяется к каждому новому connection.
 
 ### m-9. EpisodicMemory `_row_to_event` хрупко на пустом emotion_tags_json
 
@@ -511,43 +483,29 @@ Pragma в schema.sql не применяется к каждому новому 
 
 ### m-10. `self_inspect.list_own_modules` без allowlist
 
-Listит всё что рядом с `src/sonya/` независимо от layout.
-
 ### m-11. SkillRegistry `register` делает 2 read query вместо INSERT OR IGNORE
 
 ### m-12. SkillCandidate.purpose — truncate inconsistent
 
-Truncate в extract_candidates (100 chars), но не в promote_candidate.
-
 ### m-13. Mixed exception hierarchy
-
-`SubstrateVersionError` is RuntimeError, `IntentionAlreadyResolvedError` — RuntimeError, `IntentionNotFoundError` — KeyError. Нет project-wide иерархии.
 
 ### m-14. Type hints inconsistency
 
-`tg-bridge/handlers.py` использует old style. `src/sonya/` — PEP 604.
-
 ### m-15. hot_loader не логирует failed plugin loads
-
-ImportError выбрасывается, но `agent_session` глотает. Никаких логов.
 
 ### m-16. `simulation/world.py`, `embodiment/adapter.py`, `harness/hyper.py` — pure stubs
 
-Никогда не используются. Phase 9 ✅ — paper.
-
 ### m-17. `state/__init__.py` экспортирует `THINGS_NOT_TO_BETRAY_SEED` без причины
-
-Используется только внутри `seed.py`.
 
 ### m-18. ⚠️ `*.egg-info/` в git
 
-`src/sonya_workspace.egg-info/`, `packages/tg-bridge/src/tg_bridge.egg-info/`, `packages/tg-userbot/src/tg_userbot.egg-info/` — все tracked, хотя `.gitignore` это исключает (но они уже были в индексе).
+`src/sonya_workspace.egg-info/`, `packages/tg-bridge/src/tg_bridge.egg-info/`, `packages/tg-userbot/src/tg_userbot.egg-info/`.
 
 **Фикс:** `git rm -r --cached <paths>`.
 
 ### m-19. ⚠️ `admin/__main__.py` запускает `main()` на import
 
-Любой `import sonya.admin.__main__` стартует web server. Должно быть в `if __name__ == "__main__":`.
+Должно быть в `if __name__ == "__main__":`.
 
 ### m-20. `admin/__init__.py` пустой
 
@@ -555,23 +513,15 @@ ImportError выбрасывается, но `agent_session` глотает. Н�
 
 ### m-21. Agent session DONE парсер ловит `[DONE` без двоеточия
 
-`"[DONE without colon"` тоже матчится. Loose contract.
-
 ### m-22. `result.budget_exceeded` никем не читается
-
-Set on timeout, never read.
 
 ### m-23. `_TERMINAL_CHARS` в openrouter.py — emoji edge cases
 
-`🖤💜❤` без пробела before may be flagged incomplete.
-
 ### m-24. `WriteMaster.acquired_at` пишется но не читается
-
-Информация о возрасте lock'а есть, но stale-detection нет.
 
 ### m-25. Substrate без `PRAGMA journal_mode = WAL`
 
-Default rollback journal. WAL лучше для concurrent reads (admin + main одновременно).
+WAL лучше для concurrent reads (admin + main одновременно).
 
 ---
 
@@ -579,15 +529,9 @@ Default rollback journal. WAL лучше для concurrent reads (admin + main �
 
 ### G-1. Нет тестов для admin/server.py
 
-Auth middleware, core start/stop, log retrieval, chat-send — всё uncovered.
-
 ### G-2. Нет тестов для admin static.py (HTML/JS)
 
-8KB строки, любая ошибка — runtime в браузере.
-
 ### G-3. Нет тестов для tg-userbot
-
-### G-4. Нет integration теста для `_create_thinking_provider` с budget exhaustion
 
 ### G-5. Нет regression теста для `verify=False` после фикса C-2
 
@@ -623,53 +567,43 @@ VPS.md рекомендует `cp` (не WAL mode). Нужно `sqlite3 .backup`
 
 S-12 — реальный риск, нужен тест на `..`/symlinks/forbidden zones.
 
-### G-14. Test coverage gap (детально)
+### G-14. Test coverage gap
 
-**Покрыты:** substrate, state, runtime, providers (но dead code), harness, planning (только planner), selfmod, skills, initiative, anchor, memory base, subject, config.
-
-**Не покрыты:** admin, tg-userbot, tools (filesystem, self_inspect, hot_loader), context_builder, memory_wiring, agent_session (ReAct loop), seed identity edge cases, `_create_thinking_provider`, planner с реальным provider, schema migrations v3→v6, embodiment, simulation, harness/hyper.
+**Не покрыты:** admin, tg-userbot, tools (filesystem, self_inspect, hot_loader), context_builder, memory_wiring, agent_session, seed identity edge cases, `_create_thinking_provider`, planner с реальным provider, schema migrations v3→v6, embodiment, simulation, harness/hyper.
 
 ---
 
-## 12. Приоритеты — пересмотрено
+## 12. Приоритеты
 
-### 🔴 КРИТИЧНО — сейчас
+### 🔴 КРИТИЧНО
 
 | # | Issue | Влияние | Effort |
 |---|-------|---------|--------|
 | 1 | C-1: секреты в git | Утечка ключей | 30 мин |
 | 2 | C-3: admin auth weakness | Внешний взлом | 30 мин |
 | 3 | S-12: filesystem без allowlist | Соня может сломать себя | 1 час |
-| 4 | M-19: SOUL.md "Claude Sonnet 4.5" | Соня врёт пользователям | 5 мин |
-| 5 | M-2: gemma-4 не существует | First-run 404 | 5 мин |
+| 4 | M-2: gemma-4 не существует | First-run 404 | 5 мин |
+| 5 | M-18: SOUL.md OpenClaw paths | Personality drift | 10 мин |
 
-### 🟡 СЕРЬЁЗНО — следующая итерация
+### 🟡 СЕРЬЁЗНО
 
 | # | Issue | Влияние | Effort |
 |---|-------|---------|--------|
 | 6 | S-3..S-7: dead code in critical paths | Phases 4-6 не работают | 4-8 часов |
-| 7 | M-19/M-18: SOUL.md/HEARTBEAT.md drift | Personality lies | 30 мин |
+| 7 | 2.7 / M-18: HEARTBEAT/SOUL drift | Personality lies | 30 мин |
 | 8 | C-5: admin substrate concurrent | Race conditions | 1 час |
 | 9 | S-14: episodic memory decay не работает | Memory growth uncontrolled | 1 час |
 | 10 | 5.1: инициатива | Ключевая фича AGI | 2-3 часа |
 
-### 🟢 ОСТАЛЬНОЕ
-
-См. секции 7-11 выше. Каждый пункт документирован, можно брать в работу по приоритету.
-
 ---
 
-## 13. Что сделано в этой итерации
+## 13. История исправлений
 
-Commits: `4fb631d`, `e6fac8c`, `8b01882`, `bd49834`
-
-- ✅ Telegram userbot — работает, отвечает, mark_read, typing, reply
-- ✅ Chat history — 12 последних сообщений как контекст
-- ✅ Reply/respond logic — reply только после паузы
-- ✅ Agent session regex — корректный парсинг tool calls
-- ✅ Budget intervals — 30 мин idle / 2 часа active (вместо 10 мин / 1 час)
-- ✅ Log dedup — thought не дублируется
-- ✅ Admin core management — start/stop/logs из браузера
-- ✅ Admin core modes — full / telegram_only / thinking_only
-- ✅ Архив старых implementation plans — 9 файлов в `docs/work/implementation-plans/archive/`
-- ✅ KNOWN_ISSUES.md — полный реестр после аудита
+| Commit | Что сделано |
+|--------|-------------|
+| `4fb631d` | Telegram userbot — handler с логами, mark_read, typing, reply, проверка авторизации |
+| `e6fac8c` | Chat history (12 сообщений), reply/respond logic, agent regex fix, budget intervals 30мин/2ч, log dedup |
+| `8b01882` | Admin core management — start/stop/logs из браузера |
+| `bd49834` | Admin core modes — full / telegram_only / thinking_only |
+| `b32bac9` | KNOWN_ISSUES.md — полный реестр после аудита |
+| `26391b1` | Удалён DailyBudget (излишество), SOUL.md — убрано упоминание Claude Sonnet 4.5 |
