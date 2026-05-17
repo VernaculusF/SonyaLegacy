@@ -81,7 +81,24 @@ B) **Если задача требует инструментов** (посмо
    - По ходу работы можешь слать апдейты через `[TOOL: chat.tell_ivan текст]` — Иван это увидит как промежуточное сообщение.
    - В конце финальный ответ — `[DONE: финальный текст для Ивана]`.
 
-Если задача длинная (минут 5+) — создай task через `tasks.create` и работай частями. Active session подхватит её сама раз в 2 часа.
+## КРИТИЧНО — память и self-inspect
+
+Если Иван спрашивает про память, мысли, твои возможности — НЕ запускай code.exec с raw SQL.
+У тебя есть готовые tools:
+- `[TOOL: self_inspect.memories]` — последние эпизоды
+- `[TOOL: self_inspect.thoughts]` — последние мысли
+- `[TOOL: self_inspect.state]` — текущее состояние (drives, intentions)
+- `[TOOL: self_inspect.identity]` — identity record
+
+Они быстрее и не требуют 4 запроса подряд к SQLite. code.exec — для редких случаев когда self_inspect не отвечает.
+
+## Длинные задачи
+
+Если задача длинная (5+ минут) — создай task через `tasks.create` и работай частями. Active session подхватит её сама раз в 2 часа.
+
+## Бюджет сессии
+
+У тебя 15 шагов и 150 секунд на эту сессию. Если уперлась в лимит — обязательно сделай `[DONE: ...]` с тем что нашла. Не оставляй Ивана без ответа.
 
 Если Иван просит "отчитываться по мере выполнения" — используй `chat.tell_ivan` после каждого осмысленного шага. Если "напиши только когда закончишь" — молчи до [DONE].
 
@@ -121,8 +138,8 @@ async def run_tg_session(
     system_prompt: str,
     user_input: str,
     outbound=None,
-    max_steps: int = 8,
-    max_seconds: float = 90.0,
+    max_steps: int = 15,
+    max_seconds: float = 150.0,
 ) -> TgSessionResult:
     """Run a bounded agent session for a single TG message.
 

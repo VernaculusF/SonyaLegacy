@@ -174,11 +174,28 @@ async def run_agent_session(
         messages.append({"role": "user", "content": "What do you want to do? Think about what would be useful right now."})
 
     start_time = time.time()
+    budget_warning_sent = False
 
     for step in range(max_steps):
-        if time.time() - start_time > max_seconds:
+        elapsed = time.time() - start_time
+        if elapsed > max_seconds:
             result.budget_exceeded = True
             break
+
+        # Send a wrap-up nudge in the last 2 steps OR when ~80% of time is gone.
+        # This gives the model a chance to emit [DONE: ...] before hard-stop.
+        nearing_step_limit = step >= max_steps - 2
+        nearing_time_limit = elapsed > max_seconds * 0.8
+        if (nearing_step_limit or nearing_time_limit) and not budget_warning_sent:
+            messages.append({
+                "role": "user",
+                "content": (
+                    "[BUDGET WARNING] Осталось 1-2 шага / время на исходе. "
+                    "Сожми что нашла и закрывай через `[DONE: текст для Ивана]`. "
+                    "НЕ оставляй Ивана без ответа."
+                ),
+            })
+            budget_warning_sent = True
 
         # LLM call
         response = await provider.complete_text(messages)
