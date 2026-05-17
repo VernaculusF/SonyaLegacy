@@ -270,3 +270,40 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_principal ON tasks(principal_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
+
+-- ====================================================================
+-- v8 additions: provider keys (own key pool, replacing OmniRoute).
+-- See [docs/SYSTEM_BUILDOUT_PLAN.md] post-Этап cleanup.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS provider_keys (
+    key_id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,        -- fireworks | openrouter | groq | anthropic | google | ...
+    name TEXT NOT NULL,            -- human label
+    api_key TEXT NOT NULL,         -- the secret
+    base_url TEXT NOT NULL,        -- https://api.fireworks.ai/inference/v1 etc.
+    model TEXT NOT NULL DEFAULT '', -- override; empty = use provider_settings.default_model
+    status TEXT NOT NULL DEFAULT 'active', -- active | disabled | banned | cooldown
+    priority INTEGER NOT NULL DEFAULT 0,
+    cooldown_until TEXT NOT NULL DEFAULT '',
+    last_used_at TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
+    last_error_at TEXT NOT NULL DEFAULT '',
+    request_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_keys_provider ON provider_keys(provider);
+CREATE INDEX IF NOT EXISTS idx_provider_keys_status ON provider_keys(status);
+
+-- Single-row provider_settings
+CREATE TABLE IF NOT EXISTS provider_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    active_provider TEXT NOT NULL DEFAULT 'fireworks',
+    default_model TEXT NOT NULL DEFAULT 'accounts/fireworks/models/minimax-m2p7',
+    default_base_url TEXT NOT NULL DEFAULT 'https://api.fireworks.ai/inference/v1',
+    updated_at TEXT NOT NULL
+);

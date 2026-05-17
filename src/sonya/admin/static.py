@@ -65,6 +65,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <span>Admin Panel</span>
   </div>
   <div class="nav">
+    <div class="nav-item" data-page="providers">🔑 Providers</div>
     <div class="nav-item active" data-page="dashboard">⚡ Dashboard</div>
     <div class="nav-item" data-page="thoughts">💭 Thoughts</div>
     <div class="nav-item" data-page="memory">🧠 Memory</div>
@@ -104,19 +105,30 @@ async function loadPage(page) {
   if (page === 'chat') { renderChat(); return; }
 
   if (page === 'core') {
-    try {
-      const [statusResp, logsResp] = await Promise.all([
-        fetch(`${API}/api/core/status`),
-        fetch(`${API}/api/core/logs?lines=40`)
-      ]);
-      const status = await statusResp.json();
-      const logs = await logsResp.json();
-      content.innerHTML = renderers.core({...status, logs: logs.logs});
-    } catch(e) {
-      content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+      try {
+        const [statusResp, logsResp] = await Promise.all([
+          fetch(`${API}/api/core/status`),
+          fetch(`${API}/api/core/logs?lines=40`)
+        ]);
+        const status = await statusResp.json();
+        const logs = await logsResp.json();
+        content.innerHTML = renderers.core({...status, logs: logs.logs});
+      } catch(e) {
+        content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+      }
+      return;
     }
-    return;
-  }
+
+    if (page === 'providers') {
+      try {
+        const resp = await fetch(`${API}/api/providers`);
+        const data = await resp.json();
+        content.innerHTML = renderers.providers(data);
+      } catch(e) {
+        content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+      }
+      return;
+    }
 
   if (page === 'selfmod') {
     try {
@@ -242,6 +254,70 @@ const renderers = {
           </div>
         </div>`).join('')}
     </div>`;
+  },
+  providers(d) {
+    const s = d.settings || {};
+    const keys = d.keys || [];
+    const statusColor = {
+      active: '#3fb950', cooldown: '#d29922', banned: '#f85149', disabled: '#8b949e',
+    };
+    const statusBadge = (st) => `<span class="stat" style="background:${(statusColor[st]||'#30363d')}33;color:${statusColor[st]||'#c9d1d9'};padding:3px 8px;border-radius:4px;font-size:11px">${st}</span>`;
+
+    const settingsCard = `
+      <div class="card"><h3>Active Provider</h3>
+        <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:13px">
+          <label>Provider:</label>
+          <input id="prov-active" value="${s.active_provider || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Default model:</label>
+          <input id="prov-model" value="${s.default_model || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Default base URL:</label>
+          <input id="prov-base" value="${s.default_base_url || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+        </div>
+        <button onclick="providersSaveSettings()" style="margin-top:10px;background:#238636;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer">Save settings</button>
+        <p style="font-size:11px;color:#8b949e;margin-top:8px">Stop core before changing. After save — start core back.</p>
+      </div>`;
+
+    const addCard = `
+      <div class="card"><h3>Add new key</h3>
+        <div style="display:grid;grid-template-columns:140px 1fr;gap:6px;font-size:13px">
+          <label>Provider:</label>
+          <input id="add-provider" placeholder="fireworks / openrouter / groq / ..." style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Name:</label>
+          <input id="add-name" placeholder="e.g. main / kikicide" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>API key:</label>
+          <input id="add-key" placeholder="fw_... or sk-..." type="password" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Base URL (optional):</label>
+          <input id="add-base" placeholder="leave empty for provider default" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Model override (optional):</label>
+          <input id="add-model" placeholder="leave empty for default_model" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Priority:</label>
+          <input id="add-priority" type="number" value="0" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+        </div>
+        <button onclick="providersAddKey()" style="margin-top:10px;background:#238636;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer">Add key</button>
+      </div>`;
+
+    const keysCard = keys.length === 0
+      ? '<div class="card"><h3>No keys yet</h3><p>Add at least one above. Without keys, core can\'t run thinking.</p></div>'
+      : `<div class="card"><h3>Keys (${keys.length})</h3>
+          ${keys.map(k => `
+            <div class="event" style="border-left-color:${statusColor[k.status] || '#30363d'};margin-bottom:10px">
+              <div class="meta">${k.provider} • ${k.name} • ${k.key_masked} • created ${k.created_at.slice(0,16)}</div>
+              <div class="body" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
+                ${statusBadge(k.status)}
+                <span>req=${k.request_count} ok=${k.success_count} err=${k.error_count}</span>
+                ${k.last_used_at ? `<span style="color:#8b949e">last_used=${k.last_used_at.slice(0,19)}</span>` : ''}
+                ${k.last_error ? `<span style="color:#f85149" title="${k.last_error.replace(/"/g,'&quot;')}">err: ${k.last_error.slice(0,60)}</span>` : ''}
+              </div>
+              <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+                <button onclick="providersTestKey('${k.key_id}')" style="background:#1f6feb;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Test</button>
+                ${k.status !== 'active' ? `<button onclick="providersSetStatus('${k.key_id}','active')" style="background:#238636;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Activate</button>` : ''}
+                ${k.status !== 'disabled' ? `<button onclick="providersSetStatus('${k.key_id}','disabled')" style="background:#6e7681;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Disable</button>` : ''}
+                <button onclick="providersDeleteKey('${k.key_id}')" style="background:#da3633;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Delete</button>
+              </div>
+            </div>`).join('')}
+        </div>`;
+
+    return settingsCard + addCard + keysCard;
   }
 };
 
@@ -270,6 +346,81 @@ async function selfmodAction(proposalId, action) {
     const data = await resp.json();
     alert(JSON.stringify(data, null, 2));
     setTimeout(() => loadPage('selfmod'), 500);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersSaveSettings() {
+  const body = {
+    active_provider: document.getElementById('prov-active').value.trim(),
+    default_model: document.getElementById('prov-model').value.trim(),
+    default_base_url: document.getElementById('prov-base').value.trim(),
+  };
+  try {
+    const resp = await fetch(`${API}/api/providers/settings`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    alert(resp.ok ? JSON.stringify(data,null,2) : `Error ${resp.status}: ${JSON.stringify(data)}`);
+    if (resp.ok) loadPage('providers');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersAddKey() {
+  const body = {
+    provider: document.getElementById('add-provider').value.trim(),
+    name: document.getElementById('add-name').value.trim(),
+    api_key: document.getElementById('add-key').value.trim(),
+    base_url: document.getElementById('add-base').value.trim(),
+    model: document.getElementById('add-model').value.trim(),
+    priority: parseInt(document.getElementById('add-priority').value || '0'),
+  };
+  if (!body.provider || !body.name || !body.api_key) {
+    alert('provider, name, api_key required');
+    return;
+  }
+  try {
+    const resp = await fetch(`${API}/api/providers/keys`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      loadPage('providers');
+    } else {
+      alert(`Error ${resp.status}: ${JSON.stringify(data)}`);
+    }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersDeleteKey(keyId) {
+  if (!confirm(`Delete key ${keyId}?`)) return;
+  try {
+    const resp = await fetch(`${API}/api/providers/keys/${keyId}/delete`, {method:'POST'});
+    const data = await resp.json();
+    if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersTestKey(keyId) {
+  try {
+    const resp = await fetch(`${API}/api/providers/keys/${keyId}/test`, {method:'POST'});
+    const data = await resp.json();
+    alert(JSON.stringify(data, null, 2));
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersSetStatus(keyId, status) {
+  try {
+    const resp = await fetch(`${API}/api/providers/keys/${keyId}/status`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status}),
+    });
+    const data = await resp.json();
+    if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
   } catch(e) { alert('Error: ' + e.message); }
 }
 

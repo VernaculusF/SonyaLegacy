@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 7
+CURRENT_VERSION = 8
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -16,6 +16,12 @@ def apply_initial_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (?, ?)",
         (CURRENT_VERSION, now),
+    )
+    # v8: seed provider_settings single row if missing
+    conn.execute(
+        "INSERT OR IGNORE INTO provider_settings(id, active_provider, default_model, default_base_url, updated_at) "
+        "VALUES (1, 'fireworks', 'accounts/fireworks/models/minimax-m2p7', 'https://api.fireworks.ai/inference/v1', ?)",
+        (now,),
     )
     conn.commit()
 
@@ -99,6 +105,23 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 7
+
+    if version == 7:
+        # v7 → v8: own key pool (provider_keys + provider_settings).
+        conn.executescript(_SCHEMA_FILE.read_text(encoding="utf-8"))
+        now = datetime.now(timezone.utc).isoformat()
+        # Seed provider_settings single row
+        conn.execute(
+            "INSERT OR IGNORE INTO provider_settings(id, active_provider, default_model, default_base_url, updated_at) "
+            "VALUES (1, 'fireworks', 'accounts/fireworks/models/minimax-m2p7', 'https://api.fireworks.ai/inference/v1', ?)",
+            (now,),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (8, now),
+        )
+        conn.commit()
+        version = 8
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

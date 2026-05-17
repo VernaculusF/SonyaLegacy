@@ -13,8 +13,8 @@ class SubstrateVersionError(RuntimeError):
 class Substrate:
     """Persistent substrate of Sonya. Long-lived connection, single owner."""
 
-    WRITABLE_VERSION: int = 7
-    READABLE_VERSIONS: frozenset[int] = frozenset({1, 2, 3, 4, 5, 6, 7})
+    WRITABLE_VERSION: int = 8
+    READABLE_VERSIONS: frozenset[int] = frozenset({1, 2, 3, 4, 5, 6, 7, 8})
 
     def __init__(self, path: Path, connection: sqlite3.Connection, version: int) -> None:
         self._path = path

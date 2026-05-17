@@ -37,81 +37,40 @@ from sonya.subject import InternalProcess
 _log = get_logger("sonya.main")
 
 
-def _create_thinking_provider(config: AppConfig):
-    """Create a provider for internal thinking loop LLM calls."""
-    api_key_secret = config.openrouter_api_key
-    api_key = api_key_secret.get_secret_value() if api_key_secret else ""
-    api_base = config.llm_api_base
-    model = config.llm_model
+def _create_thinking_provider(config: AppConfig, substrate: "Substrate"):
+    """Create a substrate-backed LLM provider with key rotation.
 
-    if not api_key and "openrouter" in api_base:
-        _log.warning("no_api_key", extra={"event": "thinking_provider_disabled"})
+    Replaces the legacy single-key OmniRoute path. All keys live in
+    `provider_keys` table, manageable through admin UI. The active provider
+    + default model are in `provider_settings` row.
+
+    If no keys are configured, returns None (Sonya runs without LLM).
+    """
+    from sonya.providers import KeyStore, LLMProvider
+
+    store = KeyStore(substrate)
+    settings = store.get_settings()
+    keys = [k for k in store.list_keys(settings.active_provider) if k.status.value == "active"]
+    if not keys:
+        _log.warning(
+            "no_provider_keys",
+            extra={
+                "event": "thinking_provider_disabled",
+                "provider": settings.active_provider,
+                "hint": "Add keys via admin → Providers tab",
+            },
+        )
         return None
 
-    import asyncio
-    import httpx
-
-    class _ThinkingProvider:
-        async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
-            headers: dict[str, str] = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-
-            payload = {
-                "model": model,
-                "messages": messages,
-                "max_tokens": kwargs.get("max_tokens", 1500),
-                "temperature": kwargs.get("temperature", 0.9),
-                "stream": False,
-            }
-
-            # Retry on transient network/timeout/5xx — Fireworks via OmniRoute
-            # occasionally returns ReadTimeout / 502 stream_timeout. Three quick
-            # tries with exponential backoff covers ~95% of those.
-            last_exc: Exception | None = None
-            for attempt in range(3):
-                try:
-                    async with httpx.AsyncClient(
-                        timeout=httpx.Timeout(120.0, connect=10.0),
-                        verify=False,
-                    ) as client:
-                        resp = await client.post(
-                            f"{api_base}/chat/completions",
-                            headers=headers,
-                            json=payload,
-                        )
-                    if resp.status_code == 429:
-                        _log.warning("provider_rate_limited", extra={"status": 429, "attempt": attempt})
-                        return ""
-                    if 500 <= resp.status_code < 600 and attempt < 2:
-                        _log.warning(
-                            "provider_5xx_retry",
-                            extra={"status": resp.status_code, "attempt": attempt, "body": resp.text[:200]},
-                        )
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    resp.raise_for_status()
-                    text = resp.text.strip()
-                    import json as _json
-                    try:
-                        data = _json.loads(text)
-                    except _json.JSONDecodeError:
-                        first_line = text.split("\n", 1)[0].strip()
-                        data = _json.loads(first_line)
-                    return data["choices"][0]["message"]["content"]
-                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ConnectError) as err:
-                    last_exc = err
-                    if attempt < 2:
-                        _log.warning(
-                            "provider_transient_retry",
-                            extra={"type": type(err).__name__, "attempt": attempt},
-                        )
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    raise
-            if last_exc is not None:
-                raise last_exc
-            return ""
+    _log.info(
+        "thinking_provider_ready",
+        extra={
+            "provider": settings.active_provider,
+            "default_model": settings.default_model,
+            "active_keys": len(keys),
+        },
+    )
+    return LLMProvider(store)
 
     return _ThinkingProvider()
 
@@ -297,7 +256,7 @@ class _RuntimeBundle:
         raw_stream = ContinuityStream(substrate)
         intention_store = PendingIntentionStore(substrate)
 
-        self.thinking_provider = _create_thinking_provider(config)
+        self.thinking_provider = _create_thinking_provider(config, substrate)
         self.internal_process = InternalProcess(
             stream=raw_stream,
             intention_store=intention_store,

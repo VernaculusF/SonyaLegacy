@@ -8,6 +8,8 @@ from sonya.providers.base import (
 )
 from sonya.providers.registry import ProviderRegistry
 from sonya.providers.secrets import ProviderSecret, load_provider_secret
+from sonya.providers.keystore import KeyStore, KeyStatus, ProviderKey, ProviderSettings
+from sonya.providers.llm_provider import LLMProvider, NoKeysAvailable
 
 __all__ = [
     "Capability",
@@ -17,4 +19,10 @@ __all__ = [
     "ProviderRegistry",
     "ProviderSecret",
     "load_provider_secret",
+    "KeyStore",
+    "KeyStatus",
+    "ProviderKey",
+    "ProviderSettings",
+    "LLMProvider",
+    "NoKeysAvailable",
 ]

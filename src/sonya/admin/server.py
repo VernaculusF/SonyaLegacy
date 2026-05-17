@@ -579,6 +579,256 @@ async def api_core_logs(request: web.Request) -> web.Response:
     return web.json_response({"logs": "".join(all_lines[-lines:])})
 
 
+# ============================================================
+# Providers (own key pool, replacing OmniRoute)
+# ============================================================
+
+def _mask_key(s: str) -> str:
+    if not s:
+        return ""
+    if len(s) <= 12:
+        return "***"
+    return s[:6] + "..." + s[-4:]
+
+
+async def api_providers_get(request: web.Request) -> web.Response:
+    """List provider settings + all keys (masked)."""
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        store = KeyStore(sub)
+        settings = store.get_settings()
+        keys = store.list_keys()
+        return web.json_response({
+            "settings": {
+                "active_provider": settings.active_provider,
+                "default_model": settings.default_model,
+                "default_base_url": settings.default_base_url,
+                "updated_at": settings.updated_at,
+            },
+            "keys": [
+                {
+                    "key_id": k.key_id,
+                    "provider": k.provider,
+                    "name": k.name,
+                    "key_masked": _mask_key(k.api_key),
+                    "base_url": k.base_url,
+                    "model": k.model,
+                    "status": k.status.value,
+                    "priority": k.priority,
+                    "cooldown_until": k.cooldown_until,
+                    "last_used_at": k.last_used_at,
+                    "last_error": k.last_error,
+                    "last_error_at": k.last_error_at,
+                    "request_count": k.request_count,
+                    "success_count": k.success_count,
+                    "error_count": k.error_count,
+                    "created_at": k.created_at,
+                    "updated_at": k.updated_at,
+                }
+                for k in keys
+            ],
+        })
+    finally:
+        sub.close()
+
+
+async def api_providers_settings(request: web.Request) -> web.Response:
+    """Update provider settings (active_provider, default_model, default_base_url)."""
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    if _is_core_running(config):
+        return web.json_response(
+            {"error": "core is running — substrate is read-only here. Stop core or restart it after changes."},
+            status=409,
+        )
+    data = await request.json()
+    sub = _get_substrate(config)
+    try:
+        store = KeyStore(sub)
+        settings = store.set_settings(
+            active_provider=data.get("active_provider"),
+            default_model=data.get("default_model"),
+            default_base_url=data.get("default_base_url"),
+        )
+        return web.json_response({
+            "status": "updated",
+            "settings": {
+                "active_provider": settings.active_provider,
+                "default_model": settings.default_model,
+                "default_base_url": settings.default_base_url,
+            },
+            "note": "Soft-restart core to pick up changes.",
+        })
+    finally:
+        sub.close()
+
+
+async def api_providers_keys_add(request: web.Request) -> web.Response:
+    """Add a new key. Body: {provider, name, api_key, base_url?, model?, priority?}"""
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    if _is_core_running(config):
+        return web.json_response(
+            {"error": "core is running — stop it first to modify keys."},
+            status=409,
+        )
+    data = await request.json()
+    required = ("provider", "name", "api_key")
+    for f in required:
+        if not str(data.get(f, "")).strip():
+            return web.json_response({"error": f"missing required field: {f}"}, status=400)
+    sub = _get_substrate(config)
+    try:
+        store = KeyStore(sub)
+        # Default base_url per provider
+        base_url = data.get("base_url") or _default_base_url(data["provider"])
+        key = store.add_key(
+            provider=data["provider"].strip(),
+            name=data["name"].strip(),
+            api_key=data["api_key"].strip(),
+            base_url=base_url,
+            model=(data.get("model") or "").strip(),
+            priority=int(data.get("priority") or 0),
+        )
+        return web.json_response({"status": "added", "key_id": key.key_id})
+    finally:
+        sub.close()
+
+
+def _default_base_url(provider: str) -> str:
+    return {
+        "fireworks": "https://api.fireworks.ai/inference/v1",
+        "openrouter": "https://openrouter.ai/api/v1",
+        "groq": "https://api.groq.com/openai/v1",
+        "deepinfra": "https://api.deepinfra.com/v1/openai",
+        "together": "https://api.together.xyz/v1",
+        "cerebras": "https://api.cerebras.ai/v1",
+        "anthropic": "https://api.anthropic.com/v1",
+        "openai": "https://api.openai.com/v1",
+        "google": "https://generativelanguage.googleapis.com/v1beta/openai",
+    }.get(provider.lower(), "")
+
+
+async def api_providers_keys_update(request: web.Request) -> web.Response:
+    """Update a key's metadata. Body any of: name, base_url, model, priority"""
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    if _is_core_running(config):
+        return web.json_response({"error": "core is running"}, status=409)
+    key_id = request.match_info["key_id"]
+    data = await request.json()
+    sub = _get_substrate(config)
+    try:
+        store = KeyStore(sub)
+        if not store.get_key(key_id):
+            return web.json_response({"error": "not found"}, status=404)
+        store.update_metadata(
+            key_id,
+            name=data.get("name"),
+            base_url=data.get("base_url"),
+            model=data.get("model"),
+            priority=int(data["priority"]) if "priority" in data else None,
+        )
+        return web.json_response({"status": "updated"})
+    finally:
+        sub.close()
+
+
+async def api_providers_keys_delete(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    if _is_core_running(config):
+        return web.json_response({"error": "core is running"}, status=409)
+    key_id = request.match_info["key_id"]
+    sub = _get_substrate(config)
+    try:
+        store = KeyStore(sub)
+        if not store.get_key(key_id):
+            return web.json_response({"error": "not found"}, status=404)
+        store.delete_key(key_id)
+        return web.json_response({"status": "deleted"})
+    finally:
+        sub.close()
+
+
+async def api_providers_keys_status(request: web.Request) -> web.Response:
+    """Set status manually: active / disabled / banned"""
+    from sonya.providers import KeyStatus, KeyStore
+    config = request.app["config"]
+    if _is_core_running(config):
+        return web.json_response({"error": "core is running"}, status=409)
+    key_id = request.match_info["key_id"]
+    data = await request.json()
+    raw = (data.get("status") or "").strip().lower()
+    if raw not in {"active", "disabled", "banned"}:
+        return web.json_response({"error": "status must be active/disabled/banned"}, status=400)
+    sub = _get_substrate(config)
+    try:
+        store = KeyStore(sub)
+        if not store.get_key(key_id):
+            return web.json_response({"error": "not found"}, status=404)
+        store.update_status(key_id, KeyStatus(raw))
+        return web.json_response({"status": "updated", "new_status": raw})
+    finally:
+        sub.close()
+
+
+async def api_providers_keys_test(request: web.Request) -> web.Response:
+    """Test a key by making a real /chat/completions call.
+
+    Works whether or not core is running — opens substrate read-only and
+    issues a one-off HTTP request without touching key counters.
+    """
+    import httpx
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    key_id = request.match_info["key_id"]
+    sub = _get_substrate(config)
+    try:
+        store = KeyStore(sub)
+        key = store.get_key(key_id)
+        if key is None:
+            return web.json_response({"error": "not found"}, status=404)
+        settings = store.get_settings()
+        model = key.model or settings.default_model
+        base_url = key.base_url or settings.default_base_url
+        url = f"{base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key.api_key}",
+        }
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "user", "content": "Reply with exactly: pong"},
+            ],
+            "max_tokens": 8,
+            "temperature": 0,
+            "stream": False,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+            ok = 200 <= resp.status_code < 300
+            text_preview = resp.text[:200]
+            return web.json_response({
+                "ok": ok,
+                "status_code": resp.status_code,
+                "response_preview": text_preview,
+                "model_used": model,
+                "base_url": base_url,
+            })
+        except Exception as err:
+            return web.json_response({
+                "ok": False,
+                "error": f"{type(err).__name__}: {err}",
+            })
+    finally:
+        sub.close()
+
+
 def create_app() -> web.Application:
     config = load_config()
     import os
@@ -603,6 +853,14 @@ def create_app() -> web.Application:
     app.router.add_get("/api/selfmod/{proposal_id}", api_selfmod_get)
     app.router.add_post("/api/selfmod/{proposal_id}/approve", api_selfmod_approve)
     app.router.add_post("/api/selfmod/{proposal_id}/deny", api_selfmod_deny)
+    # Providers (key pool management)
+    app.router.add_get("/api/providers", api_providers_get)
+    app.router.add_post("/api/providers/settings", api_providers_settings)
+    app.router.add_post("/api/providers/keys", api_providers_keys_add)
+    app.router.add_post("/api/providers/keys/{key_id}", api_providers_keys_update)
+    app.router.add_post("/api/providers/keys/{key_id}/delete", api_providers_keys_delete)
+    app.router.add_post("/api/providers/keys/{key_id}/test", api_providers_keys_test)
+    app.router.add_post("/api/providers/keys/{key_id}/status", api_providers_keys_status)
     return app
 
 
