@@ -31,6 +31,7 @@ from sonya.channels.base import OutgoingMessage
 from sonya.subject.agent_session import run_agent_session, SessionResult, AgentProvider
 from sonya.tools.code_tool import CodeTool
 from sonya.tools.filesystem import FilesystemTool
+from sonya.tools.memory_tool import MemoryTool
 from sonya.tools.self_inspect import SelfInspectTool
 from sonya.tools.selfmod_tool import SelfModTool
 from sonya.tools.shell_tool import ShellTool
@@ -138,6 +139,7 @@ _TG_SYSTEM_SUFFIX = """
 - `[TOOL: self_inspect.thoughts]` — последние idle-мысли (внутренний поток)
 - `[TOOL: self_inspect.state]` — текущее состояние (drives, intentions)
 - `[TOOL: self_inspect.identity]` — identity record
+- `[TOOL: memory.recall <запрос>]` — семантический поиск по всей твоей памяти (тысячи событий). Например `[TOOL: memory.recall разговор про музыку с Иваном]` — найдёт релевантные события даже если они старые.
 
 ## Streaming апдейтов через chat.tell_ivan
 
@@ -169,6 +171,8 @@ def build_tools(
     outbound=None,
     default_created_by: str = "ivan",
 ) -> dict:
+    import os
+    yolo = os.environ.get("SONYA_YOLO_MODE", "0").lower() in ("1", "true", "yes", "on")
     return {
         "self_inspect": SelfInspectTool(substrate),
         "filesystem": FilesystemTool(),
@@ -176,7 +180,8 @@ def build_tools(
         "tasks": TasksTool(substrate, stream=stream, default_created_by=default_created_by),
         "web": WebTool(),
         "code": CodeTool(),
-        "shell": ShellTool(substrate, principal_id="ivan", stream=stream),
+        "shell": ShellTool(substrate, principal_id="ivan", stream=stream, yolo_mode=yolo),
+        "memory": MemoryTool(substrate),
         "outbound": outbound,
     }
 
@@ -217,6 +222,7 @@ async def run_tg_session(
         web=tools["web"],
         code=tools["code"],
         shell=tools["shell"],
+        memory=tools["memory"],
         outbound=tools["outbound"],
         system_prompt=full_prompt,
         initial_thought=f"Ivan написал: {user_input}",

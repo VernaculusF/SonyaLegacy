@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 12
+CURRENT_VERSION = 13
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -177,6 +177,19 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 12
+
+    if version == 12:
+        # v12 → v13: episodic embeddings for semantic recall.
+        _add_column_if_missing(conn, "episodic_events", "embedding", "BLOB")
+        _add_column_if_missing(conn, "episodic_events", "embedded_at", "TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_episodic_embedded_at ON episodic_events(embedded_at)")
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (13, now),
+        )
+        conn.commit()
+        version = 13
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

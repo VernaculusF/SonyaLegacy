@@ -422,6 +422,7 @@ class InternalProcess:
             from sonya.tools import (
                 CodeTool,
                 FilesystemTool,
+                MemoryTool,
                 SelfInspectTool,
                 SelfModTool,
                 ShellTool,
@@ -440,10 +441,14 @@ class InternalProcess:
             tasks_tool = TasksTool(substrate, stream=self._stream, default_created_by="self")
             web_tool = WebTool()
             code_tool = CodeTool()
+            memory_tool = MemoryTool(substrate)
+            import os as _os
+            _yolo = _os.environ.get("SONYA_YOLO_MODE", "0").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
                 substrate,
                 principal_id="ivan",
                 stream=self._stream,
+                yolo_mode=_yolo,
             )
 
             prompt = self._thinking_prompt or (
@@ -545,6 +550,7 @@ class InternalProcess:
                 web=web_tool,
                 code=code_tool,
                 shell=shell_tool,
+                memory=memory_tool,
                 outbound=self._outbound,
                 system_prompt=full_prompt,
                 initial_thought=initial_thought,
@@ -726,6 +732,7 @@ class InternalProcess:
                     web=tools["web"],
                     code=tools["code"],
                     shell=tools["shell"],
+                    memory=tools["memory"],
                     outbound=tools["outbound"],
                     system_prompt=worker_prompt,
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",

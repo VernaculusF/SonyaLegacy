@@ -317,6 +317,8 @@ class _RuntimeBundle:
         self.thinking_provider: Any = None
         self._balance_refresher_task: asyncio.Task | None = None
         self._balance_refresher_stop: asyncio.Event = asyncio.Event()
+        self._embedding_indexer_task: asyncio.Task | None = None
+        self._embedding_indexer_stop: asyncio.Event = asyncio.Event()
 
     async def start(self) -> None:
         config = self.config
@@ -452,6 +454,14 @@ class _RuntimeBundle:
             self._balance_refresher_loop()
         )
 
+        # Embedding indexer: fill in `embedding` column for episodic events
+        # so memory.recall (semantic search) actually works. Idle priority,
+        # batched, no-op if fastembed isn't installed.
+        self._embedding_indexer_stop.clear()
+        self._embedding_indexer_task = asyncio.create_task(
+            self._embedding_indexer_loop()
+        )
+
     async def stop(self) -> None:
         # Stop balance refresher first — it's lowest-priority, easy to interrupt.
         self._balance_refresher_stop.set()
@@ -461,6 +471,14 @@ class _RuntimeBundle:
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._balance_refresher_task.cancel()
             self._balance_refresher_task = None
+
+        self._embedding_indexer_stop.set()
+        if self._embedding_indexer_task is not None:
+            try:
+                await asyncio.wait_for(self._embedding_indexer_task, timeout=2.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self._embedding_indexer_task.cancel()
+            self._embedding_indexer_task = None
 
         if self.channel_registry is not None:
             try:
@@ -531,6 +549,54 @@ class _RuntimeBundle:
             try:
                 await asyncio.wait_for(
                     self._balance_refresher_stop.wait(), timeout=600.0
+                )
+                return
+            except asyncio.TimeoutError:
+                continue
+
+
+    async def _embedding_indexer_loop(self) -> None:
+        """Backfill `embedding` for episodic events that don't have one yet.
+
+        Runs at idle priority — pauses 30s between batches so we don't burn
+        CPU during active sessions. Each batch is 256 events; the embedder
+        loads its model lazily (first batch eats ~120 MB RAM permanently,
+        subsequent batches are cheap).
+
+        No-op when `fastembed` isn't installed (dev machines / CI).
+        """
+        from sonya.memory.embedder import Embedder
+        from sonya.memory.recall import RecallStore
+
+        if not Embedder.is_available():
+            _log.info("embedding_indexer_disabled", extra={"reason": "fastembed not installed"})
+            return
+
+        # Initial delay so we don't compete with boot.
+        try:
+            await asyncio.wait_for(self._embedding_indexer_stop.wait(), timeout=30.0)
+            return
+        except asyncio.TimeoutError:
+            pass
+
+        store = RecallStore(self.substrate)
+        backoff = 30.0
+        while not self._embedding_indexer_stop.is_set():
+            try:
+                count = store.index_batch(batch_size=256)
+            except Exception as err:
+                _log.warning("embedding_index_failed", extra={"error": str(err)})
+                count = 0
+                backoff = min(backoff * 2, 600.0)
+            else:
+                if count > 0:
+                    _log.info("embedding_indexed", extra={"count": count})
+                    backoff = 5.0  # active backfill — go fast
+                else:
+                    backoff = 300.0  # nothing to do — chill for 5 min
+            try:
+                await asyncio.wait_for(
+                    self._embedding_indexer_stop.wait(), timeout=backoff
                 )
                 return
             except asyncio.TimeoutError:

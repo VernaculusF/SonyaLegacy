@@ -44,7 +44,14 @@ def _hash_command(cmd: str) -> str:
 
 
 class ShellTool:
-    """Gated shell + pip. Requires Ivan approval per unique command."""
+    """Gated shell + pip. Requires Ivan approval per unique command.
+
+    YOLO mode (`yolo_mode=True`) bypasses approval entirely — every shell.run
+    and pip.install executes immediately. Use only when Ivan explicitly trusts
+    the agent for the current session/scope. Auto-records as
+    `shell.executed_yolo` / `pip.installed_yolo` so approval audit trail still
+    shows what happened.
+    """
 
     def __init__(
         self,
@@ -54,6 +61,7 @@ class ShellTool:
         stream: ContinuityStream | None = None,
         timeout_seconds: int = _DEFAULT_TIMEOUT,
         pip_executable: Iterable[str] = ("pip",),
+        yolo_mode: bool = False,
     ) -> None:
         self._sub = substrate
         self._approval = ApprovalManager(substrate)
@@ -61,6 +69,7 @@ class ShellTool:
         self._stream = stream
         self._timeout = timeout_seconds
         self._pip = list(pip_executable)
+        self._yolo_mode = yolo_mode
 
     # ---------- public ----------
 
@@ -68,6 +77,8 @@ class ShellTool:
         cmd = cmd.strip()
         if not cmd:
             return "[ERROR] shell.run needs a command"
+        if self._yolo_mode:
+            return self._yolo_run(scope=cmd, argv=["/bin/sh", "-c", cmd], kind="shell.executed_yolo")
         return self._gated_run(
             action=f"{_SHELL_ACTION_PREFIX}{_hash_command(cmd)}",
             scope=cmd,
@@ -83,12 +94,31 @@ class ShellTool:
         # for now we keep it simple — names + versions only.
         if any(c in package for c in (";", "&", "|", "`", "$", "\n")):
             return "[ERROR] pip.install: invalid characters in package name"
+        if self._yolo_mode:
+            return self._yolo_run(
+                scope=f"pip install {package}",
+                argv=[*self._pip, "install", "--no-input", package],
+                kind="pip.installed_yolo",
+            )
         return self._gated_run(
             action=f"{_PIP_ACTION_PREFIX}{_hash_command(package)}",
             scope=f"pip install {package}",
             argv=[*self._pip, "install", "--no-input", package],
             kind="pip.installed",
         )
+
+    # ---------- yolo (no approval) ----------
+
+    def _yolo_run(self, *, scope: str, argv: list[str], kind: str) -> str:
+        result = self._execute(argv)
+        self._emit(kind, {
+            "scope": scope[:300],
+            "exit_code": result.get("exit", -1),
+            "stdout_bytes": len(result.get("stdout", "")),
+            "stderr_bytes": len(result.get("stderr", "")),
+            "yolo": True,
+        })
+        return self._format_result(scope, "(yolo: no approval)", result)
 
     # ---------- gating ----------
 

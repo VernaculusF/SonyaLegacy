@@ -15,6 +15,7 @@ from typing import Any, Protocol
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.tools.code_tool import CodeTool
 from sonya.tools.filesystem import FilesystemTool
+from sonya.tools.memory_tool import MemoryTool
 from sonya.tools.self_inspect import SelfInspectTool
 from sonya.tools.selfmod_tool import SelfModTool
 from sonya.tools.shell_tool import ShellTool
@@ -68,6 +69,8 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - self_inspect.intentions — read active intentions
 - self_inspect.code [module_path] — read your own source code (e.g. "planning/planner.py")
 - self_inspect.modules — list your packages
+- memory.recall [query] — semantic search over your full episodic history (returns top-5 relevant memories with similarity score)
+- memory.index_status — diagnostic: how many events are embedded vs pending
 - filesystem.read [path] — read a file
 - filesystem.list [path] — list directory
 - filesystem.tree [path] — show directory tree
@@ -167,6 +170,7 @@ async def run_agent_session(
     web: WebTool | None = None,
     code: CodeTool | None = None,
     shell: ShellTool | None = None,
+    memory: MemoryTool | None = None,
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     initial_thought: str = "",
     max_steps: int = 30,
@@ -255,7 +259,7 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound, memory)
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -303,6 +307,7 @@ def _execute_tool(
     code: CodeTool | None = None,
     shell: ShellTool | None = None,
     outbound = None,
+    memory: MemoryTool | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
@@ -331,6 +336,14 @@ def _execute_tool(
             if len(parts) < 2:
                 return "[ERROR] filesystem.write needs: path content"
             return filesystem.write(parts[0], parts[1])
+        elif name == "memory.recall":
+            if memory is None:
+                return "[ERROR] memory tool not configured"
+            return memory.recall(arg.strip())
+        elif name == "memory.index_status":
+            if memory is None:
+                return "[ERROR] memory tool not configured"
+            return memory.index_status()
         elif name == "plugins.list":
             from sonya.tools.hot_loader import list_plugins
             plugins = list_plugins()

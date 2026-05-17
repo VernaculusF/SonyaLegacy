@@ -67,6 +67,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div class="nav">
     <div class="nav-item" data-page="providers">🔑 Providers</div>
     <div class="nav-item" data-page="usage">💸 Usage</div>
+    <div class="nav-item" data-page="approvals">✋ Approvals</div>
     <div class="nav-item" data-page="tasks">📋 Tasks</div>
     <div class="nav-item active" data-page="dashboard">⚡ Dashboard</div>
     <div class="nav-item" data-page="thoughts">💭 Thoughts</div>
@@ -154,6 +155,17 @@ async function loadPage(page) {
       return;
     }
 
+    if (page === 'approvals') {
+      try {
+        const resp = await fetch(`${API}/api/approvals`);
+        const data = await resp.json();
+        content.innerHTML = renderers.approvals(data);
+      } catch(e) {
+        content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+      }
+      return;
+    }
+
   if (page === 'selfmod') {
     try {
       const resp = await fetch(`${API}/api/selfmod/list`);
@@ -212,6 +224,20 @@ const renderers = {
     html += '</div><div class="card"><h3>Semantic Facts</h3>';
     html += d.semantic.map(f => `<div class="event"><div class="meta">${f.fact_type} • conf=${f.confidence}</div><div class="body">${f.statement}</div></div>`).join('');
     html += '</div>';
+    if (d.embedding_index) {
+      const ei = d.embedding_index;
+      let body;
+      if (!ei.available) {
+        body = `<div class="stat" style="color:#8b949e">embedder unavailable${ei.error ? ' — ' + ei.error : ''}</div>`;
+      } else {
+        const total = (ei.indexed || 0) + (ei.pending || 0);
+        const pct = total > 0 ? Math.round((ei.indexed / total) * 100) : 100;
+        body = `<div class="stat">Indexed: <b>${ei.indexed}</b></div>
+                <div class="stat">Pending: <b>${ei.pending}</b></div>
+                <div class="stat">Coverage: <b>${pct}%</b></div>`;
+      }
+      html = `<div class="card"><h3>Embedding Index</h3>${body}</div>` + html;
+    }
     return html;
   },
   telegram(d) {
@@ -397,6 +423,29 @@ const renderers = {
       </div>`;
     return totalsCard + purposeCard + modelCard + recentCard;
   },
+  approvals(d) {
+    const reqs = d.requests || [];
+    if (reqs.length === 0) {
+      return '<div class="card"><h3>No pending approvals</h3><p style="color:#8b949e">When Sonya tries shell.run / pip.install (без YOLO) — запрос появится здесь.</p></div>';
+    }
+    const fmtAction = (a) => {
+      if (a.startsWith('shell.run:')) return '🖥️ shell.run';
+      if (a.startsWith('pip.install:')) return '📦 pip.install';
+      if (a.startsWith('governed_change:')) return '🔧 governed selfmod';
+      return a;
+    };
+    return `<div class="card"><h3>Pending approvals (${reqs.length})</h3>
+      ${reqs.map(r => `
+        <div class="event" style="border-left-color:#d29922;margin-bottom:10px">
+          <div class="meta">[${r.request_id.slice(5,21)}...] ${fmtAction(r.action)} • by ${r.principal_id} • ${r.created_at.slice(0,19)}</div>
+          <div class="body" style="word-break:break-all"><code style="background:#0d1117;padding:4px 8px;border-radius:3px;color:#7ee787;display:inline-block;max-width:100%;white-space:pre-wrap">${(r.scope || '').replace(/</g,'&lt;').slice(0,400)}</code></div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button onclick="approvalsDecide('${r.request_id}','approve')" style="background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">✓ Approve</button>
+            <button onclick="approvalsDecide('${r.request_id}','deny')" style="background:#da3633;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">✗ Deny</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  },
   tasks(d) {
     const tasks = d.tasks || [];
     if (tasks.length === 0) return '<div class="card"><h3>No tasks yet</h3></div>';
@@ -537,6 +586,14 @@ async function providersRefreshAll() {
     const resp = await fetch(`${API}/api/providers/balance/refresh`, {method:'POST'});
     const data = await resp.json();
     if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function approvalsDecide(reqId, decision) {
+  try {
+    const resp = await fetch(`${API}/api/approvals/${reqId}/${decision}`, {method:'POST'});
+    const data = await resp.json();
+    if (resp.ok) loadPage('approvals'); else alert(`Error ${resp.status}: ${JSON.stringify(data)}`);
   } catch(e) { alert('Error: ' + e.message); }
 }
 

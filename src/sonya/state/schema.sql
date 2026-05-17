@@ -224,12 +224,15 @@ CREATE TABLE IF NOT EXISTS episodic_events (
     retention_strength REAL NOT NULL DEFAULT 1.0,
     last_accessed_at TEXT NOT NULL DEFAULT '',
     access_count INTEGER NOT NULL DEFAULT 0,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    embedding BLOB,
+    embedded_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_episodic_type ON episodic_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_episodic_timestamp ON episodic_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_episodic_archived ON episodic_events(archived);
+CREATE INDEX IF NOT EXISTS idx_episodic_embedded_at ON episodic_events(embedded_at);
 
 CREATE TABLE IF NOT EXISTS semantic_facts (
     fact_id TEXT PRIMARY KEY,

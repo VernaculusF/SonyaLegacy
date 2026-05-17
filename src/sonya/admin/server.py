@@ -141,6 +141,21 @@ async def api_memory(request: web.Request) -> web.Response:
         semantic = SemanticMemory(sub)
         recent = episodic.get_recent(limit=30)
         facts = semantic.get_all(limit=20)
+        # Embedding index status (graceful if fastembed not installed)
+        try:
+            from sonya.memory.embedder import Embedder
+            from sonya.memory.recall import RecallStore
+            if Embedder.is_available():
+                rs = RecallStore(sub)
+                embedding_index = {
+                    "available": True,
+                    "indexed": rs.count_indexed(),
+                    "pending": rs.count_pending(),
+                }
+            else:
+                embedding_index = {"available": False}
+        except Exception as exc:
+            embedding_index = {"available": False, "error": str(exc)}
         return web.json_response({
             "episodic": [
                 {"event_type": e.event_type, "timestamp": e.timestamp,
@@ -152,6 +167,7 @@ async def api_memory(request: web.Request) -> web.Response:
                 {"fact_type": f.fact_type, "statement": f.statement, "confidence": f.confidence}
                 for f in facts
             ],
+            "embedding_index": embedding_index,
         })
     finally:
         sub.close()
@@ -648,6 +664,77 @@ async def api_providers_get(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def api_approvals_get(request: web.Request) -> web.Response:
+    """List all pending approval requests (shell.run, pip.install, selfmod.governed).
+
+    Read-only; safe to call while core is running.
+    """
+    from sonya.harness.approval import ApprovalManager
+
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        mgr = ApprovalManager(sub)
+        pending = mgr.list_pending()
+        return web.json_response({
+            "count": len(pending),
+            "requests": [
+                {
+                    "request_id": r.request_id,
+                    "principal_id": r.principal_id,
+                    "action": r.action,
+                    "scope": r.scope,
+                    "status": r.status.value,
+                    "created_at": r.created_at,
+                }
+                for r in pending
+            ],
+        })
+    finally:
+        sub.close()
+
+
+async def api_approvals_decide(request: web.Request) -> web.Response:
+    """Approve or deny a pending approval request.
+
+    Path: /api/approvals/{request_id}/{approve|deny}
+    Decision is recorded under principal_id="ivan". Core sees it on next
+    poll inside the gated tool (already implemented in shell_tool/pip_tool).
+    """
+    from sonya.harness.approval import (
+        ApprovalAlreadyDecidedError,
+        ApprovalManager,
+        ApprovalNotFoundError,
+    )
+
+    request_id = request.match_info["request_id"]
+    decision = request.match_info["decision"]
+    if decision not in ("approve", "deny"):
+        return web.json_response({"error": "decision must be approve or deny"}, status=400)
+
+    config = request.app["config"]
+    sub = _get_substrate_writable(config)
+    try:
+        mgr = ApprovalManager(sub)
+        try:
+            if decision == "approve":
+                req = mgr.approve(request_id, by_principal_id="ivan")
+            else:
+                req = mgr.deny(request_id, by_principal_id="ivan")
+        except ApprovalNotFoundError:
+            return web.json_response({"error": "not found"}, status=404)
+        except ApprovalAlreadyDecidedError as exc:
+            return web.json_response({"error": str(exc)}, status=409)
+        return web.json_response({
+            "status": req.status.value,
+            "request_id": req.request_id,
+            "decided_at": req.decided_at,
+            "decided_by_principal_id": req.decided_by_principal_id,
+        })
+    finally:
+        sub.close()
+
+
 async def api_providers_balance_refresh(request: web.Request) -> web.Response:
     """Force refresh balance for one key (or all active fireworks keys if no key_id).
 
@@ -1040,6 +1127,9 @@ def create_app() -> web.Application:
     # LLM call audit + tasks (admin observability)
     app.router.add_get("/api/llm_calls", api_llm_calls)
     app.router.add_get("/api/tasks", api_tasks)
+    # Approvals (shell.run / pip.install / governed selfmod gates)
+    app.router.add_get("/api/approvals", api_approvals_get)
+    app.router.add_post("/api/approvals/{request_id}/{decision}", api_approvals_decide)
     return app
 
 
