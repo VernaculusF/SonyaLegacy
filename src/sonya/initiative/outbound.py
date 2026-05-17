@@ -52,6 +52,7 @@ class OutboundGate:
         max_per_day: int = 5,
         min_quiet_minutes: int = 90,
         channel_name: str = "telegram",
+        progress_updates_max_per_day: int = 50,
     ) -> None:
         self._registry = registry
         self._stream = stream
@@ -59,9 +60,11 @@ class OutboundGate:
         self._max_per_day = max_per_day
         self._min_quiet = min_quiet_minutes
         self._channel = channel_name
+        self._max_progress_per_day = progress_updates_max_per_day
 
         self._date_key: str = ""
         self._sent_today: int = 0
+        self._progress_today: int = 0
 
     # ---------- public ----------
 
@@ -108,15 +111,20 @@ class OutboundGate:
     def _check_gates(self, *, ignore_quiet: bool = False) -> tuple[bool, str]:
         if not self._target:
             return False, "no SONYA_PRIMARY_USER_TG_ID configured"
-        # Per-day counter
+        # Per-day counter (separate caps for initiative vs in-session progress)
         today = _utc_now().strftime("%Y-%m-%d")
         if today != self._date_key:
             self._date_key = today
             self._sent_today = 0
+            self._progress_today = 0
+        if ignore_quiet:
+            # In-session progress message (chat.tell_ivan called from a tool dispatch)
+            if self._progress_today >= self._max_progress_per_day:
+                return False, f"progress cap reached ({self._progress_today}/{self._max_progress_per_day})"
+            return True, ""
+        # Initiative message (idle thoughts marker, unsolicited)
         if self._sent_today >= self._max_per_day:
             return False, f"daily cap reached ({self._sent_today}/{self._max_per_day})"
-        if ignore_quiet:
-            return True, ""
         # Quiet window — look for latest tg event in continuity
         last_tg = self._latest_tg_seconds_ago()
         if last_tg is not None and last_tg < self._min_quiet * 60:
@@ -167,7 +175,13 @@ class OutboundGate:
             return f"[ERROR] send failed: {type(err).__name__}: {err}"
         if not ok:
             return "[ERROR] channel rejected message (channel not registered or stopped)"
-        self._sent_today += 1
+        # Bump correct counter — tool calls go to progress bucket, idle/initiative
+        # to the strict daily cap.
+        is_progress = reason in ("tool", "task_worker", "task_progress")
+        if is_progress:
+            self._progress_today += 1
+        else:
+            self._sent_today += 1
         self._stream.append(ContinuityEvent(
             kind="outgoing.telegram_initiative",
             payload={
@@ -176,9 +190,11 @@ class OutboundGate:
                 "text": text[:1000],
                 "sent_today": self._sent_today,
                 "daily_cap": self._max_per_day,
+                "progress_today": self._progress_today,
+                "progress_cap": self._max_progress_per_day,
             },
         ))
-        return f"[OK] sent ({self._sent_today}/{self._max_per_day} today)"
+        return f"[OK] sent ({self._sent_today}/{self._max_per_day} initiative, {self._progress_today}/{self._max_progress_per_day} progress)"
 
 
 # ---------- safe sync wrapper for tool dispatcher ----------

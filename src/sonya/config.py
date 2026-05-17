@@ -36,6 +36,7 @@ class AppConfig:
     enable_thinking: bool = True
     initiative_max_per_day: int = 5
     initiative_min_quiet_minutes: int = 90  # how long since last contact before initiative is allowed
+    progress_updates_max_per_day: int = 50  # streaming chat.tell_ivan inside agent sessions
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -72,6 +73,7 @@ def load_config() -> AppConfig:
     enable_thinking = _env_bool("SONYA_ENABLE_THINKING", True)
     initiative_max_per_day = int(os.environ.get("SONYA_INITIATIVE_MAX_PER_DAY", "5"))
     initiative_min_quiet_minutes = int(os.environ.get("SONYA_INITIATIVE_MIN_QUIET_MINUTES", "90"))
+    progress_updates_max_per_day = int(os.environ.get("SONYA_PROGRESS_UPDATES_MAX_PER_DAY", "50"))
     return AppConfig(
         substrate_path=substrate_path,
         health_path=health_path,
@@ -88,4 +90,5 @@ def load_config() -> AppConfig:
         enable_thinking=enable_thinking,
         initiative_max_per_day=initiative_max_per_day,
         initiative_min_quiet_minutes=initiative_min_quiet_minutes,
+        progress_updates_max_per_day=progress_updates_max_per_day,
     )

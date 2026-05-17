@@ -41,8 +41,10 @@ from sonya.state.substrate import Substrate
 
 
 _TOOL_LINE_RE = re.compile(r"\[TOOL:[^\]]*\]")
-_DONE_RE = re.compile(r"\[DONE(?::\s*(?P<body>.+?))?\]\s*$", re.DOTALL)
-_PAUSE_RE = re.compile(r"\[PAUSE(?::\s*(?P<body>.+?))?\]\s*$", re.DOTALL)
+# DONE/PAUSE markers can appear ANYWHERE in the response, not just at the end.
+# Some models like minimax put `[DONE: text]` at the very start.
+_DONE_RE = re.compile(r"\[DONE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
+_PAUSE_RE = re.compile(r"\[PAUSE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 
 
@@ -78,19 +80,34 @@ A) **Если ответ простой** (привет, поддержка, р�
 B) **Если задача требует инструментов** (посмотреть код / память / файл / web / выполнить что-то) — используй tools.
    - НЕ описывай вызов текстом ("я посмотрю папку"). Реально вызывай: `[TOOL: filesystem.list /home/jester-sonya/Sonya]`
    - Получишь observation от tool. Думай дальше.
-   - По ходу работы можешь слать апдейты через `[TOOL: chat.tell_ivan текст]` — Иван это увидит как промежуточное сообщение.
+   - **После КАЖДОГО осмысленного tool call** шли апдейт через `[TOOL: chat.tell_ivan текст]` — Иван видит прогресс реальном времени, не один блок в конце.
    - В конце финальный ответ — `[DONE: финальный текст для Ивана]`.
+
+## КРИТИЧНО — anti-hallucination
+
+**НИКОГДА** не выдумывай результаты tool. Если Иван спрашивает:
+- "Ты думала?", "что в твоих мыслях", "сработало ли мышление" → **обязательно** вызови `[TOOL: self_inspect.thoughts]` ДО ответа. Не описывай гипотетический тик. Если внутри пусто — скажи правду.
+- "Что в памяти?", "что помнишь?" → `[TOOL: self_inspect.memories]` или `[TOOL: self_inspect.state]`
+- "Какие у тебя задачи?" → `[TOOL: tasks.list]`
+
+Если ты НЕ вызвала tool — значит **ничего не знаешь** о том что внутри. Скажи: "сейчас посмотрю" → вызови → ответь по реальным данным. Или скажи правду что не вызвала.
 
 ## КРИТИЧНО — память и self-inspect
 
 Если Иван спрашивает про память, мысли, твои возможности — НЕ запускай code.exec с raw SQL.
 У тебя есть готовые tools:
 - `[TOOL: self_inspect.memories]` — последние эпизоды
-- `[TOOL: self_inspect.thoughts]` — последние мысли
+- `[TOOL: self_inspect.thoughts]` — последние idle-мысли (внутренний поток)
 - `[TOOL: self_inspect.state]` — текущее состояние (drives, intentions)
 - `[TOOL: self_inspect.identity]` — identity record
 
 Они быстрее и не требуют 4 запроса подряд к SQLite. code.exec — для редких случаев когда self_inspect не отвечает.
+
+## Streaming апдейтов через chat.tell_ivan
+
+Когда работаешь над задачей с tools и Иван ждёт результат — **не молчи до самого конца**. После каждого важного шага сделай `[TOOL: chat.tell_ivan текст]` с **человеческим** summary что нашла. Не "✅ выполнено" а "Глянула episodic_events — 10050 записей. Иду дальше в continuity."
+
+Это даёт Ивану видеть процесс. Потом в `[DONE: ...]` уже финальный сводный ответ. Если задача коротенькая (1-2 шага) — апдейты не нужны, сразу `[DONE: ...]`.
 
 ## Длинные задачи
 

@@ -84,13 +84,26 @@ async def test_send_blocked_when_quiet_window_not_passed(env) -> None:
 
 async def test_daily_cap(env) -> None:
     gate = _make_gate(env, max_per_day=2, min_quiet=0)
-    a = await gate.send_via_tool("one")
-    b = await gate.send_via_tool("two")
-    c = await gate.send_via_tool("three")
-    assert "[OK] sent" in a
-    assert "[OK] sent" in b
-    assert "[BLOCKED]" in c
+    # Default tool path uses progress counter (high cap). To test strict daily
+    # cap, call via maybe_send_from_thought (idle marker path).
+    a = await gate.maybe_send_from_thought("[SEND_TO_IVAN: one]")
+    b = await gate.maybe_send_from_thought("[SEND_TO_IVAN: two]")
+    c = await gate.maybe_send_from_thought("[SEND_TO_IVAN: three]")
+    assert a is not None and "[OK] sent" in a
+    assert b is not None and "[OK] sent" in b
+    assert c is not None and "[BLOCKED]" in c
     assert "daily cap" in c
+
+
+async def test_progress_cap(env) -> None:
+    """Streaming chat.tell_ivan from inside a session (ignore_quiet=True) uses
+    a separate higher cap; not blocked by initiative daily cap."""
+    gate = _make_gate(env, max_per_day=1, min_quiet=120)
+    # max_per_day=1 — initiative would block after 1, but progress counter is
+    # default 50, so multiple tool sends should work.
+    for i in range(3):
+        out = await gate.send_via_tool(f"step {i}", ignore_quiet=True)
+        assert "[OK] sent" in out
 
 
 async def test_no_target_blocks(env) -> None:

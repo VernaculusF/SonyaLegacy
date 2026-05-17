@@ -334,6 +334,7 @@ class _RuntimeBundle:
                 target_tg_chat_id=config.primary_user_tg_id,
                 max_per_day=config.initiative_max_per_day,
                 min_quiet_minutes=config.initiative_min_quiet_minutes,
+                progress_updates_max_per_day=config.progress_updates_max_per_day,
             )
             self.internal_process.set_outbound_gate(outbound)
             _log.info(
