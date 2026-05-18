@@ -16,11 +16,21 @@ _PERSONALITY_DIR = Path(__file__).resolve().parent.parent.parent.parent / "docs"
 
 
 def _load_personality_prompt() -> str:
-    """Load system prompt from personality files (CRUTCH-001)."""
+    """Load system prompt from personality files (CRUTCH-001).
+
+    Order matters: SOUL first (who I am), APPEARANCE (my body), USER (who Ivan is).
+    LESSONS / SELF / HEARTBEAT are NOT loaded here — they're consulted by Sonya
+    on demand via filesystem.read or self_inspect.code, to avoid bloating every
+    LLM call's prompt budget. Identity-critical bits (gender, appearance, anti-
+    spam emoji rule, anti-fake-agency) are inside SOUL/APPEARANCE/USER.
+    """
     parts: list[str] = []
     soul_path = _PERSONALITY_DIR / "SOUL.md"
     if soul_path.exists():
         parts.append(soul_path.read_text(encoding="utf-8"))
+    appearance_path = _PERSONALITY_DIR / "APPEARANCE.md"
+    if appearance_path.exists():
+        parts.append(appearance_path.read_text(encoding="utf-8"))
     user_path = _PERSONALITY_DIR / "USER.md"
     if user_path.exists():
         parts.append(user_path.read_text(encoding="utf-8"))
