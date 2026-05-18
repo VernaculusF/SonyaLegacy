@@ -490,14 +490,26 @@ def _extract_final_draft(text: str) -> str:
         r")",
         re.IGNORECASE,
     )
-    # Lines that DON'T start a draft (commentary).
+    # Lines that DON'T start a draft (commentary / chain-of-thought scaffolding).
     comment_marker = re.compile(
         r"^\s*("
         r"wait[, ]|actually,|but wait|hmm[,.]|let me check|let me reconsider"
+        r"|let me analyze|let me think|let me see|let me review"
         r"|this combines|this feels|this is good|this is better"
-        r"|the user|i should|i need to|i will|i think"
+        r"|the user|i should|i need to|i will|i think|i could|i want"
+        r"|key context|key points|context:|key insights"
+        r"|what should i|what to do|what i should"
+        r"|reasoning:|analysis:|plan:|approach:|strategy:"
+        r"|considerations|thoughts:"
         r")",
         re.IGNORECASE,
+    )
+    # English bullet/numbered list lines — the model often dumps a numbered
+    # plan in English. If a line is `1. ` or `- ` followed by English-only
+    # text, treat as reasoning scaffold. Min 5 chars to avoid eating "- 1k"
+    # type mid-content lines.
+    english_list_line = re.compile(
+        r"^\s*(?:[-*•]|\d+\.)\s+[A-Z][a-zA-Z\s,.()'\"\-:;0-9]{4,}$"
     )
     blocks: list[list[str]] = [[]]
     for raw_line in text.splitlines():
@@ -513,6 +525,11 @@ def _extract_final_draft(text: str) -> str:
         if comment_marker.match(line):
             # Commentary — also acts as a separator, content dropped.
             blocks.append([])
+            continue
+        if english_list_line.match(line):
+            # Numbered/bulleted English-only line — part of reasoning plan.
+            # Drop it; don't even start a new block (the surrounding context
+            # likely is also reasoning).
             continue
         # IMPORTANT: blank lines stay within the block so that draft formatting
         # (paragraph breaks between *action* and text) is preserved. Old code
@@ -576,23 +593,52 @@ def _scrub(text: str) -> str:
 def _looks_like_reasoning_leak(text: str) -> bool:
     """Heuristic: text contains a lot of English meta-reasoning tokens.
 
-    Returns True when more than 25% of the lines start with reasoning markers,
-    or when total English-meta vocabulary density is high.
+    Returns True when more than 15% of the lines look like reasoning scaffold,
+    OR when more than 40% of total chars are English (meaning the model
+    answered Ivan in English which is itself a reasoning leak — Sonya speaks
+    Russian to Ivan).
     """
     if not text:
         return False
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     if not lines:
         return False
+    # Section headers / colon-keywords / bullet lines that signal reasoning
+    section_re = re.compile(
+        r"^\s*(?:[-*•]|\d+\.)?\s*("
+        r"key\s+(?:context|points|insights|takeaways)"
+        r"|what\s+(?:should\s+i|to\s+do|i\s+should)"
+        r"|the\s+user|i\s+should|i\s+need|i\s+will|i\s+think|i\s+could"
+        r"|let\s+me|let's|first[, ]|second[, ]|third[, ]"
+        r"|reasoning|analysis|plan|approach|strategy"
+        r"|considerations|thoughts|key\s+changes"
+        r"|wait[, ]|actually|but\s+wait|hmm"
+        r"|this\s+(?:combines|feels|is\s+good|is\s+better)"
+        r"|maybe|simpler|alternative|draft"
+        r"):?",
+        re.IGNORECASE,
+    )
     meta_lines = 0
     for line in lines:
-        ll = line[:50].lower()
+        ll = line[:80].lower()
         if any(ll.startswith(p) for p in _META_REASONING_PREFIXES):
             meta_lines += 1
             continue
         if _DRAFT_LEAK_LINE_RE.match(line):
             meta_lines += 1
-    return meta_lines / max(1, len(lines)) > 0.25
+            continue
+        if section_re.match(line):
+            meta_lines += 1
+    if meta_lines / max(1, len(lines)) > 0.15:
+        return True
+    # Char-density check: if text is >40% Latin and <30% Cyrillic, the model
+    # answered in English, which is reasoning leak by definition.
+    cyr = len(re.findall(r"[а-яА-ЯёЁ]", text))
+    latin = len(re.findall(r"[a-zA-Z]", text))
+    total_letters = cyr + latin
+    if total_letters > 50 and (latin / total_letters) > 0.4 and (cyr / total_letters) < 0.3:
+        return True
+    return False
 
 
 def _extract_reply(result: SessionResult) -> str:
