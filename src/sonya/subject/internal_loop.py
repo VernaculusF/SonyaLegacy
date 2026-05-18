@@ -129,6 +129,10 @@ class InternalProcess:
         # Task worker: continues in_progress tasks autonomously between active sessions.
         self._last_task_worker_at: float = 0.0
         self._task_worker_running: bool = False
+        # Global "Sonya is busy" lock — held while ANY of:
+        # active session / task worker / TG handler / idle thinking is running.
+        # Single-stream-of-consciousness: only one cognitive context at a time.
+        self._busy_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def counters(self) -> HomeostasisCounters:
@@ -145,6 +149,17 @@ class InternalProcess:
     @property
     def outbound(self):
         return self._outbound
+
+    @property
+    def busy_lock(self) -> asyncio.Lock:
+        """Process-wide lock for cognitive serialisation.
+
+        TG handler should `async with internal_process.busy_lock:` around the
+        run_tg_session call so it doesn't run concurrently with active session,
+        task worker, or idle thinking. Enforces 'one stream of consciousness' —
+        Sonya can't be in two places at once.
+        """
+        return self._busy_lock
 
     def request_active_session_soon(self, delay_seconds: float = 30.0) -> None:
         """Schedule an active session to run within `delay_seconds`.
@@ -250,13 +265,15 @@ class InternalProcess:
                 and not self._task_worker_running
                 and self._provider is not None
                 and not should_active   # avoid double-running with active session
+                and not self._busy_lock.locked()  # don't fire while TG / idle / active is busy
             ):
                 self._last_task_worker_at = now
                 # Run worker in background so the loop tick stays cheap.
                 asyncio.create_task(self._run_task_worker())
 
             if should_active:
-                await self._run_active_session()
+                async with self._busy_lock:
+                    await self._run_active_session()
                 self._last_active_session = now
                 # Этап F: consolidation runs after active sessions, but capped to once/24h
                 if now - self._last_consolidation_at >= self._consolidation_interval:
@@ -264,7 +281,10 @@ class InternalProcess:
                     self._last_consolidation_at = now
             elif should_think:
                 if self._provider is not None:
-                    await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
+                    # Idle thinking: only if not already busy with TG/active/worker.
+                    if not self._busy_lock.locked():
+                        async with self._busy_lock:
+                            await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
                 else:
                     self._emit_cognitive_events_sync_fallback(crossed, idle_triggered, overdue_ids)
                 if idle_triggered:
@@ -612,12 +632,27 @@ class InternalProcess:
         """
         if self._provider is None or self._task_worker_running:
             return
-        self._task_worker_running = True
+        # Acquire busy_lock — TG handler / active session / idle thinking
+        # would otherwise be able to start mid-worker. Single-stream-of-
+        # consciousness invariant.
+        if self._busy_lock.locked():
+            # Someone else is running. We'll get our turn next tick.
+            return
+        async with self._busy_lock:
+            self._task_worker_running = True
+            try:
+                await self._run_task_worker_body()
+            finally:
+                self._task_worker_running = False
+
+    async def _run_task_worker_body(self) -> None:
+        """The actual task worker body. Caller owns the busy_lock."""
+        if self._provider is None:
+            return
         try:
             substrate = self._substrate or getattr(self._stream, "_sub", None)
             if substrate is None:
                 return
-
             from sonya.tasks.service import TaskService
             from sonya.tasks.store import TaskStore
             from sonya.tasks.models import TaskStatus
@@ -769,8 +804,16 @@ class InternalProcess:
                     kind="internal.task_worker_error",
                     payload={"task_id": task.task_id, "error": str(err)[:300]},
                 ))
-        finally:
-            self._task_worker_running = False
+        except Exception as err:
+            # Outer fallback — covers exceptions before the per-task try block
+            # (e.g. substrate/service init failure).
+            try:
+                self._stream.append(ContinuityEvent(
+                    kind="internal.task_worker_error",
+                    payload={"task_id": "(setup)", "error": str(err)[:300]},
+                ))
+            except Exception:
+                pass
 
     # ====================================================================
     # Этап F: drift / gap / consolidation integration

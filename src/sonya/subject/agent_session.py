@@ -174,6 +174,7 @@ async def run_agent_session(
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
+    initial_user_text: str | None = None,
     max_steps: int = 30,
     max_seconds: float = 1200.0,
     purpose: str = "agent_session",
@@ -194,6 +195,11 @@ async def run_agent_session(
         # Multimodal entry point — caller (e.g. tg_session with media attachment)
         # constructed a list-style content message that goes straight to the LLM.
         messages.append({"role": "user", "content": initial_user_message})
+    elif initial_user_text is not None:
+        # Plain user message — no planner prefix. TG session uses this so the
+        # LLM doesn't get prompted with "What do you want to do?" which made
+        # reasoning models echo back "The user is asking me what I want to do...".
+        messages.append({"role": "user", "content": initial_user_text})
     elif initial_thought:
         messages.append({"role": "user", "content": f"Your current thought: {initial_thought}\nWhat do you want to do?"})
     else:
@@ -282,9 +288,10 @@ async def run_agent_session(
                 kind="internal.agent_step",
                 payload={"step": step, "type": "thought", "content": response[:8000]},
             ))
-            # Ask what next
+            # Ask what next — kept short and language-agnostic to avoid leaking
+            # English meta-reasoning into the next turn.
             messages.append({"role": "assistant", "content": response})
-            messages.append({"role": "user", "content": "Continue. Use a tool or say [DONE] when finished."})
+            messages.append({"role": "user", "content": "Продолжай. Если закончила — `[DONE]`."})
 
     # Record session summary. If the last agent_step already captured the
     # full final_output (the common case: model emits [DONE] and the step

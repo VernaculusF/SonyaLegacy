@@ -356,7 +356,13 @@ async def run_tg_session(
     full_prompt = system_prompt + _TG_SYSTEM_SUFFIX
 
     initial_user_message = _build_initial_user_message(user_input, media_path, media_mime)
-    initial_thought = "" if initial_user_message is not None else f"Ivan написал: {user_input}"
+    initial_text = None
+    initial_thought = ""
+    if initial_user_message is None:
+        # Plain text user message — pass it directly without "Your current
+        # thought: ... What do you want to do?" wrapper that triggered
+        # English reasoning leaks ("The user is asking me what I want to do...").
+        initial_text = user_input
 
     result = await run_agent_session(
         provider=provider,
@@ -373,6 +379,7 @@ async def run_tg_session(
         system_prompt=full_prompt,
         initial_thought=initial_thought,
         initial_user_message=initial_user_message,
+        initial_user_text=initial_text,
         max_steps=max_steps,
         max_seconds=max_seconds,
         purpose="tg_session",

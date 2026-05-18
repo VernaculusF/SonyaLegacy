@@ -215,19 +215,39 @@ def _build_incoming_handler(
                     items = inbox.drain(_chat_id)
                     return [it.text for it in items]
 
-                tg_result = await run_tg_session(
-                    provider=provider,
-                    stream=ContinuityStream(substrate),
-                    substrate=substrate,
-                    system_prompt=system_prompt,
-                    user_input=msg.text,
-                    media_path=msg.media_path,
-                    media_mime=msg.media_mime,
-                    outbound=internal_process.outbound if internal_process else None,
-                    max_steps=15,
-                    max_seconds=150.0,
-                    inbox_drain=_drain,
-                )
+                # Take the busy_lock so this TG session doesn't run concurrently
+                # with idle thinking, active session, or task worker. Single-
+                # stream-of-consciousness invariant.
+                _ip = internal_process
+                if _ip is not None:
+                    async with _ip.busy_lock:
+                        tg_result = await run_tg_session(
+                            provider=provider,
+                            stream=ContinuityStream(substrate),
+                            substrate=substrate,
+                            system_prompt=system_prompt,
+                            user_input=msg.text,
+                            media_path=msg.media_path,
+                            media_mime=msg.media_mime,
+                            outbound=_ip.outbound if _ip else None,
+                            max_steps=15,
+                            max_seconds=150.0,
+                            inbox_drain=_drain,
+                        )
+                else:
+                    tg_result = await run_tg_session(
+                        provider=provider,
+                        stream=ContinuityStream(substrate),
+                        substrate=substrate,
+                        system_prompt=system_prompt,
+                        user_input=msg.text,
+                        media_path=msg.media_path,
+                        media_mime=msg.media_mime,
+                        outbound=None,
+                        max_steps=15,
+                        max_seconds=150.0,
+                        inbox_drain=_drain,
+                    )
 
                 response_text = tg_result.reply_text
                 if not response_text:
