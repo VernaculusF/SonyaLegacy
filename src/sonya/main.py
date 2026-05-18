@@ -37,6 +37,43 @@ from sonya.subject import InternalProcess
 _log = get_logger("sonya.main")
 
 
+# Patterns that signal Sonya promised something. If she emits these without
+# any tool calls in the same session, it's empty agency — log a warning.
+import re as _re_promise
+_PROMISE_RE = _re_promise.compile(
+    r"\b("
+    r"найду|поищу|посмотрю|обновлю|сделаю|проверю|изучу"
+    r"|погуляю|почитаю|просмотрю|подсмотрю|разберусь"
+    r"|найду[\sа-я]*и\s+(?:скину|расскажу|покажу)"
+    r"|сейчас\s+(?:сделаю|посмотрю|поищу)"
+    r"|пойду\s+(?:искать|смотреть|читать)"
+    r")\b",
+    _re_promise.IGNORECASE,
+)
+
+
+def _empty_promise_check(response_text: str, actions: list[str]) -> None:
+    """Log a warning if Sonya's reply promises action without tool calls or a task.
+
+    This is non-blocking — the reply still goes out as is. The signal lets us
+    spot fake-agency regressions in journal logs without interfering with TG.
+    """
+    if actions:
+        # If any tools fired (web/memory/tasks/...), it's not an empty promise.
+        return
+    if not response_text:
+        return
+    if not _PROMISE_RE.search(response_text):
+        return
+    _log.warning(
+        "empty_promise_detected",
+        extra={
+            "preview": response_text[:160],
+            "actions_count": len(actions),
+        },
+    )
+
+
 def _create_thinking_provider(config: AppConfig, substrate: "Substrate"):
     """Create a substrate-backed LLM provider with key rotation.
 
@@ -214,6 +251,12 @@ def _build_incoming_handler(
                         "actions": tg_result.raw.actions[:5],
                     },
                 )
+
+                # Empty-promise detection: Sonya said "найду / посмотрю / сделаю"
+                # but produced no tool calls and no task. Log a warning so we can
+                # spot fake-agency regressions without blocking the reply.
+                _empty_promise_check(response_text, tg_result.raw.actions)
+
                 record_response_as_memory(
                     substrate, msg.text, response, channel=f"{msg.channel}_userbot"
                 )
