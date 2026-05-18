@@ -269,9 +269,13 @@ class TelegramChannel:
                                 "tg_send_skipped_disconnected",
                                 extra={"chat_id": str(event.chat_id), "error": str(conn_err)},
                             )
-                else:
-                    # Still notify so handler can record/track without generating response
-                    await deps.on_incoming(msg)
+                # NB: when should_respond=False we deliberately DO NOT call
+                # deps.on_incoming. Earlier code did so "for tracking" but
+                # on_incoming runs the full LLM planner — which means anyone
+                # DMing Sonya from outside the allowlist could burn tokens
+                # without ever receiving a reply (the response was discarded
+                # here anyway). That's a budget-DoS vector. Tracking already
+                # happened via deps.notify_external_event() above.
             except ConnectionError as err:
                 _log.warning(
                     "tg_handler_disconnected",
