@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Operations
-**Last updated:** 2026-05-16
+**Last updated:** 2026-05-18
 
 ## Где хостится
 
@@ -19,14 +19,14 @@
 
 | Service | Port | Описание |
 |---------|------|----------|
-| sonya.service | — | Ядро: substrate + thinking loop + telegram userbot |
-| sonya-admin.service | 8877 | Web-панель (пароль: в .env) |
-| OmniRoute (Docker) | 20128 | LLM proxy с 12 fireworks ключами |
+| sonya.service | — | Ядро: substrate + thinking loop + telegram userbot + embedding indexer |
+| sonya-admin.service | 8877 | Web-панель (пароль в .env) |
+
+OmniRoute удалён. LLM-вызовы идут напрямую через `sonya.providers.llm_provider` с собственной key pool в substrate.
 
 ## Как подключиться
 
 ```bash
-# С локальной машины (ключ уже настроен):
 ssh jester-sonya@34.38.255.149
 ```
 
@@ -34,19 +34,18 @@ ssh jester-sonya@34.38.255.149
 
 ```
 /home/jester-sonya/
-├── Sonya/              — проект (git clone)
-│   ├── src/sonya/      — ядро
-│   ├── packages/       — tg-bridge, tg-userbot
-│   ├── .env            — конфиг (ключи, модель, пароли)
-│   ├── tg.session      — Telegram userbot session
-│   └── .venv/          — Python virtual environment
-│
-├── omniroute_data/     — данные OmniRoute
-│   ├── storage.sqlite  — ключи и настройки провайдеров
-│   └── server.env      — JWT/encryption secrets
+├── Sonya/                  — проект (git clone)
+│   ├── src/sonya/          — ядро
+│   ├── packages/tg-userbot — Telethon обёртка
+│   ├── .env                — конфиг (TG api id/hash, admin password)
+│   ├── tg.session          — Telegram userbot session
+│   └── .venv/              — Python virtual environment
 │
 └── .sonya/
-    └── sonya_substrate.db  — substrate (основная БД Сони)
+    ├── sonya_substrate.db  — substrate (substrate v13)
+    ├── media/              — скачанные TG медиа (фото/стикеры)
+    ├── backups/daily/      — daily substrate backup (cron 04:00 UTC)
+    └── omniroute_keys_backup.json — резерв старых ключей
 ```
 
 ## Управление сервисами
@@ -57,8 +56,7 @@ sudo systemctl status sonya
 sudo systemctl status sonya-admin
 
 # Перезапуск
-sudo systemctl restart sonya
-sudo systemctl restart sonya-admin
+sudo systemctl restart sonya sonya-admin
 
 # Логи (live)
 sudo journalctl -u sonya -f
@@ -66,38 +64,40 @@ sudo journalctl -u sonya-admin -f
 
 # Остановить
 sudo systemctl stop sonya
-
-# OmniRoute
-sudo docker logs omniroute --tail 20
-sudo docker restart omniroute
 ```
 
 ## Обновление кода
 
 ```bash
-cd ~/Sonya
-git pull origin develop
-sudo systemctl restart sonya sonya-admin
+# С локальной машины
+ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 ```
+
+`update.sh` делает: git pull → pip install runtime deps (fastembed/numpy на случай первичной установки) → systemctl restart.
 
 ## Backup substrate
 
+Автоматический ежедневный backup через cron в `~/.sonya/backups/daily/`. Ручной:
+
 ```bash
-cp ~/.sonya/sonya_substrate.db ~/.sonya/backup_$(date +%Y%m%d).db
+sqlite3 ~/.sonya/sonya_substrate.db ".backup ~/.sonya/manual_$(date +%Y%m%d).db"
 ```
+
+Через `cp` опасно — substrate в WAL mode, файл может быть corrupt.
 
 ## .env на сервере
 
 ```
-SONYA_LLM_API_BASE=http://127.0.0.1:20128/v1
-SONYA_LLM_MODEL=fireworks/accounts/fireworks/models/minimax-m2p7
-SONYA_OPENROUTER_API_KEY=sk-...
-SONYA_TG_API_ID=2040
-SONYA_TG_API_HASH=b18441a1ff607e10a989891a5462e627
+SONYA_TG_API_ID=...
+SONYA_TG_API_HASH=...
 SONYA_TG_SESSION_PATH=./tg.session
-SONYA_ADMIN_PASSWORD=1990
+SONYA_ADMIN_PASSWORD=...
+SONYA_PRIMARY_USER_TG_ID=5785127604
 SONYA_LOG_LEVEL=INFO
+SONYA_YOLO_MODE=1   # shell.run / pip.install без approval
 ```
+
+LLM-провайдер (Fireworks) и default_model хранятся **в substrate** (`provider_settings` table), не в .env. Редактируется через admin panel → Providers.
 
 ## Firewall правила
 
@@ -106,18 +106,24 @@ SONYA_LOG_LEVEL=INFO
 | default-allow-http | 80 | 0.0.0.0/0 | HTTP (не используется) |
 | allow-sonya-admin | 8877 | 0.0.0.0/0 | Admin panel |
 
-## Как деплоить с локальной машины
+## Деплой с локальной машины
 
 ```powershell
-# 1. Commit + push
+# Commit + push
 git add -A; git commit -m "..."; git push origin develop
 
-# 2. Pull на сервере + restart
-ssh jester-sonya@34.38.255.149 "cd ~/Sonya && git pull origin develop && sudo systemctl restart sonya sonya-admin"
+# Pull на сервере + restart
+ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 ```
 
 ## Что НЕ менять руками на сервере
 
-- `sonya_substrate.db` — это substrate Сони, её память и identity
-- `tg.session` — авторизация Telegram
-- `omniroute_data/storage.sqlite` — ключи провайдеров
+- `sonya_substrate.db` — substrate Сони, её память и identity
+- `tg.session` — авторизация Telegram (потеряешь — Соня выйдет из аккаунта)
+- ключи провайдеров в `provider_keys` table (правь через admin Providers tab)
+
+## Что мониторить
+
+- `free -h` — RAM (norm: ~5.5+ GB free; embedder при первой загрузке ест ~120-150 MB)
+- `df -h /` — disk (norm: ~40+ GB free)
+- `~/.cache/fastembed/` — модель эмбеддинга (~80 MB), скачивается один раз

@@ -176,6 +176,38 @@
 
 ---
 
+### CRUTCH-013: Memory recall через cosine similarity batched inject
+
+**Что происходит:** При вызове `[TOOL: memory.recall <query>]` — все embedded эпизоды грузятся в numpy матрицу, считается dot product с эмбеддингом запроса, top-k ответов вставляются в context следующего LLM-вызова как текст.
+
+**Почему это костыль:**
+- Recall привязан к **явному tool вызову**. Соня должна сама решить «мне нужно вспомнить» — настоящая память так не работает.
+- top-k результатов — это всё ещё inject в context, не activation в памяти. Связи не образуются, recall не усиливает retention beyond mark_accessed.
+- One-shot per query. Нет chain-of-thought через память (нашла X → ассоциация на Y → Y приводит к Z).
+- Embedding модель (all-MiniLM-L6-v2) не знает Сониного тона / контекста / отношений — она generic.
+
+**Что будет вместо:** На RWKV memory может быть частью native state — релевантные эпизоды активируются автоматически в forward pass, без явного retrieval call. Embedding используется как backup для long-term retrieval, но не основной канал памяти.
+
+**Когда уйдёт:** Post-MVP Track E.
+
+---
+
+### CRUTCH-014: Vision через base64 image_url payload
+
+**Что происходит:** TG прислал фото → скачано в `~/.sonya/media/` → читается как bytes → base64 → склеивается в `data:image/jpeg;base64,...` URL → подставляется в OpenAI-style multimodal message → отправляется в kimi-k2.6. Модель отвечает с описанием.
+
+**Почему это костыль:**
+- Каждый раз картинка передаётся **заново** — нет persistent visual memory.
+- Если Иван прислал то же фото час назад — модель не вспомнит, потому что не видит свой прошлый ответ как «уже видела это».
+- Видео, голосовые, .tgs стикеры — vision не работает на них.
+- Модель не может сравнить **сейчас** прислатое фото с **прошлым** прислатым фото — оба в context только если оба в текущем запросе.
+
+**Что будет вместо:** Native visual memory через embedding image features в substrate. Сравнение через perceptual hash + embedding similarity. Возможно отдельная VLM (CLIP) для visual recall независимо от brain LLM.
+
+**Когда уйдёт:** Post-MVP. Можно сделать частично без RWKV: imagehash + embedding column на media files.
+
+---
+
 ## 3. Как Соня должна использовать этот документ
 
 При каждом thinking tick (когда InternalProcess зовёт LLM) этот документ или его summary должен быть доступен в context. Соня должна знать:
