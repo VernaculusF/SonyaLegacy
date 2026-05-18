@@ -215,39 +215,27 @@ def _build_incoming_handler(
                     items = inbox.drain(_chat_id)
                     return [it.text for it in items]
 
-                # Take the busy_lock so this TG session doesn't run concurrently
-                # with idle thinking, active session, or task worker. Single-
-                # stream-of-consciousness invariant.
-                _ip = internal_process
-                if _ip is not None:
-                    async with _ip.busy_lock:
-                        tg_result = await run_tg_session(
-                            provider=provider,
-                            stream=ContinuityStream(substrate),
-                            substrate=substrate,
-                            system_prompt=system_prompt,
-                            user_input=msg.text,
-                            media_path=msg.media_path,
-                            media_mime=msg.media_mime,
-                            outbound=_ip.outbound if _ip else None,
-                            max_steps=15,
-                            max_seconds=150.0,
-                            inbox_drain=_drain,
-                        )
-                else:
-                    tg_result = await run_tg_session(
-                        provider=provider,
-                        stream=ContinuityStream(substrate),
-                        substrate=substrate,
-                        system_prompt=system_prompt,
-                        user_input=msg.text,
-                        media_path=msg.media_path,
-                        media_mime=msg.media_mime,
-                        outbound=None,
-                        max_steps=15,
-                        max_seconds=150.0,
-                        inbox_drain=_drain,
-                    )
+                # NB: we deliberately do NOT take internal_process.busy_lock here.
+                # Ivan's incoming TG messages have priority over background
+                # work (idle thinking / task worker). The busy_lock only
+                # serialises background paths between themselves so they don't
+                # double-up on the LLM provider. TG sessions can run
+                # concurrently with a worker — Ivan should never have to wait
+                # 60+ seconds for a reply because Sonya was advancing some
+                # task in the background.
+                tg_result = await run_tg_session(
+                    provider=provider,
+                    stream=ContinuityStream(substrate),
+                    substrate=substrate,
+                    system_prompt=system_prompt,
+                    user_input=msg.text,
+                    media_path=msg.media_path,
+                    media_mime=msg.media_mime,
+                    outbound=internal_process.outbound if internal_process else None,
+                    max_steps=15,
+                    max_seconds=150.0,
+                    inbox_drain=_drain,
+                )
 
                 response_text = tg_result.reply_text
                 if not response_text:
