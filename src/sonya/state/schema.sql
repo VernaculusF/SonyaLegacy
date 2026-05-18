@@ -361,3 +361,27 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_status ON llm_calls(status);
 --              'silent' (no progress messages, just continuity)
 -- These columns added via ALTER TABLE in migration v8 → v9.
 -- ====================================================================
+
+-- ====================================================================
+-- v14 additions: sticker collection
+-- Stores stickers Sonya has seen incoming from Ivan, so she can re-send
+-- them as part of her own replies via the [STICKER: <emoji>] marker.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS seen_stickers (
+    sticker_id TEXT PRIMARY KEY,        -- composite "<file_id>:<access_hash>" (telethon InputDocument key)
+    file_id INTEGER NOT NULL,           -- Telegram document id (numeric)
+    access_hash INTEGER NOT NULL,       -- Telegram access hash for the document
+    file_reference BLOB,                -- short-lived reference (refreshed on stale)
+    emoji TEXT NOT NULL DEFAULT '',     -- alt-emoji from sticker attribute (single emoji)
+    pack_name TEXT NOT NULL DEFAULT '', -- short_name of the sticker set
+    mime_type TEXT NOT NULL DEFAULT '', -- 'image/webp' | 'application/x-tgsticker' | 'video/webm'
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    seen_count INTEGER NOT NULL DEFAULT 1,
+    use_count INTEGER NOT NULL DEFAULT 0   -- how many times Sonya re-sent this one
+);
+
+CREATE INDEX IF NOT EXISTS idx_seen_stickers_emoji ON seen_stickers(emoji);
+CREATE INDEX IF NOT EXISTS idx_seen_stickers_pack ON seen_stickers(pack_name);
+CREATE INDEX IF NOT EXISTS idx_seen_stickers_use_count ON seen_stickers(use_count);

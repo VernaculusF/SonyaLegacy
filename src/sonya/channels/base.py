@@ -30,6 +30,7 @@ class OutgoingMessage:
     text: str
     reply_to_id: str | None = None  # if set, transport will use reply semantics
     media_kind: str | None = None  # for future TTS / image attachment
+    sticker_emoji: str | None = None  # if set, channel will send a sticker matching this emoji
 
 
 # Callback signature: channel hands incoming message + optional response sender to deps

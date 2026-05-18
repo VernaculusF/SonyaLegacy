@@ -379,6 +379,27 @@ class _RuntimeBundle:
         for channel in _build_channels(config):
             self.channel_registry.register(channel)
 
+        # Sticker store: capture stickers from Ivan, allow Sonya to re-send them.
+        # Wire it into the Telegram channel (if any) post-construction since
+        # build() runs before substrate is wired to channels.
+        try:
+            from sonya.channels.sticker_store import StickerStore
+            sticker_store = StickerStore(substrate)
+            tg_channel = self.channel_registry.get("telegram") if hasattr(
+                self.channel_registry, "get"
+            ) else None
+            if tg_channel is None:
+                # Fallback: scan registry
+                for name in self.channel_registry.list_names():
+                    if name == "telegram":
+                        tg_channel = self.channel_registry._channels.get("telegram")
+                        break
+            if tg_channel is not None:
+                tg_channel._sticker_store = sticker_store
+                _log.info("sticker_store_attached", extra={"channel": "telegram"})
+        except Exception as err:
+            _log.warning("sticker_store_attach_failed", extra={"error": str(err)})
+
         # Этап D: outbound initiative gate
         if config.primary_user_tg_id:
             from sonya.initiative.outbound import OutboundGate

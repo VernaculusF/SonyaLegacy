@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 13
+CURRENT_VERSION = 14
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -190,6 +190,18 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 13
+
+    if version == 13:
+        # v13 → v14: sticker collection — captures stickers Sonya has seen
+        # incoming from Ivan so she can re-send them via [STICKER: <emoji>].
+        conn.executescript(_SCHEMA_FILE.read_text(encoding="utf-8"))
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (14, now),
+        )
+        conn.commit()
+        version = 14
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

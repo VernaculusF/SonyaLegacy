@@ -32,6 +32,7 @@ class TelegramChannel:
         session_path: str,
         allowed_sender_ids: tuple[str, ...] = (),
         media_dir: str | None = None,
+        sticker_store: Any = None,
     ) -> None:
         self._api_id = api_id
         self._api_hash = api_hash
@@ -55,6 +56,8 @@ class TelegramChannel:
         if self._media_dir:
             from pathlib import Path as _Path
             _Path(self._media_dir).mkdir(parents=True, exist_ok=True)
+        # Optional sticker store for capture+resend (StickerStore from sticker_store.py).
+        self._sticker_store = sticker_store
 
     @property
     def is_running(self) -> bool:
@@ -182,6 +185,16 @@ class TelegramChannel:
                             extra={"error": str(err), "type": type(err).__name__},
                         )
 
+                # Capture stickers into the resend collection (private only).
+                if self._sticker_store is not None and event.media:
+                    try:
+                        _capture_sticker(event, self._sticker_store)
+                    except Exception as err:
+                        _log.warning(
+                            "tg_sticker_capture_failed",
+                            extra={"error": str(err), "type": type(err).__name__},
+                        )
+
                 msg = ChannelMessage(
                     channel=self.name,
                     chat_id=str(event.chat_id),
@@ -249,20 +262,28 @@ class TelegramChannel:
                         now = time.time()
                         last = last_msg_time.get(event.chat_id, 0)
                         try:
-                            chunks = _split_for_telegram(response.text)
-                            for i, chunk in enumerate(chunks):
-                                # In groups: reply on first chunk, respond on
-                                # follow-ups so they don't all quote the same
-                                # source message. In private with >120s pause:
-                                # always reply (one chunk usually).
-                                use_reply = (
-                                    i == 0
-                                    and (not event.is_private or now - last > 120)
-                                )
-                                if use_reply:
-                                    await event.reply(chunk)
-                                else:
-                                    await event.respond(chunk)
+                            # Extract [STICKER: <emoji>] markers; remaining
+                            # text is sent normally, then one sticker per emoji.
+                            clean_text, sticker_emojis = extract_sticker_markers(response.text)
+                            if clean_text:
+                                chunks = _split_for_telegram(clean_text)
+                                for i, chunk in enumerate(chunks):
+                                    use_reply = (
+                                        i == 0
+                                        and (not event.is_private or now - last > 120)
+                                    )
+                                    if use_reply:
+                                        await event.reply(chunk)
+                                    else:
+                                        await event.respond(chunk)
+                            # Send each sticker on a separate message; the
+                            # store is searched by emoji and the first match
+                            # wins (most recently seen / most popular).
+                            if self._sticker_store is not None:
+                                for emoji in sticker_emojis:
+                                    await send_sticker_by_emoji(
+                                        client, event.chat_id, emoji, self._sticker_store,
+                                    )
                             last_msg_time[event.chat_id] = now
                         except ConnectionError as conn_err:
                             _log.warning(
@@ -351,12 +372,18 @@ def build(config: Any) -> "TelegramChannel | None":
     extras_raw = str(getattr(config, "tg_allowed_extra_senders", "") or "").strip()
     extras = tuple(s.strip() for s in extras_raw.split(",") if s.strip())
     allowed = tuple([primary_user] + list(extras)) if primary_user else extras
+
+    # Sticker store needs substrate. The composition root passes substrate
+    # through ChannelDeps.substrate but build() runs before deps are wired.
+    # We accept that the build() factory can't construct it here and leave
+    # it None — main._on_incoming/composition layer wires it after start().
     return TelegramChannel(
         api_id=api_id,
         api_hash=getattr(config, "tg_api_hash", ""),
         session_path=getattr(config, "tg_session_path", "./tg.session"),
         allowed_sender_ids=allowed,
         media_dir=str(getattr(config, "media_dir", "")) or None,
+        sticker_store=None,
     )
 
 
@@ -475,3 +502,117 @@ def _split_for_telegram(text: str) -> list[str]:
         out.append(remainder[:cut].rstrip())
         remainder = remainder[cut:].lstrip()
     return out
+
+
+# ====================================================================
+# Sticker capture + send helpers
+# ====================================================================
+
+import re as _re_stickers
+
+# Marker Sonya emits in her reply when she wants to send a sticker:
+#   [STICKER: 😘]
+# Single emoji per marker. Multiple markers in one reply are allowed.
+_STICKER_MARKER_RE = _re_stickers.compile(r"\[STICKER:\s*([^\]]+)\]")
+
+
+def _capture_sticker(event: Any, sticker_store: Any) -> None:
+    """If the message contains a sticker document, persist it for re-send.
+
+    Telegram stickers are MessageMediaDocument with a DocumentAttributeSticker
+    inside attributes. We extract file_id, access_hash, file_reference,
+    emoji (alt), and the pack short_name.
+    """
+    from telethon.tl.types import (
+        DocumentAttributeSticker,
+        InputStickerSetID,
+        InputStickerSetShortName,
+        MessageMediaDocument,
+    )
+
+    media = event.media
+    if not isinstance(media, MessageMediaDocument):
+        return
+    doc = media.document
+    if doc is None:
+        return
+
+    sticker_attr = None
+    for attr in (doc.attributes or []):
+        if isinstance(attr, DocumentAttributeSticker):
+            sticker_attr = attr
+            break
+    if sticker_attr is None:
+        return  # not a sticker — could be voice, video, animated, etc.
+
+    # alt is a single emoji (or empty string for some custom packs)
+    emoji = (sticker_attr.alt or "").strip()
+    pack_name = ""
+    stickerset = sticker_attr.stickerset
+    if isinstance(stickerset, InputStickerSetShortName):
+        pack_name = stickerset.short_name or ""
+    elif isinstance(stickerset, InputStickerSetID):
+        pack_name = f"id:{stickerset.id}"
+
+    sticker_store.upsert(
+        file_id=int(doc.id),
+        access_hash=int(doc.access_hash),
+        file_reference=bytes(doc.file_reference) if doc.file_reference else b"",
+        emoji=emoji,
+        pack_name=pack_name,
+        mime_type=doc.mime_type or "",
+    )
+
+
+def extract_sticker_markers(text: str) -> tuple[str, list[str]]:
+    """Split a reply into (clean_text, [emoji, emoji, ...]).
+
+    `[STICKER: 😘]` markers are stripped from the text and their emojis
+    returned in order. Caller is expected to send the cleaned text first
+    and then one sticker per emoji.
+    """
+    if not text:
+        return "", []
+    emojis = [m.group(1).strip() for m in _STICKER_MARKER_RE.finditer(text)]
+    cleaned = _STICKER_MARKER_RE.sub("", text)
+    # Collapse triple+ newlines that resulted from removed lines
+    cleaned = _re_stickers.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned, emojis
+
+
+async def send_sticker_by_emoji(
+    client: Any,
+    chat_id: Any,
+    emoji: str,
+    sticker_store: Any,
+) -> bool:
+    """Pick a remembered sticker matching this emoji and send it.
+
+    Returns True on success, False if no sticker is known or the send
+    failed. Increments use_count on success.
+    """
+    from telethon.tl.types import InputDocument
+
+    sticker = sticker_store.pick_for_emoji(emoji)
+    if sticker is None:
+        return False
+    try:
+        input_doc = InputDocument(
+            id=sticker.file_id,
+            access_hash=sticker.access_hash,
+            file_reference=sticker.file_reference,
+        )
+        await client.send_file(chat_id, input_doc)
+        sticker_store.mark_used(sticker.sticker_id)
+        return True
+    except Exception as err:
+        _log.warning(
+            "tg_sticker_send_failed",
+            extra={
+                "error": str(err),
+                "type": type(err).__name__,
+                "emoji": emoji,
+                "sticker_id": sticker.sticker_id,
+            },
+        )
+        return False
