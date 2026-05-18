@@ -127,23 +127,39 @@ class TelegramChannel:
         async def _should_respond_in_group(event, text: str) -> bool:
             if not text:
                 return False
-            text_lower = text.lower()
-            if my_username and f"@{my_username}" in text_lower:
-                return True
-            if my_first_name and text_lower.startswith(my_first_name):
-                return True
-            if event.reply_to_msg_id:
-                try:
-                    replied = await event.get_reply_message()
-                    if replied and replied.sender_id == my_id:
-                        return True
-                except Exception:
-                    pass
+            # SAFETY: by default Sonya does NOT respond in any group. Groups are
+            # for observation only — she's a userbot used as a personal AI, not
+            # a chat-bot. Spam groups, dialog-mention triggers, and bot-loop
+            # situations have caused identity-leak before (e.g. responding "Иван,
+            # хватит" to spam in a third-party chat she was added to).
+            #
+            # Opt-in groups can be configured later via env. For now: hard off.
             return False
+            # legacy logic kept for reference (commented out)
+            # text_lower = text.lower()
+            # if my_username and f"@{my_username}" in text_lower:
+            #     return True
+            # if my_first_name and text_lower.startswith(my_first_name):
+            #     return True
+            # if event.reply_to_msg_id:
+            #     try:
+            #         replied = await event.get_reply_message()
+            #         if replied and replied.sender_id == my_id:
+            #             return True
+            #     except Exception:
+            #         pass
+            # return False
 
         @client.on(events.NewMessage(incoming=True))
         async def _handler(event):
             try:
+                # Skip everything for groups by default — Sonya is a userbot,
+                # she's just present there for observation, not interaction.
+                # Don't even mark as read or download media — that costs network,
+                # disk, and continuity-stream noise.
+                if not event.is_private:
+                    return
+
                 await event.mark_read()
                 text = event.text or ""
                 media_kind = _detect_media_kind(event)
