@@ -131,7 +131,26 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 Always end with `[DONE: <text for Ivan>]` if this is a TG conversation, or `[DONE]` for internal sessions.
 The text inside `[DONE: ...]` goes to Ivan as your reply. Without [DONE] nothing is sent.
 
-Use ONE tool per response. Wait for observation before next.
+## ОДИН tool за один ход
+
+Когда ты пишешь `[TOOL: name args]` — это **один** инструмент. Жди observation, потом следующий.
+
+**Не делай так:**
+```
+[TOOL: web.search foo]
+[TOOL: web.fetch bar]
+[TOOL: web.fetch baz]
+[DONE]
+```
+Это план, не выполнение. Парсер возьмёт первый tool, остальные потеряются. И `[DONE]` в том же ответе закроет сессию до того как успеют сработать остальные tools.
+
+**Правильно:**
+- Ход 1: пишешь `[TOOL: web.search foo]` — больше ничего.
+- Ход 2: получаешь observation, решаешь что делать. Если нужен ещё tool — пишешь его.
+- Ход 3: и так далее, пока не закончишь.
+- Финальный ход: пишешь reply (текст) + `[DONE]` или `[DONE: text]`. Без tool маркеров.
+
+Если хочешь сделать несколько действий — это **несколько ходов**, не один многострочный ответ.
 """
 
 
@@ -250,19 +269,12 @@ async def run_agent_session(
         response = await provider.complete_text(messages, purpose=purpose)
         result.steps += 1
 
-        # Check for DONE or PAUSE
-        if "[DONE" in response or "[PAUSE" in response:
-            result.final_output = response
-            result.thoughts.append(response)
-            stream.append(ContinuityEvent(
-                kind="internal.agent_step",
-                payload={"step": step, "type": "done", "content": response[:8000]},
-            ))
-            break
-
-        # Check for TOOL call — supports both inline `[TOOL: name arg]` and
-        # block form `[TOOL: name]\n```...```\n`. Block form takes precedence
-        # so multi-line code/JSON args parse correctly.
+        # Tool call has priority over [DONE]: if the model emits both in the
+        # same response (a common reasoning-model failure where it writes a
+        # plan with multiple [TOOL: ...] markers and ends with [DONE]), we
+        # execute the first tool and feed the observation back. Without this,
+        # the loop would break on [DONE] and silently drop ALL tool calls —
+        # the "promised but didn't do it" bug.
         tool_call = _extract_tool_call(response)
         if tool_call is not None:
             tool_name, tool_arg = tool_call
@@ -281,17 +293,30 @@ async def run_agent_session(
             # Feed observation back
             messages.append({"role": "assistant", "content": response})
             messages.append({"role": "user", "content": f"[Observation from {tool_name}]:\n{observation[:3000]}"})
-        else:
-            # Pure thought, no tool
+            continue  # don't fall through to DONE / thought branches
+
+        # Check for DONE or PAUSE — only when there was no tool call this
+        # turn. Otherwise the model could close the session before any tool
+        # actually ran.
+        if "[DONE" in response or "[PAUSE" in response:
+            result.final_output = response
             result.thoughts.append(response)
             stream.append(ContinuityEvent(
                 kind="internal.agent_step",
-                payload={"step": step, "type": "thought", "content": response[:8000]},
+                payload={"step": step, "type": "done", "content": response[:8000]},
             ))
-            # Ask what next — kept short and language-agnostic to avoid leaking
-            # English meta-reasoning into the next turn.
-            messages.append({"role": "assistant", "content": response})
-            messages.append({"role": "user", "content": "Продолжай. Если закончила — `[DONE]`."})
+            break
+
+        # Pure thought, no tool, no DONE
+        result.thoughts.append(response)
+        stream.append(ContinuityEvent(
+            kind="internal.agent_step",
+            payload={"step": step, "type": "thought", "content": response[:8000]},
+        ))
+        # Ask what next — kept short and language-agnostic to avoid leaking
+        # English meta-reasoning into the next turn.
+        messages.append({"role": "assistant", "content": response})
+        messages.append({"role": "user", "content": "Продолжай. Если закончила — `[DONE]`."})
 
     # Record session summary. If the last agent_step already captured the
     # full final_output (the common case: model emits [DONE] and the step
