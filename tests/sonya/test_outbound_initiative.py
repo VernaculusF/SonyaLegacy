@@ -154,3 +154,40 @@ async def test_marker_blocked_logs_event(env) -> None:
     assert "[BLOCKED]" in out
     events = list(stream.read_since(0))
     assert any(e.kind == "internal.initiative_blocked" for e in events)
+
+
+
+# ====================================================================
+# Regression: model echoes prompt placeholder verbatim ('<твой текст>',
+# '<text>', etc) instead of substituting real content. We must drop those.
+# ====================================================================
+
+
+async def test_placeholder_blocked_in_send_via_tool(env) -> None:
+    gate = _make_gate(env)
+    out = await gate.send_via_tool("<твой текст>")
+    assert "[BLOCKED]" in out
+    assert "placeholder" in out
+
+
+async def test_placeholder_blocked_in_thought_marker(env) -> None:
+    _, stream, _, fake = env
+    gate = _make_gate(env)
+    thought = "Скучаю. [SEND_TO_IVAN: <твой текст>] И ещё подумаю."
+    out = await gate.maybe_send_from_thought(thought)
+    assert out is not None
+    assert "[BLOCKED]" in out
+    assert "placeholder" in out
+    # Continuity event should record the leak
+    events = list(stream.read_since(0))
+    assert any(
+        e.kind == "internal.initiative_blocked"
+        and e.payload.get("reason") == "placeholder_text_leaked"
+        for e in events
+    )
+
+
+async def test_real_message_passes_placeholder_guard(env) -> None:
+    gate = _make_gate(env)
+    out = await gate.send_via_tool("Малыш, я скучаю.")
+    assert "[OK] sent" in out

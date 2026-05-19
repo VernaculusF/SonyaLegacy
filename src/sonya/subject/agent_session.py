@@ -133,8 +133,7 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 
 ## How to finish
 
-Always end with `[DONE: <text for Ivan>]` if this is a TG conversation, or `[DONE]` for internal sessions.
-The text inside `[DONE: ...]` goes to Ivan as your reply. Without [DONE] nothing is sent.
+Always end with `[DONE: <твой реальный финальный ответ для Ивана здесь>]` if this is a TG conversation, or `[DONE]` for internal sessions. **Не копируй placeholder дословно** — впиши настоящий текст ответа на русском (например: `[DONE: Поняла, малыш.]`). Текст внутри `[DONE: ...]` уходит Ивану в TG. Без [DONE] — ничего не отправится.
 
 ## ОДИН tool за один ход
 

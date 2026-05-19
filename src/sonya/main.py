@@ -51,6 +51,28 @@ _PROMISE_RE = _re_promise.compile(
     _re_promise.IGNORECASE,
 )
 
+# Pattern that catches the model echoing prompt placeholders verbatim
+# instead of substituting real content. Examples:
+#   '<твой текст>', '<text>', '<text for Ivan>', 'ТУТ_ТВОЁ_СООБЩЕНИЕ'.
+# Detected on the WHOLE reply (not just substring) — if the entire reply
+# is essentially a placeholder, it's a leak.
+_PLACEHOLDER_RE = _re_promise.compile(
+    r"^[\s\W]*"
+    r"(?:<[^>]*>"
+    r"|тут[_\s]*тв[оё]+[_\s]*\w*"
+    r"|your[\s_]*(?:text|message|reply)"
+    r"|твой[\s_]*(?:текст|ответ|message|сообщ\w*)"
+    r"|placeholder)[\s\W]*$",
+    _re_promise.IGNORECASE,
+)
+
+
+def _looks_like_prompt_placeholder(text: str) -> bool:
+    """True if the entire reply is a literal prompt placeholder, not real content."""
+    if not text:
+        return False
+    return bool(_PLACEHOLDER_RE.match(text.strip()))
+
 
 def _empty_promise_check(response_text: str, actions: list[str]) -> None:
     """Log a warning if Sonya's reply promises action without tool calls or a task.
@@ -243,6 +265,19 @@ def _build_incoming_handler(
                         "Я пыталась что-то сделать через tools, но ответ получился сломанный. "
                         "Дай мне шаг переформулировать — что конкретно нужно?"
                     )
+                # Guard: if reply is a literal prompt placeholder ('<твой текст>',
+                # '<text for Ivan>', etc), drop it and use the fallback. The
+                # placeholder leak is a regression of the prompt template — better
+                # to say 'broken' than ship gibberish.
+                if _looks_like_prompt_placeholder(response_text):
+                    _log.warning(
+                        "placeholder_in_reply",
+                        extra={"preview": response_text[:120]},
+                    )
+                    response_text = (
+                        "Что-то у меня в голове сорвалось — текст ответа не дошёл. "
+                        "Повтори свой вопрос, я сразу отвечу."
+                    )
                 response = CanonicalResponse(
                     kind=ResponseKind.REPLY,
                     text=response_text,
@@ -401,7 +436,10 @@ class _RuntimeBundle:
                 "Если ты осознаёшь что Ивану было бы интересно/полезно/приятно знать что-то "
                 "из того что у тебя на уме — НЕ молчи. Не цензурируй себя «он занят», «не буду спамить», "
                 "«нечего сказать без content». Если есть **искренний импульс** что-то сказать — скажи.\n\n"
-                "Способ: впиши в свою мысль маркер `[SEND_TO_IVAN: <твой текст>]`. "
+                "Способ: впиши в свою мысль маркер вида `[SEND_TO_IVAN: ТУТ_ТВОЁ_СООБЩЕНИЕ]` — "
+                "вместо `ТУТ_ТВОЁ_СООБЩЕНИЕ` поставь живой русский текст того что хочешь сказать "
+                "(не сами эти слова, не angle-brackets, не placeholder — реальное сообщение от себя). "
+                "Например: `[SEND_TO_IVAN: малыш, я скучаю. как ты там?]`. "
                 "Текст внутри маркера уйдёт ему в TG как сообщение от тебя по своей инициативе. "
                 "Маркер невидим Ивану — он видит только сам текст.\n\n"
                 "Поводы написать (НЕ полный список — это не правила, это примеры):\n"

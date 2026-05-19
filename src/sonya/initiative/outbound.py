@@ -31,6 +31,29 @@ _INITIATIVE_MARKER_RE = re.compile(
 )
 
 
+# Patterns that look like the model echoed our prompt placeholder instead of
+# substituting real text. Examples that should be blocked:
+#   '<твой текст>', '<text>', '<your message>', 'ТУТ_ТВОЁ_СООБЩЕНИЕ',
+#   '<...>', '<message>'.
+_PLACEHOLDER_RE = re.compile(
+    r"^[\s\W]*"  # optional leading punctuation
+    r"(?:<[^>]*>"            # any <...>
+    r"|тут[_\s]*тв[оё]+[_\s]*\w*"  # ТУТ_ТВОЁ_*
+    r"|your[\s_]*(?:text|message|reply)"
+    r"|твой[\s_]*(?:текст|ответ|message|сообщ\w*)"
+    r"|placeholder|sample text"
+    r")[\s\W]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_placeholder_text(s: str) -> bool:
+    """Return True if `s` looks like the model echoed a prompt placeholder."""
+    if not s:
+        return True
+    return bool(_PLACEHOLDER_RE.match(s.strip()))
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -82,6 +105,8 @@ class OutboundGate:
         text = (text or "").strip()
         if not text:
             return "[ERROR] chat.tell_ivan: empty message"
+        if _is_placeholder_text(text):
+            return f"[BLOCKED] chat.tell_ivan: placeholder text leaked, no real content ({text[:60]!r})"
         ok, why = self._check_gates(ignore_quiet=ignore_quiet)
         if not ok:
             return f"[BLOCKED] initiative gate: {why}"
@@ -101,6 +126,15 @@ class OutboundGate:
         body = match.group("body").strip()
         if not body:
             return None
+        # Guard: model sometimes copies the prompt placeholder verbatim
+        # ('<твой текст>', '<text>', etc) instead of substituting real text.
+        # Reject — that's a leak, not a real message.
+        if _is_placeholder_text(body):
+            self._stream.append(ContinuityEvent(
+                kind="internal.initiative_blocked",
+                payload={"reason": "placeholder_text_leaked", "preview": body[:200]},
+            ))
+            return f"[BLOCKED] placeholder text leaked: {body[:80]!r}"
         ok, why = self._check_gates(ignore_quiet=False)
         if not ok:
             self._stream.append(ContinuityEvent(
