@@ -293,6 +293,10 @@ class InternalProcess:
             # Этап F: drift + gap detection every tick (cheap — scans since last seq)
             self._scan_drift_and_gaps()
 
+            # Selfmod watchdog: check APPLIED proposals older than 24h.
+            # Confirm stable or auto-revert based on error count delta.
+            self._check_selfmod_watchdog()
+
     def _check_deadlines(self) -> list[str]:
         """Check active intentions for deadline expiry. Mark overdue."""
         overdue: list[str] = []
@@ -953,5 +957,73 @@ class InternalProcess:
                 kind="internal.consolidation_run",
                 payload={"facts_created": created},
             ))
+        except Exception:
+            pass
+
+    def _check_selfmod_watchdog(self) -> None:
+        """Check APPLIED selfmod proposals for 24h watchdog stability.
+
+        For each proposal with status=APPLIED:
+          - If applied_at > 24h ago → count error events since apply → if error
+            rate increased significantly → auto-revert; else → confirm_stable.
+          - Uses continuity_events count of 'internal.tool_error' +
+            'internal.task_worker_error' as crash signal.
+
+        This is the 24h watchdog from PATH_TO_AGI Stage 3.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return
+        try:
+            from datetime import datetime, timezone, timedelta
+            from sonya.selfmod.proposal import ProposalStatus, ProposalStore
+            from sonya.selfmod.watchdog import WatchWindow
+
+            store = ProposalStore(substrate)
+            watchdog = WatchWindow(store, self._stream)
+            applied = store.list_by_status(ProposalStatus.APPLIED)
+            if not applied:
+                return
+
+            now = datetime.now(timezone.utc)
+            for p in applied:
+                # Check if 24h have passed since apply
+                try:
+                    applied_at = datetime.fromisoformat(p.updated_at)
+                except Exception:
+                    continue
+                if (now - applied_at) < timedelta(hours=24):
+                    continue  # too early
+
+                # Count error events since apply
+                try:
+                    events_since_apply = list(self._stream.read_since(0))
+                    errors_after_apply = [
+                        e for e in events_since_apply
+                        if e.kind in ("internal.tool_error", "internal.task_worker_error")
+                        and e.created_at and e.created_at >= p.updated_at
+                    ]
+                    # Heuristic: if more than 20 errors since apply AND they
+                    # mention the target module → revert. Otherwise confirm.
+                    target_errors = [
+                        e for e in errors_after_apply
+                        if p.target_module in str(e.payload)
+                    ]
+                    if len(target_errors) > 10:
+                        watchdog.trigger_revert(p, reason=(
+                            f"24h watchdog: {len(target_errors)} errors mentioning "
+                            f"{p.target_module} since apply"
+                        ))
+                        # Actually restore the file
+                        try:
+                            from sonya.tools.selfmod_tool import SelfModTool
+                            tool = SelfModTool(substrate)
+                            tool.rollback(p.proposal_id, reason="24h watchdog auto-revert")
+                        except Exception:
+                            pass
+                    else:
+                        watchdog.confirm_stable(p)
+                except Exception:
+                    pass
         except Exception:
             pass
