@@ -83,7 +83,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - plugins.list — list available plugins
 - plugins.create — block form: first line = name, remaining = python code
 - plugins.call [name] [args] — call a loaded plugin
-- selfmod.propose — block form, JSON: {"target": "src/sonya/...", "summary": "...", "content": "<full file>"}
+- selfmod.propose — block form, JSON: {"target": "src/sonya/...", "summary": "...", "content": "<full file>"} OR pipe-separated: target | summary | content
 - selfmod.test_sandbox [proposal_id]
 - selfmod.validate [proposal_id]
 - selfmod.apply [proposal_id]
@@ -446,13 +446,31 @@ def _execute_tool(
         elif name == "selfmod.propose":
             if selfmod is None:
                 return "[ERROR] selfmod tool not configured"
-            # Format: target_path | summary | content (pipe-separated to allow multiline content)
-            parts = arg.split("|", 2)
-            if len(parts) < 3:
-                return "[ERROR] selfmod.propose needs: target_path | summary | content (pipe-separated)"
-            target = parts[0].strip()
-            summary = parts[1].strip()
-            content = parts[2]
+            # Accept BOTH formats:
+            #   pipe-separated: target_path | summary | content
+            #   JSON block: {"target": "...", "summary": "...", "content": "..."}
+            arg_stripped = arg.strip()
+            if arg_stripped.startswith("{"):
+                try:
+                    data = json.loads(arg_stripped)
+                    target = data.get("target", "").strip()
+                    summary = data.get("summary", "").strip()
+                    content = data.get("content", "")
+                except (json.JSONDecodeError, TypeError, ValueError) as err:
+                    return f"[ERROR] selfmod.propose: invalid JSON ({err})"
+            else:
+                parts = arg.split("|", 2)
+                if len(parts) < 3:
+                    return (
+                        "[ERROR] selfmod.propose needs either:\n"
+                        "  pipe: target_path | summary | content\n"
+                        '  JSON: {"target": "...", "summary": "...", "content": "..."}'
+                    )
+                target = parts[0].strip()
+                summary = parts[1].strip()
+                content = parts[2]
+            if not target or not summary:
+                return "[ERROR] selfmod.propose: target and summary are required"
             return selfmod.propose(target, summary, new_content=content)
         elif name == "selfmod.validate":
             if selfmod is None:
