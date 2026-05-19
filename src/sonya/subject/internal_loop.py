@@ -668,7 +668,12 @@ class InternalProcess:
             # Prefer in_progress, then pending; oldest updated_at first
             in_progress = [t for t in due_ivan if t.status is TaskStatus.IN_PROGRESS]
             pending = [t for t in due_ivan if t.status is TaskStatus.PENDING]
-            task = (in_progress + sorted(pending, key=lambda t: t.created_at))[0]
+            actionable = in_progress + sorted(pending, key=lambda t: t.created_at)
+            if not actionable:
+                # Only blocked / non-actionable tasks left for Ivan. Worker
+                # has nothing to advance. Return silently — no error.
+                return
+            task = actionable[0]
 
             # Auto-promote pending → in_progress
             if task.status is TaskStatus.PENDING:

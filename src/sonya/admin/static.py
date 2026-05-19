@@ -40,8 +40,26 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .event.thought { border-color: #f0f; }
 .event.memory { border-color: #7ee787; }
 .event.audit { border-color: #ffa657; }
+.event.dialog-in { border-color: #58a6ff; }
+.event.dialog-out { border-color: #3fb950; }
+.event.action { border-color: #d2a8ff; }
+.event.error { border-color: #f85149; }
+.event.system { border-color: #6e7681; }
+.event.task { border-color: #d29922; }
 .event .meta { color: #484f58; font-size: 11px; margin-bottom: 4px; }
 .event .body { color: #c9d1d9; }
+.event .body .text { white-space: pre-wrap; line-height: 1.5; }
+.event .body .tool-line { color: #d2a8ff; font-family: monospace; font-size: 12px; }
+.event .body .observation-line { color: #8b949e; font-style: italic; font-size: 12px; }
+.event .body .raw-toggle { color: #6e7681; font-size: 11px; cursor: pointer; margin-top: 6px; user-select: none; }
+.event .body .raw-toggle:hover { color: #c9d1d9; }
+.event .body pre.raw { background: #0d1117; padding: 8px; border-radius: 4px; font-size: 11px; max-height: 300px; overflow: auto; margin-top: 6px; display: none; }
+.event .body pre.raw.show { display: block; }
+
+/* Filter chips */
+.chip { display: inline-block; padding: 4px 10px; border-radius: 12px; background: #21262d; border: 1px solid #30363d; color: #8b949e; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.chip:hover { background: #30363d; color: #c9d1d9; }
+.chip.on { background: #f0f; color: #0d1117; border-color: #f0f; }
 
 /* Chat */
 .chat-container { display: flex; flex-direction: column; height: 100%; }
@@ -177,6 +195,18 @@ async function loadPage(page) {
     return;
   }
 
+  if (page === 'thoughts') {
+    try {
+      const kindsParam = thoughtsActiveKinds ? `?limit=200&kinds=${encodeURIComponent(thoughtsActiveKinds)}` : '?limit=200';
+      const resp = await fetch(`${API}/api/thoughts${kindsParam}`);
+      const data = await resp.json();
+      content.innerHTML = renderers.thoughts(data);
+    } catch(e) {
+      content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+    }
+    return;
+  }
+
   try {
     const resp = await fetch(`${API}/api/${page}`);
     const data = await resp.json();
@@ -184,6 +214,12 @@ async function loadPage(page) {
   } catch(e) {
     content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
   }
+}
+
+let thoughtsActiveKinds = '';
+function thoughtsFilter(kinds) {
+  thoughtsActiveKinds = kinds;
+  loadPage('thoughts');
 }
 
 async function coreAction(action, mode) {
@@ -212,11 +248,31 @@ const renderers = {
       <div class="card"><h3>Config</h3><pre>${JSON.stringify(d.config, null, 2)}</pre></div>`;
   },
   thoughts(d) {
-    return d.events.map(e => `
-      <div class="event ${e.kind.includes('internal') ? 'thought' : ''}">
-        <div class="meta">[${e.seq}] ${e.kind} • ${e.created_at.slice(0,19)}</div>
-        <div class="body"><pre>${JSON.stringify(e.payload, null, 2).slice(0,500)}</pre></div>
-      </div>`).join('');
+    const events = d.events || [];
+    if (events.length === 0) return '<div class="card"><h3>No events yet</h3></div>';
+
+    // Filter UI
+    const allKinds = Array.from(new Set(events.map(e => e.kind))).sort();
+    const activeFilter = (d.kinds_filter || []).join(',');
+    const filterChip = (k, label) => `
+      <span class="chip ${activeFilter === k ? 'on' : ''}" onclick="thoughtsFilter('${k}')">${label}</span>`;
+
+    const filterBar = `
+      <div class="card" style="padding:10px">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+          <span style="color:#8b949e;font-size:12px;margin-right:6px">Filter:</span>
+          ${filterChip('', 'all')}
+          ${filterChip('internal.thought', '💭 thoughts')}
+          ${filterChip('internal.agent_step', '🔧 actions')}
+          ${filterChip('incoming.telegram_message,outgoing.telegram_initiative,outgoing.response,outgoing.telegram_response', '💬 dialogue')}
+          ${filterChip('internal.task_worker_tick,internal.task_worker_outcome,task.session_handoff,task.created,task.picked_up,task.step_done,task.failed,task.blocked,task.session_budget_exhausted', '📋 tasks')}
+          ${filterChip('internal.tool_error,internal.task_worker_error', '⚠️ errors')}
+          ${filterChip('internal.cognitive_tick,internal.agent_session_complete,internal.agent_session_outcome,internal.inbox_queued_during_session,internal.inbox_injected,internal.initiative_blocked,internal.capability_gap,internal.consolidation_run,subject.lifecycle.started,subject.lifecycle.stopped,self_mod.validation_layer_1,self_mod.validation_layer_2,self_mod.validation_layer_3,self_mod.validation_layer_4,approval.requested', '⚙️ system')}
+        </div>
+        <div style="font-size:11px;color:#6e7681;margin-top:6px">latest_seq=${d.latest_seq} • showing ${events.length}</div>
+      </div>`;
+
+    return filterBar + events.map(e => renderEvent(e)).join('');
   },
   memory(d) {
     let html = '<div class="card"><h3>Episodic (recent)</h3>';
@@ -587,6 +643,139 @@ async function providersRefreshAll() {
     const data = await resp.json();
     if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
   } catch(e) { alert('Error: ' + e.message); }
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function eventClass(kind) {
+  if (kind === 'internal.thought') return 'thought';
+  if (kind === 'internal.agent_step') return 'action';
+  if (kind === 'incoming.telegram_message') return 'dialog-in';
+  if (kind.startsWith('outgoing.')) return 'dialog-out';
+  if (kind.endsWith('_error') || kind.includes('error')) return 'error';
+  if (kind.startsWith('task.') || kind.startsWith('internal.task_')) return 'task';
+  return 'system';
+}
+
+function eventIcon(kind) {
+  if (kind === 'internal.thought') return '💭';
+  if (kind === 'internal.agent_step') return '🔧';
+  if (kind === 'incoming.telegram_message') return '📨';
+  if (kind === 'outgoing.telegram_initiative') return '📤';
+  if (kind.startsWith('outgoing.')) return '📤';
+  if (kind.endsWith('_error') || kind.includes('error')) return '⚠️';
+  if (kind.startsWith('task.')) return '📋';
+  if (kind === 'internal.task_worker_tick') return '⚙️';
+  if (kind === 'internal.task_worker_outcome') return '✅';
+  if (kind === 'internal.cognitive_tick') return '🧠';
+  if (kind === 'internal.agent_session_complete') return '⏹️';
+  if (kind === 'internal.agent_session_outcome') return '⏹️';
+  if (kind === 'subject.lifecycle.started') return '▶️';
+  if (kind === 'subject.lifecycle.stopped') return '⏸️';
+  if (kind === 'approval.requested') return '✋';
+  if (kind === 'internal.initiative_blocked') return '🚫';
+  if (kind === 'internal.capability_gap') return '🔍';
+  if (kind.startsWith('self_mod.')) return '🔧';
+  return '·';
+}
+
+function renderEvent(e) {
+  const cls = eventClass(e.kind);
+  const icon = eventIcon(e.kind);
+  const p = e.payload || {};
+  const time = (e.created_at || '').slice(11, 19);
+  const date = (e.created_at || '').slice(0, 10);
+  const seqId = `raw-${e.seq}`;
+
+  // Body — kind-specific friendly rendering.
+  let body = '';
+
+  if (e.kind === 'internal.thought') {
+    const text = p.thought || p.content || '';
+    body = `<div class="text">${escapeHtml(text)}</div>`;
+
+  } else if (e.kind === 'incoming.telegram_message') {
+    body = `<div class="text">${escapeHtml(p.text || '')}</div>`;
+
+  } else if (e.kind === 'outgoing.telegram_initiative' || e.kind.startsWith('outgoing.')) {
+    body = `<div class="text">${escapeHtml(p.text || '')}</div>`;
+
+  } else if (e.kind === 'internal.agent_step') {
+    const step = p.step;
+    const type = p.type;
+    if (type === 'action') {
+      const tool = p.tool || '?';
+      const arg = (p.arg || '').slice(0, 200);
+      const thought = p.thought || '';
+      body = `<div class="tool-line">step ${step} → ${escapeHtml(tool)}(${escapeHtml(arg)})</div>`;
+      if (thought) {
+        body += `<div class="text" style="margin-top:6px">${escapeHtml(thought.slice(0, 600))}</div>`;
+      }
+    } else if (type === 'thought') {
+      body = `<div class="text">step ${step}: ${escapeHtml((p.content || '').slice(0, 600))}</div>`;
+    } else if (type === 'done') {
+      body = `<div class="text">[DONE step ${step}] ${escapeHtml((p.content || '').slice(0, 600))}</div>`;
+    } else {
+      body = `<div class="text">${escapeHtml(JSON.stringify(p).slice(0, 300))}</div>`;
+    }
+
+  } else if (e.kind === 'internal.task_worker_tick') {
+    body = `<div class="text">tick task=<b>${escapeHtml(p.task_id || '?')}</b> "${escapeHtml(p.title || '')}" → ${escapeHtml(p.next_step || '')}</div>`;
+
+  } else if (e.kind === 'internal.task_worker_outcome') {
+    const acts = (p.actions || []).slice(0, 3).map(a => escapeHtml(a.slice(0, 60))).join(' · ');
+    body = `<div class="text">${p.steps} steps · actions: ${acts || '(none)'}${p.budget_exceeded ? ' · ⏱ budget' : ''}</div>`;
+
+  } else if (e.kind === 'internal.task_worker_error') {
+    body = `<div class="text">task=<b>${escapeHtml(p.task_id || '?')}</b><br><span style="color:#f85149">${escapeHtml((p.error || '').slice(0, 300))}</span></div>`;
+
+  } else if (e.kind === 'internal.tool_error') {
+    body = `<div class="text">tool=<b>${escapeHtml(p.tool || '?')}</b> arg=${escapeHtml((p.arg || '').slice(0, 80))}<br><span style="color:#f85149">${escapeHtml((p.error_message || '').slice(0, 300))}</span></div>`;
+
+  } else if (e.kind === 'internal.agent_session_complete' || e.kind === 'internal.agent_session_outcome') {
+    const acts = (p.actions || []).slice(0, 5).map(a => escapeHtml(a.slice(0, 50))).join(' · ');
+    const summary = p.summary && p.summary !== '(see prior agent_step)' ? `<div class="text" style="margin-top:6px">${escapeHtml(String(p.summary).slice(0, 400))}</div>` : '';
+    body = `<div class="text">${p.steps || 0} steps · ${acts || '(no tools)'}${p.budget_exceeded ? ' · ⏱ budget' : ''}</div>${summary}`;
+
+  } else if (e.kind === 'internal.cognitive_tick') {
+    const triggers = (p.triggers || []).join(', ');
+    const counters = p.counters ? Object.entries(p.counters).map(([k, v]) => `${k}=${(+v).toFixed(2)}`).join(' ') : '';
+    body = `<div class="observation-line">tick ${p.tick} · ${triggers || 'no triggers'} · ${counters}</div>`;
+
+  } else if (e.kind === 'internal.inbox_queued_during_session' || e.kind === 'internal.inbox_injected') {
+    body = `<div class="text">${escapeHtml((p.preview || '').slice(0, 200))}</div>`;
+
+  } else if (e.kind === 'internal.initiative_blocked') {
+    body = `<div class="text"><b>blocked:</b> ${escapeHtml(p.reason || '?')} — preview: ${escapeHtml((p.preview || '').slice(0, 200))}</div>`;
+
+  } else if (e.kind === 'task.session_handoff') {
+    body = `<div class="text">task=<b>${escapeHtml(p.task_id || '?')}</b> · sessions ${p.sessions_used}/${p.max_sessions || '∞'}<br>next: ${escapeHtml((p.next_step || '').slice(0, 200))}</div>`;
+
+  } else if (e.kind.startsWith('task.')) {
+    const tid = p.task_id || '?';
+    body = `<div class="text">task=<b>${escapeHtml(tid)}</b> · ${escapeHtml(JSON.stringify(p).slice(0, 200))}</div>`;
+
+  } else {
+    // Generic fallback — short JSON line
+    const compact = Object.entries(p).slice(0, 4)
+      .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : String(v).slice(0, 60)}`)
+      .join(' · ');
+    body = `<div class="observation-line">${escapeHtml(compact)}</div>`;
+  }
+
+  return `
+    <div class="event ${cls}">
+      <div class="meta">${icon} <b>${escapeHtml(e.kind)}</b> · ${date} ${time} · seq=${e.seq}</div>
+      <div class="body">
+        ${body}
+        <div class="raw-toggle" onclick="this.nextElementSibling.classList.toggle('show')">▸ raw payload</div>
+        <pre class="raw">${escapeHtml(JSON.stringify(p, null, 2))}</pre>
+      </div>
+    </div>`;
 }
 
 async function approvalsDecide(reqId, decision) {

@@ -117,13 +117,28 @@ async def api_dashboard(request: web.Request) -> web.Response:
 
 async def api_thoughts(request: web.Request) -> web.Response:
     config = request.app["config"]
+    # Optional: limit, kinds filter, since seq.
+    try:
+        limit = int(request.query.get("limit", "100"))
+    except ValueError:
+        limit = 100
+    limit = max(1, min(500, limit))
+    kinds_raw = request.query.get("kinds", "").strip()
+    kinds_filter = {k for k in kinds_raw.split(",") if k} or None
     sub = _get_substrate(config)
     try:
         stream = ContinuityStream(sub)
         latest = stream.latest_seq()
-        start = max(0, latest - 50)
+        # Pull a wider window than `limit` so filter has things to choose from
+        window = max(limit * 3, 200)
+        start = max(0, latest - window)
         events = list(stream.read_since(start))
+        if kinds_filter:
+            events = [e for e in events if e.kind in kinds_filter]
+        events = events[-limit:]
         return web.json_response({
+            "latest_seq": latest,
+            "kinds_filter": sorted(kinds_filter) if kinds_filter else None,
             "events": [
                 {"seq": e.seq, "kind": e.kind, "payload": e.payload, "created_at": e.created_at}
                 for e in reversed(events)

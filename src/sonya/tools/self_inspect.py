@@ -66,10 +66,24 @@ class SelfInspectTool:
         )
 
     def read_own_code(self, module_path: str) -> str:
-        """Read a source file from src/sonya/."""
+        """Read a source file from src/sonya/. If a directory is given,
+        list its python files instead so the agent can pick a specific one."""
         full = self._root / "src" / "sonya" / module_path
         if not full.exists():
             return f"[ERROR] Module not found: {module_path}"
+        if full.is_dir():
+            entries = sorted(full.iterdir())
+            files = [e.name for e in entries if e.is_file() and e.name.endswith(".py")]
+            subdirs = [e.name + "/" for e in entries if e.is_dir() and not e.name.startswith("_")]
+            lines = [f"{module_path}/ — directory listing:"]
+            for d in subdirs:
+                lines.append(f"  {d}")
+            for f in files:
+                lines.append(f"  {f}")
+            lines.append("")
+            lines.append("Pick one and call again, e.g. `[TOOL: self_inspect.code "
+                         f"{module_path}/{files[0] if files else '<file>'}]`")
+            return "\n".join(lines)
         return full.read_text(encoding="utf-8")[:8000]
 
     def list_own_modules(self) -> str:
