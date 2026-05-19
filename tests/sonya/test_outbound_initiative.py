@@ -53,6 +53,9 @@ def _make_gate(env, *, max_per_day=5, min_quiet=1, target="123"):
         target_tg_chat_id=target,
         max_per_day=max_per_day,
         min_quiet_minutes=min_quiet,
+        # Tests don't care about Ivan's wall clock — disable sleep gate so they
+        # don't fail when run at 02:00 UTC+5.
+        respect_sleep_window=False,
     )
 
 

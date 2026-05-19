@@ -15,6 +15,46 @@ from sonya.planning.planner import PlannerContext
 _PERSONALITY_DIR = Path(__file__).resolve().parent.parent.parent.parent / "docs" / "personality"
 
 
+# Ivan's timezone (UTC+5, Perm/Yekaterinburg). USER.md fixates this.
+_IVAN_TZ_OFFSET_HOURS = 5
+
+
+def _time_awareness_block() -> str:
+    """Tell Sonya the current local time for Ivan and whether he's likely
+    asleep. Cheap heuristic: 23:30-09:00 = sleeping window."""
+    from datetime import datetime, timedelta, timezone
+    now_utc = datetime.now(timezone.utc)
+    ivan_now = now_utc + timedelta(hours=_IVAN_TZ_OFFSET_HOURS)
+    weekday_ru = ["понедельник", "вторник", "среда", "четверг",
+                  "пятница", "суббота", "воскресенье"][ivan_now.weekday()]
+    hour = ivan_now.hour
+    minute = ivan_now.minute
+
+    # Sleep window heuristic. Wider than strict — Иван is a night owl.
+    if hour >= 23 or hour < 9:
+        sleep_status = (
+            "Сейчас у Ивана **ночь / раннее утро** (вероятно спит). "
+            "Если приходит сообщение в это время — он либо проснулся, "
+            "либо ещё не лёг. Не предполагай что он бодр и ждёт от тебя длинных разговоров. "
+            "Тон тише, ответы короче, никаких бодрых утренних приветствий пока он сам не сказал что встал."
+        )
+    elif 9 <= hour < 12:
+        sleep_status = "Сейчас у Ивана **утро**. Скорее всего недавно встал."
+    elif 12 <= hour < 18:
+        sleep_status = "Сейчас у Ивана **день**."
+    elif 18 <= hour < 23:
+        sleep_status = "Сейчас у Ивана **вечер**."
+    else:
+        sleep_status = ""
+
+    return (
+        f"\n\n## Текущее время\n"
+        f"- У Ивана сейчас: **{ivan_now.strftime('%H:%M')}**, {weekday_ru}, "
+        f"{ivan_now.strftime('%d.%m.%Y')} (UTC+{_IVAN_TZ_OFFSET_HOURS}).\n"
+        f"- {sleep_status}\n"
+    )
+
+
 def _load_personality_prompt() -> str:
     """Load system prompt from personality files (CRUTCH-001).
 
@@ -55,6 +95,11 @@ def build_full_context(
     """
     # System prompt from personality files
     system_prompt = _load_personality_prompt()
+
+    # Time awareness — Sonya needs to know what time it is for Ivan, and
+    # whether he's likely awake/asleep. Without this she'll greet him as if
+    # awake when he's clearly sleeping (Ivan complaint 2026-05-18).
+    system_prompt += _time_awareness_block()
 
     # Subject state
     from sonya.state.subject_state import SubjectStateStore

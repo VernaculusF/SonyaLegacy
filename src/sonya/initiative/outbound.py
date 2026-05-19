@@ -53,6 +53,10 @@ class OutboundGate:
         min_quiet_minutes: int = 90,
         channel_name: str = "telegram",
         progress_updates_max_per_day: int = 50,
+        respect_sleep_window: bool = True,
+        sleep_window_start_hour: int = 23,
+        sleep_window_end_hour: int = 9,
+        target_tz_offset_hours: int = 5,
     ) -> None:
         self._registry = registry
         self._stream = stream
@@ -61,6 +65,12 @@ class OutboundGate:
         self._min_quiet = min_quiet_minutes
         self._channel = channel_name
         self._max_progress_per_day = progress_updates_max_per_day
+        # Sleep window — Sonya doesn't initiate during Ivan's sleep hours.
+        # In tests we disable this by passing respect_sleep_window=False.
+        self._respect_sleep = respect_sleep_window
+        self._sleep_start_h = sleep_window_start_hour
+        self._sleep_end_h = sleep_window_end_hour
+        self._tz_offset = target_tz_offset_hours
 
         self._date_key: str = ""
         self._sent_today: int = 0
@@ -125,6 +135,19 @@ class OutboundGate:
         # Initiative message (idle thoughts marker, unsolicited)
         if self._sent_today >= self._max_per_day:
             return False, f"daily cap reached ({self._sent_today}/{self._max_per_day})"
+        # Sleep window: don't write to Ivan during his sleep hours.
+        if self._respect_sleep:
+            from datetime import timedelta
+            ivan_now = _utc_now() + timedelta(hours=self._tz_offset)
+            h = ivan_now.hour
+            in_sleep = (
+                (self._sleep_start_h <= self._sleep_end_h
+                 and self._sleep_start_h <= h < self._sleep_end_h)
+                or (self._sleep_start_h > self._sleep_end_h
+                    and (h >= self._sleep_start_h or h < self._sleep_end_h))
+            )
+            if in_sleep:
+                return False, f"sleep window {h:02d}:xx — not waking him up"
         # Quiet window — look for latest tg event in continuity
         last_tg = self._latest_tg_seconds_ago()
         if last_tg is not None and last_tg < self._min_quiet * 60:

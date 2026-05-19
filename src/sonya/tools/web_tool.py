@@ -62,6 +62,35 @@ def _decode_ddg_redirect(href: str) -> str:
     return href
 
 
+def _run_async(coro):
+    """Run an async coroutine from sync code, handling 'already in event loop'.
+
+    Tool dispatch sits inside an async ReAct loop, so when WebTool.search is
+    called we are always inside a running event loop. asyncio.run() refuses
+    to run nested loops. We use a one-shot thread with its own loop.
+
+    The coroutine is constructed by the caller (e.g. self._do_search(q)).
+    Importantly, we always submit the SAME coroutine — never recreate it
+    after the first attempt — to avoid 'coroutine was never awaited' warnings.
+    """
+    import concurrent.futures
+    try:
+        # If there's no running loop, asyncio.run is the simplest path.
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No event loop in this thread — safe to use asyncio.run directly.
+        return asyncio.run(coro)
+    # Running loop exists. Run coro on a separate thread+loop.
+    def _runner():
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(_runner).result()
+
+
 class WebTool:
     """Agent-facing web tool. All methods return strings."""
 
@@ -75,13 +104,7 @@ class WebTool:
         if not query:
             return "[ERROR] web.search needs a query"
         try:
-            return asyncio.run(self._do_search(query))
-        except RuntimeError:
-            # Already in event loop — fall back to nested via thread.
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, self._do_search(query)).result()
+            return _run_async(self._do_search(query))
         except Exception as err:
             return f"[ERROR] web.search failed: {type(err).__name__}: {err}"
 
@@ -121,12 +144,7 @@ class WebTool:
         if not (url.startswith("http://") or url.startswith("https://")):
             return "[ERROR] web.fetch needs http(s):// URL"
         try:
-            return asyncio.run(self._do_fetch(url))
-        except RuntimeError:
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, self._do_fetch(url)).result()
+            return _run_async(self._do_fetch(url))
         except Exception as err:
             return f"[ERROR] web.fetch failed: {type(err).__name__}: {err}"
 

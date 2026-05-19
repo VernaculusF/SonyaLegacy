@@ -192,3 +192,44 @@ def test_web_search_empty_query() -> None:
 
     out = WebTool().search("")
     assert "[ERROR]" in out
+
+
+
+# ====================================================================
+# Async-context regression: tool dispatcher sits inside a running event
+# loop, so WebTool.search/fetch must NOT spawn 'coroutine never awaited'
+# warnings or fail with RuntimeError when called from async code.
+# ====================================================================
+
+
+async def test_web_search_runs_inside_event_loop_without_warnings():
+    """Calling WebTool.search from inside a running event loop must succeed
+    and not emit 'coroutine was never awaited' warnings."""
+    import warnings
+    from unittest.mock import patch
+    from sonya.tools.web_tool import WebTool
+
+    sample_html = (
+        '<a class="result__a" href="https://example.com">Title</a>'
+        '<a class="result__snippet">Snippet</a>'
+    )
+
+    class _Resp:
+        status = 200
+        async def read(self):
+            return sample_html.encode("utf-8")
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return None
+
+    class _Sess:
+        def __init__(self, *a, **kw): pass
+        def get(self, url): return _Resp()
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return None
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        with patch("aiohttp.ClientSession", return_value=_Sess()):
+            out = WebTool().search("test query")
+    assert "Title" in out
+    assert "https://example.com" in out
