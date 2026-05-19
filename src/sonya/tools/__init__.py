@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sonya.tools.code_tool import CodeTool
+from sonya.tools.env_tool import EnvTool
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.memory_tool import MemoryTool
 from sonya.tools.self_inspect import SelfInspectTool
@@ -12,6 +13,7 @@ from sonya.tools import hot_loader
 
 __all__ = [
     "CodeTool",
+    "EnvTool",
     "FilesystemTool",
     "MemoryTool",
     "SelfInspectTool",

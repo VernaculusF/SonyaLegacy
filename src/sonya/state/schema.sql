@@ -385,3 +385,21 @@ CREATE TABLE IF NOT EXISTS seen_stickers (
 CREATE INDEX IF NOT EXISTS idx_seen_stickers_emoji ON seen_stickers(emoji);
 CREATE INDEX IF NOT EXISTS idx_seen_stickers_pack ON seen_stickers(pack_name);
 CREATE INDEX IF NOT EXISTS idx_seen_stickers_use_count ON seen_stickers(use_count);
+
+
+-- ====================================================================
+-- v15 additions: environment status (Sonya's observation of context).
+-- Sonya records what she observes about Ivan's situation here via env.set
+-- tool. Examples: ivan_status='спит', activity='работает над парсером',
+-- mood='уставший'. No clock heuristics — she infers from conversation.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS environment_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',     -- 'observation' | 'inference' | 'ivan_said' | 'system'
+    updated_at TEXT NOT NULL,
+    updated_by TEXT NOT NULL DEFAULT ''  -- agent_session purpose / 'self_inspect' / etc
+);
+
+CREATE INDEX IF NOT EXISTS idx_environment_updated_at ON environment_state(updated_at);

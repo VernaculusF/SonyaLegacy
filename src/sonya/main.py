@@ -461,6 +461,9 @@ class _RuntimeBundle:
                 max_per_day=config.initiative_max_per_day,
                 min_quiet_minutes=config.initiative_min_quiet_minutes,
                 progress_updates_max_per_day=config.progress_updates_max_per_day,
+                # Substrate so OutboundGate can read environment_state and
+                # respect Sonya's own observation that Ivan is sleeping/busy.
+                substrate=substrate,
             )
             self.internal_process.set_outbound_gate(outbound)
             _log.info(

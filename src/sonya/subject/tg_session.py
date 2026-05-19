@@ -31,6 +31,7 @@ from typing import Any
 from sonya.channels.base import OutgoingMessage
 from sonya.subject.agent_session import run_agent_session, SessionResult, AgentProvider
 from sonya.tools.code_tool import CodeTool
+from sonya.tools.env_tool import EnvTool
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.memory_tool import MemoryTool
 from sonya.tools.self_inspect import SelfInspectTool
@@ -320,6 +321,7 @@ def build_tools(
         "code": CodeTool(),
         "shell": ShellTool(substrate, principal_id="ivan", stream=stream, yolo_mode=yolo),
         "memory": MemoryTool(substrate),
+        "env": EnvTool(substrate),
         "outbound": outbound,
     }
 
@@ -375,6 +377,7 @@ async def run_tg_session(
         code=tools["code"],
         shell=tools["shell"],
         memory=tools["memory"],
+        env=tools["env"],
         outbound=tools["outbound"],
         system_prompt=full_prompt,
         initial_thought=initial_thought,

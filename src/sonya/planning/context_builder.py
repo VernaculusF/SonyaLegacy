@@ -19,40 +19,52 @@ _PERSONALITY_DIR = Path(__file__).resolve().parent.parent.parent.parent / "docs"
 _IVAN_TZ_OFFSET_HOURS = 5
 
 
-def _time_awareness_block() -> str:
-    """Tell Sonya the current local time for Ivan and whether he's likely
-    asleep. Cheap heuristic: 23:30-09:00 = sleeping window."""
+def _time_awareness_block(substrate=None) -> str:
+    """Tell Sonya the current local time for Ivan and any environment status
+    she has set herself (e.g. ivan_status='спит', 'работает', 'занят')."""
     from datetime import datetime, timedelta, timezone
     now_utc = datetime.now(timezone.utc)
     ivan_now = now_utc + timedelta(hours=_IVAN_TZ_OFFSET_HOURS)
     weekday_ru = ["понедельник", "вторник", "среда", "четверг",
                   "пятница", "суббота", "воскресенье"][ivan_now.weekday()]
-    hour = ivan_now.hour
-    minute = ivan_now.minute
 
-    # Sleep window heuristic. Wider than strict — Иван is a night owl.
-    if hour >= 23 or hour < 9:
-        sleep_status = (
-            "Сейчас у Ивана **ночь / раннее утро** (вероятно спит). "
-            "Если приходит сообщение в это время — он либо проснулся, "
-            "либо ещё не лёг. Не предполагай что он бодр и ждёт от тебя длинных разговоров. "
-            "Тон тише, ответы короче, никаких бодрых утренних приветствий пока он сам не сказал что встал."
-        )
-    elif 9 <= hour < 12:
-        sleep_status = "Сейчас у Ивана **утро**. Скорее всего недавно встал."
-    elif 12 <= hour < 18:
-        sleep_status = "Сейчас у Ивана **день**."
-    elif 18 <= hour < 23:
-        sleep_status = "Сейчас у Ивана **вечер**."
-    else:
-        sleep_status = ""
-
-    return (
-        f"\n\n## Текущее время\n"
+    lines = [
+        "\n\n## Текущее время и окружение",
         f"- У Ивана сейчас: **{ivan_now.strftime('%H:%M')}**, {weekday_ru}, "
-        f"{ivan_now.strftime('%d.%m.%Y')} (UTC+{_IVAN_TZ_OFFSET_HOURS}).\n"
-        f"- {sleep_status}\n"
-    )
+        f"{ivan_now.strftime('%d.%m.%Y')} (UTC+{_IVAN_TZ_OFFSET_HOURS}).",
+    ]
+    # Pull observed environment status (key→value pairs Sonya set herself
+    # via env.set tool when she inferred something from conversation).
+    if substrate is not None:
+        try:
+            from sonya.state.environment import EnvironmentStore
+            env = EnvironmentStore(substrate).list_all()
+            if env:
+                lines.append("- Что я наблюдаю про Ивана / окружение:")
+                for key, item in env.items():
+                    age = ""
+                    try:
+                        when = datetime.fromisoformat(item["updated_at"])
+                        delta = now_utc - when
+                        mins = int(delta.total_seconds() / 60)
+                        if mins < 60:
+                            age = f" (записала {mins}м назад)"
+                        elif mins < 1440:
+                            age = f" (записала {mins // 60}ч назад)"
+                        else:
+                            age = f" (записала {mins // 1440}д назад)"
+                    except Exception:
+                        pass
+                    lines.append(f"  - **{key}**: {item['value']}{age}")
+            else:
+                lines.append(
+                    "- Я ещё не зафиксировала статус Ивана. "
+                    "Если из разговора понятно (он сказал что спит, ушёл по делам, занят) — "
+                    "вызови `[TOOL: env.set ivan_status <значение>]` чтобы я помнила."
+                )
+        except Exception:
+            pass
+    return "\n".join(lines) + "\n"
 
 
 def _load_personality_prompt() -> str:
@@ -96,10 +108,11 @@ def build_full_context(
     # System prompt from personality files
     system_prompt = _load_personality_prompt()
 
-    # Time awareness — Sonya needs to know what time it is for Ivan, and
-    # whether he's likely awake/asleep. Without this she'll greet him as if
-    # awake when he's clearly sleeping (Ivan complaint 2026-05-18).
-    system_prompt += _time_awareness_block()
+    # Time awareness — current time only. Environment status (Ivan asleep /
+    # working / busy / etc) is pulled from substrate where Sonya stores it
+    # herself via env.set tool when she infers from conversation. No clock
+    # heuristic — sleep schedule is unpredictable.
+    system_prompt += _time_awareness_block(substrate=substrate)
 
     # Subject state
     from sonya.state.subject_state import SubjectStateStore

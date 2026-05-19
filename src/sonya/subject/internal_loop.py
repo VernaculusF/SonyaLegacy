@@ -462,6 +462,8 @@ class InternalProcess:
             web_tool = WebTool()
             code_tool = CodeTool()
             memory_tool = MemoryTool(substrate)
+            from sonya.tools.env_tool import EnvTool
+            env_tool = EnvTool(substrate)
             import os as _os
             _yolo = _os.environ.get("SONYA_YOLO_MODE", "0").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
@@ -571,6 +573,7 @@ class InternalProcess:
                 code=code_tool,
                 shell=shell_tool,
                 memory=memory_tool,
+                env=env_tool,
                 outbound=self._outbound,
                 system_prompt=full_prompt,
                 initial_thought=initial_thought,
@@ -768,6 +771,7 @@ class InternalProcess:
                     code=tools["code"],
                     shell=tools["shell"],
                     memory=tools["memory"],
+                    env=tools["env"],
                     outbound=tools["outbound"],
                     system_prompt=worker_prompt,
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",

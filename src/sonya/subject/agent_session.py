@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.tools.code_tool import CodeTool
+from sonya.tools.env_tool import EnvTool
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.memory_tool import MemoryTool
 from sonya.tools.self_inspect import SelfInspectTool
@@ -71,6 +72,10 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - self_inspect.modules — list your packages
 - memory.recall [query] — semantic search over your full episodic history (returns top-5 relevant memories with similarity score)
 - memory.index_status — diagnostic: how many events are embedded vs pending
+- env.set [key value] — record what you observe about Ivan / context (e.g. `env.set ivan_status спит`, `env.set mood уставший`, `env.set activity работает`). Used to suppress initiative when Ivan is busy/asleep — OutboundGate respects ivan_status='спит' / 'занят'.
+- env.get [key] — read a previously recorded observation
+- env.list — list all current observations
+- env.clear [key] — drop an observation when no longer relevant
 - filesystem.read [path] — read a file
 - filesystem.list [path] — list directory
 - filesystem.tree [path] — show directory tree
@@ -190,6 +195,7 @@ async def run_agent_session(
     code: CodeTool | None = None,
     shell: ShellTool | None = None,
     memory: MemoryTool | None = None,
+    env: EnvTool | None = None,
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
@@ -282,7 +288,7 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound, memory)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound, memory, env)
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -356,6 +362,7 @@ def _execute_tool(
     shell: ShellTool | None = None,
     outbound = None,
     memory: MemoryTool | None = None,
+    env: EnvTool | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
@@ -392,6 +399,22 @@ def _execute_tool(
             if memory is None:
                 return "[ERROR] memory tool not configured"
             return memory.index_status()
+        elif name == "env.set":
+            if env is None:
+                return "[ERROR] env tool not configured"
+            return env.set(arg)
+        elif name == "env.get":
+            if env is None:
+                return "[ERROR] env tool not configured"
+            return env.get(arg)
+        elif name == "env.list":
+            if env is None:
+                return "[ERROR] env tool not configured"
+            return env.list_all()
+        elif name == "env.clear":
+            if env is None:
+                return "[ERROR] env tool not configured"
+            return env.clear(arg)
         elif name == "plugins.list":
             from sonya.tools.hot_loader import list_plugins
             plugins = list_plugins()
