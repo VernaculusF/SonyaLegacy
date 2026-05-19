@@ -360,6 +360,25 @@ class InternalProcess:
                 kind="internal.thought",
                 payload={"thought": thought_text, "tick": self._tick_count},
             ))
+            # Mirror into episodic memory so Sonya can semantic-recall her own
+            # past thoughts ("memory.recall что я думала о Перми"). Without
+            # this idle thoughts live only in continuity_events and aren't
+            # embedded → invisible to the recall tool.
+            try:
+                substrate_for_thoughts = self._substrate or getattr(self._stream, "_sub", None)
+                if substrate_for_thoughts is not None:
+                    from sonya.memory.episodic import EpisodicMemory
+                    EpisodicMemory(substrate_for_thoughts).record(
+                        event_type="idle_thought",
+                        raw_content=thought_text,
+                        normalized_summary=f"Idle тик {self._tick_count}: {thought_text[:120]}",
+                        source="sonya",
+                        channel="internal_idle",
+                        actor="sonya",
+                        importance_score=0.55,
+                    )
+            except Exception:
+                pass
             # Этап D: scan for [SEND_TO_IVAN: ...] marker in idle thought.
             # Cheap — only fires the channel send if marker present and gates pass.
             if self._outbound is not None:
@@ -465,7 +484,7 @@ class InternalProcess:
             from sonya.tools.env_tool import EnvTool
             env_tool = EnvTool(substrate)
             import os as _os
-            _yolo = _os.environ.get("SONYA_YOLO_MODE", "0").lower() in ("1", "true", "yes", "on")
+            _yolo = _os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
                 substrate,
                 principal_id="ivan",
@@ -592,6 +611,23 @@ class InternalProcess:
                     "had_initial_thought": bool(initial_thought),
                 },
             ))
+
+            # Mirror into episodic so Sonya remembers her own deliberate work,
+            # not just the dialogue around it. Without this active sessions are
+            # invisible to memory.recall.
+            try:
+                from sonya.planning.memory_wiring import record_session_outcome_as_memory
+                record_session_outcome_as_memory(
+                    substrate,
+                    purpose="active_session",
+                    steps=result.steps,
+                    actions=list(result.actions),
+                    summary=(result.final_output or "").strip(),
+                    channel="internal_active",
+                    importance_score=0.65,
+                )
+            except Exception:
+                pass
 
             # Auto-increment sessions_used on the in_progress task even if Sonya
             # forgot to call tasks.handoff. Without this, max_sessions cap could
@@ -793,6 +829,21 @@ class InternalProcess:
                         "budget_exceeded": result.budget_exceeded,
                     },
                 ))
+                # Mirror into episodic so worker progress on Ivan's tasks is
+                # part of Sonya's biography (memory.recall sees it later).
+                try:
+                    from sonya.planning.memory_wiring import record_session_outcome_as_memory
+                    record_session_outcome_as_memory(
+                        substrate,
+                        purpose=f"task_worker:{task.task_id}",
+                        steps=result.steps,
+                        actions=list(result.actions),
+                        summary=(result.final_output or "").strip(),
+                        channel="internal_worker",
+                        importance_score=0.55,
+                    )
+                except Exception:
+                    pass
                 # Auto-bump sessions_used if she didn't call handoff/complete/fail.
                 try:
                     used_handoff = any(a.startswith("tasks.handoff") for a in result.actions)

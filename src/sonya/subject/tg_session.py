@@ -311,7 +311,7 @@ def build_tools(
     default_created_by: str = "ivan",
 ) -> dict:
     import os
-    yolo = os.environ.get("SONYA_YOLO_MODE", "0").lower() in ("1", "true", "yes", "on")
+    yolo = os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
     return {
         "self_inspect": SelfInspectTool(substrate),
         "filesystem": FilesystemTool(),

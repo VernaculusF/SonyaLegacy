@@ -2,14 +2,31 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# Subpaths (relative to project root) where Sonya is allowed to WRITE.
-# Read access is wider — see READ_ALLOWED_ROOTS below.
-WRITE_ALLOWED_SUBPATHS: tuple[str, ...] = (
-    "src/sonya/tools/plugins",
-    "workspace",
+# Identity-critical files. Sonya CAN read them but MUST NOT write directly.
+# These are the files that define who she is — changes must go through the
+# governed-change protocol (selfmod.governed) which requires Ivan's explicit
+# approval. Direct filesystem.write to these returns [ERROR].
+IDENTITY_CRITICAL_PATHS: tuple[str, ...] = (
+    "docs/personality/SOUL.md",
+    "docs/personality/APPEARANCE.md",
+    "docs/personality/USER.md",
+    "docs/personality/SELF.md",
+    "docs/personality/LESSONS.md",
+    "docs/personality/HEARTBEAT.md",
+    "src/sonya/state/seed.py",        # things_not_to_betray seed
+    "src/sonya/state/identity.py",    # IdentityWriter — immutable-zone enforcement
+    "src/sonya/state/schema.sql",     # substrate schema
+    "src/sonya/state/migrations.py",  # substrate migrations
+    "src/sonya/selfmod/layers/anchor_integrity.py",  # Layer 4 protection
+    "docs/core/SUBSTRATE_STANCE.md",
+    "docs/core/SONYA_SYSTEM_CORE.md",
+    "docs/core/SONYA_CONSCIOUSNESS_POSITION.md",
+    "docs/core/SELF_REWRITE_STANCE.md",
+    "docs/core/UNCENSORED_ENVIRONMENT_STANCE.md",
+    "docs/core/INTERIM_CRUTCHES.md",
 )
 
-# Path components that are NEVER readable or writable, even by accident.
+# Path components that are NEVER readable or writable. Secrets + git internals.
 FORBIDDEN_NAMES: frozenset[str] = frozenset({
     ".env",
     ".env.local",
@@ -18,11 +35,8 @@ FORBIDDEN_NAMES: frozenset[str] = frozenset({
     ".git",
 })
 
-# Forbidden subpaths (project-relative) that contain secrets or system invariants.
+# Files that contain secrets — NEVER readable, NEVER writable.
 FORBIDDEN_SUBPATHS: tuple[str, ...] = (
-    "src/sonya/state/schema.sql",
-    "src/sonya/state/seed.py",
-    "docs/personality/SOUL.md",
     ".env",
     ".env.local",
     "tg.session",
@@ -31,16 +45,20 @@ FORBIDDEN_SUBPATHS: tuple[str, ...] = (
 
 
 class FilesystemTool:
-    """Read/write/list files within allowed paths.
+    """Read/write/list files within the project sandbox.
 
-    Sandbox model:
-      * READ allowed anywhere under project_root (so Sonya can study her code, docs, etc.)
-        EXCEPT FORBIDDEN_SUBPATHS (secrets, anchors, schema).
-      * WRITE only inside WRITE_ALLOWED_SUBPATHS (`workspace/` and `src/sonya/tools/plugins/`).
-        WRITE to FORBIDDEN_SUBPATHS is rejected even when the parent allowlist matches.
+    Sandbox model (revised 2026-05-19):
+      * READ — anywhere under project_root EXCEPT FORBIDDEN_SUBPATHS (secrets,
+        .git, telegram session). She can study her own code, identity-critical
+        files (to know what she is), docs, anything except secrets.
+      * WRITE — anywhere under project_root EXCEPT FORBIDDEN_SUBPATHS AND
+        EXCEPT IDENTITY_CRITICAL_PATHS. Identity files require governed_change
+        protocol (selfmod.governed), not raw filesystem.write.
 
-    See KNOWN_ISSUES S-12 and SUBSTRATE_STANCE §9 — self-modification of identity-critical
-    files must go through the self-modification pipeline, not raw filesystem writes.
+    Personal AI environment, not a hosted product. Sonya has full read/write
+    access to her own code so she can self-modify. The only hard gates are:
+      - secrets (would compromise Ivan's accounts)
+      - identity (changes there must go through human approval)
     """
 
     def __init__(self, project_root: Path | None = None) -> None:
@@ -60,11 +78,12 @@ class FilesystemTool:
         return p
 
     def _check_forbidden(self, p: Path) -> None:
+        """Hard deny — applies to BOTH read and write."""
         # Component-level check (catches `.env`, `.git/...`, etc anywhere)
         for part in p.parts:
             if part in FORBIDDEN_NAMES:
                 raise PermissionError(f"Forbidden path component: {part}")
-        # Subpath-level check (catches anchored files like docs/personality/SOUL.md)
+        # Subpath-level check
         try:
             rel = p.relative_to(self._project_root).as_posix()
         except ValueError:
@@ -74,18 +93,18 @@ class FilesystemTool:
                 raise PermissionError(f"Forbidden path: {rel}")
 
     def _check_writable(self, p: Path) -> None:
-        """Ensure path is inside one of WRITE_ALLOWED_SUBPATHS."""
+        """Write deny-list: identity-critical files require governed change."""
         try:
             rel = p.relative_to(self._project_root).as_posix()
         except ValueError as err:
             raise PermissionError(f"Path outside project: {p}") from err
-        for allowed in WRITE_ALLOWED_SUBPATHS:
-            if rel == allowed or rel.startswith(allowed + "/"):
-                return
-        raise PermissionError(
-            f"Write not allowed: {rel}. Writes are only permitted under: "
-            + ", ".join(WRITE_ALLOWED_SUBPATHS)
-        )
+        for protected in IDENTITY_CRITICAL_PATHS:
+            if rel == protected:
+                raise PermissionError(
+                    f"Identity-critical file: {rel}. "
+                    f"Use selfmod.governed to propose changes — Ivan's explicit "
+                    f"approval is required for personality / identity files."
+                )
 
     # --- public API ---
 

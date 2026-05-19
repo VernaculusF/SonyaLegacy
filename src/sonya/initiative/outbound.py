@@ -212,6 +212,19 @@ class OutboundGate:
                 "progress_cap": self._max_progress_per_day,
             },
         ))
+        # Mirror into episodic memory so memory.recall finds Sonya's own
+        # initiative messages later. Skip in-session progress updates —
+        # those are already captured by record_response_as_memory in the
+        # parent session.
+        if not is_progress and self._substrate is not None:
+            try:
+                from sonya.planning.memory_wiring import record_initiative_as_memory
+                record_initiative_as_memory(
+                    self._substrate, text, reason=reason,
+                    channel=f"{self._channel}_initiative",
+                )
+            except Exception:
+                pass
         return f"[OK] sent ({self._sent_today}/{self._max_per_day} initiative, {self._progress_today}/{self._max_progress_per_day} progress)"
 
 
