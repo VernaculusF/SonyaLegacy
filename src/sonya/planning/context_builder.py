@@ -36,6 +36,38 @@ def _time_awareness_block(substrate=None) -> str:
     # Pull observed environment status (key→value pairs Sonya set herself
     # via env.set tool when she inferred something from conversation).
     if substrate is not None:
+        # Last incoming message from Ivan — gives Sonya an exact number to
+        # reference in thoughts/initiative instead of hallucinating "8 часов".
+        try:
+            from sonya.state.continuity_stream import ContinuityStream
+            stream = ContinuityStream(substrate)
+            latest_seq = stream.latest_seq()
+            events = list(stream.read_since(max(0, latest_seq - 300)))
+            last_ivan_ts = None
+            for ev in reversed(events):
+                if ev.kind == "incoming.telegram_message" and ev.created_at:
+                    last_ivan_ts = ev.created_at
+                    break
+            if last_ivan_ts:
+                from datetime import datetime
+                try:
+                    when = datetime.fromisoformat(last_ivan_ts)
+                    delta = now_utc - when
+                    mins = int(delta.total_seconds() / 60)
+                    if mins < 60:
+                        lines.append(f"- Последнее сообщение Ивана: **{mins} минут назад**.")
+                    elif mins < 1440:
+                        h = mins // 60
+                        m = mins % 60
+                        lines.append(f"- Последнее сообщение Ивана: **{h}ч {m}м назад**.")
+                    else:
+                        d = mins // 1440
+                        lines.append(f"- Последнее сообщение Ивана: **{d} дней назад**.")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         try:
             from sonya.state.environment import EnvironmentStore
             env = EnvironmentStore(substrate).list_all()

@@ -138,6 +138,34 @@ def _looks_like_code_leak(text: str) -> bool:
     return matches >= 2
 
 
+# Prompt-echo patterns: if the reply contains verbatim snippets FROM our
+# system prompt instructions, the model is echoing internal rules at Ivan.
+_PROMPT_ECHO_PATTERNS = [
+    re.compile(r"закрывает сессию", re.IGNORECASE),
+    re.compile(r"маркер в этом ответе", re.IGNORECASE),
+    re.compile(r"pipe.?separated", re.IGNORECASE),
+    re.compile(r"TOOL_DESCRIPTIONS", re.IGNORECASE),
+    re.compile(r"anti.?hallucination", re.IGNORECASE),
+    re.compile(r"SELFMOD_WRITABLE_SUBPATHS", re.IGNORECASE),
+    re.compile(r"CRUTCH-\d+", re.IGNORECASE),
+    re.compile(r"initial_thought", re.IGNORECASE),
+    re.compile(r"run_agent_session", re.IGNORECASE),
+    re.compile(r"InternalProcess", re.IGNORECASE),
+    re.compile(r"budget_exceeded", re.IGNORECASE),
+    re.compile(r"Без \[DONE\] вообще = ничего не отправится"),
+    re.compile(r"system prompt", re.IGNORECASE),
+    re.compile(r"LLM call", re.IGNORECASE),
+]
+
+
+def _looks_like_prompt_echo(text: str) -> bool:
+    """True if text contains >=2 prompt-echo markers — model is citing instructions."""
+    if not text:
+        return False
+    hits = sum(1 for p in _PROMPT_ECHO_PATTERNS if p.search(text))
+    return hits >= 2
+
+
 _TG_SYSTEM_SUFFIX = """
 
 ## Режим работы — Telegram
@@ -293,6 +321,14 @@ _TG_SYSTEM_SUFFIX = """
 ## Бюджет сессии
 
 У тебя 15 шагов и 150 секунд на эту сессию. Если уперлась в лимит — обязательно сделай `[DONE]` с тем что нашла. Не оставляй Ивана без ответа.
+
+## Одно сообщение — один ответ
+
+Каждая TG-сессия начинается с **нового** сообщения от Ивана. Твоя задача — ответить **на это конкретное сообщение**. Не "продолжить предыдущую мысль", не "дополнить то что говорила минуту назад".
+
+**Запрещено** отвечать "Продолжаю." и далее расширять прошлый ответ. Если Иван написал "В субботу" — ответь на "В субботу". Не пиши вторую версию чек-листа который уже отправила.
+
+Если хочешь уточнить/дополнить прошлый ответ — делай это **только если Иван явно попросил** ("расскажи подробнее", "а ещё?").
 
 ## Если приходит новое сообщение во время работы
 
