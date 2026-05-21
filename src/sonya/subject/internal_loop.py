@@ -600,6 +600,39 @@ class InternalProcess:
 
             # Fall back to last thought if no task seed
             if not initial_thought:
+                # Check for pending selfmod proposals — if she proposed changes
+                # in a previous session, she should validate and apply them now.
+                try:
+                    from sonya.selfmod.proposal import ProposalStore, ProposalStatus
+                    prop_store = ProposalStore(substrate)
+                    pending_proposals = [
+                        p for p in prop_store.list_all()
+                        if p.status in (ProposalStatus.PROPOSED, ProposalStatus.APPROVED)
+                    ]
+                    if pending_proposals:
+                        p = pending_proposals[0]
+                        if p.status == ProposalStatus.PROPOSED:
+                            initial_thought = (
+                                f"У тебя есть selfmod proposal ожидающий валидации:\n"
+                                f"  proposal_id: {p.proposal_id}\n"
+                                f"  target: {p.target_module}\n"
+                                f"  summary: {p.change_summary[:200]}\n\n"
+                                f"Прогони полный цикл: `selfmod.validate {p.proposal_id}` → "
+                                f"если прошёл → `selfmod.apply {p.proposal_id}`. "
+                                f"Если не прошёл — исправь и propose заново."
+                            )
+                        elif p.status == ProposalStatus.APPROVED:
+                            initial_thought = (
+                                f"У тебя есть APPROVED selfmod proposal готовый к применению:\n"
+                                f"  proposal_id: {p.proposal_id}\n"
+                                f"  target: {p.target_module}\n"
+                                f"  summary: {p.change_summary[:200]}\n\n"
+                                f"Примени его: `selfmod.apply {p.proposal_id}`"
+                            )
+                except Exception:
+                    pass
+
+            if not initial_thought:
                 try:
                     stream_recent = list(self._stream.read_since(max(0, self._stream.latest_seq() - 5)))
                     last_thoughts = [
