@@ -71,6 +71,36 @@ def _has_image_content(messages: list[dict]) -> bool:
     return False
 
 
+def _replace_media_with_description(messages: list[dict], description: str) -> list[dict]:
+    """Replace image_url/video_url blocks with a text description from vision model.
+
+    The vision model already described what's in the media. Now we inject that
+    description as text so the main (text) model can see it without needing
+    vision capabilities.
+    """
+    result = []
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list):
+            new_parts = []
+            has_media = False
+            for part in content:
+                if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
+                    has_media = True
+                else:
+                    new_parts.append(part)
+            if has_media:
+                # Add the vision description as text
+                new_parts.append({"type": "text", "text": f"\n[Визуальное содержимое: {description}]"})
+            if len(new_parts) == 1 and new_parts[0].get("type") == "text":
+                result.append({**msg, "content": new_parts[0].get("text", "")})
+            else:
+                result.append({**msg, "content": new_parts})
+        else:
+            result.append(msg)
+    return result
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -123,14 +153,31 @@ class LLMProvider:
     ) -> str:
         settings = self._store.get_settings()
 
-        # Vision routing: if messages contain image_url blocks, acquire a
-        # vision-capable key (across ALL providers, not just active one).
-        # If none found, acquire() falls back to any available key for active
-        # provider and _strip_image_content handles the rest.
+        # Vision routing: if messages contain image_url/video_url blocks,
+        # use vision model AS EYES ONLY — describe the media, then pass
+        # the description to the main (text) model which generates the reply.
         has_images = (
             not kwargs.get("_vision_stripped")
             and _has_image_content(messages)
         )
+
+        if has_images:
+            # Step 1: ask vision model to describe the visual content
+            description = await self._describe_visual(messages, purpose=kwargs.get("purpose", "unknown"))
+            if description:
+                # Step 2: replace media blocks with text description, send to main model
+                described_msgs = _replace_media_with_description(messages, description)
+                return await self.complete_text(
+                    described_msgs,
+                    **{**kwargs, "_vision_stripped": True},
+                )
+            else:
+                # Vision failed — strip media, proceed text-only
+                stripped_msgs = _strip_image_content(messages)
+                return await self.complete_text(
+                    stripped_msgs,
+                    **{**kwargs, "_vision_stripped": True},
+                )
 
         provider = settings.active_provider
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
@@ -139,19 +186,7 @@ class LLMProvider:
         last_err: Exception | None = None
 
         for attempt in range(max_attempts):
-            if has_images:
-                # Vision: try acquiring a vision-slot key from any provider
-                key = await self._store.acquire_by_slot("vision")
-                if key is None:
-                    # No vision keys → strip images, retry as text
-                    _log.info("vision_no_keys_fallback")
-                    stripped_msgs = _strip_image_content(messages)
-                    return await self.complete_text(
-                        stripped_msgs,
-                        **{**kwargs, "_vision_stripped": True},
-                    )
-            else:
-                key = await self._store.acquire(provider, slot="text")
+            key = await self._store.acquire(provider, slot="text")
             if key is None:
                 if attempt == 0:
                     raise NoKeysAvailable(
@@ -267,24 +302,6 @@ class LLMProvider:
             except Exception as err:
                 _log.warning("key_http_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
 
-                # Vision fallback: if model says "does not support image inputs"
-                # or "unable to process input image" (format issue),
-                # strip image_url/video_url blocks from messages and retry text-only.
-                if (
-                    resp.status_code == 400
-                    and not kwargs.get("_vision_stripped")
-                    and (
-                        "does not support image" in resp.text.lower()
-                        or "unable to process" in resp.text.lower()
-                    )
-                ):
-                    _log.info("vision_fallback", extra={"key_id": key.key_id, "model": model})
-                    stripped_msgs = _strip_image_content(messages)
-                    return await self.complete_text(
-                        stripped_msgs,
-                        **{**kwargs, "_vision_stripped": True},
-                    )
-
                 _record_call(
                     self._store, key_id=key.key_id, provider=provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
@@ -371,3 +388,99 @@ class LLMProvider:
         except Exception:
             pass
         return 60
+
+    async def _describe_visual(self, messages: list[dict[str, Any]], purpose: str = "vision") -> str | None:
+        """Use vision model as eyes only — extract visual description.
+
+        Sends ONLY the media content + a short "describe" prompt to the vision
+        model. Returns a text description, or None on failure.
+        This keeps the vision model out of personality/response generation.
+        """
+        # Extract the multimodal content blocks from messages
+        media_blocks = []
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
+                        media_blocks.append(part)
+
+        if not media_blocks:
+            return None
+
+        # Build a minimal vision request — no personality, no memory
+        vision_content: list[dict] = [
+            {"type": "text", "text": "Опиши что изображено/происходит на этом медиа. Кратко, 1-3 предложения. Только описание, без комментариев."},
+        ] + media_blocks
+
+        vision_messages = [
+            {"role": "user", "content": vision_content},
+        ]
+
+        # Acquire vision key
+        key = await self._store.acquire_by_slot("vision")
+        if key is None:
+            _log.info("vision_no_keys_fallback")
+            return None
+
+        model = key.model or "google/gemma-3-27b-it"
+        base_url = key.base_url or "https://openrouter.ai/api/v1"
+        url = f"{base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key.api_key}",
+        }
+        payload = {
+            "model": model,
+            "messages": vision_messages,
+            "max_tokens": 300,
+            "temperature": 0.3,
+            "stream": False,
+        }
+
+        t_start = time.time()
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=10.0),
+            ) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+        except Exception as err:
+            _log.warning("vision_describe_error", extra={"error": str(err)})
+            await self._store.report_failure(key.key_id, kind="other", error_message=str(err))
+            return None
+
+        latency_ms = int((time.time() - t_start) * 1000)
+
+        if resp.status_code != 200:
+            _log.warning("vision_describe_http_error", extra={
+                "status": resp.status_code, "body": resp.text[:200], "key_id": key.key_id
+            })
+            _record_call(
+                self._store, key_id=key.key_id, provider=key.provider, model=model,
+                purpose="vision_describe", prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                latency_ms=latency_ms, status="error", http_status=resp.status_code,
+                error=resp.text[:300],
+            )
+            await self._store.report_failure(
+                key.key_id, kind="other",
+                error_message=f"HTTP {resp.status_code}: {resp.text[:200]}",
+            )
+            return None
+
+        try:
+            data = resp.json()
+            description = data["choices"][0]["message"]["content"]
+        except Exception:
+            return None
+
+        usage = data.get("usage") or {}
+        _record_call(
+            self._store, key_id=key.key_id, provider=key.provider, model=model,
+            purpose="vision_describe", prompt_tokens=int(usage.get("prompt_tokens", 0)),
+            completion_tokens=int(usage.get("completion_tokens", 0)),
+            total_tokens=int(usage.get("total_tokens", 0)),
+            latency_ms=latency_ms, status="ok", http_status=200, error="",
+        )
+        await self._store.report_success(key.key_id)
+        _log.info("vision_described", extra={"len": len(description), "latency_ms": latency_ms})
+        return description.strip() if description else None
