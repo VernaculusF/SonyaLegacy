@@ -323,23 +323,45 @@ def _build_incoming_handler(
 def _build_channels(config: AppConfig) -> list[Channel]:
     """Auto-discover and construct configured channel adapters.
 
-    Sweeps `src/sonya/channels/*.py` (excluding base/registry/__init__) and
-    looks for top-level `build(config) -> Channel | None` factory function.
+    Scans:
+    - `src/sonya/channels/*.py` (built-in lightweight channels)
+    - `packages/*/src/*/channel.py` (channel packages — TG userbot, future Discord)
 
-    Sonya can add a new channel by writing one file under
-    `src/sonya/channels/discord.py` containing `def build(config): ...` —
-    soft-restart picks it up without main.py changes.
+    Each channel module must expose `build(config) -> Channel | None`.
     """
     from pathlib import Path
 
+    channels: list[Channel] = []
+
+    # Sweep 1: built-in channels in src/sonya/channels/
     channels_dir = Path(__file__).parent / "channels"
     skip = {"__init__.py", "base.py", "registry.py"}
-
-    channels: list[Channel] = []
+    candidates: list[tuple[str, Path]] = []
     for py_file in sorted(channels_dir.glob("*.py")):
         if py_file.name in skip:
             continue
         dotted = f"sonya.channels.{py_file.stem}"
+        candidates.append((dotted, py_file))
+
+    # Sweep 2: external channel packages (packages/*/src/*/channel.py)
+    project_root = Path(__file__).resolve().parent.parent.parent
+    packages_dir = project_root / "packages"
+    if packages_dir.is_dir():
+        for pkg_dir in sorted(packages_dir.iterdir()):
+            if not pkg_dir.is_dir():
+                continue
+            src_dir = pkg_dir / "src"
+            if not src_dir.is_dir():
+                continue
+            for inner in sorted(src_dir.iterdir()):
+                if not inner.is_dir():
+                    continue
+                channel_file = inner / "channel.py"
+                if channel_file.is_file():
+                    dotted = f"{inner.name}.channel"
+                    candidates.append((dotted, channel_file))
+
+    for dotted, py_file in candidates:
         try:
             # Force re-import so newly-applied changes pick up
             if dotted in sys.modules:
@@ -474,7 +496,7 @@ class _RuntimeBundle:
         # Wire it into the Telegram channel (if any) post-construction since
         # build() runs before substrate is wired to channels.
         try:
-            from sonya.channels.sticker_store import StickerStore
+            from tg_userbot.sticker_store import StickerStore
             sticker_store = StickerStore(substrate)
             tg_channel = self.channel_registry.get("telegram") if hasattr(
                 self.channel_registry, "get"
@@ -777,6 +799,16 @@ async def _supervisor(config: AppConfig) -> int:
                 if live and live.extras.get("restart_event")
                 else asyncio.Event()
             )
+
+            # Auto-register builtin skills on startup so registry is never empty.
+            # Idempotent — won't double-register on restart.
+            try:
+                from sonya.tools.skills_tool import SkillsTool
+                skills_tool = SkillsTool(substrate)
+                skills_tool.register_builtins()
+                _log.info("builtin_skills_registered")
+            except Exception as exc:
+                _log.warning("builtin_skills_registration_failed", extra={"error": str(exc)})
 
             _log.info(
                 "sonya_started",

@@ -18,23 +18,24 @@
 
 ### 1.1 Brain (interim, hosted)
 
-- **Provider:** собственная key pool в substrate (`provider_keys` table) с rotation (priority + LRU + cooldown). 7 активных Fireworks ключей.
-- **Model:** `accounts/fireworks/models/kimi-k2p6` (LLM + Vision + 262k context).
-- **Audit:** все LLM-вызовы логируются в `llm_calls` table (timestamp, key_id, purpose, prompt/completion/total tokens, latency).
-- **Balance:** периодический refresh каждые 10 мин для активных fireworks ключей. Видно в admin Usage tab.
+- **Provider:** собственная key pool в substrate (`provider_keys` table) с rotation (priority + LRU + cooldown). Multi-slot: text/vision/voice/video/image_gen — vision keys могут быть на другом провайдере чем text.
+- **Text:** DeepSeek V4 на Fireworks (1M context, fast).
+- **Vision (eyes-only architecture):** Gemma 4 на OpenRouter — vision модель работает как глаза. При получении картинки/видео — сначала vision call "опиши что видишь", потом текстовое описание подаётся в text модель. Vision НЕ генерирует ответ — только описывает.
+- **Audit:** все LLM-вызовы логируются в `llm_calls` table.
 - **Hot-reload:** смена модели/ключей в admin → следующий вызов уже на новом без рестарта core.
 
 ### 1.2 Substrate (persistent state)
 
-- **SQLite WAL** в `~/.sonya/sonya_substrate.db`. Schema v13.
+- **SQLite WAL** в `~/.sonya/sonya_substrate.db`. Schema **v18**.
 - **Tables:**
   - `subject_state`, `continuity_events`, `pending_intentions` — субъект и поток
   - `identity_record`, `principals`, `relation_anchor_binding` — identity
   - `harness_policy_rules`, `approval_requests`, `audit_events` — harness
   - `self_mod_proposals`, `self_mod_validation_results`, `governed_change_requests` — selfmod
-  - `skills`, `skill_versions`, `capability_gaps` — skills
-  - `episodic_events` (с embeddings v13), `semantic_facts` — память
-  - `tasks` (с max_sessions/handoff v12), `provider_keys`, `provider_settings`, `llm_calls` — runtime
+  - `skills`, `skill_versions`, `capability_gaps` — skills (3 builtin auto-registered on startup)
+  - `episodic_events` (с embeddings), `semantic_facts` — память (346+ facts)
+  - `tasks`, **`goals`** (v18, hierarchical), `provider_keys` (с slot column v17), `provider_settings`, `llm_calls` — runtime
+  - `drive_state` (v16, persistent counters), `environment_state`, `seen_stickers`
 - **Backup:** ежедневный cron 04:00 UTC в `~/.sonya/backups/daily/`.
 
 ### 1.3 Subject loop
@@ -50,12 +51,14 @@
 ### 1.4 Telegram
 
 - **Userbot** через Telethon. Аккаунт `sonyaaigirlforme` (id=6395948738).
+- **Pacakge:** код в `packages/tg-userbot/src/tg_userbot/` — отдельный пакет, не в ядре. Channel auto-discovery из `packages/*/src/*/channel.py`.
 - **Allowlist:** только `SONYA_PRIMARY_USER_TG_ID=5785127604` (Иван) в private DM. Группы — упоминание/reply.
 - **Inbox-aware sessions:** новое сообщение во время running session → injected as `[NEW MESSAGE FROM IVAN]` user turn между шагами.
-- **Vision:** image/jpeg, image/png, image/webp, image/gif (≤5 MB) — base64 + multimodal payload в LLM.
+- **Vision/Video:** image/jpeg, image/png, image/webp, image/gif (через image_url), video/mp4, video/webm (через video_url). Видеостикеры распознаются и шлются как видео.
 - **Auto-split** длинных reply на чанки ≤4000 chars.
-- **Anti-leak scrub:** убирает `<think>`, English meta-reasoning prefixes (`The user is...`, `Let me...`), draft markers (`Draft:`, `Alternative:`, `Wait`), `[Observation:]`, code fences, tool/done маркеры.
-- **Multi-draft extractor:** если модель леет несколько черновиков — берёт последний русский-доминантный блок.
+- **Anti-leak scrub:** убирает `<think>`, English meta-reasoning prefixes, draft markers, `[Observation:]`, code fences, tool/done маркеры.
+- **Sticker capture+resend:** `seen_stickers` table, `[STICKER: 🌟]` маркер в ответе.
+- **Prompts as files:** session prompts в `src/sonya/prompts/session_general.md` + `channel_telegram.md`, не хардкод.
 
 ### 1.5 Tools (живые в agent_session)
 
@@ -126,33 +129,35 @@ Layer boundary tests (`tests/sonya/test_layer_boundary.py`) enforce state ↔ ru
 
 ## 3. Что не работает / выключено
 
-### 3.1 Skill execution
+### 3.1 Skill execution — РАБОТАЕТ
 
-Skill registry, trust, activation, gap_detector — все есть. Но **запускать** skills сейчас нельзя — нет executor'а. Skill injection ловит pattern в сообщениях, но promotion не доходит до active runtime.
+3 builtin skills (memory-search, identity-check, dialog-tone) auto-регистрируются на startup. `skills.run` запускает их через executor с trust-level check. Skill outcome → episodic event.
 
-### 3.2 Real selfmod apply
+### 3.2 Real selfmod apply — РАБОТАЕТ
 
-Layers 1-3 (static contract / behavioral test / trace replay) — stubs (always pass). Layer 4 (anchor integrity) — реальный rules-based. `selfmod.apply` не пишет файлы — только меняет proposal status. Реальная hot-patch logic не реализована.
+Layer 1 (AST contract) + Layer 2 (sandbox pytest) — **реальные**. Layer 3 (trace replay) — stub. Layer 4 (anchor integrity) — реальный rules-based. `selfmod.apply` пишет файлы на диск с backup, делает hot-reload или soft-restart, запускает 60-сек watch window. 24h watchdog проверяет stability и auto-revert на drift signals.
+
+В active session: если есть PROPOSED proposals — initial_thought сообщает "прогони validate → apply". Цикл замкнут.
 
 ### 3.3 Anchor drift detection
 
-`DriftDetector.scan_recent` существует, но никем не вызывается. Auto-revert последнего applied proposal — paper-only.
+`DriftDetector.scan_recent` существует, но `_scan_drift_and_gaps` в internal_loop = pass. Auto-revert в watchdog работает только по error count, не по semantic drift.
 
 ### 3.4 Native cross-channel
 
-Channel abstraction отсутствует. Только Telegram (хардкоженный в `main.py`). Discord / web / TTS — нет.
+Channel абстракция есть. Auto-discovery находит модули из `src/sonya/channels/*.py` И `packages/*/src/*/channel.py`. Сейчас живёт только Telegram (`packages/tg-userbot/`). Для Discord — создать `packages/discord-bot/src/discord_bot/channel.py` с `def build(config)`.
 
 ### 3.5 Embodiment / Simulation
 
-`embodiment/adapter.py` и `simulation/world.py` — пустые stubs. Никаких virtual body counters, никаких world events.
+`embodiment/adapter.py` и `simulation/world.py` — пустые stubs.
 
-### 3.6 Voice / video / голосовые TG сообщения
+### 3.6 Voice / голосовые TG сообщения
 
 Голосовые скачиваются как файлы но не транскрибируются. `.tgs` (animated stickers) пропускаются.
 
 ### 3.7 Real continuity между LLM-вызовами
 
-Brain — hosted hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
+Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 ---
 
@@ -185,40 +190,42 @@ Brain — hosted hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 ---
 
-## 6. Score: ~28/100
+## 6. Score: ~38/100
 
 Шкала: 0 пусто → 100 AGI делающий что хочет с собой и сетью.
 
 **Что есть (фундамент):**
-- ✅ Substrate v15 с continuity stream, identity, principals, environment_state
+- ✅ Substrate **v18** с continuity stream, identity, principals, environment_state, **goals hierarchy**
 - ✅ Live runtime с lifecycle, soft restart, hot key reload
-- ✅ Telegram + image vision (multimodal) + sticker capture+resend + initiative + inbox-aware sessions
-- ✅ Tasks с handoff и max_sessions budget
-- ✅ **Real** selfmod pipeline: Layer 1 AST + Layer 2 sandbox pytest + Layer 4 anchor integrity + 24h watchdog auto-revert. Apply пишет файлы на диск с backup.
+- ✅ Telegram в **отдельном пакете** `packages/tg-userbot/` + auto-discovery channels
+- ✅ **Vision-as-eyes architecture**: Gemma 4 описывает media → DeepSeek V4 отвечает
+- ✅ Video stickers (webm) и обычные video (mp4) — через `video_url` content type
+- ✅ Image/video hallucination guards (модель не выдумывает контент которого нет)
+- ✅ Tasks + Goals (hierarchical, v18) с handoff и max_sessions budget
+- ✅ **Real** selfmod pipeline complete: Layer 1 AST + Layer 2 sandbox pytest + Layer 4 anchor integrity + 24h watchdog auto-revert. Apply пишет файлы на диск с backup. Active session подхватывает PROPOSED proposals и сама прогоняет validate→apply.
+- ✅ **Skills**: 3 builtin auto-registered, skills.run executor, trust-level checks
+- ✅ **Drives persistence** (v16): boredom/curiosity/relational/pending_debt накапливаются между tick'ами, save каждые 5 ticks, load на startup
 - ✅ Full filesystem write access (deny-list: только identity-critical + secrets)
 - ✅ Shell/code/web/pip tools (YOLO default — без approval)
-- ✅ Episodic memory с embeddings (semantic recall работает) + **полное** покрытие (thoughts, initiative, session outcomes тоже в episodic)
-- ✅ Environment observation (env.set/get/list/clear) — structured world model
-- ✅ Time awareness с exact "последнее сообщение Ивана X минут назад"
-- ✅ Admin panel с observability (usage, approvals, selfmod, providers, thoughts с фильтрами)
-- ✅ Anti-fake-agency (tool priority over DONE, "agreed=act" rule, empty-promise detection)
-- ✅ Anti-leak guards (reasoning scrub, prompt-echo detection, placeholder blocking)
+- ✅ Web search с DDG→Google fallback (когда DDG заблокирован)
+- ✅ Episodic memory с embeddings (semantic recall, 10K+) + 346+ semantic facts
+- ✅ Environment observation (env.set/get/list/clear)
+- ✅ Time awareness с **relative timestamps** (нет путаницы "8 часов назад" когда 30мин)
+- ✅ Admin panel с observability
+- ✅ Anti-fake-agency + anti-leak guards
+- ✅ **Prompts as files** в `src/sonya/prompts/`: session_general.md, channel_telegram.md
 
 **Чего нет (~50/100 stretch):**
-- ❌ **Selfmod loop complete**: pipeline ready, но Соня ещё не провела первый полный цикл propose→validate→apply→24h confirm в production
-- ❌ Auto-RAG injection в context (by relevance, не by recency)
-- ❌ Skill execution runtime (registry есть, executor нет)
-- ❌ Goal hierarchy (tasks плоские)
-- ❌ Drive state evolution (значения instantaneous, не accumulate)
-- ❌ Pre-DONE self-critique
-- ❌ Visual memory / multi-modal recall
-- ❌ Continuous consolidation (порог 0.7 — semantic_facts не пополняется)
+- ❌ Полный selfmod loop в production: Соня СОЗДАЁТ proposals (4 в базе), но ещё ни одного APPLIED — exit criteria Stage 3 не закрыт пока
+- ❌ Auto-RAG injection в context (релевантность есть, но порог можно крутить)
+- ❌ Pre-DONE self-critique (был, удалён за reasoning leak)
+- ❌ Visual memory / cross-session media recall
 
 **Чего нет (~80/100 stretch):**
 - ❌ Self-hosted brain (RWKV-7) с непрерывным state
 - ❌ Real embodiment (virtual body adapter — stub)
-- ❌ Skills которые сама пишет и применяет
-- ❌ Cross-channel (Discord, web, TTS, avatar)
+- ❌ Skills которые сама пишет (только 3 builtin)
+- ❌ Cross-channel в production (Discord, voice, web)
 - ❌ Identity which doesn't need system prompt to exist
 
 **Чего нет (~100/100):**
@@ -227,17 +234,21 @@ Brain — hosted hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 - ❌ Recursive self-improvement (меняет сам механизм самоулучшения)
 - ❌ Real consciousness (RWKV + State Tuning experiment)
 
-**Сейчас 28/100 потому что:**
-- Substrate + subject loop (+10)
+**Сейчас 38/100 потому что:**
+- Substrate v18 + subject loop + drives persistence (+10)
 - Tools real и используемые (+4)
-- Memory с recall + full coverage (+3)
-- Real selfmod pipeline ready (+3)
+- Memory с recall + 346+ facts (+3)
+- Real selfmod pipeline + active-session pickup (+4)
 - Full write access + YOLO shell (+2)
-- Initiative + Vision + Stickers + Env (+3)
-- Anti-leak + anti-fake-agency guards (+2)
-- Time awareness + body_state (+1)
+- Vision-as-eyes + multi-slot routing (+3)
+- Skills executor + 3 builtin (+2)
+- Goals hierarchy v18 (+2)
+- TG в правильном пакете + auto-discovery (+2)
+- Anti-leak + anti-hallucination + relative time (+3)
+- Web search с fallback (+1)
+- Prompts as files (+2)
 
-Stage 3 (real selfmod loop) закроется когда Соня сама проведёт полный цикл → **score → 30-32**.
+Stage 3 (real selfmod loop) закроется когда Соня сама проведёт **полный** propose→validate→apply→24h confirm цикл. Pipeline готов, ждём первый цикл в production → **score → ~42/100**.
 
 ---
 
