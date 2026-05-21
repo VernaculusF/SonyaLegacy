@@ -373,6 +373,10 @@ def _build_initial_user_message(
             text_piece = "Ivan прислал видео/анимацию — посмотри что там."
         else:
             text_piece = "Ivan прислал картинку — посмотри что на ней."
+    elif text_piece.startswith("[стикер"):
+        # Sticker — the text is just a placeholder like "[стикер 🌟]".
+        # Tell the model to actually look at the visual content.
+        text_piece = f"Ivan прислал стикер. Ты ВИДИШЬ его содержимое — опиши что изображено и отреагируй."
     else:
         text_piece = f"Ivan написал: {text_piece}"
 
