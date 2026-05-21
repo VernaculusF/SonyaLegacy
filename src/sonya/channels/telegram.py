@@ -114,16 +114,36 @@ class TelegramChannel:
             if isinstance(media, MessageMediaDocument) and media.document:
                 doc = media.document
                 attrs = doc.attributes or []
+                # Two-pass: sticker attribute takes priority (video stickers
+                # have both DocumentAttributeSticker + DocumentAttributeVideo)
+                has_sticker = False
+                sticker_emoji = ""
+                has_video = False
+                is_round = False
+                has_audio = False
+                is_voice = False
+                has_animated = False
                 for attr in attrs:
                     if isinstance(attr, DocumentAttributeSticker):
-                        emoji = getattr(attr, "alt", "") or ""
-                        return f"стикер {emoji}".strip()
-                    if isinstance(attr, DocumentAttributeAudio):
-                        return "голосовое сообщение" if attr.voice else "аудио"
-                    if isinstance(attr, DocumentAttributeAnimated):
-                        return "гифка"
-                    if isinstance(attr, DocumentAttributeVideo):
-                        return "видеосообщение" if attr.round_message else "видео"
+                        has_sticker = True
+                        sticker_emoji = getattr(attr, "alt", "") or ""
+                    elif isinstance(attr, DocumentAttributeVideo):
+                        has_video = True
+                        is_round = getattr(attr, "round_message", False)
+                    elif isinstance(attr, DocumentAttributeAudio):
+                        has_audio = True
+                        is_voice = getattr(attr, "voice", False)
+                    elif isinstance(attr, DocumentAttributeAnimated):
+                        has_animated = True
+                # Priority: sticker > audio > animated > video > file
+                if has_sticker:
+                    return f"стикер {sticker_emoji}".strip()
+                if has_audio:
+                    return "голосовое сообщение" if is_voice else "аудио"
+                if has_animated:
+                    return "гифка"
+                if has_video:
+                    return "видеосообщение" if is_round else "видео"
                 return "файл"
             return "медиа"
 
@@ -421,24 +441,41 @@ async def _download_media(event: Any, media_dir: str) -> tuple[str | None, str |
         mime = doc.mime_type or ""
         attrs = doc.attributes or []
         is_voice = False
+        is_sticker = False
+        is_video = False
         for attr in attrs:
             if isinstance(attr, DocumentAttributeAudio) and getattr(attr, "voice", False):
                 is_voice = True
             if isinstance(attr, DocumentAttributeSticker):
-                # Sticker — webp or tgs (animated). Treat tgs as skip.
-                if mime == "application/x-tgsticker":
-                    # Could be actual .tgs (Lottie JSON) OR a webp mislabeled.
-                    # Check: if file would be > 0 bytes as webp, try anyway.
-                    # But safest: skip tgs, they're vector animations.
-                    return None, None
-                ext = "webp"
-                mime = "image/webp"  # force — TG sometimes leaves mime empty for stickers
+                is_sticker = True
             elif isinstance(attr, DocumentAttributeAnimated):
-                ext = "mp4"
+                pass  # handled below
             elif isinstance(attr, DocumentAttributeVideo):
-                ext = "mp4"
+                is_video = True
         if is_voice:
             return None, None
+        # Video stickers (DocumentAttributeSticker + DocumentAttributeVideo):
+        # these are tiny WebM animations, not real video. Skip them — VLMs
+        # can't process them reliably.
+        if is_sticker and is_video:
+            return None, None
+        if is_sticker:
+            # Static/animated sticker
+            if mime == "application/x-tgsticker":
+                return None, None
+            ext = "webp"
+            mime = "image/webp"
+        elif is_video:
+            ext = "mp4"
+            # Telethon sometimes reports mime as empty or wrong for video
+            if not mime or mime == "image/webp":
+                mime = "video/mp4"
+        else:
+            # Check for animated GIF-like docs
+            for attr in attrs:
+                if isinstance(attr, DocumentAttributeAnimated):
+                    ext = "mp4"
+                    break
         # Fallback: derive from mime
         if ext == "bin" and mime:
             mime_to_ext = {
