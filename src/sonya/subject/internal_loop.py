@@ -711,10 +711,24 @@ class InternalProcess:
                     for a in result.actions
                 )
                 if in_prog and not used_handoff and not used_terminal:
+                    actions_summary = ", ".join(result.actions[:8]) if result.actions else "no tools called"
+                    final_text = (result.final_output or "").strip()[:600]
+                    auto_notes = (
+                        f"(auto handoff — did {result.steps} steps in active session) "
+                        f"Tools: {actions_summary}. "
+                        f"Final output: {final_text}"
+                    )[:1500]
+                    auto_next_step = "продолжить с того где остановилась — см. notes"
+                    if final_text:
+                        for line in final_text.splitlines():
+                            line = line.strip()
+                            if line and len(line) > 20 and len(line) < 200:
+                                auto_next_step = line[:200]
+                                break
                     svc.record_session_handoff(
                         in_prog[0].task_id,
-                        notes="(auto) session ended without explicit handoff",
-                        next_step="(unknown — model did not record)",
+                        notes=auto_notes,
+                        next_step=auto_next_step,
                     )
             except Exception:
                 pass
@@ -918,10 +932,29 @@ class InternalProcess:
                         for a in result.actions
                     )
                     if not used_handoff and not used_terminal:
+                        # Build a useful auto-handoff from what actually happened.
+                        # Without this, next tick starts blind.
+                        actions_summary = ", ".join(result.actions[:8]) if result.actions else "no tools called"
+                        final_text = (result.final_output or "").strip()[:600]
+                        auto_notes = (
+                            f"(auto handoff — did {result.steps} steps) "
+                            f"Tools: {actions_summary}. "
+                            f"Final output: {final_text}"
+                        )[:1500]
+                        # Heuristic next_step: if final_output mentions specific
+                        # action verbs, use them; otherwise fall back to original plan
+                        auto_next_step = next_step  # use the previous next_step as continuation
+                        if final_text:
+                            # If she said something specific in her last output, use it
+                            for line in final_text.splitlines():
+                                line = line.strip()
+                                if line and len(line) > 20 and len(line) < 200:
+                                    auto_next_step = line[:200]
+                                    break
                         svc.record_session_handoff(
                             task.task_id,
-                            notes="(auto) worker tick ended without explicit handoff",
-                            next_step="(unknown — model did not record)",
+                            notes=auto_notes,
+                            next_step=auto_next_step,
                         )
                 except Exception:
                     pass
