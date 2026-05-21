@@ -150,13 +150,40 @@ def build_full_context(
     from sonya.state.subject_state import SubjectStateStore
     state = SubjectStateStore(substrate).load()
 
-    # Recent episodic memories (CRUTCH-003: memory injection)
+    # Recent episodic memories — AUTO-RAG (Stage 4).
+    # Hybrid approach: relevance (semantic recall on user_input) + recency.
+    # This replaces the old "last 15 by timestamp" which made Sonya forget
+    # anything older than 10 messages.
     episodic = EpisodicMemory(substrate)
-    recent_events = episodic.get_recent(limit=15)
+
+    # Relevance-based recall (needs embeddings + user_input to search against)
+    relevant_events: list = []
+    if user_input and user_input.strip():
+        try:
+            from sonya.memory.embedder import Embedder
+            if Embedder.is_available():
+                from sonya.memory.recall import RecallStore
+                store = RecallStore(substrate)
+                hits = store.recall(user_input.strip(), top_k=5, min_score=0.3)
+                relevant_events = hits  # RecallHit objects
+        except Exception:
+            pass
+
+    # Recency-based (always, as fallback + context anchor)
+    recent_events = episodic.get_recent(limit=5)
+
+    # Build memory block
+    memory_block = ""
+    if relevant_events:
+        memory_block += "\n\n## Релевантные воспоминания (по смыслу текущего разговора):\n"
+        for h in relevant_events:
+            preview = (h.raw_content or "").replace("\n", " ")[:150]
+            memory_block += f"- [{h.timestamp[:16]}] (score={h.score:.2f}) {preview}\n"
     if recent_events:
-        memory_block = "\n\n## Мои последние воспоминания:\n"
+        memory_block += "\n\n## Последние события (хронологически):\n"
         for ev in reversed(recent_events):  # oldest first
             memory_block += f"- [{ev.timestamp[:16]}] {ev.normalized_summary or ev.raw_content[:100]}\n"
+    if memory_block:
         system_prompt += memory_block
 
     # Recent thoughts and continuity events (1.4 fix: unified memory across paths)
