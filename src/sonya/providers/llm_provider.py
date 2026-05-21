@@ -124,13 +124,13 @@ class LLMProvider:
         settings = self._store.get_settings()
 
         # Vision routing: if messages contain image_url blocks, acquire a
-        # vision-capable key. If none found, acquire() falls back to any
-        # available key and _strip_image_content handles the rest.
+        # vision-capable key (across ALL providers, not just active one).
+        # If none found, acquire() falls back to any available key for active
+        # provider and _strip_image_content handles the rest.
         has_images = (
             not kwargs.get("_vision_stripped")
             and _has_image_content(messages)
         )
-        slot = "vision" if has_images else "text"
 
         provider = settings.active_provider
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
@@ -139,7 +139,19 @@ class LLMProvider:
         last_err: Exception | None = None
 
         for attempt in range(max_attempts):
-            key = await self._store.acquire(provider, slot=slot)
+            if has_images:
+                # Vision: try acquiring a vision-slot key from any provider
+                key = await self._store.acquire_by_slot("vision")
+                if key is None:
+                    # No vision keys → strip images, retry as text
+                    _log.info("vision_no_keys_fallback")
+                    stripped_msgs = _strip_image_content(messages)
+                    return await self.complete_text(
+                        stripped_msgs,
+                        **{**kwargs, "_vision_stripped": True},
+                    )
+            else:
+                key = await self._store.acquire(provider, slot="text")
             if key is None:
                 if attempt == 0:
                     raise NoKeysAvailable(
