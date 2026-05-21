@@ -33,7 +33,7 @@ class NoKeysAvailable(RuntimeError):
 
 
 def _strip_image_content(messages: list[dict]) -> list[dict]:
-    """Remove image_url blocks from multimodal messages.
+    """Remove image_url and video_url blocks from multimodal messages.
 
     When a model doesn't support vision, we retry with text-only content.
     Multimodal messages have content=[{type:text,...},{type:image_url,...}] —
@@ -54,19 +54,19 @@ def _strip_image_content(messages: list[dict]) -> list[dict]:
                     combined = "\n".join(p.get("text", "") for p in text_parts)
                     result.append({**msg, "content": combined})
             else:
-                result.append({**msg, "content": "[image — model does not support vision]"})
+                result.append({**msg, "content": "[media — model does not support vision]"})
         else:
             result.append(msg)
     return result
 
 
 def _has_image_content(messages: list[dict]) -> bool:
-    """Check if any message contains image_url content blocks."""
+    """Check if any message contains image_url or video_url content blocks."""
     for msg in messages:
         content = msg.get("content")
         if isinstance(content, list):
             for part in content:
-                if isinstance(part, dict) and part.get("type") == "image_url":
+                if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
                     return True
     return False
 

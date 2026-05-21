@@ -19,6 +19,38 @@ _PERSONALITY_DIR = Path(__file__).resolve().parent.parent.parent.parent / "docs"
 _IVAN_TZ_OFFSET_HOURS = 5
 
 
+def _relative_time(iso_ts: str | None, now_utc) -> str:
+    """Convert ISO timestamp to relative time string like '5м назад', '2ч назад'.
+
+    CRUTCH-019: absolute timestamps in context confuse the model — it picks
+    random timestamps from dialog/thoughts blocks and treats them as 'current time'.
+    Relative times are unambiguous and don't look like clock readings.
+    """
+    if not iso_ts:
+        return "?"
+    try:
+        from datetime import datetime
+        when = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        delta = now_utc - when
+        mins = int(delta.total_seconds() / 60)
+        if mins < 0:
+            return "сейчас"
+        if mins < 1:
+            return "только что"
+        if mins < 60:
+            return f"{mins}м назад"
+        hours = mins // 60
+        remaining_mins = mins % 60
+        if hours < 24:
+            if remaining_mins > 0:
+                return f"{hours}ч {remaining_mins}м назад"
+            return f"{hours}ч назад"
+        days = hours // 24
+        return f"{days}д назад"
+    except Exception:
+        return iso_ts[:16]
+
+
 def _time_awareness_block(substrate=None) -> str:
     """Tell Sonya the current local time for Ivan and any environment status
     she has set herself (e.g. ivan_status='спит', 'работает', 'занят')."""
@@ -141,6 +173,9 @@ def build_full_context(
     This is the integration point: personality + memory + state + drives → PlannerContext.
     See: INTERIM_CRUTCHES CRUTCH-001 (system prompt), CRUTCH-003 (memory injection).
     """
+    from datetime import datetime, timezone
+    now_utc = datetime.now(timezone.utc)
+
     # System prompt from personality files
     system_prompt = _load_personality_prompt()
 
@@ -182,11 +217,13 @@ def build_full_context(
         memory_block += "\n\n## Релевантные воспоминания (по смыслу текущего разговора):\n"
         for h in relevant_events:
             preview = (h.raw_content or "").replace("\n", " ")[:150]
-            memory_block += f"- [{h.timestamp[:16]}] (score={h.score:.2f}) {preview}\n"
+            rel_ts = _relative_time(h.timestamp, now_utc)
+            memory_block += f"- [{rel_ts}] (score={h.score:.2f}) {preview}\n"
     if recent_events:
         memory_block += "\n\n## Последние события (хронологически):\n"
         for ev in reversed(recent_events):  # oldest first
-            memory_block += f"- [{ev.timestamp[:16]}] {ev.normalized_summary or ev.raw_content[:100]}\n"
+            rel_ts = _relative_time(ev.timestamp, now_utc)
+            memory_block += f"- [{rel_ts}] {ev.normalized_summary or ev.raw_content[:100]}\n"
     if memory_block:
         system_prompt += memory_block
 
@@ -211,19 +248,19 @@ def build_full_context(
         if recent_dialog:
             stream_block = "\n\n## Недавний диалог:\n"
             for e in recent_dialog:
-                ts = (e.created_at or "")[:16]
+                rel_ts = _relative_time(e.created_at, now_utc)
                 if e.kind == "incoming.telegram_message":
                     text = (e.payload.get("text") or "")[:600]
-                    stream_block += f"- [{ts}] [Иван написал] {text}\n"
+                    stream_block += f"- [{rel_ts}] [Иван написал] {text}\n"
                 elif e.kind in ("outgoing.response", "outgoing.telegram_response"):
                     text = (e.payload.get("text") or "")[:600]
-                    stream_block += f"- [{ts}] [я ответила] {text}\n"
+                    stream_block += f"- [{rel_ts}] [я ответила] {text}\n"
                 elif e.kind == "outgoing.telegram_initiative":
                     text = (e.payload.get("text") or "")[:600]
-                    stream_block += f"- [{ts}] [я написала первой] {text}\n"
+                    stream_block += f"- [{rel_ts}] [я написала первой] {text}\n"
                 elif e.kind == "internal.agent_session_outcome":
                     steps = e.payload.get("steps", 0)
-                    stream_block += f"- [{ts}] [active session] {steps} шагов\n"
+                    stream_block += f"- [{rel_ts}] [active session] {steps} шагов\n"
             system_prompt += stream_block
 
         # Recent INTERNAL thoughts — separate block so they're never crowded out by
@@ -234,9 +271,9 @@ def build_full_context(
         thoughts_block = "\n\n## Мои недавние мысли (idle thinking ticks):\n"
         if recent_thoughts:
             for e in recent_thoughts:
-                ts = (e.created_at or "")[:16]
+                rel_ts = _relative_time(e.created_at, now_utc)
                 text = (e.payload.get("thought") or "")[:400]
-                thoughts_block += f"- [{ts}] {text}\n\n"
+                thoughts_block += f"- [{rel_ts}] {text}\n\n"
         else:
             thoughts_block += (
                 "(пока ничего не было — между запусками или с последнего рестарта тиков ещё не происходило. "
