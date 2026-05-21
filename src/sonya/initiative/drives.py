@@ -76,3 +76,39 @@ class DriveCounters:
             "relational_focus": self.relational_focus,
             "pending_debt": self.pending_debt,
         }
+
+    # --- persistence (substrate v16) ---
+
+    def save(self, substrate) -> None:
+        """Persist current drive state to substrate. Called every N ticks."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        substrate.connection.execute(
+            "INSERT INTO drive_state(id, boredom_analog, curiosity_analog, "
+            "relational_focus, pending_debt, updated_at) "
+            "VALUES (1, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "boredom_analog=excluded.boredom_analog, "
+            "curiosity_analog=excluded.curiosity_analog, "
+            "relational_focus=excluded.relational_focus, "
+            "pending_debt=excluded.pending_debt, "
+            "updated_at=excluded.updated_at",
+            (self.boredom_analog, self.curiosity_analog,
+             self.relational_focus, self.pending_debt, now),
+        )
+        substrate.connection.commit()
+
+    @classmethod
+    def load(cls, substrate) -> "DriveCounters":
+        """Load persisted drive state from substrate. Returns fresh if empty."""
+        row = substrate.connection.execute(
+            "SELECT boredom_analog, curiosity_analog, relational_focus, pending_debt "
+            "FROM drive_state WHERE id = 1"
+        ).fetchone()
+        dc = cls()
+        if row is not None:
+            dc.boredom_analog = float(row[0])
+            dc.curiosity_analog = float(row[1])
+            dc.relational_focus = float(row[2])
+            dc.pending_debt = float(row[3])
+        return dc

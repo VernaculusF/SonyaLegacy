@@ -403,3 +403,19 @@ CREATE TABLE IF NOT EXISTS environment_state (
 );
 
 CREATE INDEX IF NOT EXISTS idx_environment_updated_at ON environment_state(updated_at);
+
+
+-- ====================================================================
+-- v16 additions: persistent drive state.
+-- Drive counters survive restarts. Updated every 5 ticks (~50 seconds)
+-- to avoid excessive writes while keeping state fresh enough.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS drive_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    boredom_analog REAL NOT NULL DEFAULT 0.0,
+    curiosity_analog REAL NOT NULL DEFAULT 0.0,
+    relational_focus REAL NOT NULL DEFAULT 0.0,
+    pending_debt REAL NOT NULL DEFAULT 0.0,
+    updated_at TEXT NOT NULL DEFAULT ''
+);

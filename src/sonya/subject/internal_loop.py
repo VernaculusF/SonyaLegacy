@@ -113,7 +113,14 @@ class InternalProcess:
         # Этап G: DriveCounters parallel to HomeostasisCounters. Same internal
         # tick cadence; resets on external messages / completed actions; values
         # passed into build_full_context so the LLM sees current drive state.
-        self._drives = DriveCounters()
+        # Load from substrate if available (v16 persistence); else fresh.
+        if substrate is not None:
+            try:
+                self._drives = DriveCounters.load(substrate)
+            except Exception:
+                self._drives = DriveCounters()
+        else:
+            self._drives = DriveCounters()
         # Этап D: outbound initiative gate (set late by main after channels build).
         self._outbound = None  # type: ignore[assignment]
         self._task: asyncio.Task | None = None
@@ -230,6 +237,13 @@ class InternalProcess:
                 break
 
             self._tick_count += 1
+
+            # Persist drive state every 5 ticks (~50s) to survive restarts.
+            if self._tick_count % 5 == 0 and self._substrate is not None:
+                try:
+                    self._drives.save(self._substrate)
+                except Exception:
+                    pass
 
             # Homeostasis tick
             crossed = self._counters.tick()
