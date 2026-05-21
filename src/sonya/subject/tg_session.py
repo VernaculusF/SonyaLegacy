@@ -436,8 +436,8 @@ async def run_tg_session(
     )
 
 
-# Image MIME types we know how to send to vision-capable LLMs.
-_VISION_MIME_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
+# Media MIME types we know how to send to vision/video-capable LLMs.
+_VISION_MIME_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4")
 
 
 _CRITIQUE_SYSTEM = """Ты — быстрый ревьюер ответа Сони перед отправкой Ивану.
@@ -509,12 +509,10 @@ def _build_initial_user_message(
     media_path: str | None,
     media_mime: str | None,
 ) -> list[dict[str, Any]] | None:
-    """Construct an OpenAI-style multimodal user message if image is attached.
+    """Construct an OpenAI-style multimodal user message if media is attached.
 
-    Returns None when there is no image — caller falls back to plain text.
-    Skips silently for non-image media (audio, video, files): vision models
-    can't consume them, so we leave the text placeholder ('[видео]' etc.) in
-    place.
+    Returns None when there is no supported media — caller falls back to plain text.
+    Supports images (jpeg/png/webp/gif) and short video (mp4).
     """
     if not media_path or not media_mime:
         return None
@@ -526,14 +524,18 @@ def _build_initial_user_message(
         raw = Path(media_path).read_bytes()
     except Exception:
         return None
-    # Hard cap: 5 MB. Above that the request blows up token budgets and most
-    # provider HTTP limits. Sonya can still see the placeholder text.
-    if len(raw) > 5 * 1024 * 1024:
+    # Size limits: 5 MB for images, 20 MB for video (short TG clips ~9s fit).
+    is_video = media_mime.lower().startswith("video/")
+    size_limit = 20 * 1024 * 1024 if is_video else 5 * 1024 * 1024
+    if len(raw) > size_limit:
         return None
     b64 = base64.b64encode(raw).decode("ascii")
     text_piece = (user_input or "").strip()
     if not text_piece:
-        text_piece = "Ivan прислал картинку — посмотри что на ней."
+        if is_video:
+            text_piece = "Ivan прислал видео — посмотри что там."
+        else:
+            text_piece = "Ivan прислал картинку — посмотри что на ней."
     else:
         text_piece = f"Ivan написал: {text_piece}"
     return [
