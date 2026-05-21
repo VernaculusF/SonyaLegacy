@@ -2,15 +2,15 @@
 
 **Status:** Active
 **Type:** Operational snapshot — единственный источник правды о том что есть сейчас
-**Last updated:** 2026-05-18
+**Last updated:** 2026-05-21
 
 ---
 
 ## 0. TL;DR
 
-Соня — substrate-based AI среда работающая на VPS под Telegram userbot. Сейчас на kimi-k2.6 (vision-capable) через Fireworks. Substrate v13 в SQLite с собственной key pool, episodic memory + semantic embeddings + tasks + selfmod proposals + skills shell. Всё подключено в runtime через `src/sonya/main.py`.
+Соня — substrate-based AI среда работающая на VPS под Telegram userbot. Сейчас на DeepSeek V4 (text) + Gemma 4 (vision, как глаза) через Fireworks/OpenRouter. Substrate v17 в SQLite с собственной key pool, episodic memory + semantic embeddings + tasks + selfmod proposals + skills shell. Всё подключено в runtime через `src/sonya/main.py`.
 
-**Score: ~28/100** (см. §6).
+**Score: ~35/100** (см. §6).
 
 ---
 

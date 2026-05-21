@@ -163,7 +163,7 @@ def test_web_search_uses_ddg_html() -> None:
             return False
 
     class _Sess:
-        def get(self, url):
+        def get(self, url, **kwargs):
             return _Resp()
 
         async def __aenter__(self):
@@ -223,7 +223,7 @@ async def test_web_search_runs_inside_event_loop_without_warnings():
 
     class _Sess:
         def __init__(self, *a, **kw): pass
-        def get(self, url): return _Resp()
+        def get(self, url, **kwargs): return _Resp()
         async def __aenter__(self): return self
         async def __aexit__(self, *a): return None
 

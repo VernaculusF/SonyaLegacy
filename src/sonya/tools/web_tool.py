@@ -111,20 +111,47 @@ class WebTool:
     async def _do_search(self, query: str) -> str:
         url = _DDG_URL.format(q=quote_plus(query))
         timeout = aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT)
-        headers = {"User-Agent": self._user_agent}
+        headers = {
+            "User-Agent": self._user_agent,
+            "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
+        }
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return (
-                        f"[ERROR] DDG returned HTTP {resp.status}. "
-                        f"Search is unavailable right now — do NOT retry immediately. "
-                        f"If you have a task depending on this, use `tasks.block` and wait."
-                    )
-                body = await resp.read()
-                if len(body) > _MAX_BODY_BYTES:
-                    body = body[:_MAX_BODY_BYTES]
-                text = body.decode("utf-8", errors="ignore")
+            # Try DDG first
+            try:
+                async with session.get(url, allow_redirects=True) as resp:
+                    if resp.status == 200:
+                        body = await resp.read()
+                        if len(body) > _MAX_BODY_BYTES:
+                            body = body[:_MAX_BODY_BYTES]
+                        text = body.decode("utf-8", errors="ignore")
+                        results = self._parse_ddg_results(text, query)
+                        if results:
+                            return results
+            except Exception:
+                pass
 
+            # Fallback: Google HTML scrape (no API key)
+            try:
+                google_url = f"https://www.google.com/search?q={quote_plus(query)}&num=5&hl=en"
+                async with session.get(google_url, allow_redirects=True) as resp:
+                    if resp.status == 200:
+                        body = await resp.read()
+                        if len(body) > _MAX_BODY_BYTES:
+                            body = body[:_MAX_BODY_BYTES]
+                        text = body.decode("utf-8", errors="ignore")
+                        results = self._parse_google_results(text, query)
+                        if results:
+                            return results
+            except Exception:
+                pass
+
+        return (
+            "[ERROR] Both DDG and Google search failed. "
+            "Search is unavailable — do NOT retry immediately. "
+            "If you have a task depending on this, use `tasks.block` and wait."
+        )
+
+    def _parse_ddg_results(self, text: str, query: str) -> str:
         results = []
         for match in _DDG_RESULT_RE.finditer(text):
             href, title_html, snippet_html = match.groups()
@@ -134,9 +161,43 @@ class WebTool:
             results.append(f"{title}\n  {actual_url}\n  {snippet}")
             if len(results) >= _MAX_RESULTS:
                 break
+        if not results:
+            return ""
+        return f"Results for: {query}\n\n" + "\n\n".join(results)
+
+    def _parse_google_results(self, text: str, query: str) -> str:
+        """Parse Google HTML search results (best-effort scraping)."""
+        results = []
+        # Google wraps results in <div class="g"> blocks. Extract title + snippet.
+        import re as _re
+        # Pattern for result links: <a href="/url?q=ACTUAL_URL&..."><h3>TITLE</h3></a>
+        link_re = _re.compile(
+            r'<a[^>]+href="/url\?q=([^&"]+)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>',
+            _re.DOTALL,
+        )
+        # Snippet follows in a nearby <span> or <div>
+        snippet_re = _re.compile(
+            r'<span[^>]*class="[^"]*(?:st|aCOpRe)[^"]*"[^>]*>(.*?)</span>',
+            _re.DOTALL,
+        )
+        for match in link_re.finditer(text):
+            url_encoded, title_html = match.groups()
+            title = _strip_html(title_html)
+            actual_url = unquote(url_encoded)
+            if not actual_url.startswith("http"):
+                continue
+            # Try to find snippet near this position
+            snippet = ""
+            snippet_match = snippet_re.search(text, match.end(), match.end() + 2000)
+            if snippet_match:
+                snippet = _strip_html(snippet_match.group(1))
+            results.append(f"{title}\n  {actual_url}\n  {snippet[:200]}")
+            if len(results) >= _MAX_RESULTS:
+                break
 
         if not results:
-            return "(no results)"
+            # Fallback: just extract any visible text with URLs
+            return ""
         return f"Results for: {query}\n\n" + "\n\n".join(results)
 
     # ---------- fetch ----------
