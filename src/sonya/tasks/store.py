@@ -109,6 +109,15 @@ class TaskStore:
         all_open = self.list_open()
         return [t for t in all_open if t.is_ivan_task() and t.is_due()]
 
+    def list_urgent_due_tasks(self) -> list[Task]:
+        """Open tasks that are urgent (deadline-soon / urgency markers / progress mode).
+
+        Used by task_worker to decide whether to wake up between active sessions.
+        Non-urgent tasks are processed by active session (~every 2h) instead.
+        """
+        all_open = self.list_open()
+        return [t for t in all_open if t.is_due() and t.is_urgent()]
+
     # ---------- update ----------
 
     def update_status(self, task_id: str, status: TaskStatus) -> Task:

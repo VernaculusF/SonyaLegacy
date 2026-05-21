@@ -71,6 +71,36 @@ class Task:
     def is_ivan_task(self) -> bool:
         return self.created_by == "ivan"
 
+    def is_urgent(self) -> bool:
+        """Should the task_worker process this task between active sessions?
+
+        True if any of:
+        - deadline within next 6 hours
+        - description/title contains explicit urgency markers
+        - notify_mode == 'progress' AND it's an Ivan-task (he wants live updates)
+
+        For non-urgent self-tasks: active session every 2h handles them.
+        Saves tokens — no need to wake worker every 2 minutes for slow background work.
+        """
+        # 1. Tight deadline
+        if self.deadline:
+            try:
+                from datetime import datetime, timezone, timedelta
+                dl = datetime.fromisoformat(self.deadline.replace("Z", "+00:00"))
+                if dl - datetime.now(timezone.utc) <= timedelta(hours=6):
+                    return True
+            except Exception:
+                pass
+        # 2. Explicit urgency in title/description
+        haystack = f"{self.title} {self.description}".lower()
+        urgent_markers = ("срочно", "urgent", "asap", "немедленно", "быстро")
+        if any(m in haystack for m in urgent_markers):
+            return True
+        # 3. Ivan-task with notify_mode=progress — he's watching
+        if self.is_ivan_task() and self.notify_mode == "progress":
+            return True
+        return False
+
     def session_budget_exhausted(self) -> bool:
         """True if max_sessions > 0 and we've burned them all."""
         return self.max_sessions > 0 and self.sessions_used >= self.max_sessions

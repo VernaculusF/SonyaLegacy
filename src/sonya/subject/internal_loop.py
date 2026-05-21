@@ -95,10 +95,10 @@ class InternalProcess:
         substrate=None,
         provider: ThinkingProvider | None = None,
         thinking_prompt: str = "",
-        idle_interval_seconds: float = 300.0,
-        tick_interval_seconds: float = 10.0,
-        active_interval_seconds: float = 3600.0,
-        task_worker_interval_seconds: float = 120.0,
+        idle_interval_seconds: float = 1800.0,  # 30 min — short reflection tick
+        tick_interval_seconds: float = 30.0,     # 30 sec inner loop tick
+        active_interval_seconds: float = 7200.0, # 2 hours — long working session
+        task_worker_interval_seconds: float = 1800.0,  # 30 min default; urgent tasks override
     ) -> None:
         self._stream = stream
         self._intentions = intention_store
@@ -776,17 +776,20 @@ class InternalProcess:
             from sonya.tasks.models import TaskStatus
 
             svc = TaskService(TaskStore(substrate), stream=self._stream)
-            due_ivan = svc.list_due_ivan_tasks()
-            if not due_ivan:
+            # Worker only picks URGENT tasks: deadline-soon / urgency-marked /
+            # Ivan-tasks with notify_mode=progress. Non-urgent tasks (silent
+            # background work) are handled by active session every 2 hours,
+            # which saves tokens — no need to wake worker every 30 min for
+            # slow-burn tasks like "find black-market earning ideas".
+            due_urgent = svc.list_urgent_due_tasks()
+            if not due_urgent:
                 return
 
             # Prefer in_progress, then pending; oldest updated_at first
-            in_progress = [t for t in due_ivan if t.status is TaskStatus.IN_PROGRESS]
-            pending = [t for t in due_ivan if t.status is TaskStatus.PENDING]
+            in_progress = [t for t in due_urgent if t.status is TaskStatus.IN_PROGRESS]
+            pending = [t for t in due_urgent if t.status is TaskStatus.PENDING]
             actionable = in_progress + sorted(pending, key=lambda t: t.created_at)
             if not actionable:
-                # Only blocked / non-actionable tasks left for Ivan. Worker
-                # has nothing to advance. Return silently — no error.
                 return
             task = actionable[0]
 

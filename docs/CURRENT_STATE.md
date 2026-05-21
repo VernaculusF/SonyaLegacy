@@ -274,14 +274,17 @@ Stage 3 (real selfmod loop) закроется когда Соня сама пр
 
 ### Intervals
 
-| Что | Когда |
-|-----|-------|
-| Idle thinking | Каждые 30 минут (skip если active fired) |
-| Active session | Каждые 2 часа |
-| Task worker | Каждые 2 минуты (только если есть in_progress ivan-task) |
-| Balance refresh | Каждые 10 минут |
-| Embedding indexer | Adaptive: 5s active backfill, 5min idle |
-| Consolidation | 1×/день после active session |
+| Что | Когда | Цена за ночь (8ч) |
+|-----|-------|--------------------|
+| Idle thinking | Каждые **30 минут** (1 LLM call — рефлексия, постановка задач, реакция на drives) | ~16 calls |
+| Active session | Каждые **2 часа** (до 30 шагов / 30 мин — длинная фаза работы с tools) | ~120 calls (4 сессии × ~30) |
+| Task worker | **Только urgent tasks** (deadline ≤6ч / urgent markers / Ivan-tasks с notify_mode=progress) — каждые 30 мин | 0 если нет urgent tasks |
+| Balance refresh | Каждые 10 минут | бесплатно |
+| Embedding indexer | Adaptive: 5s active backfill, 5min idle | бесплатно |
+| Consolidation | 1×/день после active session | 1 call |
+| TG ответ | Сразу при сообщении | по требованию |
+
+**Что значит "только urgent" для worker'а:** несрочные self-tasks (типа "найди инфу про X" с notify_mode=silent) не будят воркер каждые 30 мин — их подхватывает active session раз в 2 часа. Это критично для бюджета: при 10 открытых задач разница между "все воркаются" и "только 1 urgent" — порядки.
 
 ---
 

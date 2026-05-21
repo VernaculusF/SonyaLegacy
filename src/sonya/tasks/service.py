@@ -204,6 +204,10 @@ class TaskService:
         """Ivan-issued tasks that are open AND scheduled_for <= now."""
         return self._store.list_due_ivan_tasks()
 
+    def list_urgent_due_tasks(self) -> list[Task]:
+        """Tasks the task_worker should pick up between active sessions."""
+        return self._store.list_urgent_due_tasks()
+
     def pick_next(self) -> Task | None:
         """Pick the next task to work on:
 
