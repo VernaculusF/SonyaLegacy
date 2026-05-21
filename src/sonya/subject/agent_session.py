@@ -327,10 +327,11 @@ async def run_agent_session(
             kind="internal.agent_step",
             payload={"step": step, "type": "thought", "content": response[:8000]},
         ))
-        # Ask what next — kept short and language-agnostic to avoid leaking
-        # English meta-reasoning into the next turn.
+        # Nudge the model to finish. Use system role to make clear this is NOT
+        # a message from Ivan — otherwise the model hallucinates that Ivan
+        # said "продолжай" and responds to that instead of waiting.
         messages.append({"role": "assistant", "content": response})
-        messages.append({"role": "user", "content": "Продолжай. Если закончила — `[DONE]`."})
+        messages.append({"role": "system", "content": "[system] Ты не завершила ответ маркером [DONE]. Добавь [DONE] чтобы отправить."})
 
     # Record session summary. If the last agent_step already captured the
     # full final_output (the common case: model emits [DONE] and the step
