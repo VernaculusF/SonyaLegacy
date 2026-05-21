@@ -32,6 +32,34 @@ class NoKeysAvailable(RuntimeError):
     """All keys exhausted (banned/disabled/cooldown)."""
 
 
+def _strip_image_content(messages: list[dict]) -> list[dict]:
+    """Remove image_url blocks from multimodal messages.
+
+    When a model doesn't support vision, we retry with text-only content.
+    Multimodal messages have content=[{type:text,...},{type:image_url,...}] —
+    we keep only text parts. Sonya will see the text placeholder ('[стикер 🫥]')
+    instead of the actual image.
+    """
+    result = []
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list):
+            # Multimodal message — keep only text parts
+            text_parts = [p for p in content if isinstance(p, dict) and p.get("type") == "text"]
+            if text_parts:
+                # Collapse to single string if only one text part
+                if len(text_parts) == 1:
+                    result.append({**msg, "content": text_parts[0].get("text", "")})
+                else:
+                    combined = "\n".join(p.get("text", "") for p in text_parts)
+                    result.append({**msg, "content": combined})
+            else:
+                result.append({**msg, "content": "[image — model does not support vision]"})
+        else:
+            result.append(msg)
+    return result
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -205,6 +233,21 @@ class LLMProvider:
                 resp.raise_for_status()
             except Exception as err:
                 _log.warning("key_http_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
+
+                # Vision fallback: if model says "does not support image inputs",
+                # strip image_url blocks from messages and retry on SAME key.
+                if (
+                    resp.status_code == 400
+                    and "does not support image" in resp.text.lower()
+                    and not kwargs.get("_vision_stripped")
+                ):
+                    _log.info("vision_fallback", extra={"key_id": key.key_id, "model": model})
+                    stripped_msgs = _strip_image_content(messages)
+                    return await self.complete_text(
+                        stripped_msgs,
+                        **{**kwargs, "_vision_stripped": True},
+                    )
+
                 _record_call(
                     self._store, key_id=key.key_id, provider=provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
