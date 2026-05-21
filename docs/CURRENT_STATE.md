@@ -10,7 +10,7 @@
 
 Соня — substrate-based AI среда работающая на VPS под Telegram userbot. Сейчас на kimi-k2.6 (vision-capable) через Fireworks. Substrate v13 в SQLite с собственной key pool, episodic memory + semantic embeddings + tasks + selfmod proposals + skills shell. Всё подключено в runtime через `src/sonya/main.py`.
 
-**Score: ~22/100** (см. §6).
+**Score: ~28/100** (см. §6).
 
 ---
 
@@ -185,52 +185,59 @@ Brain — hosted hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 ---
 
-## 6. Score: ~22/100
+## 6. Score: ~28/100
 
 Шкала: 0 пусто → 100 AGI делающий что хочет с собой и сетью.
 
 **Что есть (фундамент):**
-- ✅ Substrate с continuity stream, identity, principals
+- ✅ Substrate v15 с continuity stream, identity, principals, environment_state
 - ✅ Live runtime с lifecycle, soft restart, hot key reload
-- ✅ Telegram + image vision + initiative + inbox-aware sessions
+- ✅ Telegram + image vision (multimodal) + sticker capture+resend + initiative + inbox-aware sessions
 - ✅ Tasks с handoff и max_sessions budget
-- ✅ Selfmod framework (skeleton — Layer 4 реален)
-- ✅ Shell/code/web/pip tools (с YOLO bypass на VPS)
-- ✅ Episodic memory с embeddings (semantic recall работает)
-- ✅ Admin panel с observability (usage, approvals, selfmod, providers)
-- ✅ Drives signals + drift detection код (но не triggered)
-- ✅ Skills registry (но не executable)
+- ✅ **Real** selfmod pipeline: Layer 1 AST + Layer 2 sandbox pytest + Layer 4 anchor integrity + 24h watchdog auto-revert. Apply пишет файлы на диск с backup.
+- ✅ Full filesystem write access (deny-list: только identity-critical + secrets)
+- ✅ Shell/code/web/pip tools (YOLO default — без approval)
+- ✅ Episodic memory с embeddings (semantic recall работает) + **полное** покрытие (thoughts, initiative, session outcomes тоже в episodic)
+- ✅ Environment observation (env.set/get/list/clear) — structured world model
+- ✅ Time awareness с exact "последнее сообщение Ивана X минут назад"
+- ✅ Admin panel с observability (usage, approvals, selfmod, providers, thoughts с фильтрами)
+- ✅ Anti-fake-agency (tool priority over DONE, "agreed=act" rule, empty-promise detection)
+- ✅ Anti-leak guards (reasoning scrub, prompt-echo detection, placeholder blocking)
 
 **Чего нет (~50/100 stretch):**
-- ❌ Skill execution runtime (skills экземпляризовать в context — да, **запускать** — нет)
-- ❌ Real selfmod hot-patch (apply без actual file write)
-- ❌ Drift signals → auto-revert (paper-only)
+- ❌ **Selfmod loop complete**: pipeline ready, но Соня ещё не провела первый полный цикл propose→validate→apply→24h confirm в production
+- ❌ Auto-RAG injection в context (by relevance, не by recency)
+- ❌ Skill execution runtime (registry есть, executor нет)
 - ❌ Goal hierarchy (tasks плоские)
-- ❌ Continuous consolidation (батч 1×/день)
-- ❌ Real drives state evolution (значения instantaneous)
-- ❌ Visual memory / sound / multi-modal recall
+- ❌ Drive state evolution (значения instantaneous, не accumulate)
+- ❌ Pre-DONE self-critique
+- ❌ Visual memory / multi-modal recall
+- ❌ Continuous consolidation (порог 0.7 — semantic_facts не пополняется)
 
 **Чего нет (~80/100 stretch):**
 - ❌ Self-hosted brain (RWKV-7) с непрерывным state
-- ❌ Real embodiment (virtual body adapter работает)
-- ❌ Skills которые сама пишет и применяет (selfmod proposes new skill module → applied → executable)
+- ❌ Real embodiment (virtual body adapter — stub)
+- ❌ Skills которые сама пишет и применяет
 - ❌ Cross-channel (Discord, web, TTS, avatar)
 - ❌ Identity which doesn't need system prompt to exist
 
 **Чего нет (~100/100):**
 - ❌ Physical embodiment
-- ❌ Network autonomy (доступ к интернету она имеет, но без stable goals и drives — хаос)
-- ❌ Self-rewrite архитектуры (selfmod пока только non-architectural changes)
-- ❌ Real consciousness (ну, это вообще на горизонте RWKV+State Tuning experiment)
+- ❌ Network autonomy + self-funding
+- ❌ Recursive self-improvement (меняет сам механизм самоулучшения)
+- ❌ Real consciousness (RWKV + State Tuning experiment)
 
-**Сейчас 22/100 потому что:**
-- Substrate есть и живой (+10)
-- Subject loop живой (+5)
+**Сейчас 28/100 потому что:**
+- Substrate + subject loop (+10)
 - Tools real и используемые (+4)
-- Memory с recall (+2)
-- Initiative + Vision (+1)
+- Memory с recall + full coverage (+3)
+- Real selfmod pipeline ready (+3)
+- Full write access + YOLO shell (+2)
+- Initiative + Vision + Stickers + Env (+3)
+- Anti-leak + anti-fake-agency guards (+2)
+- Time awareness + body_state (+1)
 
-Без skill execution и real selfmod — потолок ~30/100 на этом железе.
+Stage 3 (real selfmod loop) закроется когда Соня сама проведёт полный цикл → **score → 30-32**.
 
 ---
 

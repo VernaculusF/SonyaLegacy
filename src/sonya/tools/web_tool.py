@@ -115,7 +115,11 @@ class WebTool:
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
-                    return f"[ERROR] DDG returned HTTP {resp.status}"
+                    return (
+                        f"[ERROR] DDG returned HTTP {resp.status}. "
+                        f"Search is unavailable right now — do NOT retry immediately. "
+                        f"If you have a task depending on this, use `tasks.block` and wait."
+                    )
                 body = await resp.read()
                 if len(body) > _MAX_BODY_BYTES:
                     body = body[:_MAX_BODY_BYTES]
