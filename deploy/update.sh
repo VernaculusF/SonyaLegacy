@@ -28,7 +28,7 @@ echo "=> Ensuring runtime dependencies..."
 # fastembed + numpy power memory.recall (semantic search over episodic memory).
 # Idempotent — pip skips if already at the requested version.
 "$PROJECT_DIR/.venv/bin/pip" install --quiet --upgrade \
-    "fastembed>=0.4" "numpy>=1.26" 2>&1 | grep -v "already satisfied" || true
+    "fastembed>=0.4" "numpy>=1.26" "imagehash>=4.3" 2>&1 | grep -v "already satisfied" || true
 
 echo "=> Restarting services..."
 if systemctl --user list-units 2>/dev/null | grep -q sonya; then

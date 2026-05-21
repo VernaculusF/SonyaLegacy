@@ -36,6 +36,16 @@ class WatchWindow:
                 payload={"proposal_id": proposal.proposal_id},
             )
         )
+        # Record baseline for 7-day outcome tracking
+        try:
+            from sonya.selfmod.outcome import record_baseline
+            record_baseline(
+                self._store._sub,
+                proposal.proposal_id,
+                proposal.target_module,
+            )
+        except Exception:
+            pass
 
     def trigger_revert(self, proposal: SelfModificationProposal, reason: str = "") -> None:
         """Auto-revert a proposal due to drift signal."""

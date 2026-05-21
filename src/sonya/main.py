@@ -301,7 +301,9 @@ def _build_incoming_handler(
                 _empty_promise_check(response_text, tg_result.raw.actions)
 
                 record_response_as_memory(
-                    substrate, msg.text, response, channel=f"{msg.channel}_userbot"
+                    substrate, msg.text, response,
+                    channel=f"{msg.channel}_userbot",
+                    media_path=msg.media_path,
                 )
                 if response.text:
                     return OutgoingMessage(text=response.text)

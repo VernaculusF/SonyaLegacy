@@ -987,6 +987,9 @@ class InternalProcess:
           - Uses continuity_events count of 'internal.tool_error' +
             'internal.task_worker_error' as crash signal.
 
+        Also checks 7-day outcome measurements for proposals that were
+        confirmed stable earlier.
+
         This is the 24h watchdog from PATH_TO_AGI Stage 3.
         """
         substrate = self._substrate or getattr(self._stream, "_sub", None)
@@ -1043,5 +1046,17 @@ class InternalProcess:
                         watchdog.confirm_stable(p)
                 except Exception:
                     pass
+
+            # Check 7-day outcome measurements for confirmed proposals
+            try:
+                from sonya.selfmod.outcome import check_pending_outcomes
+                outcomes = check_pending_outcomes(substrate)
+                for o in outcomes:
+                    self._stream.append(ContinuityEvent(
+                        kind="self_mod.outcome_measured",
+                        payload=o,
+                    ))
+            except Exception:
+                pass
         except Exception:
             pass

@@ -439,3 +439,29 @@ CREATE TABLE IF NOT EXISTS goals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
+
+
+-- ====================================================================
+-- v16 additions (cont): selfmod outcome tracking.
+-- After a proposal is CONFIRMED_STABLE, we record baseline metrics and
+-- then measure delta after 7 days to learn what helped vs what didn't.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS selfmod_outcomes (
+    proposal_id TEXT PRIMARY KEY,
+    target_module TEXT NOT NULL,
+    confirmed_at TEXT NOT NULL,
+    baseline_errors_7d INTEGER NOT NULL DEFAULT 0,
+    baseline_tokens_7d INTEGER NOT NULL DEFAULT 0,
+    measure_at TEXT NOT NULL DEFAULT '',       -- when to take the 7-day measurement
+    measured_errors_7d INTEGER,                -- null = not yet measured
+    measured_tokens_7d INTEGER,
+    outcome TEXT NOT NULL DEFAULT 'pending',   -- pending | improved | neutral | degraded
+    measured_at TEXT NOT NULL DEFAULT ''
+);
+
+
+-- v16 addition (cont): perceptual hash for media-attached episodic events.
+-- Computed via imagehash.phash on downloaded images. Allows "same image?"
+-- comparisons without re-downloading or re-embedding.
+-- ALTER TABLE addition handled by migration.

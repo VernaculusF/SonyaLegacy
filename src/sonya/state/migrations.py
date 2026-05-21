@@ -226,6 +226,8 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
             (now,),
         )
         _add_column_if_missing(conn, "tasks", "parent_goal_id", "TEXT NOT NULL DEFAULT ''")
+        # Visual memory: phash column for image dedup
+        _add_column_if_missing(conn, "episodic_events", "media_phash", "TEXT NOT NULL DEFAULT ''")
         conn.execute(
             "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
             (16, now),

@@ -5,18 +5,35 @@ from sonya.state.canonical_response import CanonicalResponse
 from sonya.state.substrate import Substrate
 
 
+def _compute_phash(media_path: str | None) -> str:
+    """Compute perceptual hash for an image file. Returns hex string or ''."""
+    if not media_path:
+        return ""
+    try:
+        import imagehash
+        from PIL import Image
+        img = Image.open(media_path)
+        h = imagehash.phash(img)
+        return str(h)
+    except Exception:
+        return ""
+
+
 def record_response_as_memory(
     substrate: Substrate,
     user_input: str,
     response: CanonicalResponse,
     channel: str = "telegram",
+    media_path: str | None = None,
 ) -> None:
     """Record a planner response as an episodic memory event.
 
     Called after every successful plan_next → response cycle.
     This is the memory wiring: responses become part of Sonya's biography.
+    If media_path is provided, compute perceptual hash for visual dedup.
     """
     episodic = EpisodicMemory(substrate)
+    phash = _compute_phash(media_path) if media_path else ""
 
     # Record user message
     if user_input:
@@ -29,6 +46,18 @@ def record_response_as_memory(
             actor=response.principal_id or "ivan",
             importance_score=0.5,
         )
+        # If there's a phash, attach it to the user's event
+        if phash:
+            try:
+                substrate.connection.execute(
+                    "UPDATE episodic_events SET media_phash = ? "
+                    "WHERE event_id = (SELECT event_id FROM episodic_events "
+                    "ORDER BY rowid DESC LIMIT 1)",
+                    (phash,),
+                )
+                substrate.connection.commit()
+            except Exception:
+                pass
 
     # Record Sonya's response
     if response.text:
