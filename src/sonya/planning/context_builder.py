@@ -276,8 +276,21 @@ def build_full_context(
     # Always render the section (even when empty) so Sonya knows the channel
     # exists — distinguishing "no tasks" from "I can't see them".
     try:
+        from sonya.tasks.goals import GoalStore
         from sonya.tasks.store import TaskStore
+        active_goals = GoalStore(substrate).list_active()
         open_tasks = TaskStore(substrate).list_open()
+
+        goals_block = "\n\n## Мои цели (долгосрочные):\n"
+        if active_goals:
+            for g in active_goals[:5]:
+                goals_block += f"- [{g.goal_id}] (prio={g.priority}) {g.title}\n"
+                if g.description:
+                    goals_block += f"    {g.description[:120]}\n"
+        else:
+            goals_block += "(пока нет — создай через goals.create когда появится долгосрочная цель)\n"
+        system_prompt += goals_block
+
         tasks_block = "\n\n## Мои текущие задачи:\n"
         if open_tasks:
             for t in open_tasks[:10]:

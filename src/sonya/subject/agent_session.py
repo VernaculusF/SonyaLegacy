@@ -80,6 +80,10 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - skills.list — show registered skills and their status
 - skills.run [skill_id] [query] — execute a skill (e.g. `skills.run skill-memory-search что мы обсуждали вчера`)
 - skills.register_builtins — seed built-in skills (memory-search, identity-check, dialog-tone) into registry. Call once.
+- goals.list — show active long-term goals
+- goals.create [title | description | priority] — create a goal (higher priority = more important)
+- goals.achieve [goal_id] — mark a goal as achieved
+- goals.abandon [goal_id] — mark a goal as abandoned
 - filesystem.read [path] — read a file
 - filesystem.list [path] — list directory
 - filesystem.tree [path] — show directory tree
@@ -432,6 +436,53 @@ def _execute_tool(
             if skills is None:
                 return "[ERROR] skills tool not configured"
             return skills.register_builtins()
+        elif name == "goals.list":
+            from sonya.tasks.goals import GoalStore
+            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
+            if sub is None:
+                return "[ERROR] no substrate"
+            goals = GoalStore(sub).list_active()
+            if not goals:
+                return "(no active goals)"
+            lines = ["Active goals:"]
+            for g in goals:
+                lines.append(f"  [{g.goal_id}] (prio={g.priority}) {g.title}")
+                if g.description:
+                    lines.append(f"    {g.description[:150]}")
+            return "\n".join(lines)
+        elif name == "goals.create":
+            from sonya.tasks.goals import GoalStore
+            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
+            if sub is None:
+                return "[ERROR] no substrate"
+            parts = arg.split("|")
+            title = parts[0].strip() if parts else ""
+            desc = parts[1].strip() if len(parts) > 1 else ""
+            prio = int(parts[2].strip()) if len(parts) > 2 and parts[2].strip().isdigit() else 0
+            if not title:
+                return "[ERROR] goals.create needs: title | description | priority"
+            g = GoalStore(sub).create(title, desc, prio)
+            return f"[OK] goal created: {g.goal_id} — {g.title} (priority={g.priority})"
+        elif name == "goals.achieve":
+            from sonya.tasks.goals import GoalStore
+            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
+            if sub is None:
+                return "[ERROR] no substrate"
+            try:
+                g = GoalStore(sub).achieve(arg.strip())
+                return f"[OK] goal {g.goal_id} achieved: {g.title}"
+            except KeyError:
+                return f"[ERROR] goal {arg.strip()!r} not found"
+        elif name == "goals.abandon":
+            from sonya.tasks.goals import GoalStore
+            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
+            if sub is None:
+                return "[ERROR] no substrate"
+            try:
+                g = GoalStore(sub).abandon(arg.strip())
+                return f"[OK] goal {g.goal_id} abandoned: {g.title}"
+            except KeyError:
+                return f"[ERROR] goal {arg.strip()!r} not found"
         elif name == "plugins.list":
             from sonya.tools.hot_loader import list_plugins
             plugins = list_plugins()

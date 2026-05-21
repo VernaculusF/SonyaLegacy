@@ -419,3 +419,23 @@ CREATE TABLE IF NOT EXISTS drive_state (
     pending_debt REAL NOT NULL DEFAULT 0.0,
     updated_at TEXT NOT NULL DEFAULT ''
 );
+
+
+-- ====================================================================
+-- v16 additions (cont): goals table.
+-- Goals are long-term objectives that group tasks. A task can belong to
+-- a goal via parent_goal_id. Active sessions read top goals to decide
+-- what to work on. Goals don't expire (no deadline) but can be closed.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS goals (
+    goal_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',      -- active | achieved | abandoned
+    priority INTEGER NOT NULL DEFAULT 0,       -- higher = more important
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);

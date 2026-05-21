@@ -217,7 +217,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         version = 15
 
     if version == 15:
-        # v15 → v16: persistent drive_state table.
+        # v15 → v16: persistent drive_state + goals table + tasks.parent_goal_id.
         conn.executescript(_SCHEMA_FILE.read_text(encoding="utf-8"))
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -225,6 +225,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
             "relational_focus, pending_debt, updated_at) VALUES (1, 0, 0, 0, 0, ?)",
             (now,),
         )
+        _add_column_if_missing(conn, "tasks", "parent_goal_id", "TEXT NOT NULL DEFAULT ''")
         conn.execute(
             "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
             (16, now),
