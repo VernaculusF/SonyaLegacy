@@ -765,7 +765,7 @@ class InternalProcess:
 
             # Build tools + system prompt
             from sonya.subject.agent_session import run_agent_session
-            from sonya.subject.tg_session import build_tools
+            from sonya.subject.channel_session import build_tools
             from sonya.planning.context_builder import build_full_context
 
             tools = build_tools(substrate, self._stream, outbound=self._outbound, default_created_by="ivan")

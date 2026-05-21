@@ -267,12 +267,16 @@ class LLMProvider:
             except Exception as err:
                 _log.warning("key_http_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
 
-                # Vision fallback: if model says "does not support image inputs",
-                # strip image_url blocks from messages and retry on SAME key.
+                # Vision fallback: if model says "does not support image inputs"
+                # or "unable to process input image" (format issue),
+                # strip image_url/video_url blocks from messages and retry text-only.
                 if (
                     resp.status_code == 400
-                    and "does not support image" in resp.text.lower()
                     and not kwargs.get("_vision_stripped")
+                    and (
+                        "does not support image" in resp.text.lower()
+                        or "unable to process" in resp.text.lower()
+                    )
                 ):
                     _log.info("vision_fallback", extra={"key_id": key.key_id, "model": model})
                     stripped_msgs = _strip_image_content(messages)

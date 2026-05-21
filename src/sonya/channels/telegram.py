@@ -454,17 +454,18 @@ async def _download_media(event: Any, media_dir: str) -> tuple[str | None, str |
                 is_video = True
         if is_voice:
             return None, None
-        # Video stickers (DocumentAttributeSticker + DocumentAttributeVideo):
-        # these are tiny WebM animations, not real video. Skip them — VLMs
-        # can't process them reliably.
-        if is_sticker and is_video:
-            return None, None
         if is_sticker:
-            # Static/animated sticker
             if mime == "application/x-tgsticker":
+                # .tgs (Lottie vector animation) — can't send to VLM
                 return None, None
-            ext = "webp"
-            mime = "image/webp"
+            if is_video:
+                # Video sticker — short WebM loop. Send as video.
+                ext = "webm"
+                mime = "video/webm"
+            else:
+                # Static sticker — webp image
+                ext = "webp"
+                mime = "image/webp"
         elif is_video:
             ext = "mp4"
             # Telethon sometimes reports mime as empty or wrong for video

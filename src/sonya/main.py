@@ -192,7 +192,7 @@ def _build_incoming_handler(
                 from sonya.planning.memory_wiring import record_response_as_memory
                 from sonya.state.canonical_response import CanonicalResponse, ResponseKind
                 from sonya.state.continuity_stream import ContinuityStream
-                from sonya.subject.tg_session import run_tg_session
+                from sonya.subject.channel_session import run_tg_session
 
                 session_messages: list[dict[str, Any]] = []
                 if msg.channel == "telegram" and msg.raw is not None:
