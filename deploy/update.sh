@@ -43,7 +43,10 @@ else
         nohup "$PROJECT_DIR/.venv/bin/python" -m sonya.admin \
         > /tmp/sonya-admin.log 2>&1 &
     echo "Admin started (nohup). Logs: /tmp/sonya-admin.log"
-    echo "Core not started — use admin panel to start it."
+    PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/packages/tg-userbot/src" \
+        nohup "$PROJECT_DIR/.venv/bin/python" -m sonya \
+        > /tmp/sonya.log 2>&1 &
+    echo "Core started (nohup). Logs: /tmp/sonya.log"
 fi
 
 echo "=> Done."
