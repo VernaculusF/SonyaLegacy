@@ -101,9 +101,15 @@ class ProviderSettings:
     vision_provider: str = ""
     vision_model: str = ""
     vision_base_url: str = ""
-    voice_model: str = ""       # TTS/ASR — future
-    video_model: str = ""       # video understanding — future
-    image_gen_model: str = ""   # image generation — future
+    voice_provider: str = ""
+    voice_model: str = ""
+    voice_base_url: str = ""
+    video_provider: str = ""
+    video_model: str = ""
+    video_base_url: str = ""
+    image_gen_provider: str = ""
+    image_gen_model: str = ""
+    image_gen_base_url: str = ""
 
 
 class KeyStore:
@@ -121,9 +127,15 @@ class KeyStore:
             "COALESCE(vision_provider, '') as vp, "
             "COALESCE(vision_model, '') as vm, "
             "COALESCE(vision_base_url, '') as vbu, "
+            "COALESCE(voice_provider, '') as voicep, "
             "COALESCE(voice_model, '') as voice, "
+            "COALESCE(voice_base_url, '') as voicebu, "
+            "COALESCE(video_provider, '') as vidp, "
             "COALESCE(video_model, '') as video, "
-            "COALESCE(image_gen_model, '') as igen "
+            "COALESCE(video_base_url, '') as vidbu, "
+            "COALESCE(image_gen_provider, '') as igp, "
+            "COALESCE(image_gen_model, '') as igen, "
+            "COALESCE(image_gen_base_url, '') as igbu "
             "FROM provider_settings WHERE id = 1"
         ).fetchone()
         if row is None:
@@ -137,9 +149,15 @@ class KeyStore:
             vision_provider=row[4] or "",
             vision_model=row[5] or "",
             vision_base_url=row[6] or "",
-            voice_model=row[7] or "",
-            video_model=row[8] or "",
-            image_gen_model=row[9] or "",
+            voice_provider=row[7] or "",
+            voice_model=row[8] or "",
+            voice_base_url=row[9] or "",
+            video_provider=row[10] or "",
+            video_model=row[11] or "",
+            video_base_url=row[12] or "",
+            image_gen_provider=row[13] or "",
+            image_gen_model=row[14] or "",
+            image_gen_base_url=row[15] or "",
         )
 
     def set_settings(
@@ -151,9 +169,15 @@ class KeyStore:
         vision_provider: str | None = None,
         vision_model: str | None = None,
         vision_base_url: str | None = None,
+        voice_provider: str | None = None,
         voice_model: str | None = None,
+        voice_base_url: str | None = None,
+        video_provider: str | None = None,
         video_model: str | None = None,
+        video_base_url: str | None = None,
+        image_gen_provider: str | None = None,
         image_gen_model: str | None = None,
+        image_gen_base_url: str | None = None,
     ) -> ProviderSettings:
         cur = self.get_settings()
         ap = active_provider if active_provider is not None else cur.active_provider
@@ -162,21 +186,35 @@ class KeyStore:
         vp = vision_provider if vision_provider is not None else cur.vision_provider
         vm = vision_model if vision_model is not None else cur.vision_model
         vbu = vision_base_url if vision_base_url is not None else cur.vision_base_url
+        voicep = voice_provider if voice_provider is not None else cur.voice_provider
         voice = voice_model if voice_model is not None else cur.voice_model
+        voicebu = voice_base_url if voice_base_url is not None else cur.voice_base_url
+        vidp = video_provider if video_provider is not None else cur.video_provider
         video = video_model if video_model is not None else cur.video_model
+        vidbu = video_base_url if video_base_url is not None else cur.video_base_url
+        igp = image_gen_provider if image_gen_provider is not None else cur.image_gen_provider
         igen = image_gen_model if image_gen_model is not None else cur.image_gen_model
+        igbu = image_gen_base_url if image_gen_base_url is not None else cur.image_gen_base_url
         now = _utc_now_iso()
         self._sub.connection.execute(
             "INSERT INTO provider_settings(id, active_provider, default_model, default_base_url, "
-            "vision_provider, vision_model, vision_base_url, voice_model, video_model, image_gen_model, updated_at) "
-            "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "vision_provider, vision_model, vision_base_url, "
+            "voice_provider, voice_model, voice_base_url, "
+            "video_provider, video_model, video_base_url, "
+            "image_gen_provider, image_gen_model, image_gen_base_url, updated_at) "
+            "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET active_provider=excluded.active_provider, "
             "default_model=excluded.default_model, default_base_url=excluded.default_base_url, "
             "vision_provider=excluded.vision_provider, vision_model=excluded.vision_model, "
-            "vision_base_url=excluded.vision_base_url, voice_model=excluded.voice_model, "
-            "video_model=excluded.video_model, image_gen_model=excluded.image_gen_model, "
+            "vision_base_url=excluded.vision_base_url, "
+            "voice_provider=excluded.voice_provider, voice_model=excluded.voice_model, "
+            "voice_base_url=excluded.voice_base_url, "
+            "video_provider=excluded.video_provider, video_model=excluded.video_model, "
+            "video_base_url=excluded.video_base_url, "
+            "image_gen_provider=excluded.image_gen_provider, image_gen_model=excluded.image_gen_model, "
+            "image_gen_base_url=excluded.image_gen_base_url, "
             "updated_at=excluded.updated_at",
-            (ap, dm, bu, vp, vm, vbu, voice, video, igen, now),
+            (ap, dm, bu, vp, vm, vbu, voicep, voice, voicebu, vidp, video, vidbu, igp, igen, igbu, now),
         )
         self._sub.connection.commit()
         return self.get_settings()

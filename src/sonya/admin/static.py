@@ -380,20 +380,39 @@ const renderers = {
           <input id="prov-base" value="${s.default_base_url || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
         </div>
         <h3 style="margin-top:16px">Multi-model routing</h3>
-        <p style="font-size:11px;color:#8b949e;margin-bottom:8px">Отдельный провайдер/модель для vision. Остальные слоты — на будущее.</p>
+        <p style="font-size:11px;color:#8b949e;margin-bottom:8px">Каждый слот = отдельный провайдер + модель + endpoint. Пустые = не используется.</p>
         <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:13px">
-          <label>Vision provider:</label>
+          <label style="color:#58a6ff;grid-column:1/-1;margin-top:8px;font-weight:600">👁 Vision</label>
+          <label>Provider:</label>
           <input id="prov-vision-provider" value="${s.vision_provider || ''}" placeholder="e.g. openrouter (empty = use default)" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Vision model:</label>
+          <label>Model:</label>
           <input id="prov-vision-model" value="${s.vision_model || ''}" placeholder="e.g. google/gemini-2.5-flash" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Vision base URL:</label>
-          <input id="prov-vision-base" value="${s.vision_base_url || ''}" placeholder="empty = use vision provider key's base_url" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Voice model:</label>
-          <input id="prov-voice" value="${s.voice_model || ''}" placeholder="TTS/ASR — future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Video model:</label>
-          <input id="prov-video" value="${s.video_model || ''}" placeholder="video understanding — future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Image gen model:</label>
-          <input id="prov-imagen" value="${s.image_gen_model || ''}" placeholder="image generation — future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Base URL:</label>
+          <input id="prov-vision-base" value="${s.vision_base_url || ''}" placeholder="empty = use provider key's base_url" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+
+          <label style="color:#a371f7;grid-column:1/-1;margin-top:8px;font-weight:600">🎙 Voice (TTS/ASR)</label>
+          <label>Provider:</label>
+          <input id="prov-voice-provider" value="${s.voice_provider || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Model:</label>
+          <input id="prov-voice-model" value="${s.voice_model || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Base URL:</label>
+          <input id="prov-voice-base" value="${s.voice_base_url || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+
+          <label style="color:#d29922;grid-column:1/-1;margin-top:8px;font-weight:600">🎬 Video</label>
+          <label>Provider:</label>
+          <input id="prov-video-provider" value="${s.video_provider || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Model:</label>
+          <input id="prov-video-model" value="${s.video_model || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Base URL:</label>
+          <input id="prov-video-base" value="${s.video_base_url || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+
+          <label style="color:#3fb950;grid-column:1/-1;margin-top:8px;font-weight:600">🖼 Image Gen</label>
+          <label>Provider:</label>
+          <input id="prov-imagen-provider" value="${s.image_gen_provider || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Model:</label>
+          <input id="prov-imagen-model" value="${s.image_gen_model || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Base URL:</label>
+          <input id="prov-imagen-base" value="${s.image_gen_base_url || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
         </div>
         <button onclick="providersSaveSettings()" style="margin-top:10px;background:#238636;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer">Save settings</button>
         <p style="font-size:11px;color:#8b949e;margin-top:8px">Hot-reload: core перечитывает settings на каждом LLM вызове. Рестарт не нужен.</p>
@@ -578,9 +597,15 @@ async function providersSaveSettings() {
     vision_provider: document.getElementById('prov-vision-provider').value.trim(),
     vision_model: document.getElementById('prov-vision-model').value.trim(),
     vision_base_url: document.getElementById('prov-vision-base').value.trim(),
-    voice_model: document.getElementById('prov-voice').value.trim(),
-    video_model: document.getElementById('prov-video').value.trim(),
-    image_gen_model: document.getElementById('prov-imagen').value.trim(),
+    voice_provider: document.getElementById('prov-voice-provider').value.trim(),
+    voice_model: document.getElementById('prov-voice-model').value.trim(),
+    voice_base_url: document.getElementById('prov-voice-base').value.trim(),
+    video_provider: document.getElementById('prov-video-provider').value.trim(),
+    video_model: document.getElementById('prov-video-model').value.trim(),
+    video_base_url: document.getElementById('prov-video-base').value.trim(),
+    image_gen_provider: document.getElementById('prov-imagen-provider').value.trim(),
+    image_gen_model: document.getElementById('prov-imagen-model').value.trim(),
+    image_gen_base_url: document.getElementById('prov-imagen-base').value.trim(),
   };
   try {
     const resp = await fetch(`${API}/api/providers/settings`, {
@@ -589,7 +614,7 @@ async function providersSaveSettings() {
       body: JSON.stringify(body),
     });
     const data = await resp.json();
-    alert(resp.ok ? JSON.stringify(data,null,2) : `Error ${resp.status}: ${JSON.stringify(data)}`);
+    alert(resp.ok ? 'Settings saved' : `Error ${resp.status}: ${JSON.stringify(data)}`);
     if (resp.ok) loadPage('providers');
   } catch(e) { alert('Error: ' + e.message); }
 }

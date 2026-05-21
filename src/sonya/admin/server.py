@@ -651,9 +651,15 @@ async def api_providers_get(request: web.Request) -> web.Response:
                 "vision_provider": settings.vision_provider,
                 "vision_model": settings.vision_model,
                 "vision_base_url": settings.vision_base_url,
+                "voice_provider": settings.voice_provider,
                 "voice_model": settings.voice_model,
+                "voice_base_url": settings.voice_base_url,
+                "video_provider": settings.video_provider,
                 "video_model": settings.video_model,
+                "video_base_url": settings.video_base_url,
+                "image_gen_provider": settings.image_gen_provider,
                 "image_gen_model": settings.image_gen_model,
+                "image_gen_base_url": settings.image_gen_base_url,
             },
             "keys": [
                 {
@@ -813,9 +819,15 @@ async def api_providers_settings(request: web.Request) -> web.Response:
             vision_provider=data.get("vision_provider"),
             vision_model=data.get("vision_model"),
             vision_base_url=data.get("vision_base_url"),
+            voice_provider=data.get("voice_provider"),
             voice_model=data.get("voice_model"),
+            voice_base_url=data.get("voice_base_url"),
+            video_provider=data.get("video_provider"),
             video_model=data.get("video_model"),
+            video_base_url=data.get("video_base_url"),
+            image_gen_provider=data.get("image_gen_provider"),
             image_gen_model=data.get("image_gen_model"),
+            image_gen_base_url=data.get("image_gen_base_url"),
         )
         return web.json_response({
             "status": "updated",
@@ -826,9 +838,15 @@ async def api_providers_settings(request: web.Request) -> web.Response:
                 "vision_provider": settings.vision_provider,
                 "vision_model": settings.vision_model,
                 "vision_base_url": settings.vision_base_url,
+                "voice_provider": settings.voice_provider,
                 "voice_model": settings.voice_model,
+                "voice_base_url": settings.voice_base_url,
+                "video_provider": settings.video_provider,
                 "video_model": settings.video_model,
+                "video_base_url": settings.video_base_url,
+                "image_gen_provider": settings.image_gen_provider,
                 "image_gen_model": settings.image_gen_model,
+                "image_gen_base_url": settings.image_gen_base_url,
             },
         })
     finally:

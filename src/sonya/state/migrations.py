@@ -240,9 +240,15 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         _add_column_if_missing(conn, "provider_settings", "vision_provider", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "provider_settings", "vision_model", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "provider_settings", "vision_base_url", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "voice_provider", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "provider_settings", "voice_model", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "voice_base_url", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "video_provider", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "provider_settings", "video_model", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "video_base_url", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "image_gen_provider", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "provider_settings", "image_gen_model", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "image_gen_base_url", "TEXT NOT NULL DEFAULT ''")
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
