@@ -37,6 +37,7 @@ from sonya.tools.memory_tool import MemoryTool
 from sonya.tools.self_inspect import SelfInspectTool
 from sonya.tools.selfmod_tool import SelfModTool
 from sonya.tools.shell_tool import ShellTool
+from sonya.tools.skills_tool import SkillsTool
 from sonya.tools.tasks_tool import TasksTool
 from sonya.tools.web_tool import WebTool
 from sonya.state.continuity_stream import ContinuityStream
@@ -358,6 +359,7 @@ def build_tools(
         "shell": ShellTool(substrate, principal_id="ivan", stream=stream, yolo_mode=yolo),
         "memory": MemoryTool(substrate),
         "env": EnvTool(substrate),
+        "skills": SkillsTool(substrate),
         "outbound": outbound,
     }
 
@@ -414,6 +416,7 @@ async def run_tg_session(
         shell=tools["shell"],
         memory=tools["memory"],
         env=tools["env"],
+        skills=tools["skills"],
         outbound=tools["outbound"],
         system_prompt=full_prompt,
         initial_thought=initial_thought,

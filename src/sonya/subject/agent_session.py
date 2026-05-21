@@ -18,6 +18,7 @@ from sonya.tools.env_tool import EnvTool
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.memory_tool import MemoryTool
 from sonya.tools.self_inspect import SelfInspectTool
+from sonya.tools.skills_tool import SkillsTool
 from sonya.tools.selfmod_tool import SelfModTool
 from sonya.tools.shell_tool import ShellTool
 from sonya.tools.tasks_tool import TasksTool
@@ -76,6 +77,9 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - env.get [key] — read a previously recorded observation
 - env.list — list all current observations
 - env.clear [key] — drop an observation when no longer relevant
+- skills.list — show registered skills and their status
+- skills.run [skill_id] [query] — execute a skill (e.g. `skills.run skill-memory-search что мы обсуждали вчера`)
+- skills.register_builtins — seed built-in skills (memory-search, identity-check, dialog-tone) into registry. Call once.
 - filesystem.read [path] — read a file
 - filesystem.list [path] — list directory
 - filesystem.tree [path] — show directory tree
@@ -195,6 +199,7 @@ async def run_agent_session(
     shell: ShellTool | None = None,
     memory: MemoryTool | None = None,
     env: EnvTool | None = None,
+    skills: SkillsTool | None = None,
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
@@ -287,7 +292,7 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound, memory, env)
+            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound, memory, env, skills)
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -362,6 +367,7 @@ def _execute_tool(
     outbound = None,
     memory: MemoryTool | None = None,
     env: EnvTool | None = None,
+    skills: SkillsTool | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
@@ -414,6 +420,18 @@ def _execute_tool(
             if env is None:
                 return "[ERROR] env tool not configured"
             return env.clear(arg)
+        elif name == "skills.list":
+            if skills is None:
+                return "[ERROR] skills tool not configured"
+            return skills.list_skills()
+        elif name == "skills.run":
+            if skills is None:
+                return "[ERROR] skills tool not configured"
+            return skills.run(arg)
+        elif name == "skills.register_builtins":
+            if skills is None:
+                return "[ERROR] skills tool not configured"
+            return skills.register_builtins()
         elif name == "plugins.list":
             from sonya.tools.hot_loader import list_plugins
             plugins = list_plugins()
