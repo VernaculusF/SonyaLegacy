@@ -676,32 +676,6 @@ async def api_providers_get(request: web.Request) -> web.Response:
                 for k in keys
             ],
         })
-            "keys": [
-                {
-                    "key_id": k.key_id,
-                    "provider": k.provider,
-                    "name": k.name,
-                    "key_masked": _mask_key(k.api_key),
-                    "base_url": k.base_url,
-                    "model": k.model,
-                    "status": k.status.value,
-                    "priority": k.priority,
-                    "cooldown_until": k.cooldown_until,
-                    "last_used_at": k.last_used_at,
-                    "last_error": k.last_error,
-                    "last_error_at": k.last_error_at,
-                    "request_count": k.request_count,
-                    "success_count": k.success_count,
-                    "error_count": k.error_count,
-                    "created_at": k.created_at,
-                    "updated_at": k.updated_at,
-                    "account_id": k.account_id,
-                    "balance": k.balance(),
-                    "balance_checked_at": k.balance_checked_at,
-                }
-                for k in keys
-            ],
-        })
     finally:
         sub.close()
 
