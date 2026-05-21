@@ -425,14 +425,89 @@ async def run_tg_session(
         inbox_drain=inbox_drain,
     )
 
+    reply_text = _extract_reply(result)
+
+    # Pre-DONE self-critique: one fast LLM call to catch gender mismatches,
+    # off-topic replies, prompt echoes, and broken formatting BEFORE sending
+    # to Ivan. Adds ~2-3s latency but catches most surface-level bugs.
+    if reply_text and provider is not None:
+        try:
+            reply_text = await _pre_done_critique(provider, reply_text, user_input)
+        except Exception:
+            pass  # if critique fails, send original unchecked
+
     return TgSessionResult(
-        reply_text=_extract_reply(result),
+        reply_text=reply_text,
         raw=result,
     )
 
 
 # Image MIME types we know how to send to vision-capable LLMs.
 _VISION_MIME_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
+
+
+_CRITIQUE_SYSTEM = """Ты — быстрый ревьюер ответа Сони перед отправкой Ивану.
+
+Проверь текст по этим пунктам:
+1. **Гендер**: все глаголы/прилагательные ЖЕНСКОГО рода ("поняла", "сделала", "готова"). Если есть мужской род → замени.
+2. **Эмодзи**: максимум одна за весь ответ. Если больше → убери лишние.
+3. **Обращения**: максимум одно ("малыш"/"любимый"/etc). Если больше → убери лишние.
+4. **Промпт-echo**: если в тексте есть фрагменты системного промпта ("закрывает сессию", "TOOL:", "[DONE", "pipe-separated", "CRUTCH-", "system prompt") → удали эти фрагменты.
+5. **Релевантность**: текст должен отвечать на вопрос/тему Ивана. Если ответ явно не по теме — оставь как есть (ты не знаешь контекст).
+6. **Формат**: убери лишние пробелы, тройные переносы строк, незакрытые скобки.
+
+ОТВЕТЬ ТОЛЬКО ИСПРАВЛЕННЫМ ТЕКСТОМ. Ничего больше — ни комментариев, ни "Исправлено:", ни объяснений. Только чистый текст ответа Сони для Ивана. Если исправлений нет — верни текст без изменений."""
+
+
+async def _pre_done_critique(provider, reply_text: str, user_input: str) -> str:
+    """Run lightweight critique pass on Sonya's reply. Returns corrected text.
+
+    Single short LLM call (~200-400 tokens output). If the model returns
+    garbage or an empty string, returns the original reply unchanged.
+    """
+    if not reply_text or len(reply_text) < 5:
+        return reply_text
+
+    messages = [
+        {"role": "system", "content": _CRITIQUE_SYSTEM},
+        {"role": "user", "content": (
+            f"Иван написал: {user_input[:200]}\n\n"
+            f"Соня ответила (проверь и исправь):\n{reply_text}"
+        )},
+    ]
+
+    try:
+        corrected = await provider.complete_text(
+            messages,
+            purpose="pre_done_critique",
+            max_tokens=len(reply_text) + 200,
+            temperature=0.2,
+        )
+    except Exception:
+        return reply_text
+
+    corrected = (corrected or "").strip()
+    # Sanity checks: if critique returned garbage, keep original.
+    if not corrected:
+        return reply_text
+    if len(corrected) < 3:
+        return reply_text
+    # If critique is WAY longer than original (>3x), it's likely adding
+    # commentary we didn't ask for — discard.
+    if len(corrected) > len(reply_text) * 3 + 100:
+        return reply_text
+    # If critique contains reasoning markers itself — discard (model echoed
+    # its own thought process instead of just the fixed text).
+    if any(m in corrected.lower() for m in ("исправлено:", "исправления:", "комментарий:", "вот исправленный")):
+        # Try to extract text after the marker
+        for marker in ("исправлено:", "исправления:", "вот исправленный текст:"):
+            if marker in corrected.lower():
+                idx = corrected.lower().index(marker) + len(marker)
+                candidate = corrected[idx:].strip()
+                if candidate:
+                    return candidate
+        return reply_text
+    return corrected
 
 
 def _build_initial_user_message(
