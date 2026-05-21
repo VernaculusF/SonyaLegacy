@@ -67,6 +67,9 @@ class ProviderKey:
     account_id: str = ""
     balance_json: str = "{}"
     balance_checked_at: str = ""
+    # v17: routing slot — what purpose this key serves
+    # values: text, vision, voice, video, image_gen
+    slot: str = "text"
 
     def is_eligible(self, now: datetime | None = None) -> bool:
         if self.status is not KeyStatus.ACTIVE:
@@ -96,20 +99,6 @@ class ProviderSettings:
     default_model: str
     default_base_url: str
     updated_at: str
-    # Multi-model routing: each slot can override provider/model/base_url
-    # for a specific purpose. Empty = use default (text model).
-    vision_provider: str = ""
-    vision_model: str = ""
-    vision_base_url: str = ""
-    voice_provider: str = ""
-    voice_model: str = ""
-    voice_base_url: str = ""
-    video_provider: str = ""
-    video_model: str = ""
-    video_base_url: str = ""
-    image_gen_provider: str = ""
-    image_gen_model: str = ""
-    image_gen_base_url: str = ""
 
 
 class KeyStore:
@@ -123,19 +112,7 @@ class KeyStore:
 
     def get_settings(self) -> ProviderSettings:
         row = self._sub.connection.execute(
-            "SELECT active_provider, default_model, default_base_url, updated_at, "
-            "COALESCE(vision_provider, '') as vp, "
-            "COALESCE(vision_model, '') as vm, "
-            "COALESCE(vision_base_url, '') as vbu, "
-            "COALESCE(voice_provider, '') as voicep, "
-            "COALESCE(voice_model, '') as voice, "
-            "COALESCE(voice_base_url, '') as voicebu, "
-            "COALESCE(video_provider, '') as vidp, "
-            "COALESCE(video_model, '') as video, "
-            "COALESCE(video_base_url, '') as vidbu, "
-            "COALESCE(image_gen_provider, '') as igp, "
-            "COALESCE(image_gen_model, '') as igen, "
-            "COALESCE(image_gen_base_url, '') as igbu "
+            "SELECT active_provider, default_model, default_base_url, updated_at "
             "FROM provider_settings WHERE id = 1"
         ).fetchone()
         if row is None:
@@ -146,18 +123,6 @@ class KeyStore:
             default_model=row[1],
             default_base_url=row[2],
             updated_at=row[3],
-            vision_provider=row[4] or "",
-            vision_model=row[5] or "",
-            vision_base_url=row[6] or "",
-            voice_provider=row[7] or "",
-            voice_model=row[8] or "",
-            voice_base_url=row[9] or "",
-            video_provider=row[10] or "",
-            video_model=row[11] or "",
-            video_base_url=row[12] or "",
-            image_gen_provider=row[13] or "",
-            image_gen_model=row[14] or "",
-            image_gen_base_url=row[15] or "",
         )
 
     def set_settings(
@@ -166,55 +131,19 @@ class KeyStore:
         active_provider: str | None = None,
         default_model: str | None = None,
         default_base_url: str | None = None,
-        vision_provider: str | None = None,
-        vision_model: str | None = None,
-        vision_base_url: str | None = None,
-        voice_provider: str | None = None,
-        voice_model: str | None = None,
-        voice_base_url: str | None = None,
-        video_provider: str | None = None,
-        video_model: str | None = None,
-        video_base_url: str | None = None,
-        image_gen_provider: str | None = None,
-        image_gen_model: str | None = None,
-        image_gen_base_url: str | None = None,
     ) -> ProviderSettings:
         cur = self.get_settings()
         ap = active_provider if active_provider is not None else cur.active_provider
         dm = default_model if default_model is not None else cur.default_model
         bu = default_base_url if default_base_url is not None else cur.default_base_url
-        vp = vision_provider if vision_provider is not None else cur.vision_provider
-        vm = vision_model if vision_model is not None else cur.vision_model
-        vbu = vision_base_url if vision_base_url is not None else cur.vision_base_url
-        voicep = voice_provider if voice_provider is not None else cur.voice_provider
-        voice = voice_model if voice_model is not None else cur.voice_model
-        voicebu = voice_base_url if voice_base_url is not None else cur.voice_base_url
-        vidp = video_provider if video_provider is not None else cur.video_provider
-        video = video_model if video_model is not None else cur.video_model
-        vidbu = video_base_url if video_base_url is not None else cur.video_base_url
-        igp = image_gen_provider if image_gen_provider is not None else cur.image_gen_provider
-        igen = image_gen_model if image_gen_model is not None else cur.image_gen_model
-        igbu = image_gen_base_url if image_gen_base_url is not None else cur.image_gen_base_url
         now = _utc_now_iso()
         self._sub.connection.execute(
-            "INSERT INTO provider_settings(id, active_provider, default_model, default_base_url, "
-            "vision_provider, vision_model, vision_base_url, "
-            "voice_provider, voice_model, voice_base_url, "
-            "video_provider, video_model, video_base_url, "
-            "image_gen_provider, image_gen_model, image_gen_base_url, updated_at) "
-            "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO provider_settings(id, active_provider, default_model, default_base_url, updated_at) "
+            "VALUES (1, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET active_provider=excluded.active_provider, "
             "default_model=excluded.default_model, default_base_url=excluded.default_base_url, "
-            "vision_provider=excluded.vision_provider, vision_model=excluded.vision_model, "
-            "vision_base_url=excluded.vision_base_url, "
-            "voice_provider=excluded.voice_provider, voice_model=excluded.voice_model, "
-            "voice_base_url=excluded.voice_base_url, "
-            "video_provider=excluded.video_provider, video_model=excluded.video_model, "
-            "video_base_url=excluded.video_base_url, "
-            "image_gen_provider=excluded.image_gen_provider, image_gen_model=excluded.image_gen_model, "
-            "image_gen_base_url=excluded.image_gen_base_url, "
             "updated_at=excluded.updated_at",
-            (ap, dm, bu, vp, vm, vbu, voicep, voice, voicebu, vidp, video, vidbu, igp, igen, igbu, now),
+            (ap, dm, bu, now),
         )
         self._sub.connection.commit()
         return self.get_settings()
@@ -230,15 +159,16 @@ class KeyStore:
         base_url: str,
         model: str = "",
         priority: int = 0,
+        slot: str = "text",
     ) -> ProviderKey:
         key_id = f"pk-{uuid4().hex[:12]}"
         now = _utc_now_iso()
         self._sub.connection.execute(
             "INSERT INTO provider_keys (key_id, provider, name, api_key, base_url, model, "
             "status, priority, cooldown_until, last_used_at, last_error, last_error_at, "
-            "request_count, success_count, error_count, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, '', '', '', '', 0, 0, 0, ?, ?)",
-            (key_id, provider, name, api_key, base_url, model, priority, now, now),
+            "request_count, success_count, error_count, created_at, updated_at, slot) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, '', '', '', '', 0, 0, 0, ?, ?, ?)",
+            (key_id, provider, name, api_key, base_url, model, priority, now, now, slot or "text"),
         )
         self._sub.connection.commit()
         return self.get_key(key_id)  # type: ignore[return-value]
@@ -248,7 +178,8 @@ class KeyStore:
             "SELECT key_id, provider, name, api_key, base_url, model, status, priority, "
             "cooldown_until, last_used_at, last_error, last_error_at, request_count, "
             "success_count, error_count, created_at, updated_at, "
-            "account_id, balance_json, balance_checked_at "
+            "account_id, balance_json, balance_checked_at, "
+            "COALESCE(slot, 'text') "
             "FROM provider_keys WHERE key_id = ?",
             (key_id,),
         ).fetchone()
@@ -262,7 +193,8 @@ class KeyStore:
                 "SELECT key_id, provider, name, api_key, base_url, model, status, priority, "
                 "cooldown_until, last_used_at, last_error, last_error_at, request_count, "
                 "success_count, error_count, created_at, updated_at, "
-                "account_id, balance_json, balance_checked_at "
+                "account_id, balance_json, balance_checked_at, "
+                "COALESCE(slot, 'text') "
                 "FROM provider_keys WHERE provider = ? ORDER BY priority DESC, created_at ASC",
                 (provider,),
             ).fetchall()
@@ -271,7 +203,8 @@ class KeyStore:
                 "SELECT key_id, provider, name, api_key, base_url, model, status, priority, "
                 "cooldown_until, last_used_at, last_error, last_error_at, request_count, "
                 "success_count, error_count, created_at, updated_at, "
-                "account_id, balance_json, balance_checked_at "
+                "account_id, balance_json, balance_checked_at, "
+                "COALESCE(slot, 'text') "
                 "FROM provider_keys ORDER BY provider, priority DESC, created_at ASC"
             ).fetchall()
         return [_row_to_key(r) for r in rows]
@@ -302,6 +235,7 @@ class KeyStore:
         base_url: str | None = None,
         model: str | None = None,
         priority: int | None = None,
+        slot: str | None = None,
     ) -> None:
         fields = []
         params: list[Any] = []
@@ -313,6 +247,8 @@ class KeyStore:
             fields.append("model = ?"); params.append(model)
         if priority is not None:
             fields.append("priority = ?"); params.append(int(priority))
+        if slot is not None:
+            fields.append("slot = ?"); params.append(slot)
         if not fields:
             return
         fields.append("updated_at = ?"); params.append(_utc_now_iso())
@@ -336,14 +272,19 @@ class KeyStore:
 
     # ---------- rotation ----------
 
-    async def acquire(self, provider: str) -> ProviderKey | None:
-        """Pick the best eligible key for `provider`. Marks it used.
+    async def acquire(self, provider: str, slot: str = "text") -> ProviderKey | None:
+        """Pick the best eligible key for `provider` whose slots include `slot`.
 
         Strategy: highest priority among eligible, then least-recently-used.
+        Fallback: if no keys match the requested slot, try any eligible key
+        for that provider (universal fallback).
         Returns None if all keys are banned/disabled/cooldown.
         """
         async with self._lock:
-            keys = [k for k in self.list_keys(provider) if k.is_eligible()]
+            all_keys = [k for k in self.list_keys(provider) if k.is_eligible()]
+            # Filter to keys whose slot list includes the requested slot
+            slot_keys = [k for k in all_keys if slot in k.slot.split(",")]
+            keys = slot_keys if slot_keys else all_keys
             if not keys:
                 return None
             # Sort: priority desc, then last_used_at asc (LRU)
@@ -418,4 +359,5 @@ def _row_to_key(row: Iterable[Any]) -> ProviderKey:
         account_id=(r[17] if len(r) > 17 else "") or "",
         balance_json=(r[18] if len(r) > 18 else "{}") or "{}",
         balance_checked_at=(r[19] if len(r) > 19 else "") or "",
+        slot=(r[20] if len(r) > 20 else "text") or "text",
     )

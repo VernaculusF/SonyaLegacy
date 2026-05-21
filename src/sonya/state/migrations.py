@@ -236,7 +236,12 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         version = 16
 
     if version == 16:
-        # v16 → v17: multi-model routing columns in provider_settings.
+        # v16 → v17: multi-model routing — slot column on provider_keys.
+        # slot = comma-separated list of purposes: text,vision,voice,video,image_gen
+        # Existing keys default to 'text'. Routing columns on provider_settings
+        # are kept for backward compat but unused by code.
+        _add_column_if_missing(conn, "provider_keys", "slot", "TEXT NOT NULL DEFAULT 'text'")
+        # Legacy columns (kept, not used — harmless dead weight)
         _add_column_if_missing(conn, "provider_settings", "vision_provider", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "provider_settings", "vision_model", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "provider_settings", "vision_base_url", "TEXT NOT NULL DEFAULT ''")

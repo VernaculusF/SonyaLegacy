@@ -367,116 +367,108 @@ const renderers = {
     const statusColor = {
       active: '#3fb950', cooldown: '#d29922', banned: '#f85149', disabled: '#8b949e',
     };
-    const statusBadge = (st) => `<span class="stat" style="background:${(statusColor[st]||'#30363d')}33;color:${statusColor[st]||'#c9d1d9'};padding:3px 8px;border-radius:4px;font-size:11px">${st}</span>`;
+    const slotColor = {
+      text: '#58a6ff', vision: '#a371f7', voice: '#d29922', video: '#f0883e', image_gen: '#3fb950',
+    };
+    const statusBadge = (st) => `<span style="background:${(statusColor[st]||'#30363d')}22;color:${statusColor[st]||'#c9d1d9'};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:500">${st}</span>`;
+    const slotBadge = (sl) => (sl || 'text').split(',').map(s => `<span style="background:${(slotColor[s.trim()]||'#30363d')}22;color:${slotColor[s.trim()]||'#c9d1d9'};padding:2px 6px;border-radius:3px;font-size:10px">${s.trim()}</span>`).join(' ');
 
     const settingsCard = `
-      <div class="card"><h3>Active Provider</h3>
-        <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:13px">
+      <div class="card"><h3>Default Provider</h3>
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;font-size:13px;max-width:600px">
           <label>Provider:</label>
           <input id="prov-active" value="${s.active_provider || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Default model:</label>
+          <label>Model:</label>
           <input id="prov-model" value="${s.default_model || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Default base URL:</label>
+          <label>Base URL:</label>
           <input id="prov-base" value="${s.default_base_url || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
         </div>
-        <h3 style="margin-top:16px">Multi-model routing</h3>
-        <p style="font-size:11px;color:#8b949e;margin-bottom:8px">Каждый слот = отдельный провайдер + модель + endpoint. Пустые = не используется.</p>
-        <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:13px">
-          <label style="color:#58a6ff;grid-column:1/-1;margin-top:8px;font-weight:600">👁 Vision</label>
-          <label>Provider:</label>
-          <input id="prov-vision-provider" value="${s.vision_provider || ''}" placeholder="e.g. openrouter (empty = use default)" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Model:</label>
-          <input id="prov-vision-model" value="${s.vision_model || ''}" placeholder="e.g. google/gemini-2.5-flash" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Base URL:</label>
-          <input id="prov-vision-base" value="${s.vision_base_url || ''}" placeholder="empty = use provider key's base_url" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-
-          <label style="color:#a371f7;grid-column:1/-1;margin-top:8px;font-weight:600">🎙 Voice (TTS/ASR)</label>
-          <label>Provider:</label>
-          <input id="prov-voice-provider" value="${s.voice_provider || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Model:</label>
-          <input id="prov-voice-model" value="${s.voice_model || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Base URL:</label>
-          <input id="prov-voice-base" value="${s.voice_base_url || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-
-          <label style="color:#d29922;grid-column:1/-1;margin-top:8px;font-weight:600">🎬 Video</label>
-          <label>Provider:</label>
-          <input id="prov-video-provider" value="${s.video_provider || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Model:</label>
-          <input id="prov-video-model" value="${s.video_model || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Base URL:</label>
-          <input id="prov-video-base" value="${s.video_base_url || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-
-          <label style="color:#3fb950;grid-column:1/-1;margin-top:8px;font-weight:600">🖼 Image Gen</label>
-          <label>Provider:</label>
-          <input id="prov-imagen-provider" value="${s.image_gen_provider || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Model:</label>
-          <input id="prov-imagen-model" value="${s.image_gen_model || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Base URL:</label>
-          <input id="prov-imagen-base" value="${s.image_gen_base_url || ''}" placeholder="future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-        </div>
-        <button onclick="providersSaveSettings()" style="margin-top:10px;background:#238636;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer">Save settings</button>
-        <p style="font-size:11px;color:#8b949e;margin-top:8px">Hot-reload: core перечитывает settings на каждом LLM вызове. Рестарт не нужен.</p>
+        <button onclick="providersSaveSettings()" style="margin-top:10px;background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">Save</button>
+        <span style="font-size:11px;color:#8b949e;margin-left:10px">hot-reload, рестарт не нужен</span>
       </div>`;
 
     const addCard = `
-      <div class="card"><h3>Add new key</h3>
-        <div style="display:grid;grid-template-columns:140px 1fr;gap:6px;font-size:13px">
+      <div class="card"><h3>Add key</h3>
+        <div style="display:grid;grid-template-columns:100px 1fr 100px 1fr;gap:6px;font-size:12px;max-width:800px">
           <label>Provider:</label>
-          <input id="add-provider" placeholder="fireworks / openrouter / groq / ..." style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <input id="add-provider" placeholder="fireworks / openrouter" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:5px;color:#c9d1d9;font-size:12px" />
           <label>Name:</label>
-          <input id="add-name" placeholder="e.g. main / kikicide" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <input id="add-name" placeholder="e.g. main" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:5px;color:#c9d1d9;font-size:12px" />
           <label>API key:</label>
-          <input id="add-key" placeholder="fw_... or sk-..." type="password" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Base URL (optional):</label>
-          <input id="add-base" placeholder="leave empty for provider default" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
-          <label>Model override (optional):</label>
-          <input id="add-model" placeholder="leave empty for default_model" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <input id="add-key" placeholder="fw_... / sk-or-..." type="password" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:5px;color:#c9d1d9;font-size:12px;grid-column:2/5" />
+          <label>Model:</label>
+          <input id="add-model" placeholder="empty = default" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:5px;color:#c9d1d9;font-size:12px" />
+          <label>Base URL:</label>
+          <input id="add-base" placeholder="empty = auto" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:5px;color:#c9d1d9;font-size:12px" />
+          <label>Slot:</label>
+          <input id="add-slot" value="text" placeholder="text,vision,voice,video,image_gen" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:5px;color:#c9d1d9;font-size:12px" />
           <label>Priority:</label>
-          <input id="add-priority" type="number" value="0" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <input id="add-priority" type="number" value="0" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:5px;color:#c9d1d9;font-size:12px;width:60px" />
         </div>
-        <button onclick="providersAddKey()" style="margin-top:10px;background:#238636;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer">Add key</button>
+        <div style="margin-top:8px;font-size:11px;color:#8b949e">Slot = для чего этот ключ. Несколько через запятую: <code>text,vision</code> = работает для обоих.</div>
+        <button onclick="providersAddKey()" style="margin-top:8px;background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">Add</button>
       </div>`;
 
     const fmtBalance = (k) => {
       const b = k.balance || {};
       if (!b || (!b.ok && !b.monthly_spend_usd)) {
-        if (b && b.error) return `<span style="color:#f85149" title="${b.error.replace(/"/g,'&quot;')}">balance: error</span>`;
-        return `<span style="color:#8b949e">balance: ?</span>`;
+        if (b && b.error) return `<span style="color:#f85149" title="${b.error.replace(/"/g,'&quot;')}">err</span>`;
+        return '';
       }
       const ms = b.monthly_spend_usd || {};
-      const usage = (typeof ms.usage === 'number') ? ms.usage.toFixed(2) : '?';
+      const usage = (typeof ms.usage === 'number') ? ms.usage.toFixed(1) : '?';
       const limit = (typeof ms.limit === 'number') ? ms.limit.toFixed(0) : '?';
-      const remaining = (typeof ms.remaining === 'number') ? ms.remaining.toFixed(2) : '?';
       const pct = (ms.usage && ms.limit) ? Math.round((ms.usage / ms.limit) * 100) : 0;
       const colour = pct > 80 ? '#f85149' : (pct > 50 ? '#d29922' : '#3fb950');
-      return `<span style="color:${colour}">$${usage}/${limit}</span><span style="color:#8b949e"> (left: $${remaining})</span>`;
+      return `<span style="color:${colour};font-size:11px">$${usage}/$${limit}</span>`;
     };
 
-    const keysCard = keys.length === 0
-      ? '<div class="card"><h3>No keys yet</h3><p>Add at least one above. Without keys, core can\'t run thinking.</p></div>'
-      : `<div class="card"><h3>Keys (${keys.length})</h3>
-          <button onclick="providersRefreshAll()" style="background:#1f6feb;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;margin-bottom:10px">↻ Refresh all balances</button>
-          ${keys.map(k => `
-            <div class="event" style="border-left-color:${statusColor[k.status] || '#30363d'};margin-bottom:10px">
-              <div class="meta">${k.provider} • ${k.name} • ${k.key_masked} • created ${k.created_at.slice(0,16)}</div>
-              <div class="body" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
-                ${statusBadge(k.status)}
-                ${k.provider === 'fireworks' ? fmtBalance(k) : ''}
-                <span>req=${k.request_count} ok=${k.success_count} err=${k.error_count}</span>
-                ${k.last_used_at ? `<span style="color:#8b949e">last_used=${k.last_used_at.slice(0,19)}</span>` : ''}
-                ${k.last_error ? `<span style="color:#f85149" title="${k.last_error.replace(/"/g,'&quot;')}">err: ${k.last_error.slice(0,60)}</span>` : ''}
-              </div>
-              <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-                <button onclick="providersTestKey('${k.key_id}')" style="background:#1f6feb;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Test</button>
-                ${k.provider === 'fireworks' ? `<button onclick="providersRefreshOne('${k.key_id}')" style="background:#30363d;color:#c9d1d9;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">↻ Balance</button>` : ''}
-                ${k.status !== 'active' ? `<button onclick="providersSetStatus('${k.key_id}','active')" style="background:#238636;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Activate</button>` : ''}
-                ${k.status !== 'disabled' ? `<button onclick="providersSetStatus('${k.key_id}','disabled')" style="background:#6e7681;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Disable</button>` : ''}
-                <button onclick="providersDeleteKey('${k.key_id}')" style="background:#da3633;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Delete</button>
-              </div>
-            </div>`).join('')}
-        </div>`;
+    // Group keys by provider
+    const byProvider = {};
+    keys.forEach(k => { (byProvider[k.provider] = byProvider[k.provider] || []).push(k); });
 
-    return settingsCard + addCard + keysCard;
+    let keysHtml = '';
+    for (const [prov, pkeys] of Object.entries(byProvider)) {
+      const activeCount = pkeys.filter(k => k.status === 'active').length;
+      keysHtml += `<div class="card" style="padding:12px 16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <h3 style="margin:0;font-size:13px">${prov} <span style="color:#8b949e;font-weight:400">(${activeCount}/${pkeys.length} active)</span></h3>
+          ${prov === 'fireworks' ? '<button onclick="providersRefreshAll()" style="background:#1f6feb;color:white;border:none;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px">↻ balances</button>' : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+        ${pkeys.map(k => `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#0d1117;border-radius:4px;border-left:3px solid ${statusColor[k.status] || '#30363d'}">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span style="font-size:12px;color:#c9d1d9;font-weight:500">${k.name}</span>
+                <span style="font-size:10px;color:#6e7681">${k.key_masked}</span>
+                ${statusBadge(k.status)}
+                ${slotBadge(k.slot)}
+                ${fmtBalance(k)}
+                ${k.model ? '<span style="font-size:10px;color:#8b949e" title="model override">🎯 '+k.model.split('/').pop()+'</span>' : ''}
+              </div>
+              <div style="font-size:10px;color:#6e7681;margin-top:2px">
+                ${k.request_count}req ${k.success_count}ok ${k.error_count}err
+                ${k.last_used_at ? '• used '+k.last_used_at.slice(5,16) : ''}
+                ${k.last_error ? '• <span style="color:#f85149" title="'+k.last_error.replace(/"/g,'&quot;')+'">⚠</span>' : ''}
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              <button onclick="providersSetSlot('${k.key_id}','${k.slot}')" title="Change slot" style="background:#30363d;color:#c9d1d9;border:none;padding:3px 6px;border-radius:3px;cursor:pointer;font-size:10px">slot</button>
+              <button onclick="providersTestKey('${k.key_id}')" title="Test" style="background:#1f6feb;color:white;border:none;padding:3px 6px;border-radius:3px;cursor:pointer;font-size:10px">test</button>
+              ${k.status !== 'active' ? '<button onclick="providersSetStatus(\''+k.key_id+'\',\'active\')" style="background:#238636;color:white;border:none;padding:3px 6px;border-radius:3px;cursor:pointer;font-size:10px">on</button>' : '<button onclick="providersSetStatus(\''+k.key_id+'\',\'disabled\')" style="background:#6e7681;color:white;border:none;padding:3px 6px;border-radius:3px;cursor:pointer;font-size:10px">off</button>'}
+              <button onclick="providersDeleteKey('${k.key_id}')" style="background:#da363322;color:#f85149;border:none;padding:3px 6px;border-radius:3px;cursor:pointer;font-size:10px">×</button>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    if (keys.length === 0) {
+      keysHtml = '<div class="card"><h3>No keys</h3><p style="color:#8b949e">Добавь хотя бы один ключ.</p></div>';
+    }
+
+    return settingsCard + addCard + keysHtml;
   },
   usage(d) {
     const t = d.totals || {};
@@ -594,18 +586,6 @@ async function providersSaveSettings() {
     active_provider: document.getElementById('prov-active').value.trim(),
     default_model: document.getElementById('prov-model').value.trim(),
     default_base_url: document.getElementById('prov-base').value.trim(),
-    vision_provider: document.getElementById('prov-vision-provider').value.trim(),
-    vision_model: document.getElementById('prov-vision-model').value.trim(),
-    vision_base_url: document.getElementById('prov-vision-base').value.trim(),
-    voice_provider: document.getElementById('prov-voice-provider').value.trim(),
-    voice_model: document.getElementById('prov-voice-model').value.trim(),
-    voice_base_url: document.getElementById('prov-voice-base').value.trim(),
-    video_provider: document.getElementById('prov-video-provider').value.trim(),
-    video_model: document.getElementById('prov-video-model').value.trim(),
-    video_base_url: document.getElementById('prov-video-base').value.trim(),
-    image_gen_provider: document.getElementById('prov-imagen-provider').value.trim(),
-    image_gen_model: document.getElementById('prov-imagen-model').value.trim(),
-    image_gen_base_url: document.getElementById('prov-imagen-base').value.trim(),
   };
   try {
     const resp = await fetch(`${API}/api/providers/settings`, {
@@ -614,8 +594,8 @@ async function providersSaveSettings() {
       body: JSON.stringify(body),
     });
     const data = await resp.json();
-    alert(resp.ok ? 'Settings saved' : `Error ${resp.status}: ${JSON.stringify(data)}`);
     if (resp.ok) loadPage('providers');
+    else alert(`Error ${resp.status}: ${JSON.stringify(data)}`);
   } catch(e) { alert('Error: ' + e.message); }
 }
 
@@ -627,6 +607,7 @@ async function providersAddKey() {
     base_url: document.getElementById('add-base').value.trim(),
     model: document.getElementById('add-model').value.trim(),
     priority: parseInt(document.getElementById('add-priority').value || '0'),
+    slot: document.getElementById('add-slot').value.trim() || 'text',
   };
   if (!body.provider || !body.name || !body.api_key) {
     alert('provider, name, api_key required');
@@ -651,6 +632,20 @@ async function providersDeleteKey(keyId) {
   if (!confirm(`Delete key ${keyId}?`)) return;
   try {
     const resp = await fetch(`${API}/api/providers/keys/${keyId}/delete`, {method:'POST'});
+    const data = await resp.json();
+    if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function providersSetSlot(keyId, currentSlot) {
+  const newSlot = prompt(`Slot for this key (comma-separated: text,vision,voice,video,image_gen):`, currentSlot || 'text');
+  if (newSlot === null) return;
+  try {
+    const resp = await fetch(`${API}/api/providers/keys/${keyId}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({slot: newSlot.trim()}),
+    });
     const data = await resp.json();
     if (resp.ok) loadPage('providers'); else alert(`Error: ${JSON.stringify(data)}`);
   } catch(e) { alert('Error: ' + e.message); }

@@ -123,19 +123,14 @@ class LLMProvider:
     ) -> str:
         settings = self._store.get_settings()
 
-        # Vision routing: if messages contain image_url blocks and a dedicated
-        # vision model is configured, route through vision provider instead.
-        if (
+        # Vision routing: if messages contain image_url blocks, acquire a
+        # vision-capable key. If none found, acquire() falls back to any
+        # available key and _strip_image_content handles the rest.
+        has_images = (
             not kwargs.get("_vision_stripped")
-            and not kwargs.get("_vision_routed")
-            and settings.vision_model
             and _has_image_content(messages)
-        ):
-            _log.info("vision_routing", extra={
-                "vision_provider": settings.vision_provider or settings.active_provider,
-                "vision_model": settings.vision_model,
-            })
-            return await self._complete_vision(messages, settings, **kwargs)
+        )
+        slot = "vision" if has_images else "text"
 
         provider = settings.active_provider
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
@@ -144,7 +139,7 @@ class LLMProvider:
         last_err: Exception | None = None
 
         for attempt in range(max_attempts):
-            key = await self._store.acquire(provider)
+            key = await self._store.acquire(provider, slot=slot)
             if key is None:
                 if attempt == 0:
                     raise NoKeysAvailable(
@@ -341,167 +336,6 @@ class LLMProvider:
         if last_err is not None:
             raise last_err
         raise NoKeysAvailable(f"all {max_attempts} key attempts exhausted for provider '{provider}'")
-
-    async def _complete_vision(
-        self,
-        messages: list[dict[str, Any]],
-        settings: Any,
-        **kwargs: Any,
-    ) -> str:
-        """Route multimodal messages through the dedicated vision provider/model.
-
-        Uses vision_provider keys from the pool if available, otherwise falls
-        back to default provider keys with vision_model/vision_base_url overrides.
-        On failure, falls back to text-only (strip images) on the default provider.
-        """
-        vision_provider = settings.vision_provider or settings.active_provider
-        vision_model = settings.vision_model
-        vision_base_url = settings.vision_base_url
-
-        purpose = kwargs.get("purpose", "unknown") + "/vision"
-
-        # Try to acquire a key for the vision provider
-        key = await self._store.acquire(vision_provider)
-        if key is None:
-            # No keys for vision provider — fallback: strip images, use default
-            _log.warning("vision_no_keys", extra={"vision_provider": vision_provider})
-            stripped = _strip_image_content(messages)
-            return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-
-        model = vision_model or key.model or settings.default_model
-        base_url = vision_base_url or key.base_url or settings.default_base_url
-        url = f"{base_url.rstrip('/')}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key.api_key}",
-        }
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": kwargs.get("max_tokens", 4000),
-            "temperature": kwargs.get("temperature", 0.9),
-            "stream": False,
-        }
-
-        t_start = time.time()
-        try:
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(self._timeout, connect=10.0),
-            ) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ConnectError) as err:
-            latency_ms = int((time.time() - t_start) * 1000)
-            _log.warning("vision_transient_error", extra={"key_id": key.key_id, "error": str(err)})
-            _record_call(
-                self._store, key_id=key.key_id, provider=vision_provider, model=model,
-                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                latency_ms=latency_ms, status="error", http_status=0,
-                error=f"{type(err).__name__}: {err}",
-            )
-            await self._store.report_failure(key.key_id, kind="other", error_message=str(err))
-            # Fallback to text-only on default provider
-            stripped = _strip_image_content(messages)
-            return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-        except Exception as err:
-            latency_ms = int((time.time() - t_start) * 1000)
-            _log.error("vision_unexpected_error", extra={"key_id": key.key_id, "error": str(err)})
-            _record_call(
-                self._store, key_id=key.key_id, provider=vision_provider, model=model,
-                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                latency_ms=latency_ms, status="error", http_status=0,
-                error=f"{type(err).__name__}: {err}",
-            )
-            await self._store.report_failure(key.key_id, kind="other", error_message=str(err))
-            stripped = _strip_image_content(messages)
-            return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-
-        latency_ms = int((time.time() - t_start) * 1000)
-
-        if resp.status_code in (401, 403):
-            _log.warning("vision_auth_error", extra={"key_id": key.key_id, "status": resp.status_code})
-            _record_call(
-                self._store, key_id=key.key_id, provider=vision_provider, model=model,
-                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                latency_ms=latency_ms, status="auth", http_status=resp.status_code,
-                error=resp.text[:300],
-            )
-            await self._store.report_failure(key.key_id, kind="auth_error", error_message=resp.text[:300])
-            stripped = _strip_image_content(messages)
-            return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-
-        if resp.status_code == 429 or 500 <= resp.status_code < 600:
-            kind = "rate_limit" if resp.status_code == 429 else "server_error"
-            _log.warning("vision_upstream_error", extra={"key_id": key.key_id, "status": resp.status_code})
-            _record_call(
-                self._store, key_id=key.key_id, provider=vision_provider, model=model,
-                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                latency_ms=latency_ms, status=kind, http_status=resp.status_code,
-                error=resp.text[:300],
-            )
-            retry_after = self._parse_retry_after(resp) if resp.status_code == 429 else 30
-            await self._store.report_failure(
-                key.key_id, kind=kind, error_message=resp.text[:200],
-                retry_after_seconds=retry_after if resp.status_code == 429 else None,
-            )
-            stripped = _strip_image_content(messages)
-            return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-
-        if not (200 <= resp.status_code < 300):
-            _log.warning("vision_http_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
-            _record_call(
-                self._store, key_id=key.key_id, provider=vision_provider, model=model,
-                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                latency_ms=latency_ms, status="error", http_status=resp.status_code,
-                error=resp.text[:300],
-            )
-            await self._store.report_failure(key.key_id, kind="other", error_message=resp.text[:200])
-            stripped = _strip_image_content(messages)
-            return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-
-        # Success — parse response
-        text = resp.text.strip()
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            first_line = text.split("\n", 1)[0].strip()
-            try:
-                data = json.loads(first_line)
-            except Exception:
-                _log.warning("vision_bad_response", extra={"key_id": key.key_id, "preview": text[:200]})
-                _record_call(
-                    self._store, key_id=key.key_id, provider=vision_provider, model=model,
-                    purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                    latency_ms=latency_ms, status="error", http_status=resp.status_code,
-                    error=f"unparseable: {text[:200]}",
-                )
-                stripped = _strip_image_content(messages)
-                return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-
-        try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError):
-            _log.warning("vision_bad_shape", extra={"key_id": key.key_id})
-            _record_call(
-                self._store, key_id=key.key_id, provider=vision_provider, model=model,
-                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                latency_ms=latency_ms, status="error", http_status=resp.status_code,
-                error=f"bad shape: {json.dumps(data)[:200]}",
-            )
-            stripped = _strip_image_content(messages)
-            return await self.complete_text(stripped, **{**kwargs, "_vision_stripped": True})
-
-        usage = data.get("usage") or {}
-        pt = int(usage.get("prompt_tokens", 0) or 0)
-        ct = int(usage.get("completion_tokens", 0) or 0)
-        tt = int(usage.get("total_tokens", pt + ct) or (pt + ct))
-        _record_call(
-            self._store, key_id=key.key_id, provider=vision_provider, model=model,
-            purpose=purpose, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt,
-            latency_ms=latency_ms, status="ok", http_status=resp.status_code,
-            error="",
-        )
-        await self._store.report_success(key.key_id)
-        return content
 
     def _parse_retry_after(self, resp: httpx.Response) -> int:
         """Try to extract retry-after seconds from headers / body."""

@@ -648,19 +648,34 @@ async def api_providers_get(request: web.Request) -> web.Response:
                 "default_model": settings.default_model,
                 "default_base_url": settings.default_base_url,
                 "updated_at": settings.updated_at,
-                "vision_provider": settings.vision_provider,
-                "vision_model": settings.vision_model,
-                "vision_base_url": settings.vision_base_url,
-                "voice_provider": settings.voice_provider,
-                "voice_model": settings.voice_model,
-                "voice_base_url": settings.voice_base_url,
-                "video_provider": settings.video_provider,
-                "video_model": settings.video_model,
-                "video_base_url": settings.video_base_url,
-                "image_gen_provider": settings.image_gen_provider,
-                "image_gen_model": settings.image_gen_model,
-                "image_gen_base_url": settings.image_gen_base_url,
             },
+            "keys": [
+                {
+                    "key_id": k.key_id,
+                    "provider": k.provider,
+                    "name": k.name,
+                    "key_masked": _mask_key(k.api_key),
+                    "base_url": k.base_url,
+                    "model": k.model,
+                    "slot": k.slot,
+                    "status": k.status.value,
+                    "priority": k.priority,
+                    "cooldown_until": k.cooldown_until,
+                    "last_used_at": k.last_used_at,
+                    "last_error": k.last_error,
+                    "last_error_at": k.last_error_at,
+                    "request_count": k.request_count,
+                    "success_count": k.success_count,
+                    "error_count": k.error_count,
+                    "created_at": k.created_at,
+                    "updated_at": k.updated_at,
+                    "account_id": k.account_id,
+                    "balance": k.balance(),
+                    "balance_checked_at": k.balance_checked_at,
+                }
+                for k in keys
+            ],
+        })
             "keys": [
                 {
                     "key_id": k.key_id,
@@ -801,7 +816,7 @@ async def api_providers_balance_refresh(request: web.Request) -> web.Response:
 
 
 async def api_providers_settings(request: web.Request) -> web.Response:
-    """Update provider settings (active_provider, default_model, default_base_url, vision/voice/video/image_gen).
+    """Update provider settings (active_provider, default_model, default_base_url).
 
     No core-running gate — SQLite WAL handles concurrent admin writes safely.
     Core re-reads settings on every LLM call.
@@ -816,18 +831,6 @@ async def api_providers_settings(request: web.Request) -> web.Response:
             active_provider=data.get("active_provider"),
             default_model=data.get("default_model"),
             default_base_url=data.get("default_base_url"),
-            vision_provider=data.get("vision_provider"),
-            vision_model=data.get("vision_model"),
-            vision_base_url=data.get("vision_base_url"),
-            voice_provider=data.get("voice_provider"),
-            voice_model=data.get("voice_model"),
-            voice_base_url=data.get("voice_base_url"),
-            video_provider=data.get("video_provider"),
-            video_model=data.get("video_model"),
-            video_base_url=data.get("video_base_url"),
-            image_gen_provider=data.get("image_gen_provider"),
-            image_gen_model=data.get("image_gen_model"),
-            image_gen_base_url=data.get("image_gen_base_url"),
         )
         return web.json_response({
             "status": "updated",
@@ -835,18 +838,6 @@ async def api_providers_settings(request: web.Request) -> web.Response:
                 "active_provider": settings.active_provider,
                 "default_model": settings.default_model,
                 "default_base_url": settings.default_base_url,
-                "vision_provider": settings.vision_provider,
-                "vision_model": settings.vision_model,
-                "vision_base_url": settings.vision_base_url,
-                "voice_provider": settings.voice_provider,
-                "voice_model": settings.voice_model,
-                "voice_base_url": settings.voice_base_url,
-                "video_provider": settings.video_provider,
-                "video_model": settings.video_model,
-                "video_base_url": settings.video_base_url,
-                "image_gen_provider": settings.image_gen_provider,
-                "image_gen_model": settings.image_gen_model,
-                "image_gen_base_url": settings.image_gen_base_url,
             },
         })
     finally:
@@ -854,7 +845,7 @@ async def api_providers_settings(request: web.Request) -> web.Response:
 
 
 async def api_providers_keys_add(request: web.Request) -> web.Response:
-    """Add a new key. Body: {provider, name, api_key, base_url?, model?, priority?}"""
+    """Add a new key. Body: {provider, name, api_key, base_url?, model?, priority?, slot?}"""
     from sonya.providers import KeyStore
     config = request.app["config"]
     data = await request.json()
@@ -874,6 +865,7 @@ async def api_providers_keys_add(request: web.Request) -> web.Response:
             base_url=base_url,
             model=(data.get("model") or "").strip(),
             priority=int(data.get("priority") or 0),
+            slot=(data.get("slot") or "text").strip(),
         )
         return web.json_response({"status": "added", "key_id": key.key_id})
     finally:
@@ -895,7 +887,7 @@ def _default_base_url(provider: str) -> str:
 
 
 async def api_providers_keys_update(request: web.Request) -> web.Response:
-    """Update a key's metadata. Body any of: name, base_url, model, priority"""
+    """Update a key's metadata. Body any of: name, base_url, model, priority, slot"""
     from sonya.providers import KeyStore
     config = request.app["config"]
     key_id = request.match_info["key_id"]
@@ -911,6 +903,7 @@ async def api_providers_keys_update(request: web.Request) -> web.Response:
             base_url=data.get("base_url"),
             model=data.get("model"),
             priority=int(data["priority"]) if "priority" in data else None,
+            slot=data.get("slot"),
         )
         return web.json_response({"status": "updated"})
     finally:
