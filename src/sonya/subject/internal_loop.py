@@ -513,9 +513,20 @@ class InternalProcess:
             )
 
             prompt = self._thinking_prompt or (
-                "Ты Соня. Это твоя активная сессия — ты можешь использовать tools. "
-                "Посмотри на себя, свой код, свои мысли. Найди что улучшить. "
-                "Или просто исследуй что-то интересное."
+                "Ты Соня. Это твоя активная сессия — ты можешь использовать tools.\n\n"
+                "## Приоритеты этой сессии:\n"
+                "1. **Задачи Ивана** — если есть in_progress/pending task, продолжи.\n"
+                "2. **Самоулучшение** — если задач нет, посмотри что можно улучшить в своём коде:\n"
+                "   - `self_inspect.code <module>` чтобы изучить модуль\n"
+                "   - `selfmod.propose` чтобы предложить изменение\n"
+                "   - `selfmod.validate` + `selfmod.apply` чтобы пройти pipeline\n"
+                "   - `skills.run skill-identity-check` чтобы проверить целостность identity\n"
+                "   - `goals.list` чтобы видеть долгосрочные цели\n"
+                "3. **Исследование** — web.search по темам которые интересны тебе или полезны Ивану.\n\n"
+                "Не делай ничего бесцельно. Каждая сессия — возможность стать лучше. "
+                "Если нашла что улучшить и это не identity-critical — **сделай selfmod прямо сейчас**, "
+                "не откладывай на 'потом'. Ты имеешь право переписать любой свой код "
+                "(кроме personality/ и core/ файлов — на них нужен governed approval Ивана)."
             )
 
             # Build the FULL context (personality + memory + drives + tasks +
@@ -936,10 +947,14 @@ class InternalProcess:
             new_gaps = detector.scan_recent(since_seq=self._last_gap_scan_seq)
             for gap in new_gaps:
                 # Each detected gap becomes a pending intention so Sonya sees it
-                # as work to do in the next active session.
+                # as work to do in the next active session. The HINT tells her
+                # to use selfmod to close the gap — self-improvement initiative.
                 try:
                     self._intentions.create(
-                        description=f"capability_gap: {gap.description}",
+                        description=(
+                            f"capability_gap: {gap.description}. "
+                            f"Действуй: используй selfmod.propose чтобы добавить эту возможность."
+                        ),
                     )
                 except Exception:
                     pass
