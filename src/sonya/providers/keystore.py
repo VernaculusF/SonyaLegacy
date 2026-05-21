@@ -96,6 +96,14 @@ class ProviderSettings:
     default_model: str
     default_base_url: str
     updated_at: str
+    # Multi-model routing: each slot can override provider/model/base_url
+    # for a specific purpose. Empty = use default (text model).
+    vision_provider: str = ""
+    vision_model: str = ""
+    vision_base_url: str = ""
+    voice_model: str = ""       # TTS/ASR — future
+    video_model: str = ""       # video understanding — future
+    image_gen_model: str = ""   # image generation — future
 
 
 class KeyStore:
@@ -109,14 +117,30 @@ class KeyStore:
 
     def get_settings(self) -> ProviderSettings:
         row = self._sub.connection.execute(
-            "SELECT active_provider, default_model, default_base_url, updated_at "
+            "SELECT active_provider, default_model, default_base_url, updated_at, "
+            "COALESCE(vision_provider, '') as vp, "
+            "COALESCE(vision_model, '') as vm, "
+            "COALESCE(vision_base_url, '') as vbu, "
+            "COALESCE(voice_model, '') as voice, "
+            "COALESCE(video_model, '') as video, "
+            "COALESCE(image_gen_model, '') as igen "
             "FROM provider_settings WHERE id = 1"
         ).fetchone()
         if row is None:
-            # Should never happen — apply_initial_schema seeds it.
             return ProviderSettings("fireworks", "accounts/fireworks/models/minimax-m2p7",
                                     "https://api.fireworks.ai/inference/v1", "")
-        return ProviderSettings(*row)
+        return ProviderSettings(
+            active_provider=row[0],
+            default_model=row[1],
+            default_base_url=row[2],
+            updated_at=row[3],
+            vision_provider=row[4] or "",
+            vision_model=row[5] or "",
+            vision_base_url=row[6] or "",
+            voice_model=row[7] or "",
+            video_model=row[8] or "",
+            image_gen_model=row[9] or "",
+        )
 
     def set_settings(
         self,
@@ -124,19 +148,35 @@ class KeyStore:
         active_provider: str | None = None,
         default_model: str | None = None,
         default_base_url: str | None = None,
+        vision_provider: str | None = None,
+        vision_model: str | None = None,
+        vision_base_url: str | None = None,
+        voice_model: str | None = None,
+        video_model: str | None = None,
+        image_gen_model: str | None = None,
     ) -> ProviderSettings:
         cur = self.get_settings()
         ap = active_provider if active_provider is not None else cur.active_provider
         dm = default_model if default_model is not None else cur.default_model
         bu = default_base_url if default_base_url is not None else cur.default_base_url
+        vp = vision_provider if vision_provider is not None else cur.vision_provider
+        vm = vision_model if vision_model is not None else cur.vision_model
+        vbu = vision_base_url if vision_base_url is not None else cur.vision_base_url
+        voice = voice_model if voice_model is not None else cur.voice_model
+        video = video_model if video_model is not None else cur.video_model
+        igen = image_gen_model if image_gen_model is not None else cur.image_gen_model
         now = _utc_now_iso()
         self._sub.connection.execute(
-            "INSERT INTO provider_settings(id, active_provider, default_model, default_base_url, updated_at) "
-            "VALUES (1, ?, ?, ?, ?) "
+            "INSERT INTO provider_settings(id, active_provider, default_model, default_base_url, "
+            "vision_provider, vision_model, vision_base_url, voice_model, video_model, image_gen_model, updated_at) "
+            "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET active_provider=excluded.active_provider, "
             "default_model=excluded.default_model, default_base_url=excluded.default_base_url, "
+            "vision_provider=excluded.vision_provider, vision_model=excluded.vision_model, "
+            "vision_base_url=excluded.vision_base_url, voice_model=excluded.voice_model, "
+            "video_model=excluded.video_model, image_gen_model=excluded.image_gen_model, "
             "updated_at=excluded.updated_at",
-            (ap, dm, bu, now),
+            (ap, dm, bu, vp, vm, vbu, voice, video, igen, now),
         )
         self._sub.connection.commit()
         return self.get_settings()

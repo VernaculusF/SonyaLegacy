@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 16
+CURRENT_VERSION = 17
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -234,6 +234,22 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 16
+
+    if version == 16:
+        # v16 → v17: multi-model routing columns in provider_settings.
+        _add_column_if_missing(conn, "provider_settings", "vision_provider", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "vision_model", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "vision_base_url", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "voice_model", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "video_model", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "provider_settings", "image_gen_model", "TEXT NOT NULL DEFAULT ''")
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (17, now),
+        )
+        conn.commit()
+        version = 17
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

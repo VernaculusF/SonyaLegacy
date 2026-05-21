@@ -648,6 +648,12 @@ async def api_providers_get(request: web.Request) -> web.Response:
                 "default_model": settings.default_model,
                 "default_base_url": settings.default_base_url,
                 "updated_at": settings.updated_at,
+                "vision_provider": settings.vision_provider,
+                "vision_model": settings.vision_model,
+                "vision_base_url": settings.vision_base_url,
+                "voice_model": settings.voice_model,
+                "video_model": settings.video_model,
+                "image_gen_model": settings.image_gen_model,
             },
             "keys": [
                 {
@@ -789,7 +795,7 @@ async def api_providers_balance_refresh(request: web.Request) -> web.Response:
 
 
 async def api_providers_settings(request: web.Request) -> web.Response:
-    """Update provider settings (active_provider, default_model, default_base_url).
+    """Update provider settings (active_provider, default_model, default_base_url, vision/voice/video/image_gen).
 
     No core-running gate — SQLite WAL handles concurrent admin writes safely.
     Core re-reads settings on every LLM call.
@@ -804,6 +810,12 @@ async def api_providers_settings(request: web.Request) -> web.Response:
             active_provider=data.get("active_provider"),
             default_model=data.get("default_model"),
             default_base_url=data.get("default_base_url"),
+            vision_provider=data.get("vision_provider"),
+            vision_model=data.get("vision_model"),
+            vision_base_url=data.get("vision_base_url"),
+            voice_model=data.get("voice_model"),
+            video_model=data.get("video_model"),
+            image_gen_model=data.get("image_gen_model"),
         )
         return web.json_response({
             "status": "updated",
@@ -811,6 +823,12 @@ async def api_providers_settings(request: web.Request) -> web.Response:
                 "active_provider": settings.active_provider,
                 "default_model": settings.default_model,
                 "default_base_url": settings.default_base_url,
+                "vision_provider": settings.vision_provider,
+                "vision_model": settings.vision_model,
+                "vision_base_url": settings.vision_base_url,
+                "voice_model": settings.voice_model,
+                "video_model": settings.video_model,
+                "image_gen_model": settings.image_gen_model,
             },
         })
     finally:

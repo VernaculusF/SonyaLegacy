@@ -379,8 +379,24 @@ const renderers = {
           <label>Default base URL:</label>
           <input id="prov-base" value="${s.default_base_url || ''}" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
         </div>
+        <h3 style="margin-top:16px">Multi-model routing</h3>
+        <p style="font-size:11px;color:#8b949e;margin-bottom:8px">Отдельный провайдер/модель для vision. Остальные слоты — на будущее.</p>
+        <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:13px">
+          <label>Vision provider:</label>
+          <input id="prov-vision-provider" value="${s.vision_provider || ''}" placeholder="e.g. openrouter (empty = use default)" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Vision model:</label>
+          <input id="prov-vision-model" value="${s.vision_model || ''}" placeholder="e.g. google/gemini-2.5-flash" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Vision base URL:</label>
+          <input id="prov-vision-base" value="${s.vision_base_url || ''}" placeholder="empty = use vision provider key's base_url" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Voice model:</label>
+          <input id="prov-voice" value="${s.voice_model || ''}" placeholder="TTS/ASR — future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Video model:</label>
+          <input id="prov-video" value="${s.video_model || ''}" placeholder="video understanding — future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+          <label>Image gen model:</label>
+          <input id="prov-imagen" value="${s.image_gen_model || ''}" placeholder="image generation — future" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px;color:#c9d1d9" />
+        </div>
         <button onclick="providersSaveSettings()" style="margin-top:10px;background:#238636;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer">Save settings</button>
-        <p style="font-size:11px;color:#8b949e;margin-top:8px">Stop core before changing. After save — start core back.</p>
+        <p style="font-size:11px;color:#8b949e;margin-top:8px">Hot-reload: core перечитывает settings на каждом LLM вызове. Рестарт не нужен.</p>
       </div>`;
 
     const addCard = `
@@ -559,6 +575,12 @@ async function providersSaveSettings() {
     active_provider: document.getElementById('prov-active').value.trim(),
     default_model: document.getElementById('prov-model').value.trim(),
     default_base_url: document.getElementById('prov-base').value.trim(),
+    vision_provider: document.getElementById('prov-vision-provider').value.trim(),
+    vision_model: document.getElementById('prov-vision-model').value.trim(),
+    vision_base_url: document.getElementById('prov-vision-base').value.trim(),
+    voice_model: document.getElementById('prov-voice').value.trim(),
+    video_model: document.getElementById('prov-video').value.trim(),
+    image_gen_model: document.getElementById('prov-imagen').value.trim(),
   };
   try {
     const resp = await fetch(`${API}/api/providers/settings`, {
