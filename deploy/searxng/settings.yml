@@ -1,0 +1,49 @@
+# SearXNG settings — Sonya self-hosted instance
+# Listens only on localhost:8888 — exposed via SONYA_SEARXNG_URL env var
+# to the Sonya core. NOT publicly accessible.
+
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "Sonya Search"
+
+server:
+  base_url: false
+  bind_address: "0.0.0.0"  # docker port-mapping handles isolation
+  port: 8080
+  secret_key: "change-me-via-deploy-script"
+  limiter: false
+  image_proxy: false
+
+ui:
+  static_use_hash: true
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "auto"
+  formats:
+    - html
+    - json
+
+# Enable a sane subset of engines, disable noisy/unreliable ones
+engines:
+  - name: google
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: github
+    disabled: false
+  - name: stackoverflow
+    disabled: false
+  - name: arxiv
+    disabled: false

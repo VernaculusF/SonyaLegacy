@@ -1,6 +1,9 @@
 """Web tool: search and fetch.
 
-`web.search` uses DuckDuckGo's HTML endpoint (no API key required).
+`web.search` rotates through a list of public SearXNG instances (with
+DDG and Google fallbacks). SearXNG aggregates results from Google/Bing/
+DuckDuckGo from THEIR IP, so we don't get blocked at our VPS IP.
+
 `web.fetch` does a GET with timeout and strips HTML to text-ish output.
 
 Both are blocking-from-the-agent's-POV (called via asyncio.run inside the
@@ -11,6 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json as _json
+import random
 import re
 from urllib.parse import quote_plus, unquote, urlparse
 
@@ -24,6 +29,21 @@ _USER_AGENT = (
 _REQUEST_TIMEOUT = 10.0
 _MAX_BODY_BYTES = 200_000
 _MAX_RESULTS = 5
+
+# Rotating list of public SearXNG instances supporting JSON output.
+# We try each in order until one responds with results.
+# Source: https://searx.space (filter: JSON API enabled, high uptime).
+# Hardcoded — admin can override via env if needed.
+_SEARXNG_INSTANCES = [
+    "https://search.inetol.net",
+    "https://searx.be",
+    "https://baresearch.org",
+    "https://search.privacyredirect.com",
+    "https://priv.au",
+    "https://searx.tiekoetter.com",
+    "https://search.brave4u.com",
+    "https://search.sapti.me",
+]
 
 # DuckDuckGo HTML endpoint — anonymous, no API key.
 _DDG_URL = "https://duckduckgo.com/html/?q={q}"
@@ -109,16 +129,51 @@ class WebTool:
             return f"[ERROR] web.search failed: {type(err).__name__}: {err}"
 
     async def _do_search(self, query: str) -> str:
-        url = _DDG_URL.format(q=quote_plus(query))
         timeout = aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT)
         headers = {
             "User-Agent": self._user_agent,
+            "Accept": "application/json",
             "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
         }
+
+        # Strategy 1: Try our own SearXNG first (env-overridable).
+        # If self-hosted on the same VPS — fastest and most reliable.
+        import os
+        own_instance = os.environ.get("SONYA_SEARXNG_URL", "").strip().rstrip("/")
+        instances = [own_instance] if own_instance else []
+        # Add public instances in randomized order so we don't hammer the same one
+        public = list(_SEARXNG_INSTANCES)
+        random.shuffle(public)
+        instances.extend(public)
+
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-            # Try DDG first
+            # Try each SearXNG instance until one returns results
+            for instance in instances:
+                if not instance:
+                    continue
+                try:
+                    url = f"{instance}/search?q={quote_plus(query)}&format=json&safesearch=0"
+                    async with session.get(url, allow_redirects=True) as resp:
+                        if resp.status != 200:
+                            continue
+                        body = await resp.read()
+                        if len(body) > _MAX_BODY_BYTES:
+                            body = body[:_MAX_BODY_BYTES]
+                        text = body.decode("utf-8", errors="ignore")
+                        try:
+                            data = _json.loads(text)
+                        except _json.JSONDecodeError:
+                            continue
+                        results = self._parse_searxng_json(data, query, instance)
+                        if results:
+                            return results
+                except Exception:
+                    continue
+
+            # Strategy 2: DDG HTML fallback
             try:
-                async with session.get(url, allow_redirects=True) as resp:
+                ddg_url = _DDG_URL.format(q=quote_plus(query))
+                async with session.get(ddg_url, allow_redirects=True) as resp:
                     if resp.status == 200:
                         body = await resp.read()
                         if len(body) > _MAX_BODY_BYTES:
@@ -130,7 +185,7 @@ class WebTool:
             except Exception:
                 pass
 
-            # Fallback: Google HTML scrape (no API key)
+            # Strategy 3: Google HTML fallback (last resort, often blocked)
             try:
                 google_url = f"https://www.google.com/search?q={quote_plus(query)}&num=5&hl=en"
                 async with session.get(google_url, allow_redirects=True) as resp:
@@ -146,10 +201,31 @@ class WebTool:
                 pass
 
         return (
-            "[ERROR] Both DDG and Google search failed. "
+            "[ERROR] All search backends failed (SearXNG instances + DDG + Google). "
             "Search is unavailable — do NOT retry immediately. "
             "If you have a task depending on this, use `tasks.block` and wait."
         )
+
+    def _parse_searxng_json(self, data: dict, query: str, instance: str) -> str:
+        """Parse SearXNG JSON response."""
+        items = data.get("results") or []
+        if not items:
+            return ""
+        results = []
+        for item in items[:_MAX_RESULTS]:
+            if not isinstance(item, dict):
+                continue
+            title = (item.get("title") or "").strip()
+            url = (item.get("url") or "").strip()
+            content = (item.get("content") or "").strip()
+            if not url:
+                continue
+            results.append(f"{title}\n  {url}\n  {content[:300]}")
+        if not results:
+            return ""
+        from urllib.parse import urlparse as _up
+        host = _up(instance).netloc
+        return f"Results for: {query}\n(via {host})\n\n" + "\n\n".join(results)
 
     def _parse_ddg_results(self, text: str, query: str) -> str:
         results = []
