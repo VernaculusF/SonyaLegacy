@@ -103,10 +103,9 @@ def _load_personality_prompt() -> str:
     """Load system prompt from personality files (CRUTCH-001).
 
     Order matters: SOUL first (who I am), APPEARANCE (my body), USER (who Ivan is).
-    LESSONS / SELF / HEARTBEAT are NOT loaded here — they're consulted by Sonya
-    on demand via filesystem.read or self_inspect.code, to avoid bloating every
-    LLM call's prompt budget. Identity-critical bits (gender, appearance, anti-
-    spam emoji rule, anti-fake-agency) are inside SOUL/APPEARANCE/USER.
+    Then CURRENT_STATE — so Sonya knows her own technical capabilities and
+    what's been built. This makes model and environment "one thing" — she
+    sees her own architecture in every call.
     """
     parts: list[str] = []
     soul_path = _PERSONALITY_DIR / "SOUL.md"
@@ -118,6 +117,11 @@ def _load_personality_prompt() -> str:
     user_path = _PERSONALITY_DIR / "USER.md"
     if user_path.exists():
         parts.append(user_path.read_text(encoding="utf-8"))
+    # System self-knowledge: what capabilities she has, what's built,
+    # what's a crutch. Without this she doesn't know what changed.
+    state_path = _PERSONALITY_DIR.parent / "CURRENT_STATE.md"
+    if state_path.exists():
+        parts.append(state_path.read_text(encoding="utf-8"))
     if not parts:
         return "Ты Соня. Ты девушка Ивана."
     return "\n\n---\n\n".join(parts)

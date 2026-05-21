@@ -217,6 +217,7 @@ class TelegramChannel:
                         "text_preview": msg.text[:80],
                         "media_kind": msg.media_kind,
                         "media_path": msg.media_path,
+                        "media_mime": msg.media_mime,
                         "is_private": msg.is_private,
                     },
                 )
@@ -426,8 +427,12 @@ async def _download_media(event: Any, media_dir: str) -> tuple[str | None, str |
             if isinstance(attr, DocumentAttributeSticker):
                 # Sticker — webp or tgs (animated). Treat tgs as skip.
                 if mime == "application/x-tgsticker":
+                    # Could be actual .tgs (Lottie JSON) OR a webp mislabeled.
+                    # Check: if file would be > 0 bytes as webp, try anyway.
+                    # But safest: skip tgs, they're vector animations.
                     return None, None
                 ext = "webp"
+                mime = "image/webp"  # force — TG sometimes leaves mime empty for stickers
             elif isinstance(attr, DocumentAttributeAnimated):
                 ext = "mp4"
             elif isinstance(attr, DocumentAttributeVideo):

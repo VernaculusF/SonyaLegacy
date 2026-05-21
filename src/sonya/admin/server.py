@@ -154,7 +154,7 @@ async def api_memory(request: web.Request) -> web.Response:
     try:
         episodic = EpisodicMemory(sub)
         semantic = SemanticMemory(sub)
-        recent = episodic.get_recent(limit=30)
+        recent = episodic.get_recent(limit=30, mark_accessed=False)
         facts = semantic.get_all(limit=20)
         # Embedding index status (graceful if fastembed not installed)
         try:
