@@ -430,15 +430,6 @@ async def run_tg_session(
 
     reply_text = _extract_reply(result)
 
-    # Pre-DONE self-critique: one fast LLM call to catch gender mismatches,
-    # off-topic replies, prompt echoes, and broken formatting BEFORE sending
-    # to Ivan. Adds ~2-3s latency but catches most surface-level bugs.
-    if reply_text and provider is not None:
-        try:
-            reply_text = await _pre_done_critique(provider, reply_text, user_input)
-        except Exception:
-            pass  # if critique fails, send original unchecked
-
     return TgSessionResult(
         reply_text=reply_text,
         raw=result,
