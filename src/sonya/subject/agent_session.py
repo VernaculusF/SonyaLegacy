@@ -37,6 +37,10 @@ class SessionResult:
     actions: list[str] = field(default_factory=list)
     final_output: str = ""
     budget_exceeded: bool = False
+    # Texts already sent to user via chat.tell_ivan during the session.
+    # Used by channel_session._extract_reply to suppress duplicate final
+    # output when [DONE: text] echoes a prior tell_ivan.
+    outbound_sent: list[str] = field(default_factory=list)
 
 
 TOOL_DESCRIPTIONS = """Available tools:
@@ -302,7 +306,11 @@ async def run_agent_session(
             result.thoughts.append(response)
 
             # Execute tool
-            observation = _execute_tool(tool_name, tool_arg, self_inspect, filesystem, stream, selfmod, tasks, web, code, shell, outbound, memory, env, skills)
+            observation = _execute_tool(
+                tool_name, tool_arg, self_inspect, filesystem, stream,
+                selfmod, tasks, web, code, shell, outbound, memory, env, skills,
+                outbound_sent=result.outbound_sent,
+            )
 
             # Record in continuity
             stream.append(ContinuityEvent(
@@ -398,6 +406,7 @@ def _execute_tool(
     memory: MemoryTool | None = None,
     env: EnvTool | None = None,
     skills: SkillsTool | None = None,
+    outbound_sent: list[str] | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
     try:
@@ -733,7 +742,12 @@ def _execute_tool(
             if outbound is None:
                 return "[ERROR] initiative gate not configured (set SONYA_PRIMARY_USER_TG_ID)"
             from sonya.initiative.outbound import call_outbound_sync
-            return call_outbound_sync(outbound, arg)
+            result = call_outbound_sync(outbound, arg)
+            # Record sent text so channel_session can suppress a [DONE: ...] echo
+            # of the same content (prevents duplicate messages to Ivan).
+            if outbound_sent is not None and arg.strip():
+                outbound_sent.append(arg.strip())
+            return result
 
         else:
             return f"[ERROR] Unknown tool: {name}"

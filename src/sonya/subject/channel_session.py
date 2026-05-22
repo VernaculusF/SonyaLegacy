@@ -640,7 +640,10 @@ def _extract_reply(result: SessionResult) -> str:
     4. If model leaked multiple drafts — pick the last quoted Russian block.
     5. Last `agent_step` of `type='thought'` content — graceful fallback.
 
-    Returns "" if extracted text looks like leaked code/tool scratch.
+    Returns "" if extracted text:
+    - looks like leaked code/tool scratch
+    - duplicates content already sent via chat.tell_ivan during the session
+      (model split same message between progress update and final reply)
     """
     candidate = ""
     final = (result.final_output or "").strip()
@@ -660,9 +663,6 @@ def _extract_reply(result: SessionResult) -> str:
             candidate = _scrub(m.group("body"))
         else:
             # [DONE] without body — stitch with prior thoughts.
-            # Common pattern: model writes long thought (no DONE), then in
-            # a separate step writes only "...\n[DONE]" — final_output is the
-            # short tail. The actual reply was the earlier thought.
             stitched = _stitch_post_action_thoughts(result, final)
             candidate = _scrub(stitched if stitched else final)
 
@@ -677,18 +677,51 @@ def _extract_reply(result: SessionResult) -> str:
     if not candidate:
         return ""
 
-    # Last-line defence: if the candidate clearly contains internal code that
-    # shouldn't be in a TG reply, refuse and return an apology rather than
-    # leaking implementation details.
     if _looks_like_code_leak(candidate):
         return ""
 
-    # If after all scrubbing the text STILL looks like English reasoning,
-    # refuse — better to return placeholder than confess thoughts.
     if _looks_like_reasoning_leak(candidate):
         return ""
 
+    # Suppress final reply if it duplicates a chat.tell_ivan message already sent
+    # during the session. Model sometimes does both: progress update + final
+    # echo, which causes double-message in TG.
+    if result.outbound_sent and _is_duplicate_of_outbound(candidate, result.outbound_sent):
+        return ""
+
     return candidate
+
+
+def _is_duplicate_of_outbound(candidate: str, outbound_sent: list[str]) -> bool:
+    """Check if `candidate` is essentially the same as any prior tell_ivan text.
+
+    Same = either substring match (>80% overlap) or first 60 chars match
+    after stripping markdown formatting and whitespace.
+    """
+    def _norm(s: str) -> str:
+        # Strip common punctuation/markdown for fuzzy compare
+        s = re.sub(r"[*_`~()\[\]:!?,.\-—…\s]+", " ", s.lower())
+        return s.strip()
+
+    norm_cand = _norm(candidate)
+    if not norm_cand:
+        return False
+
+    for sent in outbound_sent:
+        norm_sent = _norm(sent)
+        if not norm_sent:
+            continue
+        # Identical normalized form
+        if norm_cand == norm_sent:
+            return True
+        # One is substring of the other (long enough to be meaningful)
+        if len(norm_cand) > 30 and (norm_cand in norm_sent or norm_sent in norm_cand):
+            return True
+        # Same opening words (60+ chars overlap from start)
+        prefix_len = min(60, len(norm_cand), len(norm_sent))
+        if prefix_len >= 30 and norm_cand[:prefix_len] == norm_sent[:prefix_len]:
+            return True
+    return False
 
 
 def _stitch_post_action_thoughts(result: SessionResult, final: str) -> str:
