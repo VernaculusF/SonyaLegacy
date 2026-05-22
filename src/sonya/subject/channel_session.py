@@ -569,6 +569,9 @@ def _scrub(text: str) -> str:
     text = _TOOL_LINE_RE.sub("", text)
     text = _DONE_RE.sub("", text)
     text = _PAUSE_RE.sub("", text)
+    # Strip dangling single backticks left over after [TOOL: ...] removal
+    # (model often wraps tool markers in `` ` `` quotes).
+    text = re.sub(r"^[`\s]+|[`\s]+$", "", text)
     # Collapse triple+ newlines down to double
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

@@ -597,8 +597,18 @@ def _execute_tool(
                     )
                 target_e = parts[0].strip()
                 summary_e = parts[1].strip()
-                old_sub = parts[2].strip()
-                new_sub = parts[3].strip()
+                # Decode literal \n / \t / \\ escape sequences in pipe form so
+                # multi-line patches work via inline arg. Block JSON form
+                # already handles real newlines natively (no decode needed).
+                def _decode(s: str) -> str:
+                    return (
+                        s.replace("\\\\", "\x00")  # protect literal backslash
+                        .replace("\\n", "\n")
+                        .replace("\\t", "\t")
+                        .replace("\x00", "\\")
+                    )
+                old_sub = _decode(parts[2].strip())
+                new_sub = _decode(parts[3].strip())
             if not target_e or not summary_e or not old_sub:
                 return "[ERROR] selfmod.propose_edit: target, summary, old_substring required"
             return selfmod.propose_edit(target_e, summary_e, old_sub, new_sub)
