@@ -26,9 +26,12 @@ rm -f "$SUBSTRATE_DIR"/*.lock
 
 echo "=> Ensuring runtime dependencies..."
 # fastembed + numpy power memory.recall (semantic search over episodic memory).
+# pytest required for selfmod Layer 2 sandbox (runs project tests against modified code).
 # Idempotent — pip skips if already at the requested version.
 "$PROJECT_DIR/.venv/bin/pip" install --quiet --upgrade \
-    "fastembed>=0.4" "numpy>=1.26" "imagehash>=4.3" 2>&1 | grep -v "already satisfied" || true
+    "fastembed>=0.4" "numpy>=1.26" "imagehash>=4.3" \
+    "pytest>=8.0" "pytest-timeout>=2.0" "pytest-asyncio>=0.23" \
+    2>&1 | grep -v "already satisfied" || true
 
 echo "=> Restarting services..."
 if systemctl --user list-units 2>/dev/null | grep -q sonya; then
