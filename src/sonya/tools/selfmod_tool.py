@@ -182,6 +182,85 @@ class SelfModTool:
             "current_status": proposal.status.value,
         })
 
+    def propose_edit(
+        self,
+        target_module: str,
+        change_summary: str,
+        old_substring: str,
+        new_substring: str,
+        proposed_by: str | None = None,
+    ) -> str:
+        """Propose a small in-place edit by substring substitution.
+
+        Reads target file, replaces FIRST occurrence of old_substring with
+        new_substring, packs result as full-content proposal. Allows agent to
+        propose narrow edits without sending entire file via inline tool args
+        (which fails for files >a few hundred chars).
+
+        Errors:
+        - target file doesn't exist
+        - old_substring not found
+        - old_substring matches more than once (ambiguous — refuse, ask agent
+          to provide more context)
+        """
+        err = self._check_target_writable(target_module)
+        if err:
+            return json.dumps({"status": "rejected_pre_pipeline", "reason": err})
+
+        target_path = (self._root / target_module).resolve()
+        try:
+            target_path.relative_to(self._root)
+        except ValueError:
+            return json.dumps({"status": "error", "reason": "target outside project root"})
+
+        if not target_path.exists():
+            return json.dumps({
+                "status": "error",
+                "reason": f"target file does not exist: {target_module}",
+            })
+
+        try:
+            current = target_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            return json.dumps({
+                "status": "error",
+                "reason": f"cannot read target: {type(exc).__name__}: {exc}",
+            })
+
+        if not old_substring:
+            return json.dumps({
+                "status": "error",
+                "reason": "old_substring is required (cannot be empty)",
+            })
+
+        occurrences = current.count(old_substring)
+        if occurrences == 0:
+            return json.dumps({
+                "status": "error",
+                "reason": "old_substring not found in target file",
+                "hint": "include 1-2 lines of context around the change to make it unique",
+            })
+        if occurrences > 1:
+            return json.dumps({
+                "status": "error",
+                "reason": f"old_substring matches {occurrences} places (ambiguous)",
+                "hint": "include more context (surrounding lines) to make match unique",
+            })
+
+        new_content = current.replace(old_substring, new_substring, 1)
+        if new_content == current:
+            return json.dumps({
+                "status": "error",
+                "reason": "old_substring == new_substring (no-op edit)",
+            })
+
+        return self.propose(
+            target_module=target_module,
+            change_summary=change_summary,
+            new_content=new_content,
+            proposed_by=proposed_by,
+        )
+
     def test_sandbox(self, proposal_id: str) -> str:
         """Import the proposed content in an isolated namespace.
 
