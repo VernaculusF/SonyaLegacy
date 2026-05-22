@@ -123,6 +123,11 @@ def check_behavioral_test(proposal: SelfModificationProposal) -> ValidationResul
                 # in sandbox because they depend on real process orchestration.
                 f"--ignore={sandbox_tests_sonya / 'test_main_integration.py'}" if sandbox_tests_sonya.exists() else "--ignore=tests/sonya/test_main_integration.py",
                 f"--ignore={sandbox_tests_sonya / 'test_main_seeds_identity.py'}" if sandbox_tests_sonya.exists() else "--ignore=tests/sonya/test_main_seeds_identity.py",
+                # Skip selfmod tests — they spawn nested sandbox subprocesses,
+                # causing recursion when this Layer 2 sandbox runs them.
+                f"--ignore={sandbox_tests_sonya / 'test_selfmod_tool.py'}" if sandbox_tests_sonya.exists() else "--ignore=tests/sonya/test_selfmod_tool.py",
+                f"--ignore={sandbox_tests_sonya / 'test_selfmod_pipeline.py'}" if sandbox_tests_sonya.exists() else "--ignore=tests/sonya/test_selfmod_pipeline.py",
+                f"--ignore={sandbox_tests_sonya / 'test_selfmod_proposal.py'}" if sandbox_tests_sonya.exists() else "--ignore=tests/sonya/test_selfmod_proposal.py",
             ],
             capture_output=True,
             text=True,
