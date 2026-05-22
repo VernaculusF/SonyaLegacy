@@ -83,6 +83,13 @@ def check_behavioral_test(proposal: SelfModificationProposal) -> ValidationResul
         if pyproject.exists():
             shutil.copy2(pyproject, sandbox_dir / "pyproject.toml")
 
+        # Copy packages/* (e.g. tg-userbot) — channel discovery scans these
+        # at runtime, and tests verify telegram channel is discoverable.
+        packages_src = _PROJECT_ROOT / "packages"
+        sandbox_packages = sandbox_dir / "packages"
+        if packages_src.is_dir():
+            shutil.copytree(packages_src, sandbox_packages, dirs_exist_ok=True)
+
         # Apply the change in sandbox
         target_path = sandbox_dir / proposal.target_module
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,10 +99,17 @@ def check_behavioral_test(proposal: SelfModificationProposal) -> ValidationResul
         python = sys.executable
         # Include the real venv site-packages so tests can import third-party
         # dependencies (aiohttp, telethon, etc.) while running against the
-        # modified source in sandbox.
+        # modified source in sandbox. Also include packages/*/src so external
+        # channel packages (tg_userbot) are importable.
         import site
         real_site_packages = site.getsitepackages() if hasattr(site, "getsitepackages") else []
         pythonpath_parts = [str(sandbox_src)] + real_site_packages
+        # Add packages/*/src dirs to pythonpath
+        if sandbox_packages.is_dir():
+            for pkg in sandbox_packages.iterdir():
+                pkg_src = pkg / "src"
+                if pkg_src.is_dir():
+                    pythonpath_parts.insert(1, str(pkg_src))
         pythonpath = __import__("os").pathsep.join(pythonpath_parts)
         result = subprocess.run(
             [
