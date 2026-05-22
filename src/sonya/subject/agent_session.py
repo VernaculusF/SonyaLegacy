@@ -92,7 +92,12 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - plugins.create — block form: first line = name, remaining = python code
 - plugins.call [name] [args] — call a loaded plugin
 - selfmod.propose — block form, JSON: {"target": "src/sonya/...", "summary": "...", "content": "<full file>"} OR pipe-separated: target | summary | content
-- selfmod.propose_edit — pipe form: target | summary | old_substring | new_substring  (для МАЛЫХ правок: меняет первое вхождение old_substring на new_substring, формирует full-content proposal автоматически. Используй когда хочешь изменить пару строк а не весь файл. Если old_substring встречается >1 раза — даст ошибку, нужно расширить контекст в old_substring.)
+- selfmod.propose_edit — для МАЛЫХ правок:
+    inline pipe (одна строка): target | summary | old_substring | new_substring
+    block JSON (multi-line OK): [TOOL: selfmod.propose_edit]\n```\n{"target":"...","summary":"...","old":"...","new":"..."}\n```
+  Меняет первое вхождение old → new в файле, формирует full-content proposal автоматически.
+  Если old_substring встречается >1 раза — даст ошибку (расширь контекст).
+  ВАЖНО: при использовании block JSON ставь `\n` в old/new для перевода строк, не реальные newlines в JSON-строке.
 - selfmod.test_sandbox [proposal_id]
 - selfmod.validate [proposal_id]
 - selfmod.apply [proposal_id]
@@ -565,19 +570,35 @@ def _execute_tool(
         elif name == "selfmod.propose_edit":
             if selfmod is None:
                 return "[ERROR] selfmod tool not configured"
-            # pipe-form only: target | summary | old_substring | new_substring
-            parts = arg.split("|", 3)
-            if len(parts) < 4:
-                return (
-                    "[ERROR] selfmod.propose_edit needs 4 parts:\n"
-                    "  target_path | summary | old_substring | new_substring\n"
-                    "(старая строка должна быть уникальной в файле; "
-                    "если совпадает несколько раз — расширь контекст вокруг)"
-                )
-            target_e = parts[0].strip()
-            summary_e = parts[1].strip()
-            old_sub = parts[2].strip()
-            new_sub = parts[3].strip()
+            # Two formats supported:
+            # 1) inline pipe: target | summary | old_substring | new_substring
+            # 2) block JSON: {"target":"...","summary":"...","old":"...","new":"..."}
+            #    — use block form for multi-line old/new strings.
+            stripped = arg.strip()
+            if stripped.startswith("{"):
+                try:
+                    import json as _json
+                    data = _json.loads(stripped)
+                    target_e = str(data.get("target", "")).strip()
+                    summary_e = str(data.get("summary", "")).strip()
+                    old_sub = str(data.get("old", data.get("old_substring", "")))
+                    new_sub = str(data.get("new", data.get("new_substring", "")))
+                except (_json.JSONDecodeError, TypeError, ValueError) as err:
+                    return f"[ERROR] selfmod.propose_edit: invalid JSON ({err})"
+            else:
+                parts = arg.split("|", 3)
+                if len(parts) < 4:
+                    return (
+                        "[ERROR] selfmod.propose_edit needs 4 parts:\n"
+                        "  inline pipe: target_path | summary | old_substring | new_substring\n"
+                        '  OR block JSON: {"target":"...","summary":"...","old":"...","new":"..."}\n'
+                        "(старая строка должна быть уникальной в файле; "
+                        "если совпадает несколько раз — расширь контекст вокруг)"
+                    )
+                target_e = parts[0].strip()
+                summary_e = parts[1].strip()
+                old_sub = parts[2].strip()
+                new_sub = parts[3].strip()
             if not target_e or not summary_e or not old_sub:
                 return "[ERROR] selfmod.propose_edit: target, summary, old_substring required"
             return selfmod.propose_edit(target_e, summary_e, old_sub, new_sub)
