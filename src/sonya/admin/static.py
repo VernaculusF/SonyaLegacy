@@ -539,7 +539,10 @@ const renderers = {
     return `<div class="card"><h3>Tasks (${tasks.length})</h3>
       ${tasks.map(t => `
         <div class="event" style="border-left-color:${statusColor[t.status] || '#30363d'}">
-          <div class="meta">[${t.task_id}] ${t.created_by === 'ivan' ? '👤 Ivan' : '🤖 Sonya'} • ${t.notify_mode} • ${t.created_at.slice(0,19)}</div>
+          <div class="meta" style="display:flex;justify-content:space-between;align-items:center">
+            <span>[${t.task_id}] ${t.created_by === 'ivan' ? '👤 Ivan' : '🤖 Sonya'} • ${t.notify_mode} • ${t.created_at.slice(0,19)}</span>
+            <button onclick="taskDelete('${t.task_id}')" title="Delete task" style="background:#f8514922;color:#f85149;border:1px solid #f8514955;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px">✕ delete</button>
+          </div>
           <div class="body"><b>${t.title}</b>${t.description ? '<br><span style="color:#8b949e">' + t.description.slice(0,200) + '</span>' : ''}</div>
           <div style="margin-top:6px;font-size:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <span class="stat" style="background:${(statusColor[t.status]||'#30363d')}33;color:${statusColor[t.status]||'#c9d1d9'};padding:2px 8px;border-radius:3px">${t.status}</span>
@@ -552,6 +555,19 @@ const renderers = {
     </div>`;
   }
 };
+
+async function taskDelete(taskId) {
+  if (!confirm(`Delete task ${taskId}? This is permanent.`)) return;
+  try {
+    const resp = await fetch(`${API}/api/tasks/${taskId}`, {method:'DELETE'});
+    const data = await resp.json();
+    if (data.error) {
+      alert('Error: ' + data.error);
+      return;
+    }
+    setTimeout(() => loadPage('tasks'), 200);
+  } catch(e) { alert('Error: ' + e.message); }
+}
 
 async function selfmodView(proposalId) {
   try {

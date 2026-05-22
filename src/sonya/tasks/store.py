@@ -143,6 +143,15 @@ class TaskStore:
         self._sub.connection.commit()
         return self.get(task_id)
 
+    def delete(self, task_id: str) -> bool:
+        """Hard-delete a task. Returns True if a row was deleted."""
+        cursor = self._sub.connection.execute(
+            "DELETE FROM tasks WHERE task_id = ?",
+            (task_id,),
+        )
+        self._sub.connection.commit()
+        return cursor.rowcount > 0
+
     def set_session_handoff(self, task_id: str, *, notes: str = "", next_step: str = "") -> Task:
         """Persist where the most recent session left off."""
         return self._patch(

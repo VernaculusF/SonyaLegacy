@@ -1103,6 +1103,24 @@ async def api_tasks(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def api_tasks_delete(request: web.Request) -> web.Response:
+    """Hard-delete a task by id."""
+    from sonya.tasks.store import TaskStore
+    task_id = request.match_info.get("task_id", "").strip()
+    if not task_id:
+        return web.json_response({"error": "missing task_id"}, status=400)
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        store = TaskStore(sub)
+        deleted = store.delete(task_id)
+        if not deleted:
+            return web.json_response({"error": f"task {task_id} not found"}, status=404)
+        return web.json_response({"ok": True, "task_id": task_id, "deleted": True})
+    finally:
+        sub.close()
+
+
 async def _placeholder_kt(request: web.Request) -> web.Response:
     # Removed duplicate; real handler is api_providers_keys_test above.
     return web.json_response({"error": "not used"}, status=404)
@@ -1145,6 +1163,7 @@ def create_app() -> web.Application:
     # LLM call audit + tasks (admin observability)
     app.router.add_get("/api/llm_calls", api_llm_calls)
     app.router.add_get("/api/tasks", api_tasks)
+    app.router.add_delete("/api/tasks/{task_id}", api_tasks_delete)
     # Approvals (shell.run / pip.install / governed selfmod gates)
     app.router.add_get("/api/approvals", api_approvals_get)
     app.router.add_post("/api/approvals/{request_id}/{decision}", api_approvals_decide)
