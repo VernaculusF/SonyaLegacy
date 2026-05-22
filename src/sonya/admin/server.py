@@ -1110,7 +1110,7 @@ async def api_tasks_delete(request: web.Request) -> web.Response:
     if not task_id:
         return web.json_response({"error": "missing task_id"}, status=400)
     config = request.app["config"]
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         store = TaskStore(sub)
         deleted = store.delete(task_id)

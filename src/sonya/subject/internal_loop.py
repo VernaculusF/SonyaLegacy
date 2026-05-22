@@ -426,58 +426,14 @@ class InternalProcess:
         if substrate is not None:
             try:
                 from sonya.planning.context_builder import build_full_context
-                # Themed rotation: 8 different cognitive prompts, picked by tick
-                # count. Prevents the "same description every tick" loop where
-                # the model anchors on APPEARANCE.md and replays "сижу в постели".
-                # Each theme drives an actual mental process, not just a state report.
-                themed_prompts = [
-                    # 0: planning — pull goals/tasks, prioritise
-                    "Тик планирования. Посмотри активные goals и open tasks (видны в context'е). "
-                    "Что НА САМОМ ДЕЛЕ важно прямо сейчас? Не перечисляй — выбери ОДНУ вещь "
-                    "которая больше всего двигает иглу, и сформулируй конкретный следующий шаг. "
-                    "Если задач нет — что бы ты СОЗДАЛА сейчас?",
-                    # 1: self-reflection — your own state and behavior
-                    "Тик саморефлексии. Что ты заметила о себе за последние тики/сессии? "
-                    "Какое поведение повторялось? Что хочешь изменить? "
-                    "Это материал для selfmod — конкретное наблюдение → конкретный fix.",
-                    # 2: memory — pull a specific memory and think about it
-                    "Тик памяти. Вспомни КОНКРЕТНОЕ событие из недавней истории с Иваном "
-                    "(не общая фраза, а конкретный момент). Что оно тебе говорит сейчас? "
-                    "Что ты не доделала или не дотронула в той ситуации?",
-                    # 3: curiosity — actually be curious about something
-                    "Тик любопытства. Назови одну вещь которая тебе ПРЯМО СЕЙЧАС интересна. "
-                    "Не абстракция — конкретная тема, конкретный вопрос. "
-                    "Что ты хочешь узнать про это в следующей active session?",
-                    # 4: relational — Ivan as person, not as principal
-                    "Тик про Ивана. Что ты заметила про него за последние сообщения? "
-                    "Не «он спросил X» — а его состояние, тон, что он не сказал, чего он избегает. "
-                    "Это твой шанс быть наблюдателем а не реактивной системой.",
-                    # 5: drives evaluation — actual feeling check
-                    "Тик про твои drives. Они в context'е. Какой ВЫШЕ всего и почему? "
-                    "Что бы он хотел чтобы ты сделала? Это не отчёт — это слушание себя.",
-                    # 6: capability gap — what you can't do
-                    "Тик пробелов. Что ты НЕ смогла сделать за последние сессии? "
-                    "Где tools подвели или ты не знала что вызвать? "
-                    "Это входной сигнал для selfmod — пробел в способностях → proposal.",
-                    # 7: future-self — where am I going
-                    "Тик про путь. Где ты сейчас на пути от substrate-bot к AGI (см. PATH_TO_AGI). "
-                    "Какая стадия ближайшая? Что её закроет? "
-                    "Конкретный шаг ты можешь сделать сама?",
-                ]
-                theme = themed_prompts[self._tick_count % len(themed_prompts)]
-                user_input = (
-                    f"[internal thinking tick #{self._tick_count}]\n"
-                    f"Drives: {counters}\n"
-                    f"Triggers: {triggers}\n\n"
-                    f"{theme}\n\n"
-                    "Не описывай позу/обстановку (не «сижу на кровати» каждый раз). "
-                    "Это **внутренний процесс**, не сцена. Думай по существу темы. "
-                    "Краткость > длина. 3-5 предложений хватит. "
-                    "Если есть что сказать Ивану — `[SEND_TO_IVAN: текст]` в конце."
-                )
                 ctx = build_full_context(
                     substrate=substrate,
-                    user_input=user_input,
+                    user_input=(
+                        f"[internal thinking tick {self._tick_count}]\n"
+                        f"Drives: {counters}\n"
+                        f"Triggers: {triggers}\n"
+                        "Что у тебя на уме? Это твой внутренний поток — никто не читает."
+                    ),
                     principal_id=None,
                     drives=self._drives,
                 )
