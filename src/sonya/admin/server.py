@@ -378,17 +378,15 @@ async def api_selfmod_get(request: web.Request) -> web.Response:
 
 
 async def api_selfmod_approve(request: web.Request) -> web.Response:
-    """Primary anchor (Ivan) approves a REQUIRES_GOVERNED_CHANGE proposal."""
+    """Primary anchor (Ivan) approves a REQUIRES_GOVERNED_CHANGE proposal.
+
+    No core-running gate — SQLite WAL handles concurrent writes. Core
+    reads proposal status fresh on the next selfmod cycle.
+    """
     config = request.app["config"]
     proposal_id = request.match_info.get("proposal_id", "")
 
-    if _is_core_running(config):
-        return web.json_response(
-            {"error": "stop core first; admin cannot write while core runs"},
-            status=409,
-        )
-
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         from sonya.harness.approval import ApprovalManager
         from sonya.selfmod import ProposalStore
@@ -409,9 +407,24 @@ async def api_selfmod_approve(request: web.Request) -> web.Response:
         approvals = ApprovalManager(sub)
         reqs = approvals.find_by_action_pattern(f"%{proposal_id}%")
         if not reqs:
+            # No approval request exists yet (Sonya hasn't called selfmod.governed).
+            # For Ivan's manual approval through admin, we create + approve in one shot —
+            # admin UI is a trusted authority path, no need for two-step dance.
+            from sonya.harness.approval import ApprovalRequest
+            req = approvals.create_request(
+                action="selfmod.governed",
+                scope=f"selfmod.{p.target_module}",
+                principal_id="sonya",
+                metadata={"proposal_id": proposal_id, "summary": p.change_summary},
+            )
+            approvals.approve(req.request_id, by_principal_id="ivan")
+            store.update_status(proposal_id, ProposalStatus.GOVERNED_APPROVED)
             return web.json_response({
-                "error": "no approval request found for this proposal — call selfmod.governed first",
-            }, status=400)
+                "status": "approved",
+                "proposal_id": proposal_id,
+                "approval_request_id": req.request_id,
+                "note": "auto-created approval request (admin shortcut)",
+            })
 
         target_req = next((r for r in reqs if r.status.value == "pending"), None)
         if target_req is None:
@@ -435,13 +448,7 @@ async def api_selfmod_deny(request: web.Request) -> web.Response:
     config = request.app["config"]
     proposal_id = request.match_info.get("proposal_id", "")
 
-    if _is_core_running(config):
-        return web.json_response(
-            {"error": "stop core first; admin cannot write while core runs"},
-            status=409,
-        )
-
-    sub = _get_substrate(config)
+    sub = _get_substrate_writable(config)
     try:
         from sonya.harness.approval import ApprovalManager
         from sonya.selfmod import ProposalStore
@@ -564,49 +571,98 @@ async def api_core_start(request: web.Request) -> web.Response:
 
 
 async def api_core_stop(request: web.Request) -> web.Response:
-    """Stop the core process: SIGTERM first, SIGKILL after 10s if still alive."""
+    """Stop the core process.
+
+    Two paths:
+    1. If admin started the process via api_core_start → SIGTERM/SIGKILL it directly.
+    2. If process was started externally (systemd) → use systemctl stop.
+
+    Truth source for "is running" is WriteMaster lock on substrate, not _core_process.
+    """
     import signal
     import asyncio
+    import subprocess
     global _core_process, _core_log_file
 
-    if _core_process is None or _core_process.returncode is not None:
-        return web.json_response({"status": "not_running"})
+    config = request.app["config"]
 
-    pid = _core_process.pid
-    proc = _core_process
-
-    # Graceful first
-    try:
-        proc.send_signal(signal.SIGTERM)
-    except ProcessLookupError:
-        _core_process = None
-        return web.json_response({"status": "already_dead", "pid": pid})
-
-    # Wait up to 10s for graceful exit
-    for _ in range(20):
-        await asyncio.sleep(0.5)
-        if proc.poll() is not None:
-            break
-
-    method = "sigterm"
-    if proc.poll() is None:
-        # Still alive — escalate
+    # Path 1: admin-managed subprocess
+    if _core_process is not None and _core_process.returncode is None:
+        pid = _core_process.pid
+        proc = _core_process
         try:
-            proc.send_signal(signal.SIGKILL)
-            proc.wait(timeout=3)
+            proc.send_signal(signal.SIGTERM)
         except ProcessLookupError:
-            pass
-        method = "sigkill"
+            _core_process = None
+            return web.json_response({"status": "already_dead", "pid": pid})
 
-    _core_process = None
-    if _core_log_file is not None and not _core_log_file.closed:
+        for _ in range(20):
+            await asyncio.sleep(0.5)
+            if proc.poll() is not None:
+                break
+
+        method = "sigterm"
+        if proc.poll() is None:
+            try:
+                proc.send_signal(signal.SIGKILL)
+                proc.wait(timeout=3)
+            except ProcessLookupError:
+                pass
+            method = "sigkill"
+
+        _core_process = None
+        if _core_log_file is not None and not _core_log_file.closed:
+            try:
+                _core_log_file.close()
+            except Exception:
+                pass
+            _core_log_file = None
+
+        return web.json_response({"status": "stopped", "pid": pid, "method": method})
+
+    # Path 2: externally-managed (systemd). Try systemctl stop.
+    if _is_core_running(config):
         try:
-            _core_log_file.close()
-        except Exception:
-            pass
-        _core_log_file = None
+            # Try user systemd first, then system
+            result = subprocess.run(
+                ["systemctl", "--user", "stop", "sonya"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                # Wait for write-master release
+                for _ in range(20):
+                    await asyncio.sleep(0.5)
+                    if not _is_core_running(config):
+                        break
+                return web.json_response({"status": "stopped", "method": "systemctl --user"})
+            # Fallback to system-level systemctl (requires sudo, may fail)
+            result = subprocess.run(
+                ["sudo", "-n", "systemctl", "stop", "sonya"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                for _ in range(20):
+                    await asyncio.sleep(0.5)
+                    if not _is_core_running(config):
+                        break
+                return web.json_response({"status": "stopped", "method": "sudo systemctl"})
+            return web.json_response({
+                "status": "error",
+                "error": "systemctl stop failed (no permission?)",
+                "user_stderr": result.stderr[:300],
+            }, status=500)
+        except subprocess.TimeoutExpired:
+            return web.json_response({
+                "status": "error",
+                "error": "systemctl stop timed out",
+            }, status=500)
+        except FileNotFoundError:
+            return web.json_response({
+                "status": "error",
+                "error": "systemctl not available",
+            }, status=500)
 
-    return web.json_response({"status": "stopped", "pid": pid, "method": method})
+    return web.json_response({"status": "not_running"})
 
 
 async def api_core_logs(request: web.Request) -> web.Response:
