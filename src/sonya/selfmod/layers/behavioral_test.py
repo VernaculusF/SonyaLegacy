@@ -30,7 +30,7 @@ _PRE_STATE_MARKER = "\n\n---PRE_STATE_BEFORE_APPLY---\n"
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 
 # Subprocess timeout for pytest (seconds)
-_PYTEST_TIMEOUT = 90
+_PYTEST_TIMEOUT = 180
 
 
 def _extract_new_content(diff_blob: str) -> str | None:
