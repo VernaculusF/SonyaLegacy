@@ -630,12 +630,12 @@ def _extract_reply(result: SessionResult) -> str:
 
     Priority:
     1. `[DONE: body]` body — explicit final text for Ivan
-    2. `[DONE]` (no body) — use the surrounding text in `final_output` as the reply,
-       stripping markers and code fences. This is the default mode.
-    3. If model leaked multiple drafts (Draft:/Alternative:/Final:) — pick the
-       last quoted Russian block.
-    4. Last `agent_step` of `type='thought'` content (without [DONE]) — graceful
-       fallback if model forgot the marker entirely.
+    2. Stitch all thoughts AFTER the last tool action, ending with the [DONE] step.
+       This handles the common case where the model splits its reply across
+       multiple turns: thought1 (long) → thought2 → [DONE] (short tail).
+    3. `[DONE]` (no body) — use final_output stripped.
+    4. If model leaked multiple drafts — pick the last quoted Russian block.
+    5. Last `agent_step` of `type='thought'` content — graceful fallback.
 
     Returns "" if extracted text looks like leaked code/tool scratch.
     """
@@ -656,8 +656,12 @@ def _extract_reply(result: SessionResult) -> str:
         if m and (m.group("body") or "").strip():
             candidate = _scrub(m.group("body"))
         else:
-            # [DONE] without body OR no marker — strip everything internal
-            candidate = _scrub(final)
+            # [DONE] without body — stitch with prior thoughts.
+            # Common pattern: model writes long thought (no DONE), then in
+            # a separate step writes only "...\n[DONE]" — final_output is the
+            # short tail. The actual reply was the earlier thought.
+            stitched = _stitch_post_action_thoughts(result, final)
+            candidate = _scrub(stitched if stitched else final)
 
     if not candidate:
         # Fallback: last meaningful thought
@@ -682,3 +686,63 @@ def _extract_reply(result: SessionResult) -> str:
         return ""
 
     return candidate
+
+
+def _stitch_post_action_thoughts(result: SessionResult, final: str) -> str:
+    """Stitch the long thought + final closing tail into one reply.
+
+    Pattern: model does web.search → web.fetch → writes long analysis (thought N-1)
+    → writes "Что думаешь?\n[DONE]" (final/thought N, short).
+
+    We want the user to see the long analysis + the question, not just the question.
+    Returns the stitched text, or `final` if no qualifying prior content.
+    """
+    thoughts = result.thoughts or []
+    if not thoughts:
+        return final
+
+    # If final IS substantial already (>500 chars after trimming markers), skip stitching.
+    final_clean = _DONE_RE.sub("", final).strip()
+    if len(final_clean) > 500:
+        return final
+
+    # Find the last NON-tool, NON-DONE thought (i.e. real content).
+    # thoughts list contains: tool responses (with [TOOL: ...]),
+    # done responses (with [DONE]), and pure-thought responses.
+    last_content = ""
+    for t in reversed(thoughts):
+        if not t:
+            continue
+        # Skip [DONE]-only short tails
+        if "[DONE" in t and len(_DONE_RE.sub("", t).strip()) < 200:
+            continue
+        # Skip pure tool calls
+        if _TOOL_LINE_RE.search(t) and len(_TOOL_LINE_RE.sub("", t).strip()) < 100:
+            continue
+        # Skip the final itself if it matches (we'll stitch with it later)
+        if t.strip() == final.strip():
+            continue
+        last_content = t
+        break
+
+    if not last_content:
+        return final
+
+    # If the last_content already contains the final (or vice versa) — use the longer.
+    if final.strip() and final.strip() in last_content:
+        return last_content
+    if last_content.strip() in final:
+        return final
+
+    # Stitch them as paragraphs.
+    parts = [last_content.strip()]
+    if final_clean:
+        # Avoid duplicate sentences — if final_clean is essentially restating
+        # the last line of last_content, drop it.
+        last_line = last_content.strip().splitlines()[-1] if last_content.strip().splitlines() else ""
+        # Compare ignoring whitespace and case for first 50 chars
+        norm_last = "".join(last_line.lower().split())[:50]
+        norm_final = "".join(final_clean.lower().split())[:50]
+        if norm_final and norm_final not in norm_last and norm_last not in norm_final:
+            parts.append(final_clean)
+    return "\n\n".join(parts)
