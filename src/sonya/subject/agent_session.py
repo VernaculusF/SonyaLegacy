@@ -327,11 +327,30 @@ async def run_agent_session(
             kind="internal.agent_step",
             payload={"step": step, "type": "thought", "content": response[:8000]},
         ))
-        # Nudge the model to finish. Use system role to make clear this is NOT
-        # a message from Ivan — otherwise the model hallucinates that Ivan
-        # said "продолжай" and responds to that instead of waiting.
+        # If model fails to close after 3 nudges → force-finish with what we have.
+        # Without this, broken sessions burn through the entire budget echoing
+        # the reminder back as their reply.
+        nudge_count = sum(
+            1 for m in messages
+            if m.get("role") == "user"
+            and "INTERNAL_REMINDER" in (m.get("content") or "")
+        )
+        if nudge_count >= 2:
+            result.final_output = response
+            stream.append(ContinuityEvent(
+                kind="internal.agent_step",
+                payload={"step": step, "type": "force_done", "reason": "no_done_marker_after_nudges"},
+            ))
+            break
         messages.append({"role": "assistant", "content": response})
-        messages.append({"role": "system", "content": "[system] Ты не завершила ответ маркером [DONE]. Добавь [DONE] чтобы отправить."})
+        # Use 'user' role with INTERNAL_REMINDER token (not [system] which models
+        # echo verbatim into Ivan's reply). Model recognises the token as scaffold
+        # via system prompt instructions and the scrubber strips it as a final
+        # safety net.
+        messages.append({
+            "role": "user",
+            "content": "INTERNAL_REMINDER: добавь [DONE] в конец чтобы закрыть сессию.",
+        })
 
     # Record session summary. If the last agent_step already captured the
     # full final_output (the common case: model emits [DONE] and the step

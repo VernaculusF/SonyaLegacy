@@ -62,6 +62,19 @@ _OBSERVATION_RE = re.compile(
 )
 _BUDGET_WARNING_RE = re.compile(r"\[BUDGET WARNING\][^\n]*(?:\n(?!\n).*)*", re.MULTILINE)
 _NEW_MESSAGE_INJECT_RE = re.compile(r"\[NEW MESSAGE FROM IVAN\][^\n]*(?:\n(?!\n).*)*", re.MULTILINE)
+# `[system]` reminder messages — internal nudges from agent_session that
+# remind the model to add [DONE]. Some models echo them verbatim into their
+# next response. Strip aggressively.
+_SYSTEM_REMINDER_RE = re.compile(
+    r"\[system\][^\n]*(?:\n(?!\n).*)*",
+    re.IGNORECASE | re.MULTILINE,
+)
+# INTERNAL_REMINDER is the new nudge token (replaces [system] reminders).
+# Strip if the model echoes it.
+_INTERNAL_REMINDER_RE = re.compile(
+    r"INTERNAL_REMINDER[^\n]*",
+    re.MULTILINE,
+)
 # Reasoning-mode models sometimes leak <think>...</think> blocks. Strip them
 # wholesale — they're internal cogitation, not for the user.
 _THINK_BLOCK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
@@ -550,6 +563,8 @@ def _scrub(text: str) -> str:
     text = _OBSERVATION_RE.sub("", text)
     text = _BUDGET_WARNING_RE.sub("", text)
     text = _NEW_MESSAGE_INJECT_RE.sub("", text)
+    text = _SYSTEM_REMINDER_RE.sub("", text)
+    text = _INTERNAL_REMINDER_RE.sub("", text)
     text = _CODE_FENCE_RE.sub("", text)
     text = _TOOL_LINE_RE.sub("", text)
     text = _DONE_RE.sub("", text)
