@@ -410,12 +410,10 @@ async def api_selfmod_approve(request: web.Request) -> web.Response:
             # No approval request exists yet (Sonya hasn't called selfmod.governed).
             # For Ivan's manual approval through admin, we create + approve in one shot —
             # admin UI is a trusted authority path, no need for two-step dance.
-            from sonya.harness.approval import ApprovalRequest
-            req = approvals.create_request(
-                action="selfmod.governed",
-                scope=f"selfmod.{p.target_module}",
+            req = approvals.create(
                 principal_id="sonya",
-                metadata={"proposal_id": proposal_id, "summary": p.change_summary},
+                action=f"selfmod.governed:{proposal_id}",
+                scope=f"selfmod.{p.target_module}",
             )
             approvals.approve(req.request_id, by_principal_id="ivan")
             store.update_status(proposal_id, ProposalStatus.GOVERNED_APPROVED)
