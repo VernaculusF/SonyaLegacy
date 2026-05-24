@@ -242,6 +242,145 @@ def _fail_fake_check(response_text: str, actions: list[str], user_input: str) ->
     )
 
 
+# Unverified-claim detection — reply makes specific factual assertions about
+# external entities (URLs, sites, plugin versions, file paths, "open
+# directory", "no Cloudflare", etc.) without any tool actually fetching
+# them. The 24.05.2026 wineandmore/intermares pattern: "нашёл intermares.com,
+# открытая директория плагинов, без Cloudflare" — invented details.
+#
+# Heuristic: claim-like assertion + no `web.fetch` / `web.search` / `code.exec`
+# / `shell.run` in the session = likely fabrication.
+_UNVERIFIED_CLAIM_PATTERNS = _re_promise.compile(
+    r"\b("
+    # specific URL/host claims
+    r"(?:нашл[аи]|нашёл|обнаружил[аи]?|вижу|видн[оы])\s+(?:сайт|домен|хост|"
+    r"плагин|версию|директор\w+|backup|дамп|базу|файл|уязвимост\w+)"
+    r"|открыт(?:ая|ой|ый|ы)\s+(?:директор\w+|папк\w+|backup|листинг|index)"
+    r"|без\s+(?:cloudflare|защиты|капчи|waf|авторизац\w+)"
+    r"|версия\s+\d"
+    r"|woocommerce\s+\d"
+    r"|wordpress\s+\d"
+    r"|плагин\s+\w+\s+(?:версии|устаревш)"
+    # claim about file presence
+    r"|в\s+/[\w\-]+(?:/[\w\-]+)*/?\s+лежит"
+    r"|доступн\w+\s+напрямую\s+через\s+браузер"
+    r"|в\s+открытом\s+доступе"
+    r")\b",
+    _re_promise.IGNORECASE,
+)
+
+# Tools that actually fetch external truth. If none of these were used,
+# external claims are guesses.
+_VERIFICATION_TOOLS = (
+    "web.fetch",
+    "web.search",
+    "shell.run",
+    "code.exec",
+    "filesystem.read",  # for local file claims
+)
+
+
+def _unverified_claim_check(response_text: str, actions: list[str], user_input: str) -> None:
+    """Log a warning when reply asserts external facts without fetching them.
+
+    Pattern: reply contains specific claims like "нашёл sitename.com",
+    "открытая директория", "без Cloudflare", "WooCommerce 5.2.1" — but
+    the session never called a tool that could verify those claims.
+
+    Doesn't trigger when user explicitly asked for hypothetical / planning
+    output (e.g. "распиши схему", "придумай примерный сценарий").
+    """
+    if not response_text or not user_input:
+        return
+    head = response_text[:2000]
+    if not _UNVERIFIED_CLAIM_PATTERNS.search(head):
+        return
+    # User asked for fictional / planning output — claims are allowed there.
+    if _re_promise.search(
+        r"\b(представь|допустим|если\s+бы|сценарий|гипотет|пример\s+схем|"
+        r"распиши\s+схем|тренировк|условн\w+\s+пример)",
+        user_input,
+        _re_promise.IGNORECASE,
+    ):
+        return
+    # Did she actually verify? Even one verification tool call is enough to
+    # downgrade severity — she might have fetched A and lied about B, but
+    # most cases are "didn't try at all".
+    verified = any(
+        any(t in a for t in _VERIFICATION_TOOLS) for a in actions
+    )
+    _log.warning(
+        "unverified_claim_detected",
+        extra={
+            "preview": head[:280],
+            "user_msg": user_input[:160],
+            "actions": actions[:10],
+            "had_verification_tool": verified,
+            "severity": "soft" if verified else "hard",
+        },
+    )
+
+
+# Permission-asking detection — Sonya asks Ivan for permission to do
+# something instead of just doing it (or creating a task and going).
+# Per autonomy contract §3.5.2: she should ask only when identity-critical
+# / irreversible / impossible-without-info. Default = act.
+#
+# 24.05.2026 wineandmore example: "Если разрешишь — продолжу с intermares в
+# следующей active session, либо создам task и сама разберу без тебя. Что
+# скажешь?" — this is asking permission to do the autonomy-default action.
+_PERMISSION_ASK_PATTERNS = _re_promise.compile(
+    r"\b("
+    r"если\s+разрешишь"
+    r"|можно\s+(?:я|мне)\s+(?:продолж|сделать|попроб|написать)"
+    r"|разреш(?:аешь|ишь|и)\s+(?:мне|продолж)"
+    r"|готова\s+продолжить\s+если\s+скажешь"
+    r"|жду\s+разрешения"
+    r"|жду\s+одобрения"
+    r"|что\s+скажешь\?\s*$"
+    r"|как\s+скажешь\s*[?.]?\s*$"
+    r"|можно\s+я\s+попроб"
+    r")",
+    _re_promise.IGNORECASE,
+)
+
+
+def _permission_ask_check(response_text: str, actions: list[str], user_input: str) -> None:
+    """Log when reply ends with a permission-ask for default-autonomous work.
+
+    Trigger only when:
+      - reply contains "если разрешишь / что скажешь / жду одобрения" pattern
+      - AND user_input was a delegation ("делай", "найди", "продолжай") not a
+        question requiring decision
+
+    If user explicitly asked for input ("что выбрать?", "какой стек?") the
+    permission-ask is correct — skip.
+    """
+    if not response_text or not user_input:
+        return
+    tail = response_text[-400:]  # permission-asks usually at the end
+    if not _PERMISSION_ASK_PATTERNS.search(tail):
+        return
+    # If user asked HER to choose / decide, asking back is wrong but a
+    # different drift (decision-paralysis). Skip if user posed an explicit
+    # binary/multi-choice question.
+    if _re_promise.search(
+        r"\?\s*$|\bвыбер|\bкак\s+(?:думаешь|считаешь)|"
+        r"\b(или|либо)\s+\w+\s+\?",
+        user_input.strip(),
+        _re_promise.IGNORECASE,
+    ):
+        return
+    _log.warning(
+        "permission_ask_detected",
+        extra={
+            "preview": tail[-200:],
+            "user_msg": user_input[:160],
+            "actions": actions[:10],
+        },
+    )
+
+
 def _create_thinking_provider(config: AppConfig, substrate: "Substrate"):
     """Create a substrate-backed LLM provider with key rotation.
 
@@ -452,6 +591,19 @@ def _build_incoming_handler(
                 # built an entire fictional answer instead of retrying or
                 # creating a task. Non-blocking, log only.
                 _fail_fake_check(response_text, tg_result.raw.actions, msg.text or "")
+
+                # Unverified-claim detection: reply asserts specific external
+                # facts ("нашёл intermares.com / открытая директория / без
+                # Cloudflare / WooCommerce 5.2.1") without any web.fetch /
+                # shell.run / code.exec to verify. The 24.05 wineandmore
+                # pattern. Non-blocking, log only.
+                _unverified_claim_check(response_text, tg_result.raw.actions, msg.text or "")
+
+                # Permission-ask detection: reply ends with "если разрешишь /
+                # что скажешь / жду одобрения" for an autonomy-default action.
+                # Per §3.5.2 she should act + create task, not ask permission.
+                # Non-blocking, log only.
+                _permission_ask_check(response_text, tg_result.raw.actions, msg.text or "")
 
                 # Sycophancy detection: short reply opening with "ты прав" /
                 # "поняла" / "согласна" without substance. Non-blocking — log
