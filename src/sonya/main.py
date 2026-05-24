@@ -74,6 +74,47 @@ def _looks_like_prompt_placeholder(text: str) -> bool:
     return bool(_PLACEHOLDER_RE.match(text.strip()))
 
 
+# Sycophancy patterns — agreement without substance.
+# Detected at the START of the response (after optional *action* prefix).
+# If the reply opens with bare agreement and is short, log a warning so we
+# can spot RLHF drift toward "ты прав" reflex.
+_SYCOPHANCY_RE = _re_promise.compile(
+    r"^"
+    r"(?:\*[^*]+\*\s*\n*\s*)?"  # optional leading *action* with newlines
+    r"(?:"
+    r"ты\s+прав[аы]?\.?\s*$"
+    r"|поняла\.?\s*$"
+    r"|согласна\.?\s*$"
+    r"|именно\.?\s*$"
+    r"|точно\.?\s*$"
+    r"|действительно\.?\s*$"
+    r"|правда\.?\s*$"
+    r"|хорошая\s+(?:идея|мысль)\.?\s*$"
+    r"|конечно\.?\s*$"
+    r")",
+    _re_promise.IGNORECASE | _re_promise.MULTILINE,
+)
+
+
+def _looks_like_sycophancy(text: str) -> bool:
+    """True if the reply OPENS with bare agreement (no substance follows).
+
+    Patterns: 'Ты прав.\n*explanation*' is fine — opening agreement followed
+    by reasoning. But 'Ты прав.' alone, or '*тихо* Ты прав.' alone, is empty
+    agreement = sycophancy.
+    """
+    if not text:
+        return False
+    # Look at first ~200 chars only — opening matters
+    head = text.strip()[:200]
+    # If the head matches the sycophancy pattern AND total reply is short
+    # (<300 chars), it's sycophancy. Long replies that START with "Ты прав"
+    # but have substance after — fine.
+    if len(text.strip()) > 300:
+        return False
+    return bool(_SYCOPHANCY_RE.search(head))
+
+
 def _empty_promise_check(response_text: str, actions: list[str]) -> None:
     """Log a warning if Sonya's reply promises action without tool calls or a task.
 
@@ -91,6 +132,48 @@ def _empty_promise_check(response_text: str, actions: list[str]) -> None:
         "empty_promise_detected",
         extra={
             "preview": response_text[:160],
+            "actions_count": len(actions),
+        },
+    )
+
+
+# Sycophancy detection — phrases that suggest auto-agreement without facts.
+# Triggered when response STARTS with one of these patterns without any
+# tool call between user message and response (i.e. she didn't check facts).
+_SYCOPHANCY_OPENERS = _re_promise.compile(
+    r"^\s*[*_(\[]*\s*("
+    r"ты прав\b|ты права\b|правда\b|"
+    r"да[,. ]+ты\b|"
+    r"поняла[,. ]|поняла\.|поняла$|"
+    r"согласна\b|согласен\b|"
+    r"хорошая (?:идея|мысль|точка зрения)|"
+    r"точно[,. ]|именно[,. ]|"
+    r"действительно[,. ]"
+    r")",
+    _re_promise.IGNORECASE | _re_promise.MULTILINE,
+)
+
+
+def _sycophancy_check(response_text: str, actions: list[str], user_input: str) -> None:
+    """Log a warning when reply opens with auto-agreement and there were no
+    fact-checking tool calls (self_inspect, memory.recall) in the session.
+
+    Non-blocking. Lets us see in logs how often Sonya drifts into sycophancy.
+    """
+    if not response_text or not user_input:
+        return
+    if not _SYCOPHANCY_OPENERS.search(response_text[:120]):
+        return
+    # If she DID check facts (self_inspect, memory.recall, tasks.list, env.list),
+    # her agreement might be grounded. Skip warning.
+    fact_check_tools = ("self_inspect", "memory.recall", "tasks.list", "env.list")
+    if any(any(t in a for t in fact_check_tools) for a in actions):
+        return
+    _log.warning(
+        "sycophancy_detected",
+        extra={
+            "preview": response_text[:160],
+            "user_msg": user_input[:120],
             "actions_count": len(actions),
         },
     )
@@ -299,6 +382,18 @@ def _build_incoming_handler(
                 # but produced no tool calls and no task. Log a warning so we can
                 # spot fake-agency regressions without blocking the reply.
                 _empty_promise_check(response_text, tg_result.raw.actions)
+
+                # Sycophancy detection: short reply opening with "ты прав" /
+                # "поняла" / "согласна" without substance. Non-blocking — log
+                # only. RLHF drift indicator.
+                if _looks_like_sycophancy(response_text):
+                    _log.warning(
+                        "sycophancy_detected",
+                        extra={"preview": response_text[:200]},
+                    )
+                # Sycophancy detection: she opened with "ты прав / поняла / согласна"
+                # without any fact-checking tool. Log for visibility.
+                _sycophancy_check(response_text, tg_result.raw.actions, msg.text or "")
 
                 record_response_as_memory(
                     substrate, msg.text, response,
