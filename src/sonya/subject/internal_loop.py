@@ -535,15 +535,25 @@ class InternalProcess:
             # answered "I cannot proceed" because she had no idea who she was.
             try:
                 from sonya.planning.context_builder import build_full_context
+                from sonya.prompts import load_session_suffix
                 ctx = build_full_context(
                     substrate=substrate,
                     user_input="",  # filled by initial_thought instead
                     principal_id=None,
                     drives=self._drives,
                 )
-                # Stack: thinking-mode prefix → full context system block → TOOL_DESCRIPTIONS
-                # (TOOL_DESCRIPTIONS is appended by run_agent_session itself)
-                full_prompt = prompt + "\n\n" + ctx.system_prompt
+                # Stack: identity prompt → full context block → unified session
+                # rules (anti-fail-fake / anti-sycophancy / anti-hallucination
+                # — same set of rules as TG channel sees, per
+                # CONTINUITY_STREAM_AND_SUBJECT_CORE: one subject, many surfaces)
+                # → TOOL_DESCRIPTIONS (appended by run_agent_session itself).
+                full_prompt = (
+                    prompt
+                    + "\n\n"
+                    + ctx.system_prompt
+                    + "\n\n"
+                    + load_session_suffix("internal_active")
+                )
             except Exception:
                 full_prompt = prompt
 
@@ -857,6 +867,8 @@ class InternalProcess:
                 if task.last_session_notes:
                     handoff_block += f"Notes: {task.last_session_notes[:1500]}\n"
 
+            from sonya.prompts import load_session_suffix
+
             worker_prompt = (
                 "Ты Соня. Это автономная мини-сессия — продолжаешь работу над "
                 "задачей Ивана в фоне, между TG-сообщениями.\n\n"
@@ -868,18 +880,13 @@ class InternalProcess:
                 f"{session_budget_line}\n"
                 f"{handoff_block}"
                 f"\n{notify_hint}\n\n"
-                "Что делать в этом тике:\n"
-                "- Сделай 1-2 шага по этой задаче через tools\n"
-                "- Когда закончил шаг — `[TOOL: tasks.step]` с JSON\n"
-                "- Если задача done — `[TOOL: tasks.complete]` JSON и финальный chat.tell_ivan если notify_mode != silent\n"
-                "- Если ждёшь approval/Ивана — `[TOOL: tasks.block]` JSON и закрывайся\n"
-                "- Если задача оказалась бессмысленной — `[TOOL: tasks.fail]`\n"
-                "- Если просто хочешь подождать — `[DONE]` (через ~2 минуты я снова запущу)\n\n"
-                "**ВАЖНО**: ПЕРЕД `[DONE]` (если не вызвала complete/fail/block) — обязательно "
-                "`[TOOL: tasks.handoff]` с notes и next_step. "
-                "Без этого следующий тик начнёт с нуля и не будет знать где ты остановилась.\n\n"
-                "У тебя 5 шагов и 60 секунд. Не торопись.\n\n"
                 + ctx.system_prompt
+                + "\n\n"
+                # Unified session rules (anti-fail-fake / anti-sycophancy /
+                # anti-hallucination) + worker-specific budget + handoff rules.
+                # Same rules across TG / active / worker per
+                # CONTINUITY_STREAM_AND_SUBJECT_CORE: one subject, many surfaces.
+                + load_session_suffix("task_worker")
             )
 
             try:

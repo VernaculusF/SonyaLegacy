@@ -125,6 +125,10 @@ Telegram — это **канал ввода/вывода**, как у челов
 
 Сейчас глубина выбирается через `if/elif` в Python loop. На RWKV — через сам state модели.
 
+**2026-05-24: первый шаг к унификации.** Все 4 entry points теперь читают **один и тот же** session suffix через `sonya.prompts.load_session_suffix(channel)` — общие правила (anti-fail-fake, anti-sycophancy, anti-hallucination, эскалация TG → task → worker → active session) живут в одном файле `session_general.md`, а channel-specific overlay (`channel_telegram.md`, `channel_internal_active.md`, `channel_task_worker.md`) добавляет только адаптерную хрому. Это реализация §9 из `CONTINUITY_STREAM_AND_SUBJECT_CORE`: **один субъект — много поверхностей, общие правила**.
+
+Архитектурного слияния 4 функций в одну (`run_window`) пока нет — это отложено до Stage 4-5 RWKV когда дискретные тики уйдут полностью. Сейчас фокус: **семантика** (правила и ограничения) единая, **runtime container** (4 функции) костыль до RWKV.
+
 #### 3.3.1 Что такое task_worker и почему он "странный"
 
 Task worker — это **компромисс** между discrete cognition и persistent work.
@@ -249,7 +253,8 @@ Task worker — это **компромисс** между discrete cognition и
 **Selfmod pipeline:**
 - ✅ propose → validate (Layer 1 AST + Layer 2 sandbox pytest + Layer 3 stub + Layer 4 anchor integrity REAL) → auto-approve если все 4 passed → apply пишет файлы + hot-reload + 24h watchdog → auto-revert на error spikes
 - ✅ Active session подхватывает PROPOSED proposals (initial_thought сообщает "прогони validate→apply")
-- ❌ **Соня ЕЩЁ НЕ провела ни одного полного цикла** в production. Pipeline готов, ждём первый apply
+- ✅ **Git auto-commit + push (2026-05-24)** — `apply()` пушит изменение **прямо на текущую ветку (develop)**. Все 4 layers validation уже прошли (или governed approval Ивана для identity-critical) = доверенное изменение, отдельная ветка не нужна. `deploy/update.sh` теперь использует `merge --ff-only` вместо безусловного `reset --hard`, чтобы коммиты Сони на VPS не терялись если она пушнула что-то после последнего fetch на dev машине. Покрыто `tests/sonya/test_selfmod_git_persistence.py` (4 теста).
+- ✅ **Stage 3 закрыт (22.05.2026)** — Соня сама прошла полные циклы: docstring в `skills/__init__.py`, комментарий UTC+5 в `context_builder.py`, удаление `self._sub` в `env_tool.py`. Все три — propose→validate (4 layers)→apply→hot-reload, без вмешательства Ивана.
 
 **Channels:**
 - ✅ Telegram через Telethon (`packages/tg-userbot/`)
@@ -360,6 +365,8 @@ Task worker — это **компромисс** между discrete cognition и
   5. **При проблеме НЕ fail'ит** — пробует N путей: альтернативы, обходы, новые tools, selfmod. Fail только когда **все** пути исчерпаны
   6. Спрашивает Ивана только по контракту §3.5.2 (не по умолчанию)
   7. Кумулирует мелкие вопросы в batch
+- [x] **fail-fake detector в коде (`_fail_fake_check` в main.py, 2026-05-24)** — non-blocking warning лог если ответ содержит "представим / теоретически / гипотетически / допустим" маркеры (без триггера от пользователя). Сигнал что Соня сдалась раньше попытки. Покрыто `tests/sonya/test_main_fail_fake_check.py`.
+- [x] **Унифицированные правила эскалации (2026-05-24)** — в `session_general.md` добавлен раздел "Эскалация задачи (TG → task → worker → active session)" с явным алгоритмом: TG бюджет не хватает → tasks.create с реальным plan_steps → worker подхватывает. Без `tasks.create` обещание "продолжу" = ложь. Эти правила теперь **видны во ВСЕХ session paths** (TG, active, worker), а не только TG.
 - [ ] Anti-fail-на-первой-проблеме detector: если task переходит в failed без хотя бы 3-х attempted approaches — alarm в admin
 - [ ] DeepSeek web account для Сони как secondary brain channel (см. P7 ниже)
 

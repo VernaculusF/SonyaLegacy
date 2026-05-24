@@ -2,8 +2,8 @@
 
 **Status:** Active (governing — план развития проекта)
 **Type:** Master Plan
-**Last reviewed:** 2026-05-19
-**Scope:** Стадии развития Сони от substrate-based hosted bot (сейчас ~26/100) до AGI способного бесконечно улучшать себя (100/100). Каждая стадия имеет конкретный exit-criteria.
+**Last reviewed:** 2026-05-24
+**Scope:** Стадии развития Сони от substrate-based hosted bot (сейчас ~38-42/100) до AGI способного бесконечно улучшать себя (100/100). Каждая стадия имеет конкретный exit-criteria.
 
 ---
 

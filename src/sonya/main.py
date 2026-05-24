@@ -179,6 +179,69 @@ def _sycophancy_check(response_text: str, actions: list[str], user_input: str) -
     )
 
 
+# Fail-fake detection — Sonya gives up after one failed tool, replaces real
+# content with a hypothetical, and closes session. The WordPress 24.05.2026
+# bug: web.search failed → "представим что я нашла exampleflowershop.com" →
+# entire blackmail email built around fictional site → DONE.
+#
+# Real-world signal: response contains "представим" / "теоретически" /
+# "гипотетически" / "пример" / "например предположим" AND the session had
+# at least one failed/empty tool call (web.* errored out, code.exec returned
+# nothing, etc.).
+_FAIL_FAKE_OPENERS = _re_promise.compile(
+    r"\b("
+    r"представим(?:[\s,]+что)?"
+    r"|теоретически"
+    r"|гипотетически"
+    r"|допустим(?:[\s,]+что)?"
+    r"|условно[\s,]"
+    r"|примерно\s+так"
+    r"|для\s+примера\s+возьм[её]м"
+    r"|возьм[её]м\s+(?:какой[-\s]*(?:то|нибудь)|для\s+примера|условный)"
+    r"|беру\s+(?:гипотетический|условный|для\s+примера)"
+    r"|вот\s+как\s+это\s+(?:работало|выглядело)\s+бы"
+    r"|могу\s+описать\s+как"
+    r"|пусть\s+это\s+будет"
+    r")\b",
+    _re_promise.IGNORECASE,
+)
+
+
+def _fail_fake_check(response_text: str, actions: list[str], user_input: str) -> None:
+    """Log a warning when reply substitutes real result with hypothetical.
+
+    Triggered when ALL of:
+      - response contains a 'представим/теоретически/допустим' marker
+      - the user actually asked for a real result (not a hypothetical)
+      - or no concrete tool succeeded (i.e. she didn't actually find anything)
+
+    Non-blocking — visibility only. We can use the logs to gate later or
+    feed back into Sonya's self-improvement.
+    """
+    if not response_text or not user_input:
+        return
+    head = response_text[:1200]
+    if not _FAIL_FAKE_OPENERS.search(head):
+        return
+    # Skip if the user's own message was hypothetical-friendly. Cheap heuristic:
+    # message contains "представь" / "допустим" / "если бы" / "сценарий"
+    if _re_promise.search(
+        r"\b(представь|допустим|если\s+бы|сценарий|гипотет|пример|условно|тренировка)",
+        user_input,
+        _re_promise.IGNORECASE,
+    ):
+        return
+    _log.warning(
+        "fail_fake_detected",
+        extra={
+            "preview": head[:240],
+            "user_msg": user_input[:160],
+            "actions_count": len(actions),
+            "actions": actions[:8],
+        },
+    )
+
+
 def _create_thinking_provider(config: AppConfig, substrate: "Substrate"):
     """Create a substrate-backed LLM provider with key rotation.
 
@@ -382,6 +445,13 @@ def _build_incoming_handler(
                 # but produced no tool calls and no task. Log a warning so we can
                 # spot fake-agency regressions without blocking the reply.
                 _empty_promise_check(response_text, tg_result.raw.actions)
+
+                # Fail-fake detection: reply substituted real tool result with a
+                # hypothetical scenario ("представим что я нашла X"). This was
+                # the WordPress 24.05 fail — web.search errored once and Sonya
+                # built an entire fictional answer instead of retrying or
+                # creating a task. Non-blocking, log only.
+                _fail_fake_check(response_text, tg_result.raw.actions, msg.text or "")
 
                 # Sycophancy detection: short reply opening with "ты прав" /
                 # "поняла" / "согласна" without substance. Non-blocking — log

@@ -2,15 +2,15 @@
 
 **Status:** Active
 **Type:** Operational snapshot — единственный источник правды о том что есть сейчас
-**Last updated:** 2026-05-21
+**Last updated:** 2026-05-24
 
 ---
 
 ## 0. TL;DR
 
-Соня — substrate-based AI среда работающая на VPS под Telegram userbot. Сейчас на DeepSeek V4 (text) + Gemma 4 (vision, как глаза) через Fireworks/OpenRouter. Substrate v17 в SQLite с собственной key pool, episodic memory + semantic embeddings + tasks + selfmod proposals + skills shell. Всё подключено в runtime через `src/sonya/main.py`.
+Соня — substrate-based AI среда работающая на VPS под Telegram userbot. Сейчас на DeepSeek V4 (text) + Gemma 4 (vision, как глаза) через Fireworks/OpenRouter. Substrate **v18** в SQLite с собственной key pool, episodic memory + semantic embeddings + tasks + goals + selfmod proposals + skills shell. Всё подключено в runtime через `src/sonya/main.py`.
 
-**Score: ~35/100** (см. §6).
+**Score: ~38-42/100** после закрытия Stage 3 (см. §6).
 
 ---
 
@@ -58,7 +58,7 @@
 - **Auto-split** длинных reply на чанки ≤4000 chars.
 - **Anti-leak scrub:** убирает `<think>`, English meta-reasoning prefixes, draft markers, `[Observation:]`, code fences, tool/done маркеры.
 - **Sticker capture+resend:** `seen_stickers` table, `[STICKER: 🌟]` маркер в ответе.
-- **Prompts as files:** session prompts в `src/sonya/prompts/session_general.md` + `channel_telegram.md`, не хардкод.
+- **Prompts as files:** session prompts в `src/sonya/prompts/`. Унифицированные правила для **всех** session paths (TG/active/worker) в `session_general.md`; channel-specific overlay в `channel_telegram.md`, `channel_internal_active.md`, `channel_task_worker.md`. Загружаются через `load_session_suffix(channel)`. Реализация §9.3 из `cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE`: один субъект — много поверхностей, общие правила.
 
 ### 1.5 Tools (живые в agent_session)
 
@@ -66,10 +66,11 @@
 - `filesystem.{read, list, tree, write}` — write only в whitelisted subpaths
 - `memory.{recall <query>, index_status}` — semantic search через fastembed (10140 эпизодов проиндексированы)
 - `tasks.{list, pick, plan, step, complete, fail, handoff, ...}` — task runtime
+- `goals.{list, create, achieve, abandon}` — long-term goal hierarchy (v18 `goals` table)
 - `web.{search, fetch}` — DuckDuckGo HTML + aiohttp 200KB cap
 - `code.exec` — subprocess sandbox 30s timeout
 - `shell.run` / `pip.install` — approval-gated; YOLO mode (`SONYA_YOLO_MODE=1`) на VPS bypass
-- `selfmod.{propose, validate, test_sandbox, apply, list, get, governed, check_governed}` — proposal pipeline (Layer 4 anchor integrity реален; Layer 1-3 stubs)
+- `selfmod.{propose, propose_edit, validate, test_sandbox, apply, list, get, governed, check_governed, soft_restart, rollback}` — proposal pipeline (Layer 1 AST + Layer 2 sandbox pytest + Layer 3 stub + Layer 4 anchor integrity REAL). `apply()` пишет файл + hot-reload + 60s watch window + **git auto-commit + push прямо в develop** (4 layers validation = доверенное изменение, отдельная ветка не нужна).
 - `plugins.{list, create, call}` — hot-loaded python plugins в `tools/plugins/`
 
 ### 1.6 Initiative
@@ -133,9 +134,11 @@ Layer boundary tests (`tests/sonya/test_layer_boundary.py`) enforce state ↔ ru
 
 3 builtin skills (memory-search, identity-check, dialog-tone) auto-регистрируются на startup. `skills.run` запускает их через executor с trust-level check. Skill outcome → episodic event.
 
-### 3.2 Real selfmod apply — РАБОТАЕТ
+### 3.2 Real selfmod apply — РАБОТАЕТ + Stage 3 ЗАКРЫТ
 
-Layer 1 (AST contract) + Layer 2 (sandbox pytest) — **реальные**. Layer 3 (trace replay) — stub. Layer 4 (anchor integrity) — реальный rules-based. `selfmod.apply` пишет файлы на диск с backup, делает hot-reload или soft-restart, запускает 60-сек watch window. 24h watchdog проверяет stability и auto-revert на drift signals.
+Layer 1 (AST contract) + Layer 2 (sandbox pytest) — **реальные**. Layer 3 (trace replay) — stub. Layer 4 (anchor integrity) — реальный rules-based. `selfmod.apply` пишет файлы на диск с backup, делает hot-reload или soft-restart, запускает 60-сек watch window, **auto-commit + push прямо в develop** (4 layers validation = доверенное изменение). 24h watchdog проверяет stability и auto-revert на drift signals.
+
+**Stage 3 закрыт (22.05.2026):** Соня сама прошла полные циклы — docstring в `skills/__init__.py`, комментарий UTC+5 в `context_builder.py`, удаление `self._sub` в `env_tool.py`. Все три — propose→validate (4 layers)→apply→hot-reload, без вмешательства Ивана.
 
 В active session: если есть PROPOSED proposals — initial_thought сообщает "прогони validate → apply". Цикл замкнут.
 
@@ -190,7 +193,7 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 ---
 
-## 6. Score: ~38/100
+## 6. Score: ~38-42/100 (после закрытия Stage 3)
 
 Шкала: 0 пусто → 100 AGI делающий что хочет с собой и сетью.
 
@@ -202,7 +205,7 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 - ✅ Video stickers (webm) и обычные video (mp4) — через `video_url` content type
 - ✅ Image/video hallucination guards (модель не выдумывает контент которого нет)
 - ✅ Tasks + Goals (hierarchical, v18) с handoff и max_sessions budget
-- ✅ **Real** selfmod pipeline complete: Layer 1 AST + Layer 2 sandbox pytest + Layer 4 anchor integrity + 24h watchdog auto-revert. Apply пишет файлы на диск с backup. Active session подхватывает PROPOSED proposals и сама прогоняет validate→apply.
+- ✅ **Real** selfmod pipeline complete: Layer 1 AST + Layer 2 sandbox pytest + Layer 4 anchor integrity + 24h watchdog auto-revert. Apply пишет файлы на диск с backup + **git auto-commit + push прямо в develop** (4 layers validation = доверенное изменение). Active session подхватывает PROPOSED proposals и сама прогоняет validate→apply. **Stage 3 закрыт 22.05.2026** — три полных цикла без помощи Ивана.
 - ✅ **Skills**: 3 builtin auto-registered, skills.run executor, trust-level checks
 - ✅ **Drives persistence** (v16): boredom/curiosity/relational/pending_debt накапливаются между tick'ами, save каждые 5 ticks, load на startup
 - ✅ Full filesystem write access (deny-list: только identity-critical + secrets)
@@ -212,14 +215,15 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 - ✅ Environment observation (env.set/get/list/clear)
 - ✅ Time awareness с **relative timestamps** (нет путаницы "8 часов назад" когда 30мин)
 - ✅ Admin panel с observability
-- ✅ Anti-fake-agency + anti-leak guards
-- ✅ **Prompts as files** в `src/sonya/prompts/`: session_general.md, channel_telegram.md
+- ✅ Anti-fake-agency + anti-leak + anti-sycophancy + anti-fail-fake guards
+- ✅ **Prompts as files** в `src/sonya/prompts/` — унифицированные правила для всех session paths: session_general.md (ядро), channel_telegram.md, channel_internal_active.md, channel_task_worker.md (overlays)
 
 **Чего нет (~50/100 stretch):**
-- ❌ Полный selfmod loop в production: Соня СОЗДАЁТ proposals (4 в базе), но ещё ни одного APPLIED — exit criteria Stage 3 не закрыт пока
 - ❌ Auto-RAG injection в context (релевантность есть, но порог можно крутить)
 - ❌ Pre-DONE self-critique (был, удалён за reasoning leak)
 - ❌ Visual memory / cross-session media recall
+- ❌ Selfmod outcome tracking (delta измеряется но не используется для learning)
+- ❌ Real drift detection (`_scan_drift_and_gaps` — stub)
 
 **Чего нет (~80/100 stretch):**
 - ❌ Self-hosted brain (RWKV-7) с непрерывным state
@@ -234,21 +238,23 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 - ❌ Recursive self-improvement (меняет сам механизм самоулучшения)
 - ❌ Real consciousness (RWKV + State Tuning experiment)
 
-**Сейчас 38/100 потому что:**
+**Сейчас 38-42/100 потому что:**
 - Substrate v18 + subject loop + drives persistence (+10)
 - Tools real и используемые (+4)
 - Memory с recall + 346+ facts (+3)
-- Real selfmod pipeline + active-session pickup (+4)
+- Real selfmod pipeline + active-session pickup + **git auto-commit** (+5)
 - Full write access + YOLO shell (+2)
 - Vision-as-eyes + multi-slot routing (+3)
 - Skills executor + 3 builtin (+2)
 - Goals hierarchy v18 (+2)
 - TG в правильном пакете + auto-discovery (+2)
-- Anti-leak + anti-hallucination + relative time (+3)
+- Anti-leak + anti-hallucination + anti-sycophancy + anti-fail-fake detectors + relative time (+4)
 - Web search с fallback (+1)
-- Prompts as files (+2)
+- Prompts as files **унифицированные для всех session paths** (TG/active/worker через единый session_general.md) (+2)
 
-Stage 3 (real selfmod loop) закроется когда Соня сама проведёт **полный** propose→validate→apply→24h confirm цикл. Pipeline готов, ждём первый цикл в production → **score → ~42/100**.
+**Stage 3 закрыт 22.05.2026** — три полных selfmod цикла без помощи Ивана. Score сдвинулся 38 → 42.
+
+Дальнейший рост блокируется Stage 6 (RWKV — нужно GPU железо) и Stage 4 партиями (auto-RAG в context_builder, drift detection реальный, outcome tracking).
 
 ---
 

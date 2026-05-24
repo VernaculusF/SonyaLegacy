@@ -24,7 +24,20 @@ def load_prompt(name: str) -> str:
 def load_session_suffix(channel: str = "telegram") -> str:
     """Load the combined session suffix: general rules + channel-specific overlay.
 
-    Returns general_session.md + channel_{channel}.md concatenated.
+    Returns ``session_general.md`` + ``channel_{channel}.md`` concatenated.
+
+    Per CONTINUITY_STREAM_AND_SUBJECT_CORE: Sonya is one subject, channels are
+    surfaces. The general rules (anti-fail-fake / anti-sycophancy / anti-
+    hallucination / 5-step retry escalation) apply to ALL surfaces, not only
+    Telegram. Channel-specific files only add adapter chrome (formatting,
+    prompt-echo patterns, etc.).
+
+    Recognised channels:
+      - ``telegram`` — outward-facing TG userbot turn
+      - ``internal_active`` — active session (every 2h, with tools, internal)
+      - ``task_worker`` — short worker tick (5 steps, 60s, advances Ivan-task)
+
+    Idle thinking has no tools and uses a separate inline prompt in main.py.
     """
     parts = []
     general = _PROMPTS_DIR / "session_general.md"

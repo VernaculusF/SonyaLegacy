@@ -9,9 +9,31 @@ SUBSTRATE_DIR="$HOME/.sonya"
 
 cd "$PROJECT_DIR"
 
+echo "=> Checking for uncommitted local changes..."
+# selfmod.apply() commits + pushes directly to current branch (develop) on
+# success. If working tree is dirty here, something interrupted that flow
+# (push failed mid-way, manual edit, etc.). Stash to a backup branch so
+# git reset --hard doesn't silently nuke the work.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    BACKUP_BRANCH="sonya-selfmod/local-backup-$(date +%Y%m%d-%H%M%S)"
+    echo "!! Working tree is dirty. Saving to branch: $BACKUP_BRANCH"
+    git checkout -B "$BACKUP_BRANCH"
+    git add -A
+    git -c user.name="Sonya" -c user.email="sonya@local" commit -m "selfmod: emergency backup before deploy" || true
+    git push --set-upstream origin "$BACKUP_BRANCH" 2>&1 | grep -v "^$" || true
+    git checkout develop 2>/dev/null || git checkout -B develop origin/develop
+fi
+
 echo "=> Fetching latest code..."
 git fetch origin
-git reset --hard origin/develop
+# Soft-reset semantics: if local develop has commits ahead of origin (Sonya
+# pushed selfmod here that hasn't been fetched on the dev box yet), we want
+# to keep them. Use merge --ff-only first; fall back to hard reset if
+# branches truly diverged.
+if ! git merge --ff-only origin/develop 2>/dev/null; then
+    echo "!! local develop diverged from origin/develop — hard reset"
+    git reset --hard origin/develop
+fi
 
 echo "=> Ensuring substrate directory exists with correct permissions..."
 mkdir -p "$SUBSTRATE_DIR"
