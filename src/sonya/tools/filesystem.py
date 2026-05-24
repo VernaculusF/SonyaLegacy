@@ -121,6 +121,20 @@ class FilesystemTool:
         return p.read_text(encoding="utf-8", errors="replace")[:10000]
 
     def write(self, path: str, content: str) -> str:
+        # Defense in depth: reject paths with newline / control / quote chars.
+        # Even if upstream parser fails, we don't want to create a literal
+        # `workspace/foo.md\n#` file. Forward slashes and dots are fine —
+        # those are normal path components.
+        if not path or not path.strip():
+            return "[ERROR] filesystem.write: empty path"
+        # Check for control chars BEFORE strip — strip would silently remove
+        # trailing \r etc.
+        if any(ch in path for ch in ("\n", "\r", "\0", '"')):
+            return (
+                "[ERROR] filesystem.write: path contains newline/control/quote chars. "
+                "Use block form: first line = path, remaining lines = content."
+            )
+        path = path.strip()
         try:
             p = self._resolve_under_project(path)
             self._check_forbidden(p)

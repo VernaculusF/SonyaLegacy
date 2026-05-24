@@ -477,10 +477,23 @@ def _execute_tool(
         elif name == "filesystem.tree":
             return filesystem.tree(arg)
         elif name == "filesystem.write":
-            parts = arg.split(" ", 1)
-            if len(parts) < 2:
-                return "[ERROR] filesystem.write needs: path content"
-            return filesystem.write(parts[0], parts[1])
+            # Block form: first line = path, remaining lines = content.
+            # Inline fallback: first space-separated token = path, rest = content.
+            # The newline split is the documented form (TOOL_DESCRIPTIONS) — without
+            # it, a multi-line content with a header like "# title" caused the
+            # space-split to grab "path\n#" as the filename.
+            if "\n" in arg:
+                lines = arg.split("\n", 1)
+                path_part = lines[0].strip()
+                content_part = lines[1] if len(lines) > 1 else ""
+            else:
+                parts = arg.split(" ", 1)
+                if len(parts) < 2:
+                    return "[ERROR] filesystem.write needs: path content"
+                path_part, content_part = parts[0].strip(), parts[1]
+            if not path_part:
+                return "[ERROR] filesystem.write: empty path"
+            return filesystem.write(path_part, content_part)
         elif name == "memory.recall":
             if memory is None:
                 return "[ERROR] memory tool not configured"
