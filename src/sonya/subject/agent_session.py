@@ -177,22 +177,68 @@ Always end with `[DONE: <твой реальный финальный ответ
 
 
 # Single-line: [TOOL: name arg-no-newlines-or-brackets]
+# Single-line: [TOOL: name arg-no-newlines]
+# Inline parser is bracket-balanced: handles JSON args containing nested
+# `]` (e.g. plan_steps array). Falls through to a simple regex if no balanced
+# match found.
 _TOOL_INLINE_RE = re.compile(r"\[TOOL:\s*([^\s\]]+)(?:\s+([^\n\]]*))?\]")
 # Block form: [TOOL: name]\n```optional-lang\n<arg>\n```
 _TOOL_BLOCK_RE = re.compile(
     r"\[TOOL:\s*([^\s\]]+)\s*\]\s*\n```[a-zA-Z0-9_-]*\n(.*?)\n```",
     re.DOTALL,
 )
+# Locate the start of an inline TOOL marker so we can do bracket-balanced
+# parse after the name.
+_TOOL_INLINE_START_RE = re.compile(r"\[TOOL:\s*([^\s\]]+)\s*")
+
+
+def _find_balanced_inline_tool(response: str) -> tuple[str, str] | None:
+    """Find an inline [TOOL: name arg] where arg may contain nested `]`.
+
+    Returns (tool_name, arg) if found. arg is text between the name and the
+    OUTERMOST closing `]`, computed by bracket-balancing.
+
+    Pattern: `[TOOL: name {nested[json]args}]` — outer pair of `[]` brackets
+    are the TOOL delimiter; inner `[...]` are part of the arg.
+    """
+    m = _TOOL_INLINE_START_RE.search(response)
+    if not m:
+        return None
+    tool_name = m.group(1)
+    arg_start = m.end()
+    # Walk forward, balancing brackets. Depth starts at 1 (we're inside the
+    # outer `[TOOL: ...`). Stop on newline (inline form forbids it).
+    depth = 1
+    i = arg_start
+    while i < len(response):
+        ch = response[i]
+        if ch == "\n":
+            return None  # not an inline form — caller falls back to block
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return tool_name, response[arg_start:i].strip()
+        i += 1
+    return None
 
 
 def _extract_tool_call(response: str) -> tuple[str, str] | None:
     """Return (tool_name, arg) if response contains a tool invocation.
 
     Block form takes precedence so multi-line code/JSON args work.
+    Inline form uses bracket-balanced parsing so JSON args with `]` work.
     """
     m = _TOOL_BLOCK_RE.search(response)
     if m:
         return m.group(1), m.group(2)
+    # Try bracket-balanced inline parse first (handles JSON with nested ]).
+    balanced = _find_balanced_inline_tool(response)
+    if balanced is not None:
+        return balanced
+    # Fallback to simple regex (shouldn't be reached after balanced parser
+    # but kept for safety on edge cases).
     m = _TOOL_INLINE_RE.search(response)
     if m:
         return m.group(1), (m.group(2) or "").strip()

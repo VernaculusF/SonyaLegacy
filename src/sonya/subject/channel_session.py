@@ -45,6 +45,53 @@ from sonya.state.substrate import Substrate
 
 
 _TOOL_LINE_RE = re.compile(r"\[TOOL:[^\]]*\]")
+
+
+def _strip_tool_markers(text: str) -> str:
+    """Remove all [TOOL: name args] markers from text, with bracket-balanced
+    parsing so JSON args containing `]` are fully removed (not truncated).
+    """
+    if "[TOOL:" not in text:
+        return text
+    out = []
+    i = 0
+    while i < len(text):
+        # Find next `[TOOL:` start
+        idx = text.find("[TOOL:", i)
+        if idx == -1:
+            out.append(text[i:])
+            break
+        # Append everything before the marker
+        out.append(text[i:idx])
+        # Walk forward, balancing brackets
+        depth = 1
+        j = idx + len("[TOOL:")
+        consumed = False
+        while j < len(text):
+            ch = text[j]
+            if ch == "\n":
+                # Inline form forbids newlines — bail and let regex sub handle it
+                break
+            if ch == "[":
+                depth += 1
+            elif ch == "]":
+                depth -= 1
+                if depth == 0:
+                    i = j + 1  # skip the closing bracket
+                    consumed = True
+                    break
+            j += 1
+        if not consumed:
+            # Failed to balance (newline or unclosed) — fall back to dumb regex
+            # for this single occurrence.
+            m = _TOOL_LINE_RE.match(text, idx)
+            if m:
+                i = m.end()
+            else:
+                # Cannot parse — append `[TOOL:` literally and move on
+                out.append(text[idx:idx + 6])
+                i = idx + 6
+    return "".join(out)
 # DONE/PAUSE markers can appear ANYWHERE in the response, not just at the end.
 # Some models like minimax put `[DONE: text]` at the very start.
 _DONE_RE = re.compile(r"\[DONE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
@@ -566,7 +613,7 @@ def _scrub(text: str) -> str:
     text = _SYSTEM_REMINDER_RE.sub("", text)
     text = _INTERNAL_REMINDER_RE.sub("", text)
     text = _CODE_FENCE_RE.sub("", text)
-    text = _TOOL_LINE_RE.sub("", text)
+    text = _strip_tool_markers(text)
     text = _DONE_RE.sub("", text)
     text = _PAUSE_RE.sub("", text)
     # Strip dangling single backticks left over after [TOOL: ...] removal
@@ -753,7 +800,7 @@ def _stitch_post_action_thoughts(result: SessionResult, final: str) -> str:
         if "[DONE" in t and len(_DONE_RE.sub("", t).strip()) < 200:
             continue
         # Skip pure tool calls
-        if _TOOL_LINE_RE.search(t) and len(_TOOL_LINE_RE.sub("", t).strip()) < 100:
+        if _TOOL_LINE_RE.search(t) and len(_strip_tool_markers(t).strip()) < 100:
             continue
         # Skip the final itself if it matches (we'll stitch with it later)
         if t.strip() == final.strip():

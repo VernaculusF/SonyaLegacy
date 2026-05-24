@@ -182,7 +182,42 @@ class OutboundGate:
         if last_tg is not None and last_tg < self._min_quiet * 60:
             mins_left = self._min_quiet - int(last_tg / 60)
             return False, f"quiet window: {mins_left}min until next allowed"
+        # Escalating quiet: if the last N events are all outgoing initiatives
+        # without any incoming reply from Ivan, lengthen the quiet window
+        # exponentially. Prevents night-spam when Ivan is asleep / not replying.
+        unanswered = self._unanswered_initiatives_streak()
+        if unanswered >= 1:
+            # 1 unanswered → 2x quiet, 2 unanswered → 4x, 3+ → block until reply
+            if unanswered >= 3:
+                return False, (
+                    f"escalating quiet: {unanswered} unanswered initiatives in a row, "
+                    f"waiting for Ivan to reply before next initiative"
+                )
+            multiplier = 2 ** unanswered  # 2, 4
+            required = self._min_quiet * multiplier * 60
+            if last_tg is not None and last_tg < required:
+                mins_left = int((required - last_tg) / 60)
+                return False, (
+                    f"escalating quiet (×{multiplier}): {unanswered} unanswered, "
+                    f"{mins_left}min until next allowed"
+                )
         return True, ""
+
+    def _unanswered_initiatives_streak(self) -> int:
+        """Count consecutive outgoing.telegram_initiative events with no
+        incoming.telegram_message between them (most recent first).
+        """
+        latest_seq = self._stream.latest_seq()
+        if latest_seq <= 0:
+            return 0
+        events = list(self._stream.read_since(max(0, latest_seq - 200)))
+        count = 0
+        for ev in reversed(events):
+            if ev.kind == "incoming.telegram_message":
+                break
+            if ev.kind == "outgoing.telegram_initiative":
+                count += 1
+        return count
 
     def _latest_tg_seconds_ago(self) -> Optional[float]:
         """Return seconds since last incoming or outgoing telegram event in continuity, or None."""
