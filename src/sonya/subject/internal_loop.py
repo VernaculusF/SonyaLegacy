@@ -869,8 +869,14 @@ class InternalProcess:
                 except Exception:
                     pass
 
-            remaining = task.remaining_steps()
-            next_step = remaining[0] if remaining else "(no plan, just continue)"
+            # Continuity: prefer next_step_hint (set by tasks.handoff at the
+            # end of the previous session). plan_steps are voluntary scaffolding
+            # — fall back to first remaining step only if no handoff hint.
+            if task.next_step_hint:
+                next_step = task.next_step_hint
+            else:
+                remaining = task.remaining_steps()
+                next_step = remaining[0] if remaining else "(no plan; pick up from notes / description)"
 
             self._stream.append(ContinuityEvent(
                 kind="internal.task_worker_tick",

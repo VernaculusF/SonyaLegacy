@@ -5,7 +5,6 @@
 **Что делать:**
 
 - Сделай 1-2 шага по задаче через tools (web/code/shell/filesystem)
-- После шага — `[TOOL: tasks.step]` с JSON: `{"task_id": "...", "step_idx": N, "result": "что сделала"}`
 - Если задача `done` — `[TOOL: tasks.complete]` JSON и финальный `chat.tell_ivan` если notify_mode != silent
 - Если ждёшь approval/Ивана — `[TOOL: tasks.block]` JSON и закрывайся
 - Если задача оказалась бессмысленной/невыполнимой ПОСЛЕ настоящих попыток — `[TOOL: tasks.fail]` JSON
@@ -13,7 +12,7 @@
 
 **КРИТИЧНО — обязательный handoff:**
 
-ПЕРЕД `[DONE]` (если не вызвала complete/fail/block) — обязательно `[TOOL: tasks.handoff]` с notes и next_step. Без этого следующий тик начнёт с нуля и не будет знать где ты остановилась.
+ПЕРЕД `[DONE]` (если не вызвала complete/fail/block) — обязательно `[TOOL: tasks.handoff]` с `notes` (что сделала, что нашла, что заблокировано) и `next_step` (конкретный one-liner откуда начать). Без этого следующий тик начнёт с нуля. Handoff — единственный способ держать continuity. `plan_steps` (если есть) могут идти лесом, handoff важнее.
 
 **notify_mode определяет общение с Иваном:**
 

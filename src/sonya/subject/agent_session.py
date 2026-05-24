@@ -129,15 +129,14 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - tasks.list [status_filter?] — pending / in_progress / blocked / done / failed / open
 - tasks.get [task_id]
 - tasks.pick — pick next open task and mark in_progress
-- tasks.plan — block form, JSON: {"task_id": "...", "steps": ["a", "b"]}
-- tasks.step — block form, JSON: {"task_id": "...", "step_idx": 0, "summary": "did it"}
 - tasks.complete — block form, JSON: {"task_id": "...", "result": "..."}
 - tasks.fail — block form, JSON: {"task_id": "...", "reason": "..."}
 - tasks.block — block form, JSON: {"task_id": "...", "blocker": "..."}
 - tasks.unblock [task_id]
 - tasks.pause [task_id]
-- tasks.handoff — block form, JSON: {"task_id": "...", "notes": "where I left off", "next_step": "what next session should do first"}
-  Call BEFORE [DONE] when ending a session on an unfinished task. Bumps sessions_used. If max_sessions reached, task auto-fails. Without handoff next session starts blind.
+- tasks.handoff — block form, JSON: {"task_id": "...", "notes": "where I left off, what I learned, what's blocking", "next_step": "concrete one-liner for next session"}
+  **Call BEFORE [DONE]** when ending a session on an unfinished task. This is THE continuity carrier across sessions — without handoff, the next session starts blind. Bumps sessions_used; if max_sessions reached, task auto-fails.
+- tasks.plan / tasks.step — legacy step-tracking tools. Optional. Use ONLY if the task already has plan_steps you want to mark off. For continuity prefer tasks.handoff.
 
 Tasks survive sessions. When active session starts you pick up your in_progress task.
 

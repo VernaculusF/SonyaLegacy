@@ -1144,6 +1144,10 @@ async def api_tasks(request: web.Request) -> web.Response:
                     "plan_steps": t.plan_steps,
                     "completed_count": len(t.completed_steps),
                     "total_steps": len(t.plan_steps),
+                    "sessions_used": t.sessions_used,
+                    "max_sessions": t.max_sessions,
+                    "next_step_hint": t.next_step_hint,
+                    "last_session_notes": t.last_session_notes[:300],
                     "blocker": t.blocker,
                     "result": t.result[:300],
                     "principal_id": t.principal_id,
@@ -1171,6 +1175,85 @@ async def api_tasks_delete(request: web.Request) -> web.Response:
         if not deleted:
             return web.json_response({"error": f"task {task_id} not found"}, status=404)
         return web.json_response({"ok": True, "task_id": task_id, "deleted": True})
+    finally:
+        sub.close()
+
+
+async def api_task_detail(request: web.Request) -> web.Response:
+    """Full task detail: model fields + completed_steps + session-handoff history.
+
+    Handoff history is reconstructed from continuity_events (kinds:
+    task.session_handoff, task.session_budget_exhausted, task.created,
+    task.picked_up, task.step_done, task.failed, task.blocked, task.completed,
+    task.unblocked) filtered by task_id in payload.
+    """
+    import json as _json
+    from sonya.tasks.store import TaskStore
+    task_id = request.match_info.get("task_id", "").strip()
+    if not task_id:
+        return web.json_response({"error": "missing task_id"}, status=400)
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        store = TaskStore(sub)
+        try:
+            t = store.get(task_id)
+        except Exception:
+            return web.json_response({"error": f"task {task_id} not found"}, status=404)
+
+        # Pull all task-related continuity events for this task_id.
+        # Filter via JSON LIKE (cheap and indexed-table-scan; tasks are
+        # typically <1000 events each).
+        cursor = sub.connection.execute(
+            """
+            SELECT seq, kind, payload_json, created_at
+            FROM continuity_events
+            WHERE kind LIKE 'task.%'
+              AND payload_json LIKE ?
+            ORDER BY seq ASC
+            LIMIT 200
+            """,
+            (f'%"{task_id}"%',),
+        )
+        events: list[dict] = []
+        for seq, kind, payload_json, created_at in cursor.fetchall():
+            try:
+                payload = _json.loads(payload_json) if payload_json else {}
+            except Exception:
+                payload = {}
+            # Only keep events that actually reference this task_id (LIKE
+            # could false-positive on substring match in summaries).
+            if payload.get("task_id") != task_id:
+                continue
+            events.append({
+                "seq": int(seq),
+                "kind": kind,
+                "payload": payload,
+                "created_at": created_at,
+            })
+
+        return web.json_response({
+            "task_id": t.task_id,
+            "title": t.title,
+            "description": t.description,
+            "status": t.status.value,
+            "created_by": t.created_by,
+            "principal_id": t.principal_id,
+            "scheduled_for": t.scheduled_for,
+            "deadline": t.deadline,
+            "notify_mode": t.notify_mode,
+            "max_sessions": t.max_sessions,
+            "sessions_used": t.sessions_used,
+            "plan_steps": t.plan_steps,
+            "completed_steps": t.completed_steps,  # [{step_idx, summary, completed_at}, ...]
+            "blocker": t.blocker,
+            "result": t.result,
+            "last_session_notes": t.last_session_notes,
+            "next_step_hint": t.next_step_hint,
+            "created_at": t.created_at,
+            "updated_at": t.updated_at,
+            "events": events,
+        })
     finally:
         sub.close()
 
@@ -1217,6 +1300,7 @@ def create_app() -> web.Application:
     # LLM call audit + tasks (admin observability)
     app.router.add_get("/api/llm_calls", api_llm_calls)
     app.router.add_get("/api/tasks", api_tasks)
+    app.router.add_get("/api/tasks/{task_id}", api_task_detail)
     app.router.add_delete("/api/tasks/{task_id}", api_tasks_delete)
     # Approvals (shell.run / pip.install / governed selfmod gates)
     app.router.add_get("/api/approvals", api_approvals_get)

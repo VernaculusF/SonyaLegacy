@@ -537,21 +537,42 @@ const renderers = {
       done: '#1f6feb', failed: '#f85149',
     };
     return `<div class="card"><h3>Tasks (${tasks.length})</h3>
-      ${tasks.map(t => `
-        <div class="event" style="border-left-color:${statusColor[t.status] || '#30363d'}">
+      ${tasks.map(t => {
+        const stepsLine = t.total_steps
+          ? `<span>${t.completed_count}/${t.total_steps} steps</span>`
+          : '';
+        const sessionLine = (t.sessions_used || t.max_sessions)
+          ? `<span style="color:#8b949e">⏵ ${t.sessions_used||0}/${t.max_sessions||'∞'} sessions</span>`
+          : '';
+        const nextHint = t.next_step_hint
+          ? `<div style="margin-top:6px;font-size:12px;color:#79c0ff">→ next: ${escapeHtml(t.next_step_hint.slice(0,200))}</div>`
+          : '';
+        const lastNotes = t.last_session_notes
+          ? `<div style="margin-top:4px;font-size:11px;color:#8b949e;white-space:pre-wrap">notes: ${escapeHtml(t.last_session_notes.slice(0,200))}</div>`
+          : '';
+        return `
+        <div class="event task-card" style="border-left-color:${statusColor[t.status] || '#30363d'};cursor:pointer" onclick="taskToggle('${t.task_id}', this)">
           <div class="meta" style="display:flex;justify-content:space-between;align-items:center">
             <span>[${t.task_id}] ${t.created_by === 'ivan' ? '👤 Ivan' : '🤖 Sonya'} • ${t.notify_mode} • ${t.created_at.slice(0,19)}</span>
-            <button onclick="taskDelete('${t.task_id}')" title="Delete task" style="background:#f8514922;color:#f85149;border:1px solid #f8514955;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px">✕ delete</button>
+            <span>
+              <span style="color:#8b949e;font-size:11px;margin-right:6px" class="task-toggle-arrow">▶</span>
+              <button onclick="event.stopPropagation();taskDelete('${t.task_id}')" title="Delete task" style="background:#f8514922;color:#f85149;border:1px solid #f8514955;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px">✕ delete</button>
+            </span>
           </div>
-          <div class="body"><b>${t.title}</b>${t.description ? '<br><span style="color:#8b949e">' + t.description.slice(0,200) + '</span>' : ''}</div>
+          <div class="body"><b>${escapeHtml(t.title)}</b>${t.description ? '<br><span style="color:#8b949e">' + escapeHtml(t.description.slice(0,200)) + '</span>' : ''}</div>
           <div style="margin-top:6px;font-size:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <span class="stat" style="background:${(statusColor[t.status]||'#30363d')}33;color:${statusColor[t.status]||'#c9d1d9'};padding:2px 8px;border-radius:3px">${t.status}</span>
-            ${t.total_steps ? `<span>${t.completed_count}/${t.total_steps} steps</span>` : ''}
+            ${stepsLine}
+            ${sessionLine}
             ${t.scheduled_for ? `<span style="color:#d29922">⏰ ${t.scheduled_for.slice(0,16)}</span>` : ''}
-            ${t.blocker ? `<span style="color:#f85149">🔒 ${t.blocker.slice(0,80)}</span>` : ''}
+            ${t.blocker ? `<span style="color:#f85149">🔒 ${escapeHtml(t.blocker.slice(0,80))}</span>` : ''}
           </div>
-          ${t.result ? `<div style="margin-top:6px;font-size:12px;color:#7ee787">result: ${t.result.slice(0,200)}</div>` : ''}
-        </div>`).join('')}
+          ${nextHint}
+          ${lastNotes}
+          ${t.result ? `<div style="margin-top:6px;font-size:12px;color:#7ee787">result: ${escapeHtml(t.result.slice(0,200))}</div>` : ''}
+          <div class="task-detail" id="task-detail-${t.task_id}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #30363d"></div>
+        </div>`;
+      }).join('')}
     </div>`;
   }
 };
@@ -567,6 +588,105 @@ async function taskDelete(taskId) {
     }
     setTimeout(() => loadPage('tasks'), 200);
   } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function taskToggle(taskId, cardEl) {
+  const detail = document.getElementById('task-detail-' + taskId);
+  if (!detail) return;
+  const arrow = cardEl.querySelector('.task-toggle-arrow');
+  if (detail.style.display === 'block') {
+    detail.style.display = 'none';
+    if (arrow) arrow.textContent = '▶';
+    return;
+  }
+  if (arrow) arrow.textContent = '▼';
+  detail.style.display = 'block';
+  // Skip refetch if already rendered (cheap toggle)
+  if (detail.dataset.loaded === '1') return;
+  detail.innerHTML = '<div style="color:#8b949e;font-size:12px">loading...</div>';
+  try {
+    const resp = await fetch(`${API}/api/tasks/${taskId}`);
+    const t = await resp.json();
+    if (t.error) {
+      detail.innerHTML = `<div style="color:#f85149">${escapeHtml(t.error)}</div>`;
+      return;
+    }
+    detail.innerHTML = renderTaskDetail(t);
+    detail.dataset.loaded = '1';
+  } catch(e) {
+    detail.innerHTML = `<div style="color:#f85149">Error: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderTaskDetail(t) {
+  // Plan steps with completion marks (if any). Plan_steps are voluntary —
+  // tasks may have none and still be productive (continuity carried by
+  // next_step_hint + last_session_notes from tasks.handoff).
+  const completedIdx = new Set((t.completed_steps || []).map(s => s.step_idx));
+  const stepsByIdx = new Map((t.completed_steps || []).map(s => [s.step_idx, s]));
+  let stepsHtml = '';
+  if ((t.plan_steps || []).length) {
+    stepsHtml = '<div style="margin-bottom:10px"><b>Plan steps</b><ol style="margin:6px 0 0 22px;padding:0;line-height:1.6">';
+    t.plan_steps.forEach((s, i) => {
+      const done = completedIdx.has(i);
+      const c = stepsByIdx.get(i);
+      const summary = c && c.summary ? `<div style="font-size:11px;color:#8b949e;margin-left:0">${escapeHtml(c.summary.slice(0,300))}</div>` : '';
+      const at = c && c.completed_at ? `<span style="font-size:10px;color:#6e7681;margin-left:6px">${c.completed_at.slice(0,19)}</span>` : '';
+      stepsHtml += `<li style="${done ? 'color:#7ee787;text-decoration:line-through;text-decoration-color:#3fb95066' : 'color:#c9d1d9'}">${done ? '✓ ' : '○ '}${escapeHtml(s)}${at}${summary}</li>`;
+    });
+    stepsHtml += '</ol></div>';
+  } else if ((t.completed_steps || []).length) {
+    // Tasks without plan_steps but with logged step events — show flat list
+    stepsHtml = '<div style="margin-bottom:10px"><b>Recorded steps</b><ul style="margin:6px 0 0 22px;padding:0;line-height:1.6">';
+    t.completed_steps.forEach(c => {
+      const at = c.completed_at ? `<span style="font-size:10px;color:#6e7681;margin-left:6px">${c.completed_at.slice(0,19)}</span>` : '';
+      stepsHtml += `<li style="color:#7ee787">✓ ${escapeHtml((c.summary||'').slice(0,300))}${at}</li>`;
+    });
+    stepsHtml += '</ul></div>';
+  }
+
+  // Handoff history — most recent first.
+  const handoffs = (t.events || [])
+    .filter(e => e.kind === 'task.session_handoff' || e.kind === 'task.session_budget_exhausted')
+    .reverse();
+  let handoffHtml = '';
+  if (handoffs.length) {
+    handoffHtml = '<div style="margin-bottom:10px"><b>Session handoffs</b><div style="margin-top:6px">';
+    handoffs.forEach(h => {
+      const p = h.payload || {};
+      const isExhausted = h.kind === 'task.session_budget_exhausted';
+      const color = isExhausted ? '#f85149' : '#79c0ff';
+      const label = isExhausted ? '🚫 budget exhausted' : `↪ session ${p.sessions_used||'?'}/${p.max_sessions||'∞'}`;
+      handoffHtml += `<div style="border-left:2px solid ${color};padding:4px 10px;margin-bottom:6px;font-size:12px">
+        <div style="color:${color}">${label} <span style="color:#6e7681;font-size:11px;margin-left:6px">${(h.created_at||'').slice(0,19)}</span></div>
+        ${p.next_step ? `<div style="color:#c9d1d9;margin-top:2px">next: ${escapeHtml(String(p.next_step).slice(0,250))}</div>` : ''}
+      </div>`;
+    });
+    handoffHtml += '</div></div>';
+  }
+
+  // Other lifecycle events (created, picked_up, blocked, completed, failed).
+  const lifecycle = (t.events || [])
+    .filter(e => !['task.session_handoff','task.session_budget_exhausted'].includes(e.kind));
+  let lifecycleHtml = '';
+  if (lifecycle.length) {
+    lifecycleHtml = '<div><b>Lifecycle</b><div style="margin-top:6px;font-size:11px;color:#8b949e">';
+    lifecycle.forEach(e => {
+      const kindShort = e.kind.replace('task.', '');
+      lifecycleHtml += `<div>· ${(e.created_at||'').slice(0,19)} <span style="color:#79c0ff">${kindShort}</span></div>`;
+    });
+    lifecycleHtml += '</div></div>';
+  }
+
+  // Long-form fields the list view truncated.
+  const longFields = [
+    t.next_step_hint && t.next_step_hint.length > 200 ? `<div style="margin-bottom:10px"><b>Next-step hint (full)</b><div style="margin-top:4px;color:#79c0ff;white-space:pre-wrap;font-size:12px">${escapeHtml(t.next_step_hint)}</div></div>` : '',
+    t.last_session_notes && t.last_session_notes.length > 300 ? `<div style="margin-bottom:10px"><b>Last session notes (full)</b><div style="margin-top:4px;color:#8b949e;white-space:pre-wrap;font-size:12px">${escapeHtml(t.last_session_notes)}</div></div>` : '',
+    t.result && t.result.length > 200 ? `<div style="margin-bottom:10px"><b>Result (full)</b><div style="margin-top:4px;color:#7ee787;white-space:pre-wrap;font-size:12px">${escapeHtml(t.result)}</div></div>` : '',
+    t.blocker && t.blocker.length > 80 ? `<div style="margin-bottom:10px"><b>Blocker (full)</b><div style="margin-top:4px;color:#f85149;white-space:pre-wrap;font-size:12px">${escapeHtml(t.blocker)}</div></div>` : '',
+  ].filter(Boolean).join('');
+
+  return stepsHtml + handoffHtml + longFields + lifecycleHtml;
 }
 
 async function selfmodView(proposalId) {
