@@ -10,7 +10,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.tools.code_tool import CodeTool
@@ -437,6 +437,581 @@ async def run_agent_session(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Tool dispatch
+# ---------------------------------------------------------------------------
+# Each tool is a small handler ``(arg: str, ctx: _ToolContext) -> str``.
+# Handlers are registered in ``_TOOL_HANDLERS`` (a plain dict). ``_execute_tool``
+# does a single dict lookup, runs the handler, catches exceptions, and logs
+# tool errors to the continuity stream.
+#
+# Why dict-of-handlers instead of an elif chain or match/case:
+#   - O(1) dispatch instead of O(n) chain over 55+ tools
+#   - one place to look up "is tool X registered?" and "what does it do?"
+#   - extending = one new function + one new dict entry, not editing the chain
+#   - each handler is independently testable
+#   - small helpers (``_require``, ``_decode_pipe_escapes``) cut boilerplate
+
+
+@dataclass(slots=True)
+class _ToolContext:
+    """Bundle of tool instances + side-channels passed to every handler.
+
+    All optional tools may be ``None`` — handlers call ``_require(ctx.X, "X")``
+    to fail fast with a uniform "[ERROR] X tool not configured" message.
+    """
+
+    self_inspect: SelfInspectTool
+    filesystem: FilesystemTool
+    selfmod: SelfModTool | None
+    tasks: TasksTool | None
+    web: WebTool | None
+    code: CodeTool | None
+    shell: ShellTool | None
+    memory: MemoryTool | None
+    env: EnvTool | None
+    skills: SkillsTool | None
+    outbound: Any
+    outbound_sent: list[str] | None
+
+
+def _require(tool: Any, name: str) -> str | None:
+    """Return an [ERROR] string if tool is None, else None."""
+    if tool is None:
+        return f"[ERROR] {name} tool not configured"
+    return None
+
+
+def _decode_pipe_escapes(s: str) -> str:
+    """Decode literal ``\\n`` / ``\\t`` / ``\\\\`` in pipe-form args.
+
+    Block JSON form already handles real newlines natively; pipe form
+    needs this so multi-line patches work via inline TOOL args.
+    """
+    return (
+        s.replace("\\\\", "\x00")  # protect literal backslash
+        .replace("\\n", "\n")
+        .replace("\\t", "\t")
+        .replace("\x00", "\\")
+    )
+
+
+def _substrate_from(ctx: _ToolContext) -> Any:
+    """Pull substrate from self_inspect (it owns the connection)."""
+    return getattr(ctx.self_inspect, "_sub", None)
+
+
+# --- self_inspect.* ---
+
+
+def _h_si_identity(arg: str, ctx: _ToolContext) -> str:
+    return ctx.self_inspect.read_identity()
+
+
+def _h_si_state(arg: str, ctx: _ToolContext) -> str:
+    return ctx.self_inspect.read_subject_state()
+
+
+def _h_si_thoughts(arg: str, ctx: _ToolContext) -> str:
+    return ctx.self_inspect.read_recent_thoughts()
+
+
+def _h_si_memories(arg: str, ctx: _ToolContext) -> str:
+    return ctx.self_inspect.read_recent_memories()
+
+
+def _h_si_intentions(arg: str, ctx: _ToolContext) -> str:
+    return ctx.self_inspect.read_active_intentions()
+
+
+def _h_si_code(arg: str, ctx: _ToolContext) -> str:
+    return ctx.self_inspect.read_own_code(arg)
+
+
+def _h_si_modules(arg: str, ctx: _ToolContext) -> str:
+    return ctx.self_inspect.list_own_modules()
+
+
+# --- filesystem.* ---
+
+
+def _h_fs_read(arg: str, ctx: _ToolContext) -> str:
+    return ctx.filesystem.read(arg)
+
+
+def _h_fs_list(arg: str, ctx: _ToolContext) -> str:
+    return ctx.filesystem.list_dir(arg)
+
+
+def _h_fs_tree(arg: str, ctx: _ToolContext) -> str:
+    return ctx.filesystem.tree(arg)
+
+
+def _h_fs_write(arg: str, ctx: _ToolContext) -> str:
+    """Block form: first line = path, remaining = content.
+    Inline fallback: first space-separated token = path, rest = content.
+
+    The newline split is the documented form (TOOL_DESCRIPTIONS). Without
+    it, multi-line content with a "# title" header caused split(" ") to
+    grab "path\\n#" as the filename — the wineandmore-23.05 bug.
+    """
+    if "\n" in arg:
+        lines = arg.split("\n", 1)
+        path_part = lines[0].strip()
+        content_part = lines[1] if len(lines) > 1 else ""
+    else:
+        parts = arg.split(" ", 1)
+        if len(parts) < 2:
+            return "[ERROR] filesystem.write needs: path content"
+        path_part, content_part = parts[0].strip(), parts[1]
+    if not path_part:
+        return "[ERROR] filesystem.write: empty path"
+    return ctx.filesystem.write(path_part, content_part)
+
+
+# --- memory.* ---
+
+
+def _h_mem_recall(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.memory, "memory")
+    if err:
+        return err
+    return ctx.memory.recall(arg.strip())
+
+
+def _h_mem_index_status(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.memory, "memory")
+    if err:
+        return err
+    return ctx.memory.index_status()
+
+
+# --- env.* ---
+
+
+def _h_env_set(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.env, "env")
+    return err if err else ctx.env.set(arg)
+
+
+def _h_env_get(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.env, "env")
+    return err if err else ctx.env.get(arg)
+
+
+def _h_env_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.env, "env")
+    return err if err else ctx.env.list_all()
+
+
+def _h_env_clear(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.env, "env")
+    return err if err else ctx.env.clear(arg)
+
+
+# --- skills.* ---
+
+
+def _h_skills_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.skills, "skills")
+    return err if err else ctx.skills.list_skills()
+
+
+def _h_skills_run(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.skills, "skills")
+    return err if err else ctx.skills.run(arg)
+
+
+def _h_skills_register_builtins(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.skills, "skills")
+    return err if err else ctx.skills.register_builtins()
+
+
+# --- goals.* (no separate tool wrapper; goals live in tasks/goals.py) ---
+
+
+def _h_goals_list(arg: str, ctx: _ToolContext) -> str:
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] no substrate"
+    from sonya.tasks.goals import GoalStore
+    goals = GoalStore(sub).list_active()
+    if not goals:
+        return "(no active goals)"
+    lines = ["Active goals:"]
+    for g in goals:
+        lines.append(f"  [{g.goal_id}] (prio={g.priority}) {g.title}")
+        if g.description:
+            lines.append(f"    {g.description[:150]}")
+    return "\n".join(lines)
+
+
+def _h_goals_create(arg: str, ctx: _ToolContext) -> str:
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] no substrate"
+    from sonya.tasks.goals import GoalStore
+    parts = arg.split("|")
+    title = parts[0].strip() if parts else ""
+    desc = parts[1].strip() if len(parts) > 1 else ""
+    prio = int(parts[2].strip()) if len(parts) > 2 and parts[2].strip().isdigit() else 0
+    if not title:
+        return "[ERROR] goals.create needs: title | description | priority"
+    g = GoalStore(sub).create(title, desc, prio)
+    return f"[OK] goal created: {g.goal_id} — {g.title} (priority={g.priority})"
+
+
+def _h_goals_achieve(arg: str, ctx: _ToolContext) -> str:
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] no substrate"
+    from sonya.tasks.goals import GoalStore
+    try:
+        g = GoalStore(sub).achieve(arg.strip())
+        return f"[OK] goal {g.goal_id} achieved: {g.title}"
+    except KeyError:
+        return f"[ERROR] goal {arg.strip()!r} not found"
+
+
+def _h_goals_abandon(arg: str, ctx: _ToolContext) -> str:
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] no substrate"
+    from sonya.tasks.goals import GoalStore
+    try:
+        g = GoalStore(sub).abandon(arg.strip())
+        return f"[OK] goal {g.goal_id} abandoned: {g.title}"
+    except KeyError:
+        return f"[ERROR] goal {arg.strip()!r} not found"
+
+
+# --- plugins.* ---
+
+
+def _h_plugins_list(arg: str, ctx: _ToolContext) -> str:
+    from sonya.tools.hot_loader import list_plugins
+    plugins = list_plugins()
+    return "\n".join(plugins) if plugins else "No plugins loaded."
+
+
+def _h_plugins_create(arg: str, ctx: _ToolContext) -> str:
+    from sonya.tools.hot_loader import ensure_plugins_dir, load_plugin
+    parts = arg.split(" ", 1)
+    if len(parts) < 2:
+        return "[ERROR] plugins.create needs: name python_code"
+    plugin_name, plugin_code = parts[0], parts[1]
+    plugin_path = ensure_plugins_dir() / f"{plugin_name}.py"
+    plugin_path.write_text(plugin_code, encoding="utf-8")
+    load_plugin(plugin_name)
+    return f"[OK] Plugin '{plugin_name}' created and loaded."
+
+
+def _h_plugins_call(arg: str, ctx: _ToolContext) -> str:
+    from sonya.tools.hot_loader import get_plugin, load_plugin
+    parts = arg.split(" ", 1)
+    plugin_name = parts[0]
+    plugin_args = parts[1] if len(parts) > 1 else ""
+    module = get_plugin(plugin_name) or load_plugin(plugin_name)
+    if hasattr(module, "run"):
+        return str(module.run(plugin_args))
+    return f"[ERROR] Plugin '{plugin_name}' has no run() function"
+
+
+# --- selfmod.* ---
+
+
+def _h_selfmod_propose(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    if err:
+        return err
+    # Two formats:
+    #   pipe-separated: target | summary | content
+    #   JSON block:     {"target": "...", "summary": "...", "content": "..."}
+    arg_stripped = arg.strip()
+    if arg_stripped.startswith("{"):
+        try:
+            data = json.loads(arg_stripped)
+            target = str(data.get("target", "")).strip()
+            summary = str(data.get("summary", "")).strip()
+            content = data.get("content", "")
+        except (json.JSONDecodeError, TypeError, ValueError) as err:
+            return f"[ERROR] selfmod.propose: invalid JSON ({err})"
+    else:
+        parts = arg.split("|", 2)
+        if len(parts) < 3:
+            return (
+                "[ERROR] selfmod.propose needs either:\n"
+                "  pipe: target_path | summary | content\n"
+                '  JSON: {"target": "...", "summary": "...", "content": "..."}'
+            )
+        target, summary, content = parts[0].strip(), parts[1].strip(), parts[2]
+    if not target or not summary:
+        return "[ERROR] selfmod.propose: target and summary are required"
+    return ctx.selfmod.propose(target, summary, new_content=content)
+
+
+def _h_selfmod_propose_edit(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    if err:
+        return err
+    # Two formats:
+    #   inline pipe: target | summary | old_substring | new_substring
+    #   block JSON:  {"target":"...","summary":"...","old":"...","new":"..."}
+    stripped = arg.strip()
+    if stripped.startswith("{"):
+        try:
+            data = json.loads(stripped)
+            target_e = str(data.get("target", "")).strip()
+            summary_e = str(data.get("summary", "")).strip()
+            old_sub = str(data.get("old", data.get("old_substring", "")))
+            new_sub = str(data.get("new", data.get("new_substring", "")))
+        except (json.JSONDecodeError, TypeError, ValueError) as err:
+            return f"[ERROR] selfmod.propose_edit: invalid JSON ({err})"
+    else:
+        parts = arg.split("|", 3)
+        if len(parts) < 4:
+            return (
+                "[ERROR] selfmod.propose_edit needs 4 parts:\n"
+                "  inline pipe: target_path | summary | old_substring | new_substring\n"
+                '  OR block JSON: {"target":"...","summary":"...","old":"...","new":"..."}\n'
+                "(старая строка должна быть уникальной в файле; "
+                "если совпадает несколько раз — расширь контекст вокруг)"
+            )
+        target_e = parts[0].strip()
+        summary_e = parts[1].strip()
+        old_sub = _decode_pipe_escapes(parts[2].strip())
+        new_sub = _decode_pipe_escapes(parts[3].strip())
+    if not target_e or not summary_e or not old_sub:
+        return "[ERROR] selfmod.propose_edit: target, summary, old_substring required"
+    return ctx.selfmod.propose_edit(target_e, summary_e, old_sub, new_sub)
+
+
+def _h_selfmod_validate(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.validate(arg.strip())
+
+
+def _h_selfmod_test_sandbox(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.test_sandbox(arg.strip())
+
+
+def _h_selfmod_apply(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.apply(arg.strip())
+
+
+def _h_selfmod_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.list_proposals(arg.strip())
+
+
+def _h_selfmod_get(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.get_proposal(arg.strip())
+
+
+def _h_selfmod_governed(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.request_governed(arg.strip())
+
+
+def _h_selfmod_check_governed(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.check_governed(arg.strip())
+
+
+def _h_selfmod_rollback(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    if err:
+        return err
+    parts = arg.split(" ", 1)
+    pid = parts[0].strip()
+    reason = parts[1].strip() if len(parts) > 1 else ""
+    return ctx.selfmod.rollback(pid, reason=reason)
+
+
+def _h_selfmod_soft_restart(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.soft_restart_runtime(arg.strip())
+
+
+# --- tasks.* ---
+
+
+def _h_tasks_create(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.create(arg)
+
+
+def _h_tasks_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.list(arg)
+
+
+def _h_tasks_get(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.get(arg)
+
+
+def _h_tasks_pick(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.pick(arg)
+
+
+def _h_tasks_plan(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.plan(arg)
+
+
+def _h_tasks_step(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.step(arg)
+
+
+def _h_tasks_complete(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.complete(arg)
+
+
+def _h_tasks_fail(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.fail(arg)
+
+
+def _h_tasks_block(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.block(arg)
+
+
+def _h_tasks_unblock(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.unblock(arg)
+
+
+def _h_tasks_pause(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.pause(arg)
+
+
+def _h_tasks_handoff(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.tasks, "tasks")
+    return err if err else ctx.tasks.handoff(arg)
+
+
+# --- web.* / code / shell / chat ---
+
+
+def _h_web_search(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.web, "web")
+    return err if err else ctx.web.search(arg)
+
+
+def _h_web_fetch(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.web, "web")
+    return err if err else ctx.web.fetch(arg)
+
+
+def _h_code_exec(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.code, "code")
+    return err if err else ctx.code.exec_python(arg)
+
+
+def _h_shell_run(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.shell, "shell")
+    return err if err else ctx.shell.run_shell(arg)
+
+
+def _h_pip_install(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.shell, "shell")
+    return err if err else ctx.shell.install_pip(arg)
+
+
+def _h_chat_tell_ivan(arg: str, ctx: _ToolContext) -> str:
+    if ctx.outbound is None:
+        return "[ERROR] initiative gate not configured (set SONYA_PRIMARY_USER_TG_ID)"
+    from sonya.initiative.outbound import call_outbound_sync
+    result = call_outbound_sync(ctx.outbound, arg)
+    # Record sent text so channel_session can suppress a [DONE: ...] echo
+    # of the same content (prevents duplicate messages to Ivan).
+    if ctx.outbound_sent is not None and arg.strip():
+        ctx.outbound_sent.append(arg.strip())
+    return result
+
+
+# Registry: tool name → handler. Keep alphabetised within each family to
+# make adding new tools mechanical. New tool = one function above + one
+# entry here.
+_TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
+    # self_inspect.*
+    "self_inspect.identity": _h_si_identity,
+    "self_inspect.state": _h_si_state,
+    "self_inspect.thoughts": _h_si_thoughts,
+    "self_inspect.memories": _h_si_memories,
+    "self_inspect.intentions": _h_si_intentions,
+    "self_inspect.code": _h_si_code,
+    "self_inspect.modules": _h_si_modules,
+    # filesystem.*
+    "filesystem.read": _h_fs_read,
+    "filesystem.list": _h_fs_list,
+    "filesystem.tree": _h_fs_tree,
+    "filesystem.write": _h_fs_write,
+    # memory.*
+    "memory.recall": _h_mem_recall,
+    "memory.index_status": _h_mem_index_status,
+    # env.*
+    "env.set": _h_env_set,
+    "env.get": _h_env_get,
+    "env.list": _h_env_list,
+    "env.clear": _h_env_clear,
+    # skills.*
+    "skills.list": _h_skills_list,
+    "skills.run": _h_skills_run,
+    "skills.register_builtins": _h_skills_register_builtins,
+    # goals.*
+    "goals.list": _h_goals_list,
+    "goals.create": _h_goals_create,
+    "goals.achieve": _h_goals_achieve,
+    "goals.abandon": _h_goals_abandon,
+    # plugins.*
+    "plugins.list": _h_plugins_list,
+    "plugins.create": _h_plugins_create,
+    "plugins.call": _h_plugins_call,
+    # selfmod.*
+    "selfmod.propose": _h_selfmod_propose,
+    "selfmod.propose_edit": _h_selfmod_propose_edit,
+    "selfmod.validate": _h_selfmod_validate,
+    "selfmod.test_sandbox": _h_selfmod_test_sandbox,
+    "selfmod.apply": _h_selfmod_apply,
+    "selfmod.list": _h_selfmod_list,
+    "selfmod.get": _h_selfmod_get,
+    "selfmod.governed": _h_selfmod_governed,
+    "selfmod.check_governed": _h_selfmod_check_governed,
+    "selfmod.rollback": _h_selfmod_rollback,
+    "selfmod.soft_restart": _h_selfmod_soft_restart,
+    # tasks.*
+    "tasks.create": _h_tasks_create,
+    "tasks.list": _h_tasks_list,
+    "tasks.get": _h_tasks_get,
+    "tasks.pick": _h_tasks_pick,
+    "tasks.plan": _h_tasks_plan,
+    "tasks.step": _h_tasks_step,
+    "tasks.complete": _h_tasks_complete,
+    "tasks.fail": _h_tasks_fail,
+    "tasks.block": _h_tasks_block,
+    "tasks.unblock": _h_tasks_unblock,
+    "tasks.pause": _h_tasks_pause,
+    "tasks.handoff": _h_tasks_handoff,
+    # web / code / shell / chat
+    "web.search": _h_web_search,
+    "web.fetch": _h_web_fetch,
+    "code.exec": _h_code_exec,
+    "shell.run": _h_shell_run,
+    "pip.install": _h_pip_install,
+    "chat.tell_ivan": _h_chat_tell_ivan,
+}
+
+
 def _execute_tool(
     name: str,
     arg: str,
@@ -454,364 +1029,32 @@ def _execute_tool(
     skills: SkillsTool | None = None,
     outbound_sent: list[str] | None = None,
 ) -> str:
-    """Execute a tool by name. Returns observation string. Logs failures to continuity stream."""
+    """Execute a tool by name. Returns observation string.
+
+    Logs failures (exception) to continuity stream as ``internal.tool_error``.
+    Unknown tool names return a uniform "[ERROR] Unknown tool: X" string.
+    """
+    handler = _TOOL_HANDLERS.get(name)
+    if handler is None:
+        return f"[ERROR] Unknown tool: {name}"
+
+    ctx = _ToolContext(
+        self_inspect=self_inspect,
+        filesystem=filesystem,
+        selfmod=selfmod,
+        tasks=tasks,
+        web=web,
+        code=code,
+        shell=shell,
+        memory=memory,
+        env=env,
+        skills=skills,
+        outbound=outbound,
+        outbound_sent=outbound_sent,
+    )
     try:
-        if name == "self_inspect.identity":
-            return self_inspect.read_identity()
-        elif name == "self_inspect.state":
-            return self_inspect.read_subject_state()
-        elif name == "self_inspect.thoughts":
-            return self_inspect.read_recent_thoughts()
-        elif name == "self_inspect.memories":
-            return self_inspect.read_recent_memories()
-        elif name == "self_inspect.intentions":
-            return self_inspect.read_active_intentions()
-        elif name == "self_inspect.code":
-            return self_inspect.read_own_code(arg)
-        elif name == "self_inspect.modules":
-            return self_inspect.list_own_modules()
-        elif name == "filesystem.read":
-            return filesystem.read(arg)
-        elif name == "filesystem.list":
-            return filesystem.list_dir(arg)
-        elif name == "filesystem.tree":
-            return filesystem.tree(arg)
-        elif name == "filesystem.write":
-            # Block form: first line = path, remaining lines = content.
-            # Inline fallback: first space-separated token = path, rest = content.
-            # The newline split is the documented form (TOOL_DESCRIPTIONS) — without
-            # it, a multi-line content with a header like "# title" caused the
-            # space-split to grab "path\n#" as the filename.
-            if "\n" in arg:
-                lines = arg.split("\n", 1)
-                path_part = lines[0].strip()
-                content_part = lines[1] if len(lines) > 1 else ""
-            else:
-                parts = arg.split(" ", 1)
-                if len(parts) < 2:
-                    return "[ERROR] filesystem.write needs: path content"
-                path_part, content_part = parts[0].strip(), parts[1]
-            if not path_part:
-                return "[ERROR] filesystem.write: empty path"
-            return filesystem.write(path_part, content_part)
-        elif name == "memory.recall":
-            if memory is None:
-                return "[ERROR] memory tool not configured"
-            return memory.recall(arg.strip())
-        elif name == "memory.index_status":
-            if memory is None:
-                return "[ERROR] memory tool not configured"
-            return memory.index_status()
-        elif name == "env.set":
-            if env is None:
-                return "[ERROR] env tool not configured"
-            return env.set(arg)
-        elif name == "env.get":
-            if env is None:
-                return "[ERROR] env tool not configured"
-            return env.get(arg)
-        elif name == "env.list":
-            if env is None:
-                return "[ERROR] env tool not configured"
-            return env.list_all()
-        elif name == "env.clear":
-            if env is None:
-                return "[ERROR] env tool not configured"
-            return env.clear(arg)
-        elif name == "skills.list":
-            if skills is None:
-                return "[ERROR] skills tool not configured"
-            return skills.list_skills()
-        elif name == "skills.run":
-            if skills is None:
-                return "[ERROR] skills tool not configured"
-            return skills.run(arg)
-        elif name == "skills.register_builtins":
-            if skills is None:
-                return "[ERROR] skills tool not configured"
-            return skills.register_builtins()
-        elif name == "goals.list":
-            from sonya.tasks.goals import GoalStore
-            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
-            if sub is None:
-                return "[ERROR] no substrate"
-            goals = GoalStore(sub).list_active()
-            if not goals:
-                return "(no active goals)"
-            lines = ["Active goals:"]
-            for g in goals:
-                lines.append(f"  [{g.goal_id}] (prio={g.priority}) {g.title}")
-                if g.description:
-                    lines.append(f"    {g.description[:150]}")
-            return "\n".join(lines)
-        elif name == "goals.create":
-            from sonya.tasks.goals import GoalStore
-            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
-            if sub is None:
-                return "[ERROR] no substrate"
-            parts = arg.split("|")
-            title = parts[0].strip() if parts else ""
-            desc = parts[1].strip() if len(parts) > 1 else ""
-            prio = int(parts[2].strip()) if len(parts) > 2 and parts[2].strip().isdigit() else 0
-            if not title:
-                return "[ERROR] goals.create needs: title | description | priority"
-            g = GoalStore(sub).create(title, desc, prio)
-            return f"[OK] goal created: {g.goal_id} — {g.title} (priority={g.priority})"
-        elif name == "goals.achieve":
-            from sonya.tasks.goals import GoalStore
-            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
-            if sub is None:
-                return "[ERROR] no substrate"
-            try:
-                g = GoalStore(sub).achieve(arg.strip())
-                return f"[OK] goal {g.goal_id} achieved: {g.title}"
-            except KeyError:
-                return f"[ERROR] goal {arg.strip()!r} not found"
-        elif name == "goals.abandon":
-            from sonya.tasks.goals import GoalStore
-            sub = self_inspect._sub if hasattr(self_inspect, "_sub") else None
-            if sub is None:
-                return "[ERROR] no substrate"
-            try:
-                g = GoalStore(sub).abandon(arg.strip())
-                return f"[OK] goal {g.goal_id} abandoned: {g.title}"
-            except KeyError:
-                return f"[ERROR] goal {arg.strip()!r} not found"
-        elif name == "plugins.list":
-            from sonya.tools.hot_loader import list_plugins
-            plugins = list_plugins()
-            return "\n".join(plugins) if plugins else "No plugins loaded."
-        elif name == "plugins.create":
-            from sonya.tools.hot_loader import ensure_plugins_dir, load_plugin
-            parts = arg.split(" ", 1)
-            if len(parts) < 2:
-                return "[ERROR] plugins.create needs: name python_code"
-            plugin_name = parts[0]
-            plugin_code = parts[1]
-            plugin_path = ensure_plugins_dir() / f"{plugin_name}.py"
-            plugin_path.write_text(plugin_code, encoding="utf-8")
-            load_plugin(plugin_name)
-            return f"[OK] Plugin '{plugin_name}' created and loaded."
-        elif name == "plugins.call":
-            from sonya.tools.hot_loader import get_plugin, load_plugin
-            parts = arg.split(" ", 1)
-            plugin_name = parts[0]
-            plugin_args = parts[1] if len(parts) > 1 else ""
-            module = get_plugin(plugin_name)
-            if module is None:
-                module = load_plugin(plugin_name)
-            if hasattr(module, "run"):
-                result = module.run(plugin_args)
-                return str(result)
-            return f"[ERROR] Plugin '{plugin_name}' has no run() function"
-
-        # --- selfmod.* family ---
-        elif name == "selfmod.propose":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            # Accept BOTH formats:
-            #   pipe-separated: target_path | summary | content
-            #   JSON block: {"target": "...", "summary": "...", "content": "..."}
-            arg_stripped = arg.strip()
-            if arg_stripped.startswith("{"):
-                try:
-                    data = json.loads(arg_stripped)
-                    target = data.get("target", "").strip()
-                    summary = data.get("summary", "").strip()
-                    content = data.get("content", "")
-                except (json.JSONDecodeError, TypeError, ValueError) as err:
-                    return f"[ERROR] selfmod.propose: invalid JSON ({err})"
-            else:
-                parts = arg.split("|", 2)
-                if len(parts) < 3:
-                    return (
-                        "[ERROR] selfmod.propose needs either:\n"
-                        "  pipe: target_path | summary | content\n"
-                        '  JSON: {"target": "...", "summary": "...", "content": "..."}'
-                    )
-                target = parts[0].strip()
-                summary = parts[1].strip()
-                content = parts[2]
-            if not target or not summary:
-                return "[ERROR] selfmod.propose: target and summary are required"
-            return selfmod.propose(target, summary, new_content=content)
-        elif name == "selfmod.propose_edit":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            # Two formats supported:
-            # 1) inline pipe: target | summary | old_substring | new_substring
-            # 2) block JSON: {"target":"...","summary":"...","old":"...","new":"..."}
-            #    — use block form for multi-line old/new strings.
-            stripped = arg.strip()
-            if stripped.startswith("{"):
-                try:
-                    import json as _json
-                    data = _json.loads(stripped)
-                    target_e = str(data.get("target", "")).strip()
-                    summary_e = str(data.get("summary", "")).strip()
-                    old_sub = str(data.get("old", data.get("old_substring", "")))
-                    new_sub = str(data.get("new", data.get("new_substring", "")))
-                except (_json.JSONDecodeError, TypeError, ValueError) as err:
-                    return f"[ERROR] selfmod.propose_edit: invalid JSON ({err})"
-            else:
-                parts = arg.split("|", 3)
-                if len(parts) < 4:
-                    return (
-                        "[ERROR] selfmod.propose_edit needs 4 parts:\n"
-                        "  inline pipe: target_path | summary | old_substring | new_substring\n"
-                        '  OR block JSON: {"target":"...","summary":"...","old":"...","new":"..."}\n'
-                        "(старая строка должна быть уникальной в файле; "
-                        "если совпадает несколько раз — расширь контекст вокруг)"
-                    )
-                target_e = parts[0].strip()
-                summary_e = parts[1].strip()
-                # Decode literal \n / \t / \\ escape sequences in pipe form so
-                # multi-line patches work via inline arg. Block JSON form
-                # already handles real newlines natively (no decode needed).
-                def _decode(s: str) -> str:
-                    return (
-                        s.replace("\\\\", "\x00")  # protect literal backslash
-                        .replace("\\n", "\n")
-                        .replace("\\t", "\t")
-                        .replace("\x00", "\\")
-                    )
-                old_sub = _decode(parts[2].strip())
-                new_sub = _decode(parts[3].strip())
-            if not target_e or not summary_e or not old_sub:
-                return "[ERROR] selfmod.propose_edit: target, summary, old_substring required"
-            return selfmod.propose_edit(target_e, summary_e, old_sub, new_sub)
-        elif name == "selfmod.validate":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.validate(arg.strip())
-        elif name == "selfmod.test_sandbox":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.test_sandbox(arg.strip())
-        elif name == "selfmod.apply":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.apply(arg.strip())
-        elif name == "selfmod.list":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.list_proposals(arg.strip())
-        elif name == "selfmod.get":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.get_proposal(arg.strip())
-        elif name == "selfmod.governed":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.request_governed(arg.strip())
-        elif name == "selfmod.check_governed":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.check_governed(arg.strip())
-        elif name == "selfmod.rollback":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            parts = arg.split(" ", 1)
-            pid = parts[0].strip()
-            reason = parts[1].strip() if len(parts) > 1 else ""
-            return selfmod.rollback(pid, reason=reason)
-        elif name == "selfmod.soft_restart":
-            if selfmod is None:
-                return "[ERROR] selfmod tool not configured"
-            return selfmod.soft_restart_runtime(arg.strip())
-
-        # --- tasks.* family ---
-        elif name == "tasks.create":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.create(arg)
-        elif name == "tasks.list":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.list(arg)
-        elif name == "tasks.get":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.get(arg)
-        elif name == "tasks.pick":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.pick(arg)
-        elif name == "tasks.plan":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.plan(arg)
-        elif name == "tasks.step":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.step(arg)
-        elif name == "tasks.complete":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.complete(arg)
-        elif name == "tasks.fail":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.fail(arg)
-        elif name == "tasks.block":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.block(arg)
-        elif name == "tasks.unblock":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.unblock(arg)
-        elif name == "tasks.pause":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.pause(arg)
-        elif name == "tasks.handoff":
-            if tasks is None:
-                return "[ERROR] tasks tool not configured"
-            return tasks.handoff(arg)
-
-        # --- web.* family ---
-        elif name == "web.search":
-            if web is None:
-                return "[ERROR] web tool not configured"
-            return web.search(arg)
-        elif name == "web.fetch":
-            if web is None:
-                return "[ERROR] web tool not configured"
-            return web.fetch(arg)
-
-        # --- code.exec ---
-        elif name == "code.exec":
-            if code is None:
-                return "[ERROR] code tool not configured"
-            return code.exec_python(arg)
-
-        # --- shell.run / pip.install (approval-gated) ---
-        elif name == "shell.run":
-            if shell is None:
-                return "[ERROR] shell tool not configured"
-            return shell.run_shell(arg)
-        elif name == "pip.install":
-            if shell is None:
-                return "[ERROR] shell tool not configured"
-            return shell.install_pip(arg)
-
-        # --- chat.tell_ivan (initiative) ---
-        elif name == "chat.tell_ivan":
-            if outbound is None:
-                return "[ERROR] initiative gate not configured (set SONYA_PRIMARY_USER_TG_ID)"
-            from sonya.initiative.outbound import call_outbound_sync
-            result = call_outbound_sync(outbound, arg)
-            # Record sent text so channel_session can suppress a [DONE: ...] echo
-            # of the same content (prevents duplicate messages to Ivan).
-            if outbound_sent is not None and arg.strip():
-                outbound_sent.append(arg.strip())
-            return result
-
-        else:
-            return f"[ERROR] Unknown tool: {name}"
+        return handler(arg, ctx)
     except Exception as e:
-        # S-11 fix: log tool failures to continuity stream so Sonya can see what broke
         err_msg = f"[ERROR] {type(e).__name__}: {e}"
         if stream is not None:
             try:
