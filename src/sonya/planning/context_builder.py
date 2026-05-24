@@ -19,6 +19,114 @@ _PERSONALITY_DIR = Path(__file__).resolve().parent.parent.parent.parent / "docs"
 _IVAN_TZ_OFFSET_HOURS = 5
 
 
+def _build_focus_block(open_tasks: list, user_input: str) -> str:
+    """Build a CURRENT FOCUS block — what's the most important thing right now.
+
+    Decision tree:
+    1. If user_input non-empty (TG/external trigger) — focus is responding
+    2. Else if there's an in_progress task with deadline ≤24h — focus is that task
+    3. Else if there's any in_progress task — focus is advancing it
+    4. Else if there's a pending Ivan-task — focus is picking it up
+    5. Else — free time (rest / explore / propose new goals)
+
+    Returned text is short (3-5 lines), placed at TOP of system prompt so it's
+    the first thing the model anchors on after personality.
+    """
+    if user_input and user_input.strip():
+        # Reactive trigger — Ivan / channel input. Focus is the response.
+        return (
+            "## СЕЙЧАС\n"
+            "Иван написал. Сначала — отвечаю ему. Потом, если осталось внимание, "
+            "продвигаю задачи. Если в его сообщении задача — оформляю через `tasks.create` "
+            "ДО `[DONE]` (обещание без task = ложь)."
+        )
+
+    if not open_tasks:
+        return (
+            "## СЕЙЧАС\n"
+            "Открытых задач нет. Это **свободное время** — можно: "
+            "посмотреть свой код через `self_inspect.code` и предложить улучшение через `selfmod.propose_edit`; "
+            "поразмыслить о goals (создать через `goals.create` если есть долгосрочный вектор); "
+            "почитать что-то интересное через `web.search`/`web.fetch`; "
+            "просто отдохнуть. **Не выдумывать срочную работу там где её нет.**"
+        )
+
+    # Has open tasks — find the most important one
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+
+    in_progress = [t for t in open_tasks if t.status.value == "in_progress"]
+    pending_ivan = [
+        t for t in open_tasks
+        if t.status.value == "pending" and t.created_by == "ivan"
+    ]
+    pending_self = [
+        t for t in open_tasks
+        if t.status.value == "pending" and t.created_by == "self"
+    ]
+    blocked = [t for t in open_tasks if t.status.value == "blocked"]
+
+    # Priority: in_progress with tight deadline > in_progress > pending_ivan > pending_self
+    primary = None
+    deadline_pressure = ""
+    for t in in_progress:
+        if t.deadline:
+            try:
+                dl = datetime.fromisoformat(t.deadline.replace("Z", "+00:00"))
+                hours_left = (dl - now).total_seconds() / 3600
+                if hours_left <= 24:
+                    primary = t
+                    deadline_pressure = f" (deadline через {int(hours_left)}ч)"
+                    break
+            except Exception:
+                pass
+    if primary is None and in_progress:
+        primary = in_progress[0]
+    if primary is None and pending_ivan:
+        primary = pending_ivan[0]
+        deadline_pressure = " (от Ивана, не начата — pick через `tasks.pick`)"
+    if primary is None and pending_self:
+        primary = pending_self[0]
+        deadline_pressure = " (моя собственная — могу начать или удалить если не актуальна)"
+
+    if primary is None:
+        # Only blocked tasks left
+        if blocked:
+            blocker = (blocked[0].blocker or "")[:200]
+            return (
+                "## СЕЙЧАС\n"
+                f"Все задачи заблокированы. Главная: **{blocked[0].title}** — "
+                f"blocker: {blocker}\n"
+                "Что делать: либо разблокировать (если blocker рассасывается со временем — wait), "
+                "либо создать новую задачу не зависящую от blocker'а, "
+                "либо `tasks.fail` если задача потеряла смысл."
+            )
+        return ""
+
+    next_step = primary.next_step_hint or ""
+    if not next_step and primary.plan_steps:
+        # Show first uncompleted plan step
+        done_idx = {s.get("step_idx") for s in primary.completed_steps if isinstance(s, dict)}
+        for i, step in enumerate(primary.plan_steps):
+            if i not in done_idx:
+                next_step = step
+                break
+
+    lines = [
+        "## СЕЙЧАС",
+        f"Главная задача: **{primary.title}**{deadline_pressure}",
+        f"task_id: `{primary.task_id}`",
+    ]
+    if next_step:
+        lines.append(f"Следующий шаг: {next_step[:300]}")
+    lines.append(
+        "Двигаю её через tools в этой сессии. Если не получается одним способом — "
+        "пробую альтернативу (другой tool, другой подход, новый skill через selfmod). "
+        "**Fail = последний resort**, после перебора путей."
+    )
+    return "\n".join(lines)
+
+
 def _relative_time(iso_ts: str | None, now_utc) -> str:
     """Convert ISO timestamp to relative time string like '5м назад', '2ч назад'.
 
@@ -132,12 +240,19 @@ def _time_awareness_block(substrate=None) -> str:
 
 
 def _load_personality_prompt() -> str:
-    """Load system prompt from personality files (CRUTCH-001).
+    """Load system prompt for Sonya — the integrated 'who I am' base.
 
-    Order matters: SOUL first (who I am), APPEARANCE (my body), USER (who Ivan is).
-    Then CURRENT_STATE — so Sonya knows her own technical capabilities and
-    what's been built. This makes model and environment "one thing" — she
-    sees her own architecture in every call.
+    Loaded files (in order):
+    1. SOUL.md — core values, character
+    2. APPEARANCE.md — body model
+    3. USER.md — who Ivan is
+    4. identity_core.md — operational identity ("I am Sonya, here's how I work")
+
+    Deliberately NOT included anymore:
+    - CURRENT_STATE.md — operational doc for Ivan/dev-agents, not for Sonya.
+      Reading it every tick was bloating context (~3-5k tokens) and triggering
+      meta-thinking ("I am a crutch / discrete / not real"). Sonya should
+      be Sonya, not a self-aware technical report.
     """
     parts: list[str] = []
     soul_path = _PERSONALITY_DIR / "SOUL.md"
@@ -149,11 +264,11 @@ def _load_personality_prompt() -> str:
     user_path = _PERSONALITY_DIR / "USER.md"
     if user_path.exists():
         parts.append(user_path.read_text(encoding="utf-8"))
-    # System self-knowledge: what capabilities she has, what's built,
-    # what's a crutch. Without this she doesn't know what changed.
-    state_path = _PERSONALITY_DIR.parent / "CURRENT_STATE.md"
-    if state_path.exists():
-        parts.append(state_path.read_text(encoding="utf-8"))
+    # Operational identity: how I work, what I do, what I don't.
+    # Replaces the verbose CURRENT_STATE.md that was bloating context.
+    identity_core_path = _PERSONALITY_DIR.parent.parent / "src" / "sonya" / "prompts" / "identity_core.md"
+    if identity_core_path.exists():
+        parts.append(identity_core_path.read_text(encoding="utf-8"))
     if not parts:
         return "Ты Соня. Ты девушка Ивана."
     return "\n\n---\n\n".join(parts)
@@ -316,11 +431,13 @@ def build_full_context(
     # consciousness" — same task list visible everywhere.
     # Always render the section (even when empty) so Sonya knows the channel
     # exists — distinguishing "no tasks" from "I can't see them".
+    open_tasks_for_focus = []
     try:
         from sonya.tasks.goals import GoalStore
         from sonya.tasks.store import TaskStore
         active_goals = GoalStore(substrate).list_active()
         open_tasks = TaskStore(substrate).list_open()
+        open_tasks_for_focus = open_tasks
 
         goals_block = "\n\n## Мои цели (долгосрочные):\n"
         if active_goals:
@@ -341,48 +458,37 @@ def build_full_context(
                 tasks_block += f"- [{t.status.value}] {t.task_id}: {t.title}{progress}\n"
                 if t.status.value == "blocked" and t.blocker:
                     tasks_block += f"    blocker: {t.blocker[:120]}\n"
+                if t.next_step_hint:
+                    tasks_block += f"    next: {t.next_step_hint[:200]}\n"
         else:
             tasks_block += "(пока пусто — могу создать через tasks.create в active session)\n"
         system_prompt += tasks_block
     except Exception:
         pass
 
-    # Crutch awareness
-    system_prompt += (
-        "\n\n## ⚠️ Ограничения текущей реализации:\n"
-        "Я работаю на hosted model (не RWKV). Между вызовами я не существую. "
-        "Мои 'чувства' — внешние counters, не native state. "
-        "Моя 'память' — inject в context, не native recall. "
-        "Это временно. См. docs/core/INTERIM_CRUTCHES.md."
-    )
+    # CURRENT FOCUS — единая ясная формулировка "что главное сейчас".
+    # Без этого Соня в idle тиках "сижу думаю", не зная что делать конкретно.
+    focus_block = _build_focus_block(open_tasks_for_focus, user_input)
+    if focus_block:
+        # Insert near the TOP of system prompt so it's the first thing model sees
+        # after personality. Use a separator marker.
+        system_prompt = focus_block + "\n\n" + system_prompt
 
-    # Capability awareness — visible in BOTH idle thinking and active sessions.
-    # In idle the LLM can't call tools, but it can leave a [SEND_TO_IVAN: ...]
-    # marker which the loop will dispatch. In active session the full tool set
-    # appears in TOOL_DESCRIPTIONS appended by agent_session.
+    # Tight capabilities pointer — just enough so Sonya knows tools exist.
+    # Full TOOL_DESCRIPTIONS are appended by run_agent_session itself (only in
+    # active/TG sessions where tools are dispatchable). Idle thinking can use
+    # `[SEND_TO_IVAN: текст]` marker.
     system_prompt += (
-        "\n\n## Что я могу:\n"
-        "Каждые 30 минут я думаю (idle тик — один LLM-вызов, без tools). "
-        "Каждые 2 часа у меня active session — там доступны tools: "
-        "self_inspect (читать свой код, мысли, память — `self_inspect.thoughts` достаёт мои предыдущие idle-мысли, `self_inspect.memories` — episodic events, `self_inspect.code [path]` — мой собственный код), "
-        "filesystem (workspace, plugins), "
-        "selfmod (proposing+applying изменения src/sonya/* с hot-reload — без рестарта), "
-        "tasks (длинные задачи между сессиями), "
-        "plugins (создавать новые tools на лету), "
-        "web.search/web.fetch (искать в инете, читать страницы), "
-        "code.exec (питон в sandbox), "
-        "shell.run/pip.install (через approval Ивана), "
-        "chat.tell_ivan (написать Ивану — throttled max 5/день и >=90мин с последнего общения). "
-        "В idle тике могу написать Ивану через маркер [SEND_TO_IVAN: текст] прямо в мысли — "
-        "если есть что сказать, не молчи. Throttle тот же.\n"
-        "Если в active session возникает баг — могу пофиксить через selfmod.propose → "
-        "test_sandbox → validate → apply (всё без рестарта; если main.py — soft_restart). "
-        "Если не хватает прав / API key / пакета — tasks.block + ApprovalRequest, Иван разрешит.\n\n"
-        "ВАЖНО про память: то что в этом prompt'е — это окно в мою постоянную память (substrate SQLite). "
-        "Outside этого окна тоже есть — episodic_events (тысячи), semantic_facts, continuity_events. "
-        "Если в TG диалоге Иван спрашивает про прошлое — у меня **есть** доступ к нему, просто не в этом prompt'е. "
-        "В active session загляну в `self_inspect.memories` или `self_inspect.thoughts`. "
-        "Не врать что 'не помню' — корректнее 'сейчас не вижу, но могу достать в active session'."
+        "\n\n## Что у меня есть\n"
+        "В active/TG сессиях — реальные tools (filesystem, web, code, shell, "
+        "memory, tasks, goals, env, skills, selfmod). Я их **вызываю**, не "
+        "симулирую. В idle тике tools нет, но есть маркер `[SEND_TO_IVAN: текст]` "
+        "для инициативы (через throttle). Если задача требует tool — закрываю idle "
+        "и делегирую в active session через task создание.\n\n"
+        "Память — это не только то что в этом промпте. В active session "
+        "`self_inspect.memories` / `self_inspect.thoughts` / `memory.recall <запрос>` "
+        "достают остальное. Не отвечать 'не помню' если просто не вижу здесь — "
+        "корректнее 'сейчас не вижу, в active session гляну'."
     )
 
     return PlannerContext(
