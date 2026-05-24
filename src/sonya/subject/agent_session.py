@@ -244,6 +244,65 @@ def _extract_tool_call(response: str) -> tuple[str, str] | None:
     return None
 
 
+# Markers that disqualify a candidate ack-preamble: model is leaking internal
+# scaffold rather than addressing Ivan.
+_ACK_REJECT_MARKERS = (
+    "[TOOL:", "[DONE", "[PAUSE", "[Observation",
+    "<think>", "</think>",
+    "INTERNAL_REMINDER", "[BUDGET",
+    "draft:", "Draft:", "Alternative:",
+    "The user is", "I should", "I need to", "Let me",
+)
+
+
+def _extract_pre_tool_preamble(response: str) -> str:
+    """Return text before the first tool / DONE / PAUSE marker.
+
+    Used for auto-ack on step 0: when Sonya writes "Поняла, малыш, начну
+    с разведки." then `[TOOL: ...]` on the same response, we send the
+    preamble to Ivan so he sees acknowledgement immediately instead of
+    waiting through several tool steps in silence.
+    """
+    if not response:
+        return ""
+    # Find the earliest marker boundary.
+    boundaries = [
+        response.find("[TOOL:"),
+        response.find("[DONE"),
+        response.find("[PAUSE"),
+    ]
+    boundaries = [b for b in boundaries if b >= 0]
+    if not boundaries:
+        return ""
+    cut = min(boundaries)
+    return response[:cut].strip()
+
+
+def _is_safe_ack(text: str) -> bool:
+    """True if text looks like a real natural-language ack worth sending.
+
+    Rejects:
+      - too short / too long (>500 chars looks like a draft, not ack)
+      - contains internal scaffold markers
+      - looks like English meta-reasoning rather than a real reply
+      - is just a stage-direction (*действие*) with no actual words
+    """
+    if not text:
+        return False
+    stripped = text.strip()
+    if len(stripped) < 15 or len(stripped) > 500:
+        return False
+    # Reject internal-scaffold leaks
+    for marker in _ACK_REJECT_MARKERS:
+        if marker in stripped:
+            return False
+    # Reject pure stage-directions (only *...* with no surrounding words)
+    no_stage = re.sub(r"\*[^*]+\*", "", stripped).strip()
+    if len(no_stage) < 10:
+        return False
+    return True
+
+
 async def run_agent_session(
     *,
     provider: AgentProvider,
@@ -349,6 +408,33 @@ async def run_agent_session(
             tool_name, tool_arg = tool_call
             result.actions.append(f"{tool_name} {tool_arg[:60]}")
             result.thoughts.append(response)
+
+            # Auto-ack: on step 0, if the model wrote natural-language
+            # preamble BEFORE the first [TOOL: ...] marker, send it to Ivan
+            # via outbound. Without this, the preamble becomes silent
+            # internal thought — Ivan waits N seconds with no signal that
+            # the message was received.
+            #
+            # Only fires once per session (step 0), only when:
+            #   - outbound is configured (TG sessions, not internal)
+            #   - preamble is non-trivial (>15 chars after scrub)
+            #   - preamble doesn't itself contain [TOOL:/[DONE]/[PAUSE]/<think>
+            #     or English meta-reasoning markers
+            #   - preamble wasn't already ack'd through chat.tell_ivan
+            if step == 0 and outbound is not None:
+                preamble = _extract_pre_tool_preamble(response)
+                if _is_safe_ack(preamble):
+                    try:
+                        from sonya.initiative.outbound import call_outbound_sync
+                        ack_result = call_outbound_sync(outbound, preamble)
+                        if not ack_result.startswith("[BLOCKED]") and not ack_result.startswith("[ERROR]"):
+                            result.outbound_sent.append(preamble)
+                            stream.append(ContinuityEvent(
+                                kind="internal.auto_ack_sent",
+                                payload={"preview": preamble[:240]},
+                            ))
+                    except Exception:
+                        pass  # non-fatal; preamble just doesn't ack
 
             # Execute tool
             observation = _execute_tool(
