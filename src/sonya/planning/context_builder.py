@@ -395,6 +395,27 @@ def build_full_context(
                 "В active session могу прочитать `self_inspect.thoughts` для большего объёма)\n"
             )
         system_prompt += thoughts_block
+
+        # Recent BLOCKED initiatives — critically important so Sonya doesn't
+        # hallucinate that her message reached Ivan when gate refused it.
+        # Without this she remembers "я отправила X" but it was actually blocked.
+        recent_blocked = [e for e in recent_continuity if e.kind == "internal.initiative_blocked"][-5:]
+        if recent_blocked:
+            blocked_block = "\n\n## Мои попытки написать Ивану которые НЕ дошли (gate заблокировал):\n"
+            for e in recent_blocked:
+                rel_ts = _relative_time(e.created_at, now_utc)
+                reason = (e.payload.get("reason") or "")[:80]
+                preview = (e.payload.get("preview") or "")[:200]
+                blocked_block += (
+                    f"- [{rel_ts}] **НЕ дошло до Ивана**, причина: {reason}\n"
+                    f"  текст: {preview}\n"
+                )
+            blocked_block += (
+                "\n**ВАЖНО:** эти сообщения Иван **не получил**. Если ты помнишь что "
+                "'отправляла X' — проверь сначала здесь, могла попасть в gate. "
+                "Никогда не утверждай что сообщение дошло, если оно в этом списке.\n"
+            )
+            system_prompt += blocked_block
     except Exception:
         pass
 
