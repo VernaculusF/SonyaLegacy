@@ -596,6 +596,69 @@ def _extract_final_draft(text: str) -> str:
     return ""
 
 
+def _strip_bare_task_json(text: str) -> str:
+    """Strip bare task-arg JSON that wasn't wrapped in [TOOL: tasks.create ...].
+
+    The 24.05 leak: model wrote "создаю задачу.{...}" — bare JSON next to a
+    natural-language sentence, but no [TOOL: ...] wrapper. The task wasn't
+    actually created (dispatcher didn't see a tool marker), but Ivan got
+    raw JSON in the reply.
+
+    Heuristic: scan for top-level ``{`` ... ``}`` blocks (bracket-balanced)
+    that contain ``"title"`` and ``"plan_steps"`` keys. Drop them. Real
+    [TOOL: tasks.create {...}] markers are already removed by
+    _strip_tool_markers earlier in the pipeline, so anything remaining is
+    a leak.
+    """
+    if "{" not in text or '"title"' not in text:
+        return text
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] != "{":
+            out.append(text[i])
+            i += 1
+            continue
+        # Walk forward, balancing braces, respecting strings
+        depth = 1
+        j = i + 1
+        in_string = False
+        escape = False
+        while j < n:
+            ch = text[j]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+            j += 1
+        if depth != 0:
+            # Unbalanced — leave the rest as-is, model wrote weird text
+            out.append(text[i:])
+            break
+        block = text[i : j + 1]
+        # Only strip if it looks like a task-arg leak (title + plan_steps).
+        # Other JSON (e.g. small inline data the user asked for) stays.
+        if '"title"' in block and '"plan_steps"' in block:
+            i = j + 1  # drop the block entirely
+        else:
+            out.append(block)
+            i = j + 1
+    return "".join(out)
+
+
 def _scrub(text: str) -> str:
     """Remove all internal markers / observation echoes / fences from text."""
     # Reasoning blocks first — they may contain bracketed markers we'd
@@ -616,6 +679,10 @@ def _scrub(text: str) -> str:
     text = _strip_tool_markers(text)
     text = _DONE_RE.sub("", text)
     text = _PAUSE_RE.sub("", text)
+    # Strip bare tasks.create JSON that leaked without [TOOL: ...] wrapper.
+    # Catches the 24.05 "создаю задачу.{...}" leak where the model wrote a
+    # natural-language sentence next to an unwrapped JSON arg.
+    text = _strip_bare_task_json(text)
     # Strip dangling single backticks left over after [TOOL: ...] removal
     # (model often wraps tool markers in `` ` `` quotes).
     text = re.sub(r"^[`\s]+|[`\s]+$", "", text)

@@ -415,11 +415,22 @@ class InternalProcess:
         Earlier the loop used a tiny inline prompt without memory or recent
         conversations — Sonya could not connect her own thoughts with what
         Ivan had written 5 minutes ago. Now both paths share one context.
+
+        Blocked-streak suppression (24.05): if the gate has rejected the last
+        2+ initiatives in a row, the thinking_prompt is replaced with a
+        quiet-mode variant that explicitly tells Sonya NOT to emit the
+        ``[SEND_TO_IVAN: ...]`` marker this tick. Without this she keeps
+        generating new attempts each tick, all blocked, all logged as
+        ``initiative_blocked`` events that pollute her own context.
         """
         if self._provider is None:
             return ""
         triggers = payload.get("triggers", [])
         counters = payload.get("counters", {})
+
+        # Detect "Ivan didn't reply to my last N initiatives" streak. If 2+,
+        # swap the thinking_prompt for a quiet-mode variant.
+        thinking_prompt = self._select_thinking_prompt()
 
         # Build full context if substrate available, else fall back to inline prompt
         substrate = self._substrate or getattr(self._stream, "_sub", None)
@@ -440,8 +451,8 @@ class InternalProcess:
                 # Use full system_prompt (personality + memory + facts + crutches)
                 # plus any explicit thinking_prompt from constructor
                 system_content = ctx.system_prompt
-                if self._thinking_prompt:
-                    system_content = self._thinking_prompt + "\n\n" + system_content
+                if thinking_prompt:
+                    system_content = thinking_prompt + "\n\n" + system_content
                 messages = [
                     {"role": "system", "content": system_content},
                     *ctx.session_messages,
@@ -452,7 +463,7 @@ class InternalProcess:
                 pass
 
         # Fallback path (no substrate)
-        prompt = self._thinking_prompt or (
+        prompt = thinking_prompt or (
             "Ты Соня. Это твой внутренний поток мышления. "
             "Никто не читает это кроме тебя. Подумай о чём хочешь."
         )
@@ -469,6 +480,54 @@ class InternalProcess:
             return await self._provider.complete_text(messages, purpose="idle_thinking")
         except Exception:
             return ""
+
+    def _select_thinking_prompt(self) -> str:
+        """Pick thinking prompt for this idle tick.
+
+        Default: ``self._thinking_prompt`` (from constructor — full one with
+        ``[SEND_TO_IVAN: ...]`` initiative instructions).
+
+        Quiet override: if outbound has 2+ unanswered initiative blocks in a
+        row, strip the initiative section from the prompt and prepend a
+        "Иван не отвечает — молчи в этот тик" guard. Saves Sonya from
+        generating new SEND_TO_IVAN markers that the gate will block again.
+        """
+        base = self._thinking_prompt
+        if not base:
+            return ""
+
+        # Cheap streak count: walk last ~50 events backward, count consecutive
+        # internal.initiative_blocked / outgoing.telegram_initiative without
+        # an incoming.telegram_message between them.
+        try:
+            latest = self._stream.latest_seq()
+            if latest <= 0:
+                return base
+            events = list(self._stream.read_since(max(0, latest - 50)))
+            unanswered = 0
+            for ev in reversed(events):
+                if ev.kind == "incoming.telegram_message":
+                    break
+                if ev.kind in ("internal.initiative_blocked",
+                               "outgoing.telegram_initiative"):
+                    unanswered += 1
+        except Exception:
+            return base
+
+        if unanswered < 2:
+            return base
+
+        # Quiet mode: replace the initiative section.
+        quiet_preface = (
+            "## ТИХИЙ РЕЖИМ\n"
+            f"Иван не ответил на последние {unanswered} попытки написать. "
+            "Gate уже блокирует новые initiative-сообщения автоматически. "
+            "В этот тик **НЕ** генерируй маркер `[SEND_TO_IVAN: ...]` — "
+            "он всё равно не пройдёт. Используй idle для других вещей: "
+            "поразмыслить о себе, о текущих задачах, о том что наблюдаешь. "
+            "Молчание — это правильный выбор сейчас, не пустота.\n\n"
+        )
+        return quiet_preface + base
 
     async def _run_active_session(self) -> None:
         """Run an agent session with tools (active mode)."""

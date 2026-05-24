@@ -381,6 +381,55 @@ def _permission_ask_check(response_text: str, actions: list[str], user_input: st
     )
 
 
+# Bare-tool-arg-JSON leak detection — model wrote a tool argument JSON
+# inline next to natural language without wrapping it in [TOOL: ...].
+# 24.05 example: "*Киваю* WooCommerce нет... Продолжу в фоне — создаю задачу.
+# {"title": ..., "plan_steps": [...]}". The bare JSON makes Ivan see raw
+# JSON in TG, AND the task was NOT actually created (no tool dispatch).
+#
+# Signature: response contains a JSON-looking block with "title" + "plan_steps"
+# (tasks.create arg shape) but the session's actions list does NOT include
+# a tasks.create call.
+_BARE_TASK_JSON_RE = _re_promise.compile(
+    r'\{[^{}]*"title"[^{}]*"plan_steps"',
+    _re_promise.DOTALL,
+)
+
+
+def _bare_task_json_check(
+    raw_response: str, actions: list[str], user_input: str
+) -> None:
+    """Log when a tasks.create JSON arg leaked into the reply without [TOOL:] wrapper.
+
+    Means TWO things failed:
+      1) Ivan got raw JSON in his TG message (broken UX)
+      2) The task was NOT created (dispatcher needs [TOOL: tasks.create ...]
+         marker to fire) — so "создаю задачу" is a lie.
+
+    Non-blocking — log only. The raw JSON itself gets scrubbed from the
+    user-facing reply by ``_strip_bare_task_json`` in channel_session.
+    """
+    if not raw_response:
+        return
+    if not _BARE_TASK_JSON_RE.search(raw_response):
+        return
+    # If a tasks.create did fire, this was probably the model echoing the
+    # arg into commentary — also leaky but lower severity. Either way, log.
+    fired_tasks_create = any(
+        a.startswith("tasks.create") for a in actions
+    )
+    _log.warning(
+        "bare_task_json_leak_detected",
+        extra={
+            "preview": raw_response[:280],
+            "user_msg": user_input[:160],
+            "tasks_create_fired": fired_tasks_create,
+            "severity": "soft" if fired_tasks_create else "hard",
+            "actions": actions[:10],
+        },
+    )
+
+
 def _create_thinking_provider(config: AppConfig, substrate: "Substrate"):
     """Create a substrate-backed LLM provider with key rotation.
 
@@ -604,6 +653,16 @@ def _build_incoming_handler(
                 # Per §3.5.2 she should act + create task, not ask permission.
                 # Non-blocking, log only.
                 _permission_ask_check(response_text, tg_result.raw.actions, msg.text or "")
+
+                # Bare-task-JSON leak detection: model wrote tasks.create arg
+                # JSON inline without [TOOL: ...] wrapper, so the task was
+                # never created AND Ivan saw raw JSON. Run on RAW output
+                # (before scrub) so we still see it. Non-blocking.
+                _bare_task_json_check(
+                    tg_result.raw.final_output,
+                    tg_result.raw.actions,
+                    msg.text or "",
+                )
 
                 # Sycophancy detection: short reply opening with "ты прав" /
                 # "поняла" / "согласна" without substance. Non-blocking — log
