@@ -225,30 +225,14 @@ class InternalProcess:
             pass
 
     def _effective_worker_interval(self) -> float:
-        """Adaptive worker cadence based on Ivan's activity.
+        """Worker cadence — fixed 3 minutes when there's an urgent task,
+        else the constructor default (typically 30 min, token saver).
 
-        Ivan's last incoming message <30 min ago AND there's at least one
-        urgent in_progress task → fast cadence (3 min). Otherwise default
-        (constructor value, usually 30 min).
-
-        Reasoning: when Ivan is actively waiting on results, 30-min ticks
-        feel like the system stalled. When he's offline / not waiting,
-        firing the worker every 3 min wastes tokens for no perceived
-        latency benefit.
+        Earlier this was activity-gated ("only fast when Ivan messaged
+        recently") but Ivan asked to drop the gate — 3 min is fast enough
+        whether he's watching or not, and slow enough not to spam tokens
+        when there's nothing urgent.
         """
-        try:
-            now = asyncio.get_event_loop().time()
-        except RuntimeError:
-            return self._task_worker_interval
-
-        # Cheap activity check: time since last external event (set by
-        # notify_external_event() on every incoming TG message).
-        idle_since_last_msg = now - self._last_external_event
-        if idle_since_last_msg > 1800.0:  # 30 min
-            return self._task_worker_interval
-
-        # Ivan recently active. Verify there's something urgent worth firing
-        # the worker for — don't burn tokens on slow background tasks.
         substrate = self._substrate or getattr(self._stream, "_sub", None)
         if substrate is None:
             return self._task_worker_interval

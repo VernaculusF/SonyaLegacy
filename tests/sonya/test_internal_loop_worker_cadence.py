@@ -122,37 +122,22 @@ def _seed_urgent_task(substrate: Substrate) -> None:
 
 
 @pytest.mark.asyncio
-async def test_effective_interval_default_when_ivan_idle(
+async def test_effective_interval_fast_when_urgent_task_exists(
     substrate: Substrate,
 ) -> None:
-    """Ivan has not sent a message recently → fall back to constructor interval."""
-    loop = _build_loop(substrate, worker_interval=1800.0)
-    # _last_external_event default is 0.0 from constructor → "long time ago"
-    interval = loop._effective_worker_interval()
-    assert interval == 1800.0
-
-
-@pytest.mark.asyncio
-async def test_effective_interval_fast_when_ivan_active_and_urgent_task(
-    substrate: Substrate,
-) -> None:
-    """Ivan messaged recently AND there's an urgent task → 3-minute cadence."""
+    """Urgent in_progress task → 3-minute cadence regardless of Ivan activity."""
     _seed_urgent_task(substrate)
     loop = _build_loop(substrate, worker_interval=1800.0)
-    # Pretend Ivan just messaged
-    loop._last_external_event = asyncio.get_event_loop().time()
     interval = loop._effective_worker_interval()
     assert interval == 180.0
 
 
 @pytest.mark.asyncio
-async def test_effective_interval_default_when_ivan_active_no_urgent(
+async def test_effective_interval_default_when_no_urgent_task(
     substrate: Substrate,
 ) -> None:
-    """Ivan active but no urgent task — don't speed up worker, save tokens."""
+    """No urgent task — fall back to constructor interval (token saver)."""
     loop = _build_loop(substrate, worker_interval=1800.0)
-    loop._last_external_event = asyncio.get_event_loop().time()
-    # No urgent tasks seeded
     interval = loop._effective_worker_interval()
     assert interval == 1800.0
 
