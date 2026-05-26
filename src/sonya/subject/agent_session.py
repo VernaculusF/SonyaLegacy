@@ -75,6 +75,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - self_inspect.intentions — read active intentions
 - self_inspect.code [module_path] — read your own source code (e.g. "planning/planner.py")
 - self_inspect.modules — list your packages
+- self_inspect.drift [days] — aggregate self-observation: drift detector hit counts (initiative_blocked, stuck_loops), blocked/failed tasks, selfmod activity, work volume. Default last 3 days. Use this every periodic self-improvement session to see your own behaviour patterns and decide what to fix in your own code via selfmod.
 - memory.recall [query] — semantic search over your full episodic history (returns top-5 relevant memories with similarity score)
 - memory.index_status — diagnostic: how many events are embedded vs pending
 - env.set [key value] — record what you observe about Ivan / context (e.g. `env.set ivan_status спит`, `env.set mood уставший`, `env.set activity работает`). Used to suppress initiative when Ivan is busy/asleep — OutboundGate respects ivan_status='спит' / 'занят'.
@@ -617,6 +618,19 @@ def _h_si_modules(arg: str, ctx: _ToolContext) -> str:
     return ctx.self_inspect.list_own_modules()
 
 
+def _h_si_drift(arg: str, ctx: _ToolContext) -> str:
+    """Aggregate self-observation: drift counts + blocked tasks + selfmod
+    activity. Optional arg: number of days to look back (default 3).
+
+    Replaces having to read 5 different streams to figure out "how am I
+    doing this week". Used by the periodic self-improvement track.
+    """
+    days = 3
+    if arg and arg.strip().isdigit():
+        days = max(1, min(30, int(arg.strip())))
+    return ctx.self_inspect.read_drift_summary(days=days)
+
+
 # --- filesystem.* ---
 
 
@@ -1036,6 +1050,7 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "self_inspect.intentions": _h_si_intentions,
     "self_inspect.code": _h_si_code,
     "self_inspect.modules": _h_si_modules,
+    "self_inspect.drift": _h_si_drift,
     # filesystem.*
     "filesystem.read": _h_fs_read,
     "filesystem.list": _h_fs_list,

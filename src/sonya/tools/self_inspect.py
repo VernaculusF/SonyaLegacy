@@ -91,3 +91,119 @@ class SelfInspectTool:
         sonya_dir = self._root / "src" / "sonya"
         packages = [d.name for d in sorted(sonya_dir.iterdir()) if d.is_dir() and not d.name.startswith("_")]
         return "\n".join(packages)
+
+    def read_drift_summary(self, days: int = 3) -> str:
+        """Return aggregate self-observation: drift detector hit counts +
+        blocked tasks + selfmod activity over the last ``days`` days.
+
+        This is what powers the periodic self-improvement track. Sonya
+        sees her OWN behaviour patterns (not Ivan judging her), decides
+        which patterns to fix in her OWN code via selfmod.
+
+        Output is plain text, not JSON, because it goes into ``initial_thought``
+        seed of an active session — model reads it as a directive, not a
+        structured response to parse.
+        """
+        import json as _json
+        from datetime import datetime, timezone, timedelta
+
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        conn = self._sub.connection
+
+        # 1. Detector warning counts. We can't count log warnings directly
+        #    from substrate (they go to journalctl), but the equivalent
+        #    in-substrate signals are the events the detectors check on:
+        #    initiative_blocked, task_worker_stuck_blocked, agent_session
+        #    outcomes, etc.
+        signals: list[tuple[str, str]] = []
+
+        rows = conn.execute(
+            "SELECT json_extract(payload_json, '$.reason') AS reason, COUNT(*) "
+            "FROM continuity_events "
+            "WHERE kind = 'internal.initiative_blocked' "
+            "  AND created_at > ? "
+            "GROUP BY reason ORDER BY COUNT(*) DESC LIMIT 6",
+            (cutoff_iso,),
+        ).fetchall()
+        if rows:
+            signals.append(("Мои попытки написать первой которые gate отклонил:",
+                            "\n".join(f"  {n}× {(r or '(no reason)')[:120]}" for r, n in rows)))
+
+        n_stuck = conn.execute(
+            "SELECT COUNT(*) FROM continuity_events "
+            "WHERE kind = 'internal.task_worker_stuck_blocked' "
+            "  AND created_at > ?",
+            (cutoff_iso,),
+        ).fetchone()[0]
+        if n_stuck:
+            signals.append(("Stuck-loop блоки worker'а:",
+                            f"  {n_stuck}× — задачи где я писала одно и то же 3+ хэндофа подряд"))
+
+        # 2. Blocked / failed tasks
+        rows = conn.execute(
+            "SELECT task_id, status, sessions_used, title, blocker "
+            "FROM tasks WHERE status IN ('blocked', 'failed') "
+            "  AND updated_at > ? "
+            "ORDER BY updated_at DESC LIMIT 8",
+            (cutoff_iso,),
+        ).fetchall()
+        if rows:
+            block_block = []
+            for tid, st, used, title, blocker in rows:
+                line = f"  [{st:7s}] {used} sess  {tid}  {(title or '')[:60]}"
+                if blocker:
+                    line += f"\n             blocker: {(blocker or '')[:140]}"
+                block_block.append(line)
+            signals.append(
+                (f"Задачи в blocked/failed за последние {days} дней:",
+                 "\n".join(block_block)))
+
+        # 3. Selfmod activity
+        n_proposals = conn.execute(
+            "SELECT COUNT(*) FROM self_mod_proposals WHERE created_at > ?",
+            (cutoff_iso,),
+        ).fetchone()[0]
+        n_applied = conn.execute(
+            "SELECT COUNT(*) FROM continuity_events "
+            "WHERE kind = 'self_mod.applied' AND created_at > ?",
+            (cutoff_iso,),
+        ).fetchone()[0]
+        last_applied_row = conn.execute(
+            "SELECT created_at, json_extract(payload_json, '$.target_module') "
+            "FROM continuity_events "
+            "WHERE kind = 'self_mod.applied' "
+            "ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        sm_lines = [f"  proposals created: {n_proposals}", f"  applied: {n_applied}"]
+        if last_applied_row:
+            sm_lines.append(f"  last apply: {last_applied_row[0][:19]} → {last_applied_row[1]}")
+        else:
+            sm_lines.append("  last apply: NEVER")
+        signals.append(("Selfmod активность:", "\n".join(sm_lines)))
+
+        # 4. Active session counts (for context)
+        n_active = conn.execute(
+            "SELECT COUNT(*) FROM continuity_events "
+            "WHERE kind = 'internal.agent_session_outcome' "
+            "  AND created_at > ?",
+            (cutoff_iso,),
+        ).fetchone()[0]
+        n_worker = conn.execute(
+            "SELECT COUNT(*) FROM continuity_events "
+            "WHERE kind = 'internal.task_worker_outcome' "
+            "  AND created_at > ?",
+            (cutoff_iso,),
+        ).fetchone()[0]
+        signals.append(
+            ("Объём работы:",
+             f"  active sessions: {n_active}\n  worker ticks: {n_worker}"))
+
+        if not signals:
+            return f"(чисто за {days} дней — ни одного дрейф-сигнала)"
+
+        out = [f"## Drift summary за последние {days} дней", ""]
+        for header, body in signals:
+            out.append(header)
+            out.append(body)
+            out.append("")
+        return "\n".join(out)

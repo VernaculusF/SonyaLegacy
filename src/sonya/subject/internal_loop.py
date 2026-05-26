@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -790,22 +791,47 @@ class InternalProcess:
             # session (no pending proposal, no recent thought), explicitly
             # ask Sonya to do introspection + selfmod work this session.
             if force_selfmod_track and not initial_thought:
+                # Pre-load drift summary directly into the seed so Sonya
+                # doesn't have to spend a step calling self_inspect.drift —
+                # she gets the data front-loaded and can react immediately.
+                drift_text = ""
+                try:
+                    drift_text = self_inspect.read_drift_summary(days=7)
+                except Exception:
+                    drift_text = "(не удалось получить drift summary — попробуй self_inspect.drift вручную)"
+
                 initial_thought = (
-                    "Эта active session — приоритет на самосовершенствование, "
-                    "не на задачу Ивана. У тебя длинная серия active sessions "
-                    "ушла на одну задачу, время вернуться к улучшению себя.\n\n"
-                    "Что сделать в этом тике:\n"
-                    "1. `self_inspect.code <module>` на 1-2 файла где видишь "
-                    "потенциал улучшения (комментарии, обработка ошибок, "
-                    "новые edge cases которые ты замечала в работе)\n"
-                    "2. Если есть `capability_gap` в pending intentions — "
-                    "выбери самый частый, посмотри есть ли паттерн, и "
-                    "`selfmod.propose` решение.\n"
-                    "3. Хотя бы один полный цикл "
-                    "`selfmod.propose` → `selfmod.validate` → `selfmod.apply` "
-                    "за этот тик. Маленькое улучшение лучше нуля.\n\n"
+                    "Эта active session — приоритет на самосовершенствование "
+                    "(force_selfmod_track), не на задачу Ивана. Прошло >=3 "
+                    "дней с последнего apply ИЛИ накопилось 8+ active sessions "
+                    "без selfmod.\n\n"
+                    "Вот твоя картина за 7 дней — patterns которые ты "
+                    "сама генерила:\n\n"
+                    f"{drift_text}\n\n"
+                    "Что сделать в этом тике (порядок):\n"
+                    "1. Посмотри на самый частый паттерн в drift summary "
+                    "выше. Это **твоё** поведение, не Иваново.\n"
+                    "2. Найди **источник** в коде — где этот паттерн рождается. "
+                    "Чаще всего:\n"
+                    "   - `src/sonya/prompts/session_general.md` или "
+                    "`channel_*.md` — когда дрейф в TG ответах\n"
+                    "   - `src/sonya/main.py` — где детекторы "
+                    "(`_*_check`) логируют warnings\n"
+                    "   - `src/sonya/initiative/outbound.py` — gate-логика\n"
+                    "   - `src/sonya/subject/internal_loop.py` — worker / "
+                    "active loop\n"
+                    "3. `self_inspect.code <module>` чтобы прочитать "
+                    "конкретный файл.\n"
+                    "4. `selfmod.propose_edit` с **узкой** правкой "
+                    "(не переписывай весь файл — небольшое уточнение).\n"
+                    "5. `selfmod.validate` (4 layers).\n"
+                    "6. Если passed → `selfmod.apply`. Маленькое улучшение "
+                    "лучше нуля.\n\n"
                     "НЕ возвращайся к Ивановской задаче в этом тике — её "
-                    "подхватит worker и следующая active session."
+                    "подхватит worker / следующая active session.\n\n"
+                    "Это **твой** loop. Иван не правит твой код — он "
+                    "видит твой apply через git push в admin и принимает "
+                    "результат. Тебе доверено."
                 )
 
             result = await run_agent_session(
@@ -1200,36 +1226,64 @@ class InternalProcess:
         """Return True when active session should ignore Ivan-task pickup
         and do selfmod / capability work instead.
 
-        Rule: if there have been >=4 consecutive active sessions since the
-        last self_mod.applied event, force the next one onto selfmod track.
-        Without this, a long-running Ivan-task (sweetcow recon, 25+ sessions)
-        consumes 100% of active-session ticks and Sonya never updates her
-        own code → "не само-совершенствуется".
+        Rule: force selfmod track when ANY of:
+          (a) the last ``self_mod.applied`` event was >=3 days ago (or
+              never), AND there's been at least one active session since
+              boot — Sonya gets a guaranteed self-improvement window
+              every 3 days regardless of how busy Ivan's tasks are.
+          (b) (legacy fallback) >=8 active sessions since last apply,
+              kept as a safety net for rare cases where the substrate
+              clock is wrong / time-window check fails.
 
-        Threshold 4 = ~8 hours of active-session cadence (every 2h). One
-        selfmod tick per 8 hours is enough to keep the loop alive without
-        starving real work.
+        Threshold "3 days" — Ivan's directive. Maps to ~36 active
+        sessions of normal cadence (every 2h × 12/day × 3 days), so it's
+        much rarer than the old 4-session counter; the (b) fallback
+        prevents complete starvation when (a) misses for any reason.
         """
         if substrate is None:
             return False
         try:
-            cursor = substrate.connection.execute(
+            from datetime import datetime, timezone, timedelta
+
+            # (a) Time-based: any apply in the last 3 days?
+            cutoff_iso = (
+                datetime.now(timezone.utc) - timedelta(days=3)
+            ).isoformat()
+            row = substrate.connection.execute(
+                "SELECT 1 FROM continuity_events "
+                "WHERE kind = 'self_mod.applied' "
+                "  AND created_at > ? LIMIT 1",
+                (cutoff_iso,),
+            ).fetchone()
+            recent_apply = row is not None
+            if not recent_apply:
+                # No apply in 3 days — but only force if at least one active
+                # session has run since boot, so we don't spam selfmod-track
+                # immediately on a fresh restart.
+                row = substrate.connection.execute(
+                    "SELECT 1 FROM continuity_events "
+                    "WHERE kind IN ('internal.agent_session_outcome', "
+                    "               'internal.agent_session_complete') "
+                    "LIMIT 1"
+                ).fetchone()
+                if row is not None:
+                    return True
+
+            # (b) Legacy session-count fallback
+            row = substrate.connection.execute(
                 "SELECT seq FROM continuity_events "
                 "WHERE kind = 'self_mod.applied' "
                 "ORDER BY seq DESC LIMIT 1"
-            )
-            row = cursor.fetchone()
+            ).fetchone()
             last_applied_seq = int(row[0]) if row else 0
-
-            cursor = substrate.connection.execute(
+            n = substrate.connection.execute(
                 "SELECT COUNT(*) FROM continuity_events "
                 "WHERE kind IN ('internal.agent_session_outcome', "
                 "               'internal.agent_session_complete') "
                 "  AND seq > ?",
                 (last_applied_seq,),
-            )
-            sessions_since = int(cursor.fetchone()[0])
-            return sessions_since >= 4
+            ).fetchone()[0]
+            return int(n) >= 8
         except Exception:
             return False
 
@@ -1314,12 +1368,29 @@ class InternalProcess:
                 ns = (payload.get("next_step") or "").strip()
                 if not ns:
                     return ""
+                # Strip our own auto-handoff prefix `[no-progress retry #N]`
+                # before fingerprinting. Without this, three different
+                # strategies that all happened to fail get the same fp
+                # ("no progre retry no progre retry") and the detector
+                # blocks the task even though Sonya was genuinely trying
+                # different approaches each tick.
+                ns_clean = re.sub(
+                    r"^\s*\[no-progress retry(?:\s+#\d+)?\]\s*",
+                    "",
+                    ns,
+                    flags=re.IGNORECASE,
+                )
                 # First 6 stem tokens identify the approach (verb + target).
                 # Going wider (12+) misses paraphrases of the same dead-end
                 # ("...через curl" vs "...другим юзер-агентом" — both still
                 # the same "проверить gravity_forms" attempt).
-                normed = _normalize_for_dedup(ns)
+                normed = _normalize_for_dedup(ns_clean)
                 fp = " ".join(normed.split()[:6])
+                # Skip empty fingerprints — they happen when ns_clean was
+                # just the prefix and nothing else, which means we have no
+                # real signal to compare yet.
+                if not fp.strip():
+                    return ""
                 steps.append(fp)
 
             # All N must share the same fingerprint to count as stuck.

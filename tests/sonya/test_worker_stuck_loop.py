@@ -128,6 +128,52 @@ def test_stuck_loop_only_other_task_handoffs(substrate: Substrate) -> None:
     assert loop._detect_stuck_loop(tid_b) == ""
 
 
+def test_stuck_loop_strips_no_progress_prefix(substrate: Substrate) -> None:
+    """Auto-handoff prefix `[no-progress retry #N]` must be stripped before
+    fingerprinting. Otherwise three different strategies that all failed
+    once each get the same fingerprint ("no progre retry no progre retry")
+    and the detector falsely blocks a task that's genuinely trying
+    different approaches."""
+    loop = _build_loop(substrate)
+    tid = "task-no-progress"
+    # Three different real strategies, each got the auto-handoff prefix
+    # because each tick failed before producing concrete output.
+    _seed_handoff(
+        substrate, task_id=tid,
+        next_step="[no-progress retry #1] попробовать xmlrpc.php брут через Tor",
+        minutes_ago=20,
+    )
+    _seed_handoff(
+        substrate, task_id=tid,
+        next_step="[no-progress retry #2] проверить wp-json application passwords endpoint",
+        minutes_ago=10,
+    )
+    _seed_handoff(
+        substrate, task_id=tid,
+        next_step="[no-progress retry #3] перебор слабых паролей через WP REST",
+        minutes_ago=5,
+    )
+    # After stripping prefix, fingerprints are different → not stuck
+    assert loop._detect_stuck_loop(tid) == ""
+
+
+def test_stuck_loop_still_catches_real_repeat_with_prefix(substrate: Substrate) -> None:
+    """If THE SAME strategy keeps appearing under the no-progress prefix,
+    that IS stuck. Detector must still catch it."""
+    loop = _build_loop(substrate)
+    tid = "task-real-stuck"
+    same_strategy = "проверить /wp-content/uploads/gravity_forms/ на directory listing"
+    for i in range(3):
+        _seed_handoff(
+            substrate, task_id=tid,
+            next_step=f"[no-progress retry #{i+1}] {same_strategy}",
+            minutes_ago=20 - i * 5,
+        )
+    reason = loop._detect_stuck_loop(tid)
+    assert reason
+    assert "stuck loop" in reason
+
+
 # --- _count_recent_no_progress ---
 
 
