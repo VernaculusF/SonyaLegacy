@@ -472,7 +472,8 @@ def _reply_repeat_check(
             "SELECT payload_json FROM continuity_events "
             "WHERE kind IN ('outgoing.telegram_response', "
             "               'outgoing.response', "
-            "               'outgoing.telegram_initiative') "
+            "               'outgoing.telegram_initiative', "
+            "               'outgoing.telegram_progress') "
             "  AND created_at > datetime('now', '-30 minutes') "
             "ORDER BY seq DESC LIMIT 3"
         )
@@ -836,15 +837,8 @@ def _build_incoming_handler(
                         pass
 
                 # Sycophancy detection: short reply opening with "ты прав" /
-                # "поняла" / "согласна" without substance. Non-blocking — log
-                # only. RLHF drift indicator.
-                if _looks_like_sycophancy(response_text):
-                    _log.warning(
-                        "sycophancy_detected",
-                        extra={"preview": response_text[:200]},
-                    )
-                # Sycophancy detection: she opened with "ты прав / поняла / согласна"
-                # without any fact-checking tool. Log for visibility.
+                # "поняла" / "согласна" without substance + tool-call pattern
+                # check. Two thresholds in one detector — see _sycophancy_check.
                 _sycophancy_check(response_text, tg_result.raw.actions, msg.text or "")
 
                 record_response_as_memory(

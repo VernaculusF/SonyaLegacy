@@ -175,6 +175,10 @@ class InternalProcess:
         waiting for the full active_interval (e.g. 2h), the loop will fire
         active mode at the next tick after the delay. Safe to call multiple
         times; only the earliest takes effect.
+
+        TODO(2026-05-26): currently no caller. Originally intended for TG
+        handler post-DONE when an Ivan-task escalation deserved a deeper
+        active-session pass. Keep as public API for future wiring.
         """
         loop = asyncio.get_event_loop()
         target_time = loop.time() - self._active_interval + delay_seconds

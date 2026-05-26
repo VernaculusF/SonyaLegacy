@@ -255,6 +255,12 @@ class OutboundGate:
     def _unanswered_initiatives_streak(self) -> int:
         """Count consecutive outgoing.telegram_initiative events with no
         incoming.telegram_message between them (most recent first).
+
+        Only `outgoing.telegram_initiative` (real unsolicited messages)
+        counts toward the streak — `outgoing.telegram_progress`
+        (chat.tell_ivan from a tool, ack of an Ivan-task progress) is
+        explicitly excluded. Mixing them caused the escalating quiet
+        window to fire on legitimate progress messages.
         """
         latest_seq = self._stream.latest_seq()
         if latest_seq <= 0:
@@ -280,6 +286,7 @@ class OutboundGate:
             "outgoing.response",
             "outgoing.telegram_response",
             "outgoing.telegram_initiative",
+            "outgoing.telegram_progress",
         }
         for ev in reversed(events):
             if ev.kind in relevant_kinds and ev.created_at:
@@ -338,6 +345,7 @@ class OutboundGate:
             now = _utc_now()
             outbound_kinds = {
                 "outgoing.telegram_initiative",
+                "outgoing.telegram_progress",
                 "outgoing.telegram_response",
                 "outgoing.response",
             }
@@ -436,8 +444,19 @@ class OutboundGate:
             self._progress_today += 1
         else:
             self._sent_today += 1
+        # Distinguish event kinds so downstream consumers (escalating quiet,
+        # cross-session dedup, _unanswered_initiatives_streak) can tell
+        # an ack/progress chat.tell_ivan from a real unsolicited initiative.
+        # Earlier ALL outbound got kind=outgoing.telegram_initiative which
+        # caused tool progress messages to inflate the unanswered counter
+        # and trigger 2× / 4× quiet windows for Sonya even when she was
+        # only sending requested progress updates.
+        event_kind = (
+            "outgoing.telegram_progress" if is_progress
+            else "outgoing.telegram_initiative"
+        )
         self._stream.append(ContinuityEvent(
-            kind="outgoing.telegram_initiative",
+            kind=event_kind,
             payload={
                 "reason": reason,
                 "target": self._target,

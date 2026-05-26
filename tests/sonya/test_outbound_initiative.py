@@ -62,9 +62,10 @@ async def test_send_via_tool_dispatches_when_no_recent_tg(env) -> None:
     out = await gate.send_via_tool("hello, ivan")
     assert "[OK] sent" in out
     assert fake.sent == [("123", "hello, ivan")]
-    # Continuity event recorded
+    # Continuity event recorded — tool-path emits outgoing.telegram_progress
+    # (vs outgoing.telegram_initiative for unsolicited [SEND_TO_IVAN: ...]).
     events = list(stream.read_since(0))
-    assert any(e.kind == "outgoing.telegram_initiative" for e in events)
+    assert any(e.kind == "outgoing.telegram_progress" for e in events)
 
 
 async def test_send_blocked_when_quiet_window_not_passed(env) -> None:

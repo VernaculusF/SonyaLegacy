@@ -264,7 +264,7 @@ const renderers = {
           ${filterChip('', 'all')}
           ${filterChip('internal.thought', '💭 thoughts')}
           ${filterChip('internal.agent_step', '🔧 actions')}
-          ${filterChip('incoming.telegram_message,outgoing.telegram_initiative,outgoing.response,outgoing.telegram_response', '💬 dialogue')}
+          ${filterChip('incoming.telegram_message,outgoing.telegram_initiative,outgoing.telegram_progress,outgoing.response,outgoing.telegram_response', '💬 dialogue')}
           ${filterChip('internal.task_worker_tick,internal.task_worker_outcome,task.session_handoff,task.created,task.picked_up,task.step_done,task.failed,task.blocked,task.session_budget_exhausted', '📋 tasks')}
           ${filterChip('internal.tool_error,internal.task_worker_error', '⚠️ errors')}
           ${filterChip('internal.cognitive_tick,internal.agent_session_complete,internal.agent_session_outcome,internal.inbox_queued_during_session,internal.inbox_injected,internal.initiative_blocked,internal.capability_gap,internal.consolidation_run,subject.lifecycle.started,subject.lifecycle.stopped,self_mod.validation_layer_1,self_mod.validation_layer_2,self_mod.validation_layer_3,self_mod.validation_layer_4,approval.requested', '⚙️ system')}

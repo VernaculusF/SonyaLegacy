@@ -357,6 +357,7 @@ def build_full_context(
             "outgoing.response",
             "outgoing.telegram_response",
             "outgoing.telegram_initiative",
+            "outgoing.telegram_progress",
             "internal.agent_session_outcome",
         }
         recent_dialog = [e for e in recent_continuity if e.kind in dialog_kinds][-12:]
@@ -373,6 +374,9 @@ def build_full_context(
                 elif e.kind == "outgoing.telegram_initiative":
                     text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{rel_ts}] [я написала первой] {text}\n"
+                elif e.kind == "outgoing.telegram_progress":
+                    text = (e.payload.get("text") or "")[:600]
+                    stream_block += f"- [{rel_ts}] [я отправила прогресс] {text}\n"
                 elif e.kind == "internal.agent_session_outcome":
                     steps = e.payload.get("steps", 0)
                     stream_block += f"- [{rel_ts}] [active session] {steps} шагов\n"
@@ -388,6 +392,7 @@ def build_full_context(
             "outgoing.response",
             "outgoing.telegram_response",
             "outgoing.telegram_initiative",
+            "outgoing.telegram_progress",
         }
         recent_outbound = [
             e for e in recent_continuity
