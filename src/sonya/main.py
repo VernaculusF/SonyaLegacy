@@ -381,6 +381,81 @@ def _permission_ask_check(response_text: str, actions: list[str], user_input: st
     )
 
 
+# Inappropriate-delegation detection — Sonya created a task in response to
+# an imperative command from Ivan ("напиши скрипт", "запусти X"). Ivan
+# wanted execute-here-now, not delegate-to-worker.
+#
+# Signature: user input contains imperative trigger ("напиши / запусти /
+# сделай / проверь" + specific object) AND reply mentions task creation
+# AND actions list includes tasks.create AND no concrete code/shell
+# action was executed in this turn.
+_IMPERATIVE_RE = _re_promise.compile(
+    r"\b("
+    r"напиши|запусти|сделай(?!ся)|проверь(?!те)|собери|"
+    r"посмотри\s+(?:сейчас|сразу)|"
+    r"скрипт\s+(?:давай|пиши|написать)|"
+    r"не\s+создавай\s+задач|сделай\s+сейчас|"
+    r"не\s+откладывай|сразу\s+сделай"
+    r")\b",
+    _re_promise.IGNORECASE,
+)
+_DELEGATION_REPLY_RE = _re_promise.compile(
+    r"\b("
+    r"создаю\s+задач|worker\s+подхватит|"
+    r"уйду\s+в\s+фон|продолжу\s+в\s+(?:фоне|следующей)|"
+    r"ставлю\s+в\s+task|task\s+создан"
+    r")\b",
+    _re_promise.IGNORECASE,
+)
+_EXEC_TOOL_PREFIXES = (
+    "code.exec",
+    "shell.run",
+    "filesystem.write",
+    "selfmod.propose",
+    "selfmod.apply",
+    "web.fetch",
+)
+
+
+def _inappropriate_delegation_check(
+    response_text: str, actions: list[str], user_input: str
+) -> None:
+    """Log when Sonya delegated to worker after an imperative Ivan command.
+
+    Triggers when:
+      - user_input contains imperative trigger ('напиши X', 'запусти Y')
+      - reply contains delegation phrasing ('создаю задачу', 'worker
+        подхватит')
+      - tasks.create fired in actions
+      - NO execution tool fired (code.exec / shell.run / filesystem.write
+        / web.fetch / selfmod.*) — means Ivan's "do it" was answered with
+        "I'll have someone else do it"
+
+    Non-blocking. The 26.05 19:54 case where Ivan said "просто напиши скрипт"
+    and Sonya answered with tasks.create.
+    """
+    if not response_text or not user_input:
+        return
+    if not _IMPERATIVE_RE.search(user_input):
+        return
+    if not _DELEGATION_REPLY_RE.search(response_text):
+        return
+    fired_create = any(a.startswith("tasks.create") for a in actions)
+    fired_exec = any(
+        any(a.startswith(p) for p in _EXEC_TOOL_PREFIXES) for a in actions
+    )
+    if not fired_create or fired_exec:
+        return  # not the bad pattern
+    _log.warning(
+        "inappropriate_delegation_detected",
+        extra={
+            "user_msg": user_input[:200],
+            "preview": response_text[:240],
+            "actions": actions[:10],
+        },
+    )
+
+
 # Bare-tool-arg-JSON leak detection — model wrote a tool argument JSON
 # inline next to natural language without wrapping it in [TOOL: ...].
 # 24.05 example: "*Киваю* WooCommerce нет... Продолжу в фоне — создаю задачу.
@@ -794,6 +869,14 @@ def _build_incoming_handler(
                 # Per §3.5.2 she should act + create task, not ask permission.
                 # Non-blocking, log only.
                 _permission_ask_check(response_text, tg_result.raw.actions, msg.text or "")
+
+                # Inappropriate-delegation detection: Ivan said "напиши скрипт /
+                # запусти" (imperative), Sonya answered "создаю задачу, worker
+                # подхватит" (delegation) without executing anything in this
+                # turn. The 26.05 19:54 case. Non-blocking, log only.
+                _inappropriate_delegation_check(
+                    response_text, tg_result.raw.actions, msg.text or "",
+                )
 
                 # Bare-task-JSON leak detection: model wrote tasks.create arg
                 # JSON inline without [TOOL: ...] wrapper, so the task was
