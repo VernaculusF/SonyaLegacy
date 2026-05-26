@@ -682,6 +682,30 @@ def _build_incoming_handler(
                     msg.text or "",
                 )
 
+                # If Sonya created or progressed a task in this TG turn,
+                # poke the worker so it picks up the new state in seconds
+                # instead of the next regular interval (3-30 minutes).
+                # Without this, "ушла в фоне" promises take 0-30 min to
+                # start any actual work — Ivan perceives the system as
+                # stalled.
+                _task_actions = (
+                    "tasks.create",
+                    "tasks.pick",
+                    "tasks.unblock",
+                    "tasks.handoff",
+                )
+                if (
+                    internal_process is not None
+                    and any(
+                        any(a.startswith(prefix) for prefix in _task_actions)
+                        for a in tg_result.raw.actions
+                    )
+                ):
+                    try:
+                        internal_process.request_worker_soon(delay_seconds=30.0)
+                    except Exception:
+                        pass
+
                 # Sycophancy detection: short reply opening with "ты прав" /
                 # "поняла" / "согласна" without substance. Non-blocking — log
                 # only. RLHF drift indicator.

@@ -189,6 +189,79 @@ class InternalProcess:
             except Exception:
                 pass
 
+    def request_worker_soon(self, delay_seconds: float = 30.0) -> None:
+        """Schedule the task worker to fire within ``delay_seconds``.
+
+        Called by tg_session right after a ``tasks.create`` so the worker
+        picks up the new task in seconds instead of waiting for the next
+        regular interval (3-30 minutes). Without this, "уйду в фоне"
+        promises take 0-30 minutes to start any actual work.
+
+        Always emits ``internal.task_worker_scheduled`` for visibility.
+        Adjusts ``_last_task_worker_at`` only when needed — if the worker
+        is already overdue (e.g. at boot, or right after an unrelated TG
+        session), the kick is a no-op for scheduling but still logged.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            now_t = loop.time()
+        except RuntimeError:
+            now_t = 0.0
+        target_time = now_t - max(self._task_worker_interval, 60.0) + delay_seconds
+        # Pull schedule forward only when current scheduled time is later.
+        adjusted = False
+        if target_time < self._last_task_worker_at:
+            self._last_task_worker_at = target_time
+            adjusted = True
+        try:
+            self._stream.append(ContinuityEvent(
+                kind="internal.task_worker_scheduled",
+                payload={
+                    "delay_seconds": delay_seconds,
+                    "adjusted": adjusted,
+                },
+            ))
+        except Exception:
+            pass
+
+    def _effective_worker_interval(self) -> float:
+        """Adaptive worker cadence based on Ivan's activity.
+
+        Ivan's last incoming message <30 min ago AND there's at least one
+        urgent in_progress task → fast cadence (3 min). Otherwise default
+        (constructor value, usually 30 min).
+
+        Reasoning: when Ivan is actively waiting on results, 30-min ticks
+        feel like the system stalled. When he's offline / not waiting,
+        firing the worker every 3 min wastes tokens for no perceived
+        latency benefit.
+        """
+        try:
+            now = asyncio.get_event_loop().time()
+        except RuntimeError:
+            return self._task_worker_interval
+
+        # Cheap activity check: time since last external event (set by
+        # notify_external_event() on every incoming TG message).
+        idle_since_last_msg = now - self._last_external_event
+        if idle_since_last_msg > 1800.0:  # 30 min
+            return self._task_worker_interval
+
+        # Ivan recently active. Verify there's something urgent worth firing
+        # the worker for — don't burn tokens on slow background tasks.
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return self._task_worker_interval
+        try:
+            from sonya.tasks.service import TaskService
+            from sonya.tasks.store import TaskStore
+            svc = TaskService(TaskStore(substrate), stream=self._stream)
+            if svc.list_urgent_due_tasks():
+                return 180.0  # 3 minutes
+        except Exception:
+            pass
+        return self._task_worker_interval
+
     @property
     def tick_count(self) -> int:
         return self._tick_count
@@ -274,8 +347,9 @@ class InternalProcess:
             # a short continuation pass. Independent of active_session — fires
             # every ~2 minutes when work exists.
             worker_elapsed = now - self._last_task_worker_at
+            effective_interval = self._effective_worker_interval()
             if (
-                worker_elapsed >= self._task_worker_interval
+                worker_elapsed >= effective_interval
                 and not self._task_worker_running
                 and self._provider is not None
                 and not should_active   # avoid double-running with active session
