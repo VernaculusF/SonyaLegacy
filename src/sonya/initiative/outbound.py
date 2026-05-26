@@ -54,6 +54,38 @@ def _is_placeholder_text(s: str) -> bool:
     return bool(_PLACEHOLDER_RE.match(s.strip()))
 
 
+def _normalize_for_dedup(text: str) -> str:
+    """Normalize text for fuzzy duplicate comparison.
+
+    Drops case, punctuation, asterisk-actions. Truncates each word to its
+    first 6 chars so Russian morphology variants ("продолжаю / продолжу /
+    продолжаем") collapse to one stem. The repeating-prefix pattern
+    ("Продолжаю разведку X / Продолжаю по X / Продолжаю задачу X") is the
+    SIGNAL we want to catch, so we deliberately do NOT strip those prefixes.
+
+    Also keeps URLs/identifiers (sweetcow, xmlrpc) intact since 6-char trunc
+    leaves them recognisable.
+    """
+    if not text:
+        return ""
+    s = text.lower()
+    # Strip stage directions like *хмурюсь*
+    s = re.sub(r"\*[^*]+\*", " ", s)
+    # Drop punctuation
+    s = re.sub(r"[^\w\s]", " ", s)
+    # Truncate each word to its 6-char stem so morphology variants collapse
+    tokens = s.split()
+    stemmed = []
+    for tok in tokens:
+        if len(tok) >= 4:
+            stemmed.append(tok[:6])
+        elif len(tok) >= 2:
+            # Keep short content words (com, tor, http, php, css)
+            stemmed.append(tok)
+        # Drop 1-char "stop" tokens (с, в, и) — they're noise for fuzzy match
+    return " ".join(stemmed)
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -107,6 +139,16 @@ class OutboundGate:
             return "[ERROR] chat.tell_ivan: empty message"
         if _is_placeholder_text(text):
             return f"[BLOCKED] chat.tell_ivan: placeholder text leaked, no real content ({text[:60]!r})"
+        # Cross-session dedup: refuse near-duplicate of any outbound sent in
+        # the last 6 hours. Catches the "Продолжаю разведку sweetcow..." spam
+        # where worker repeats intent each tick instead of new content.
+        dup_reason = self._check_recent_duplicate(text, lookback_hours=6)
+        if dup_reason:
+            self._stream.append(ContinuityEvent(
+                kind="internal.initiative_blocked",
+                payload={"reason": dup_reason, "preview": text[:200]},
+            ))
+            return f"[BLOCKED] {dup_reason}"
         ok, why = self._check_gates(ignore_quiet=ignore_quiet)
         if not ok:
             return f"[BLOCKED] initiative gate: {why}"
@@ -135,6 +177,14 @@ class OutboundGate:
                 payload={"reason": "placeholder_text_leaked", "preview": body[:200]},
             ))
             return f"[BLOCKED] placeholder text leaked: {body[:80]!r}"
+        # Cross-session dedup
+        dup_reason = self._check_recent_duplicate(body, lookback_hours=6)
+        if dup_reason:
+            self._stream.append(ContinuityEvent(
+                kind="internal.initiative_blocked",
+                payload={"reason": dup_reason, "preview": body[:200]},
+            ))
+            return f"[BLOCKED] {dup_reason}"
         ok, why = self._check_gates(ignore_quiet=False)
         if not ok:
             self._stream.append(ContinuityEvent(
@@ -162,8 +212,7 @@ class OutboundGate:
             return True, ""
         # Initiative message (idle thoughts marker, unsolicited)
         if self._sent_today >= self._max_per_day:
-            return False, f"daily cap reached ({self._sent_today}/{self._max_per_day})"
-        # Environment-status gate: Sonya may have observed Ivan is sleeping /
+            return False, f"daily cap reached ({self._sent_today}/{self._max_per_day})"        # Environment-status gate: Sonya may have observed Ivan is sleeping /
         # busy / unavailable and recorded it via env.set. Respect that.
         if self._substrate is not None:
             try:
@@ -240,6 +289,93 @@ class OutboundGate:
                 except Exception:
                     continue
         return None
+
+    def _check_recent_duplicate(
+        self, text: str, *, lookback_hours: int = 6, similarity: float = 0.80
+    ) -> str:
+        """Return a non-empty reason string if `text` is a near-duplicate of
+        any outbound TG message sent in the last ``lookback_hours``.
+
+        Catches **exact / near-exact repeats** of the same chat.tell_ivan
+        (worker firing identical message each tick, auto-ack echoing a
+        tell_ivan already sent, etc). Does NOT try to catch
+        "intent-only-no-new-info" spam — that's a content quality issue
+        better handled in the worker prompt (see channel_task_worker.md).
+
+        Threshold 0.80 is tuned so:
+          - identical text after stem normalization = block
+          - paraphrase keeping >=80% of word stems = block
+          - same-shape sentence with different content tokens
+            ("Продолжаю с xmlrpc" vs "Продолжаю с sucuri") = pass
+
+        Returns "" if not a duplicate.
+        """
+        norm_new = _normalize_for_dedup(text)
+        if len(norm_new) < 10:
+            return ""  # too short to fingerprint reliably
+        new_tokens = set(norm_new.split())
+        if len(new_tokens) < 3:
+            return ""
+
+        try:
+            latest_seq = self._stream.latest_seq()
+            if latest_seq <= 0:
+                return ""
+            # Walk back ~300 events; usually covers many hours.
+            events = list(self._stream.read_since(max(0, latest_seq - 300)))
+            cutoff_seconds = lookback_hours * 3600.0
+            now = _utc_now()
+            outbound_kinds = {
+                "outgoing.telegram_initiative",
+                "outgoing.telegram_response",
+                "outgoing.response",
+            }
+            for ev in reversed(events):
+                if ev.kind not in outbound_kinds:
+                    continue
+                if not ev.created_at:
+                    continue
+                try:
+                    when = datetime.fromisoformat(ev.created_at)
+                except Exception:
+                    continue
+                age = (now - when).total_seconds()
+                if age > cutoff_seconds:
+                    break  # older events only further back
+                payload = ev.payload or {}
+                prior_text = (
+                    payload.get("text")
+                    or payload.get("preview")
+                    or payload.get("response_text")
+                    or ""
+                )
+                if not prior_text:
+                    continue
+                norm_prior = _normalize_for_dedup(str(prior_text))
+                if not norm_prior:
+                    continue
+                # Quick exact-match on normalized fingerprint
+                if norm_new == norm_prior:
+                    age_min = int(age / 60)
+                    return f"duplicate of message sent {age_min}min ago"
+                # Token-overlap (Jaccard) for fuzzy match
+                prior_tokens = set(norm_prior.split())
+                if not prior_tokens:
+                    continue
+                intersect = len(new_tokens & prior_tokens)
+                union = len(new_tokens | prior_tokens)
+                if union == 0:
+                    continue
+                jaccard = intersect / union
+                if jaccard >= similarity:
+                    age_min = int(age / 60)
+                    return (
+                        f"near-duplicate ({jaccard:.0%} overlap) of "
+                        f"message sent {age_min}min ago"
+                    )
+        except Exception:
+            pass
+        return ""
 
     # ---------- dispatch ----------
 

@@ -595,6 +595,24 @@ def _build_incoming_handler(
 
                 response_text = tg_result.reply_text
                 if not response_text:
+                    # Empty reply path. Two sub-cases:
+                    #   (a) Auto-ack already delivered a message via outbound
+                    #       AND the model's final [DONE: ...] was a dedup of
+                    #       the same content. Nothing extra needs to go to
+                    #       Ivan — return None to skip the response entirely.
+                    #   (b) Model produced no usable text and no auto-ack
+                    #       fired — broken session, fall back to a polite
+                    #       error so Ivan isn't left hanging.
+                    if tg_result.raw.outbound_sent:
+                        _log.info(
+                            "tg_session_silent_ack_only",
+                            extra={
+                                "channel": msg.channel,
+                                "outbound_count": len(tg_result.raw.outbound_sent),
+                                "agent_steps": tg_result.raw.steps,
+                            },
+                        )
+                        return None
                     response_text = (
                         "Я пыталась что-то сделать через tools, но ответ получился сломанный. "
                         "Дай мне шаг переформулировать — что конкретно нужно?"
