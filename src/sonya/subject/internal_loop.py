@@ -927,6 +927,30 @@ class InternalProcess:
                 except Exception:
                     pass
 
+            # Stuck-loop detection: if the last N handoffs on this task all
+            # produced the SAME next_step_hint (or near-same), the worker is
+            # spinning in place — same instruction tried, same failure each
+            # tick. Block the task with a Sonya-readable blocker so she sees
+            # it next time and decides: change approach, fail, or escalate.
+            #
+            # Threshold: 3 consecutive handoffs with the same next_step.
+            # The 26.05 sweetcow case had 9× identical "Проверить gravity_forms/"
+            # in a row before Ivan noticed — should have caught it at #3.
+            stuck_reason = self._detect_stuck_loop(task.task_id)
+            if stuck_reason:
+                try:
+                    svc.block(task.task_id, blocker=stuck_reason)
+                    self._stream.append(ContinuityEvent(
+                        kind="internal.task_worker_stuck_blocked",
+                        payload={
+                            "task_id": task.task_id,
+                            "blocker": stuck_reason[:300],
+                        },
+                    ))
+                except Exception:
+                    pass
+                return  # don't burn another tick on the same dead-end
+
             # Continuity: prefer next_step_hint (set by tasks.handoff at the
             # end of the previous session). plan_steps are voluntary scaffolding
             # — fall back to first remaining step only if no handoff hint.
@@ -1069,8 +1093,25 @@ class InternalProcess:
                         # Without this, next tick starts blind.
                         actions_summary = ", ".join(result.actions[:8]) if result.actions else "no tools called"
                         final_text = (result.final_output or "").strip()[:600]
+                        # Distinguish productive from no-progress ticks. A tick
+                        # is "no-progress" when no tool ran at all OR every
+                        # tool returned an [ERROR]. Mark the next_step so the
+                        # stuck-loop detector sees the difference and so Sonya
+                        # herself reads "this approach failed N times" next
+                        # tick instead of just the same instruction.
+                        no_tools = not result.actions
+                        # We don't have per-action results here, but if final
+                        # output is empty/whitespace and no chat.tell_ivan
+                        # fired, that's a strong "nothing happened" signal.
+                        sent_outbound = any(
+                            a.startswith("chat.tell_ivan") for a in result.actions
+                        )
+                        no_progress = no_tools or (
+                            not final_text and not sent_outbound
+                        )
                         auto_notes = (
-                            f"(auto handoff — did {result.steps} steps) "
+                            f"(auto handoff — did {result.steps} steps"
+                            f"{', no progress' if no_progress else ''}) "
                             f"Tools: {actions_summary}. "
                             f"Final output: {final_text}"
                         )[:1500]
@@ -1084,6 +1125,14 @@ class InternalProcess:
                                 if line and len(line) > 20 and len(line) < 200:
                                     auto_next_step = line[:200]
                                     break
+                        # When this tick produced nothing, count consecutive
+                        # no-progress retries and surface that in the next_step
+                        # so Sonya sees "tried 3x already, change approach".
+                        if no_progress:
+                            retry_count = self._count_recent_no_progress(task.task_id)
+                            auto_next_step = (
+                                f"[no-progress retry #{retry_count + 1}] {auto_next_step}"
+                            )
                         svc.record_session_handoff(
                             task.task_id,
                             notes=auto_notes,
@@ -1106,6 +1155,114 @@ class InternalProcess:
                 ))
             except Exception:
                 pass
+
+    # ====================================================================
+    # Stuck-loop detection
+    # ====================================================================
+
+    def _count_recent_no_progress(self, task_id: str) -> int:
+        """Count consecutive recent handoffs marked '(...no progress)' for
+        this task, walking backward from the most recent. Stops at the first
+        productive handoff.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return 0
+        try:
+            import json as _json
+            cursor = substrate.connection.execute(
+                "SELECT payload_json FROM continuity_events "
+                "WHERE kind = 'task.session_handoff' "
+                "  AND payload_json LIKE ? "
+                "ORDER BY seq DESC LIMIT 20",
+                (f'%"{task_id}"%',),
+            )
+            count = 0
+            for (pj,) in cursor.fetchall():
+                try:
+                    payload = _json.loads(pj or "{}")
+                except Exception:
+                    break
+                if payload.get("task_id") != task_id:
+                    break
+                # The notes field carries the "(... no progress)" marker.
+                # We can't read it from the handoff payload directly (only
+                # task_id + sessions_used + next_step are there), so we
+                # check next_step prefix which our auto-handoff tags.
+                ns = (payload.get("next_step") or "")
+                if ns.startswith("[no-progress retry"):
+                    count += 1
+                else:
+                    break
+            return count
+        except Exception:
+            return 0
+
+    def _detect_stuck_loop(self, task_id: str, *, lookback: int = 3) -> str:
+        """Return a non-empty blocker reason if the last ``lookback`` handoffs
+        for ``task_id`` produced essentially the same ``next_step``.
+
+        Each worker tick handoffs with what it'll do next. If three ticks in
+        a row write the same instruction, the approach is failing repeatedly
+        and the worker is just burning tokens.
+
+        Compares stem-normalized first-12-tokens of each next_step. Returns
+        a Sonya-readable blocker that explains what's stuck and asks her to
+        change approach.
+
+        Returns "" when not stuck.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return ""
+        try:
+            import json as _json
+            from sonya.initiative.outbound import _normalize_for_dedup
+
+            cursor = substrate.connection.execute(
+                "SELECT payload_json FROM continuity_events "
+                "WHERE kind = 'task.session_handoff' "
+                "  AND payload_json LIKE ? "
+                "ORDER BY seq DESC LIMIT ?",
+                (f'%"{task_id}"%', lookback),
+            )
+            rows = cursor.fetchall()
+            if len(rows) < lookback:
+                return ""
+
+            steps: list[str] = []
+            for (pj,) in rows:
+                try:
+                    payload = _json.loads(pj or "{}")
+                except Exception:
+                    return ""
+                if payload.get("task_id") != task_id:
+                    return ""
+                ns = (payload.get("next_step") or "").strip()
+                if not ns:
+                    return ""
+                # First 6 stem tokens identify the approach (verb + target).
+                # Going wider (12+) misses paraphrases of the same dead-end
+                # ("...через curl" vs "...другим юзер-агентом" — both still
+                # the same "проверить gravity_forms" attempt).
+                normed = _normalize_for_dedup(ns)
+                fp = " ".join(normed.split()[:6])
+                steps.append(fp)
+
+            # All N must share the same fingerprint to count as stuck.
+            if len(set(steps)) > 1:
+                return ""
+
+            sample = steps[0][:200]
+            return (
+                f"stuck loop detected: last {lookback} handoffs all wrote the "
+                f"same next_step ({sample!r}). Worker tried this approach "
+                f"{lookback}x in a row without progress. Change approach, "
+                f"escalate to active session for replanning, or fail the task. "
+                f"To resume after blocker: tasks.unblock + new next_step_hint."
+            )
+        except Exception:
+            return ""
 
     # ====================================================================
     # Этап F: drift / gap / consolidation integration
