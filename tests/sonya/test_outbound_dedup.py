@@ -218,6 +218,48 @@ def test_dedup_passes_different_specifics(
     assert reason == ""
 
 
+def test_dedup_blocks_intent_opening_repeat(
+    gate: OutboundGate, substrate: Substrate
+) -> None:
+    """Real 26.05 spam pattern: same intent prefix, different filler tail,
+    no concrete content (no digits / no URLs / no version strings).
+
+    Should be blocked by the prefix-check (Jaccard alone misses these
+    because tail words differ enough).
+    """
+    _seed_outbound(
+        substrate,
+        "Продолжаю задачу по трейд-боту. Начну с самого простого — "
+        "проверю что есть локально и попробую достучаться.",
+        minutes_ago=30,
+    )
+    reason = gate._check_recent_duplicate(
+        "Продолжаю задачу по трейд-боту. Начну с локальной проверки — "
+        "какие SSH ключи есть и пробовал ли я уже коннектиться.",
+        lookback_hours=6,
+    )
+    assert reason
+    assert "intent-only" in reason or "duplicate" in reason
+
+
+def test_dedup_passes_intent_prefix_with_concrete_content(
+    gate: OutboundGate, substrate: Substrate
+) -> None:
+    """Same intent opening but candidate has a URL or version string —
+    that's substantive new info, let it through."""
+    _seed_outbound(
+        substrate,
+        "Продолжаю разведку sweetcow. Tor запущен.",
+        minutes_ago=30,
+    )
+    # New message has a URL with .com — concrete finding
+    reason = gate._check_recent_duplicate(
+        "Продолжаю разведку sweetcow. Нашла /wp-admin на example.com открытым.",
+        lookback_hours=6,
+    )
+    assert reason == ""
+
+
 def test_normalize_collapses_morphology() -> None:
     """Russian word stems collapse so "продолжаю" and "продолжу" match."""
     a = _normalize_for_dedup("Продолжаю разведку")

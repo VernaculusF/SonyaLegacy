@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Operational snapshot — единственный источник правды о том что есть сейчас
-**Last updated:** 2026-05-24
+**Last updated:** 2026-05-26
 
 ---
 
@@ -54,9 +54,11 @@
 - **Pacakge:** код в `packages/tg-userbot/src/tg_userbot/` — отдельный пакет, не в ядре. Channel auto-discovery из `packages/*/src/*/channel.py`.
 - **Allowlist:** только `SONYA_PRIMARY_USER_TG_ID=5785127604` (Иван) в private DM. Группы — упоминание/reply.
 - **Inbox-aware sessions:** новое сообщение во время running session → injected as `[NEW MESSAGE FROM IVAN]` user turn между шагами.
+- **Auto-ack on step 0** (2026-05-26): если на первом шаге agent_session есть natural-language преамбула перед `[TOOL: ...]` маркером — она автоматом отправляется Ивану через outbound. Раньше преамбула становилась silent internal thought и Иван ждал N минут recon-шагов в полной тишине. Vetting через `_is_safe_ack` (длина 15-500, нет scaffold/reasoning markers).
 - **Vision/Video:** image/jpeg, image/png, image/webp, image/gif (через image_url), video/mp4, video/webm (через video_url). Видеостикеры распознаются и шлются как видео.
 - **Auto-split** длинных reply на чанки ≤4000 chars.
-- **Anti-leak scrub:** убирает `<think>`, English meta-reasoning prefixes, draft markers, `[Observation:]`, code fences, tool/done маркеры.
+- **Anti-leak scrub:** убирает `<think>`, English meta-reasoning prefixes, draft markers, `[Observation:]`, code fences, tool/done маркеры, **bare task-arg JSON** (когда модель пишет `{"title":..., "plan_steps":...}` без `[TOOL: tasks.create]` обёртки).
+- **Drift detectors в `_on_incoming` (2026-05-24..26):** non-blocking warning лог при обнаружении паттернов: `_empty_promise_check` (обещала, но без tool), `_sycophancy_check` (открылась "ты прав / поняла" без fact-check), `_fail_fake_check` (выдумала "представим/гипотетически" вместо retry), `_unverified_claim_check` (claim про внешний сайт без web.fetch), `_permission_ask_check` ("если разрешишь?" для autonomy-default work), `_bare_task_json_check` (tasks.create JSON inline без `[TOOL:]` wrapper).
 - **Sticker capture+resend:** `seen_stickers` table, `[STICKER: 🌟]` маркер в ответе.
 - **Prompts as files:** session prompts в `src/sonya/prompts/`. Унифицированные правила для **всех** session paths (TG/active/worker) в `session_general.md`; channel-specific overlay в `channel_telegram.md`, `channel_internal_active.md`, `channel_task_worker.md`. Загружаются через `load_session_suffix(channel)`. Реализация §9.3 из `cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE`: один субъект — много поверхностей, общие правила.
 
@@ -65,7 +67,7 @@
 - `self_inspect.{identity, state, thoughts, memories, intentions, code, modules}`
 - `filesystem.{read, list, tree, write}` — write only в whitelisted subpaths
 - `memory.{recall <query>, index_status}` — semantic search через fastembed (10140 эпизодов проиндексированы)
-- `tasks.{list, pick, plan, step, complete, fail, handoff, ...}` — task runtime
+- `tasks.{list, pick, plan, step, complete, fail, handoff, ...}` — task runtime. **`tasks.handoff` — primary continuity carrier** (notes + next_step). `plan_steps` / `tasks.step` сохранены для обратной совместимости, но soft-deprecated в промптах.
 - `goals.{list, create, achieve, abandon}` — long-term goal hierarchy (v18 `goals` table)
 - `web.{search, fetch}` — DuckDuckGo HTML + aiohttp 200KB cap
 - `code.exec` — subprocess sandbox 30s timeout
@@ -78,13 +80,16 @@
 - `OutboundGate` с throttle: `INITIATIVE_MAX_PER_DAY=5`, `MIN_QUIET_MINUTES=90`.
 - `chat.tell_ivan` tool + `[SEND_TO_IVAN: ...]` маркер в idle thoughts.
 - Соня может писать первой когда idle drives превышают threshold.
+- **Escalating quiet** (2026-05-22): 1 unanswered initiative → ×2 quiet окно, 2 → ×4, 3+ → блокировка до ответа Ивана. Защита от ночь-спама.
+- **Idle quiet-mode** (2026-05-25): когда есть 2+ заблокированных initiative подряд, idle thinking_prompt автоматом подменяется на "ТИХИЙ РЕЖИМ" преамбулу — Соня знает что молчать сейчас правильный выбор, перестаёт генерировать новые `[SEND_TO_IVAN: ...]` маркеры.
+- **Cross-session dedup** (2026-05-26): перед каждым chat.tell_ivan / `[SEND_TO_IVAN: ...]` Gate сверяет fingerprint (lowercase + 6-char stem trunc, drop punctuation/stage-directions) с последними 300 outbound в continuity stream. Jaccard ≥0.80 в окне 6 часов = blocked. Catches identical/near-identical worker spam ("Продолжаю разведку sweetcow.com"... повторяется каждый тик).
 
 ### 1.7 Admin panel (port 8877)
 
 - 🔑 Providers — key pool management, settings, balance refresh
 - 💸 Usage — totals/by-purpose/by-model/recent calls
 - ✋ Approvals — pending shell.run / pip.install / governed selfmod gates
-- 📋 Tasks — list with status/blocker/result
+- 📋 **Tasks** — list with status/blocker/result + **expandable cards** (2026-05-26): клик по карточке раскрывает план-стэпы с ✓/○ марками + per-step completion timestamps, **session handoff timeline** (next_step + notes для каждого тика worker'а), lifecycle event log, полные тексты truncated полей. Видно что Соня делала и что планирует дальше без чтения continuity events.
 - ⚡ Dashboard — subject state, emotional vector, pending intentions
 - 💭 Thoughts — recent continuity events
 - 🧠 Memory — episodic + semantic + embedding index coverage
@@ -101,27 +106,28 @@
 
 ```
 src/sonya/
-├── state/              # Substrate v13: schema, migrations, identity, principals,
-│                       # subject_state, continuity_stream, pending intentions
+├── state/              # Substrate v18: schema, migrations, identity, principals,
+│                       # subject_state, continuity_stream, pending intentions, goals
 ├── runtime/            # Process shell: lifecycle, event_bus, write_master, health, live
 ├── providers/          # Own key pool, LLM provider, fireworks balance refresher
 ├── harness/            # Authority, approvals, audit, hyper-harness stub
-├── subject/            # Agent session, internal loop, TG session, inbox, bus wiring
+├── subject/            # Agent session (dict-registry tool dispatch), internal loop, TG session, inbox, bus wiring
 ├── channels/           # Telegram (single channel; abstraction skipped)
 ├── memory/             # Episodic, semantic, consolidation, embedder, recall
 ├── planning/           # Context builder, planner, memory wiring
-├── tasks/              # Models, store, service (max_sessions, handoff)
+├── tasks/              # Models, store, service (max_sessions, handoff, goals)
 ├── tools/              # All tool surfaces (filesystem, code, shell, web, selfmod,
 │                       # tasks_tool, memory_tool, self_inspect, hot_loader, plugins)
-├── selfmod/            # Proposal store, pipeline (4 layers), governed change, watchdog
-├── skills/             # Registry, trust, activation, gap_detector, injection (shell)
-├── initiative/         # Drives, signals, outbound, proposal
+├── selfmod/            # Proposal store, pipeline (4 layers), governed change, watchdog, outcome
+├── skills/             # Registry, trust, activation, gap_detector, executor (3 builtin)
+├── initiative/         # Drives, signals, outbound (escalating quiet + cross-session dedup), proposal
+├── prompts/            # session_general.md (unified rules) + channel_*.md (telegram, internal_active, task_worker)
 ├── anchor/             # Drift signals (not wired to runtime)
 ├── embodiment/         # Adapter stub
 ├── simulation/         # World stub
-├── admin/              # aiohttp web panel
+├── admin/              # aiohttp web panel (server.py + static.py)
 ├── config.py
-└── main.py             # Composition root
+└── main.py             # Composition root + 6 drift detectors in _on_incoming
 ```
 
 Layer boundary tests (`tests/sonya/test_layer_boundary.py`) enforce state ↔ runtime разделение.
@@ -166,9 +172,11 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 ## 4. Известные текущие quirks
 
-- **Rare:** модель может выдать reasoning leak несмотря на scrub — fallback empty reply, fallback message в TG.
+- **Rare:** модель может выдать reasoning leak несмотря на scrub — fallback empty reply. Detected by drift detectors (logged, non-blocking).
 - **Common:** `channel_stop_failed: attempt to write a readonly database` при shutdown — log warning, не функциональная проблема.
-- **Common:** model берёт 8-15 шагов на простой вопрос если триггерит anti-rabbit-hole rule. Промпт обновлён, но рецидивы возможны.
+- **Common:** model берёт 8-15 шагов на простой вопрос если триггерит anti-rabbit-hole rule. Промпт обновлён, но рецидивы возможны. Auto-ack on step 0 mitigates the perceived latency for delegation cases.
+- **Cyrillic encoding via shell**: PowerShell `python -c "..."` обрезает первый байт многобайтных Cyrillic символов inline. Не влияет на runtime — только на одноразовые debug команды. Use script files instead of `-c` для Cyrillic диагностики.
+- **Local `test_recall_round_trip` env**: fastembed cache на dev машине может корраптиться (`%LOCALAPPDATA%\Temp\fastembed_cache\...model.onnx` partial). Удалить директорию — модель скачается заново. На VPS не воспроизводится (отдельный cache path).
 
 ---
 
@@ -240,17 +248,19 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 **Сейчас 38-42/100 потому что:**
 - Substrate v18 + subject loop + drives persistence (+10)
-- Tools real и используемые (+4)
+- Tools real и используемые + dict-registry dispatch (+4)
 - Memory с recall + 346+ facts (+3)
-- Real selfmod pipeline + active-session pickup + **git auto-commit** (+5)
+- Real selfmod pipeline + active-session pickup + **git auto-commit прямо в develop** (+5)
 - Full write access + YOLO shell (+2)
 - Vision-as-eyes + multi-slot routing (+3)
 - Skills executor + 3 builtin (+2)
 - Goals hierarchy v18 (+2)
 - TG в правильном пакете + auto-discovery (+2)
-- Anti-leak + anti-hallucination + anti-sycophancy + anti-fail-fake detectors + relative time (+4)
+- Anti-leak + anti-hallucination + 6 detectors (sycophancy / fail-fake / unverified-claim / permission-ask / empty-promise / bare-task-JSON) + relative time (+4)
+- Auto-ack on step 0 + delegation pattern + cross-session outbound dedup + escalating quiet + idle quiet-mode (+3)
 - Web search с fallback (+1)
 - Prompts as files **унифицированные для всех session paths** (TG/active/worker через единый session_general.md) (+2)
+- Admin tasks panel: expandable cards с handoff timeline + lifecycle log (+1)
 
 **Stage 3 закрыт 22.05.2026** — три полных selfmod цикла без помощи Ивана. Score сдвинулся 38 → 42.
 

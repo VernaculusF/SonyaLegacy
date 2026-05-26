@@ -296,26 +296,37 @@ class OutboundGate:
         """Return a non-empty reason string if `text` is a near-duplicate of
         any outbound TG message sent in the last ``lookback_hours``.
 
-        Catches **exact / near-exact repeats** of the same chat.tell_ivan
-        (worker firing identical message each tick, auto-ack echoing a
-        tell_ivan already sent, etc). Does NOT try to catch
-        "intent-only-no-new-info" spam — that's a content quality issue
-        better handled in the worker prompt (see channel_task_worker.md).
+        Two parallel checks (any positive → blocked):
+          1. Jaccard on stem-token sets (catches near-exact repeats with
+             different word order or filler).
+          2. Identical first-6-stem-tokens prefix (catches "Продолжаю задачу
+             по трейд-боту. Начну с..." pattern where Sonya repeats the
+             same intent opening across worker ticks but elaborates
+             differently each time, so Jaccard is low but the meta-content
+             is identical).
 
-        Threshold 0.80 is tuned so:
+        Threshold 0.80 for Jaccard tuned so:
           - identical text after stem normalization = block
           - paraphrase keeping >=80% of word stems = block
           - same-shape sentence with different content tokens
             ("Продолжаю с xmlrpc" vs "Продолжаю с sucuri") = pass
+
+        Prefix check uses first 6 stems with tail-content-required: only
+        blocks if the candidate's prefix matches AND the candidate's tail
+        is short / non-substantive (no concrete tokens like URLs / versions
+        that signal a real finding).
 
         Returns "" if not a duplicate.
         """
         norm_new = _normalize_for_dedup(text)
         if len(norm_new) < 10:
             return ""  # too short to fingerprint reliably
-        new_tokens = set(norm_new.split())
+        new_token_list = norm_new.split()
+        new_tokens = set(new_token_list)
         if len(new_tokens) < 3:
             return ""
+        # Prefix used by the second (intent-opening) check below.
+        new_prefix = " ".join(new_token_list[:6])
 
         try:
             latest_seq = self._stream.latest_seq()
@@ -373,6 +384,26 @@ class OutboundGate:
                         f"near-duplicate ({jaccard:.0%} overlap) of "
                         f"message sent {age_min}min ago"
                     )
+                # Intent-opening check: if normalized first-6-stem prefix
+                # matches AND the candidate has no concrete content tokens
+                # that differ substantively, treat as intent-only repeat.
+                # Concrete content = anything containing a digit (versions,
+                # IDs) or matching url-shape (.com, .org, .net domains in
+                # original text). We use the original (un-stemmed) text for
+                # that check — stemming truncates URLs.
+                prior_token_list = norm_prior.split()
+                prior_prefix = " ".join(prior_token_list[:6])
+                if prior_prefix and prior_prefix == new_prefix:
+                    has_concrete_content = bool(
+                        re.search(r"\d|\.(com|org|net|ru|io|ws|cc|biz)\b",
+                                  text, re.IGNORECASE)
+                    )
+                    if not has_concrete_content:
+                        age_min = int(age / 60)
+                        return (
+                            f"intent-only repeat (same opening) of "
+                            f"message sent {age_min}min ago"
+                        )
         except Exception:
             pass
         return ""
