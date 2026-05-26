@@ -438,6 +438,42 @@ def _bare_task_json_check(
 #
 # We compare the response against the last few outgoing.telegram_*
 # texts using the same stem-based normalization as outbound dedup.
+def _recent_outbound_texts(substrate: "Substrate", *, limit: int = 3) -> list[str]:
+    """Pull last ``limit`` outbound TG texts (any kind) from continuity.
+
+    Used by ``pre_send_critic`` to compare draft against recent history.
+    """
+    import json as _json
+    try:
+        cur = substrate.connection.execute(
+            "SELECT payload_json FROM continuity_events "
+            "WHERE kind IN ('outgoing.telegram_response', "
+            "               'outgoing.response', "
+            "               'outgoing.telegram_initiative', "
+            "               'outgoing.telegram_progress') "
+            "  AND created_at > datetime('now', '-30 minutes') "
+            "ORDER BY seq DESC LIMIT ?",
+            (limit,),
+        )
+        out: list[str] = []
+        for (payload_json,) in cur.fetchall():
+            try:
+                payload = _json.loads(payload_json or "{}")
+            except Exception:
+                continue
+            text = (
+                payload.get("text")
+                or payload.get("response_text")
+                or payload.get("preview")
+                or ""
+            )
+            if text:
+                out.append(str(text))
+        return out
+    except Exception:
+        return []
+
+
 def _reply_repeat_check(
     response_text: str,
     user_input: str,
@@ -617,7 +653,7 @@ def _build_incoming_handler(
                 from sonya.planning.memory_wiring import record_response_as_memory
                 from sonya.state.canonical_response import CanonicalResponse, ResponseKind
                 from sonya.state.continuity_stream import ContinuityStream
-                from sonya.subject.channel_session import run_tg_session
+                from sonya.subject.channel_session import pre_send_critic, run_tg_session
 
                 session_messages: list[dict[str, Any]] = []
                 if msg.channel == "telegram" and msg.raw is not None:
@@ -811,6 +847,57 @@ def _build_incoming_handler(
                 # Sonya re-stated her sweetcow worker status in the next reply.
                 # Non-blocking, log only.
                 _reply_repeat_check(response_text, msg.text or "", substrate)
+
+                # Pre-send critic — primary gate. Single short LLM call sees
+                # the draft + last 3 outbound + actions, returns one of:
+                #   send  → ship draft as-is
+                #   edit  → ship edited replacement
+                #   drop  → don't send anything
+                # On any error / unparseable output it falls through to
+                # ``send`` so the regex detectors above still log warnings
+                # and a minimum-bar reply ships. Replaces the post-hoc
+                # detectors as the primary gate; keeps them as visibility.
+                try:
+                    recent_outbound_texts = _recent_outbound_texts(substrate, limit=3)
+                    verdict = await pre_send_critic(
+                        provider,
+                        user_input=msg.text or "",
+                        draft_reply=response_text,
+                        actions=list(tg_result.raw.actions),
+                        recent_outbound=recent_outbound_texts,
+                    )
+                    if verdict["verdict"] == "drop":
+                        _log.warning(
+                            "pre_send_critic_drop",
+                            extra={
+                                "preview": response_text[:200],
+                                "reason": verdict["reason"],
+                            },
+                        )
+                        # Still record what *would* have been sent so we can
+                        # audit critic decisions; just don't ship.
+                        return None
+                    if verdict["verdict"] == "edit" and verdict["edited"]:
+                        _log.info(
+                            "pre_send_critic_edit",
+                            extra={
+                                "before": response_text[:200],
+                                "after": verdict["edited"][:200],
+                                "reason": verdict["reason"],
+                            },
+                        )
+                        response_text = verdict["edited"]
+                        # Re-build response with edited text
+                        response = CanonicalResponse(
+                            kind=ResponseKind.REPLY,
+                            text=response_text,
+                            principal_id=msg.sender_id,
+                        )
+                except Exception as err:
+                    _log.warning(
+                        "pre_send_critic_error",
+                        extra={"error": str(err), "type": type(err).__name__},
+                    )
 
                 # If Sonya created or progressed a task in this TG turn,
                 # poke the worker so it picks up the new state in seconds
