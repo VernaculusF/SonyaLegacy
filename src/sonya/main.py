@@ -685,14 +685,18 @@ def _build_incoming_handler(
 
                 response_text = tg_result.reply_text
                 if not response_text:
-                    # Empty reply path. Two sub-cases:
+                    # Empty reply path — multiple sub-cases:
                     #   (a) Auto-ack already delivered a message via outbound
                     #       AND the model's final [DONE: ...] was a dedup of
                     #       the same content. Nothing extra needs to go to
                     #       Ivan — return None to skip the response entirely.
-                    #   (b) Model produced no usable text and no auto-ack
-                    #       fired — broken session, fall back to a polite
-                    #       error so Ivan isn't left hanging.
+                    #   (b) Budget exceeded with real work done (>=1 tool fired
+                    #       but model never closed with [DONE: ...]). Send a
+                    #       truthful "still working" message that names the
+                    #       last tool, instead of the old "сломанный" one
+                    #       which made Ivan think the system crashed.
+                    #   (c) Empty session, no tools, no auto-ack — genuine
+                    #       fallback when something is actually broken.
                     if tg_result.raw.outbound_sent:
                         _log.info(
                             "tg_session_silent_ack_only",
@@ -703,10 +707,38 @@ def _build_incoming_handler(
                             },
                         )
                         return None
-                    response_text = (
-                        "Я пыталась что-то сделать через tools, но ответ получился сломанный. "
-                        "Дай мне шаг переформулировать — что конкретно нужно?"
-                    )
+                    if tg_result.raw.budget_exceeded and tg_result.raw.actions:
+                        # Truthful budget-exceeded message. Names the last tool
+                        # so Ivan sees what she was doing, not generic "broken".
+                        last_action = tg_result.raw.actions[-1].split(" ", 1)[0]
+                        _log.warning(
+                            "tg_session_budget_exceeded_no_done",
+                            extra={
+                                "channel": msg.channel,
+                                "steps": tg_result.raw.steps,
+                                "last_action": last_action,
+                                "actions": tg_result.raw.actions[:5],
+                            },
+                        )
+                        response_text = (
+                            f"Бюджет TG-сессии кончился ({tg_result.raw.steps} шагов), "
+                            f"последний шаг — {last_action}. Продолжу в фоне — "
+                            f"если хочешь конкретный результат сразу, переформулируй "
+                            f"короче или спроси про конкретный шаг."
+                        )
+                    else:
+                        _log.warning(
+                            "tg_session_empty_reply",
+                            extra={
+                                "channel": msg.channel,
+                                "steps": tg_result.raw.steps,
+                                "actions": tg_result.raw.actions[:5],
+                            },
+                        )
+                        response_text = (
+                            "Что-то у меня сломалось в обработке. Давай ещё раз — "
+                            "что конкретно нужно?"
+                        )
                 # Guard: if reply is a literal prompt placeholder ('<твой текст>',
                 # '<text for Ivan>', etc), drop it and use the fallback. The
                 # placeholder leak is a regression of the prompt template — better

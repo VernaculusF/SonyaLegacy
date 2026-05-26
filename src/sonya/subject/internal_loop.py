@@ -678,12 +678,22 @@ class InternalProcess:
             # surface it as the seed for this session. Single-stream model — one task
             # at a time. Sonya can use [TOOL: tasks.pick] explicitly too, but this
             # gives her the right context immediately.
+            #
+            # Self-improvement budget: every Nth active session is reserved
+            # for selfmod / capability work even if there's an open Ivan-task.
+            # Without this, a long-running Ivan-task (sweetcow recon) consumes
+            # 100% of active-session ticks and Sonya never updates her own code
+            # → "не само-совершенствуется". Threshold N=4 means at most one
+            # in four sessions skips Ivan-task to do selfmod, when there's
+            # something to do on the selfmod side.
+            force_selfmod_track = self._should_force_selfmod_track(substrate)
+
             initial_thought = ""
             try:
                 from sonya.tasks.service import TaskService
                 from sonya.tasks.store import TaskStore
                 svc = TaskService(TaskStore(substrate), stream=self._stream)
-                next_task = svc.pick_next()
+                next_task = svc.pick_next() if not force_selfmod_track else None
                 if next_task is not None:
                     # Auto-resume in_progress; pending tasks remain pending until she
                     # decides to pick (so she can choose, not be forced).
@@ -771,6 +781,28 @@ class InternalProcess:
                         initial_thought = last_thoughts[-1][:4000]
                 except Exception:
                     pass
+
+            # If we're on a forced-selfmod tick and nothing else seeded the
+            # session (no pending proposal, no recent thought), explicitly
+            # ask Sonya to do introspection + selfmod work this session.
+            if force_selfmod_track and not initial_thought:
+                initial_thought = (
+                    "Эта active session — приоритет на самосовершенствование, "
+                    "не на задачу Ивана. У тебя длинная серия active sessions "
+                    "ушла на одну задачу, время вернуться к улучшению себя.\n\n"
+                    "Что сделать в этом тике:\n"
+                    "1. `self_inspect.code <module>` на 1-2 файла где видишь "
+                    "потенциал улучшения (комментарии, обработка ошибок, "
+                    "новые edge cases которые ты замечала в работе)\n"
+                    "2. Если есть `capability_gap` в pending intentions — "
+                    "выбери самый частый, посмотри есть ли паттерн, и "
+                    "`selfmod.propose` решение.\n"
+                    "3. Хотя бы один полный цикл "
+                    "`selfmod.propose` → `selfmod.validate` → `selfmod.apply` "
+                    "за этот тик. Маленькое улучшение лучше нуля.\n\n"
+                    "НЕ возвращайся к Ивановской задаче в этом тике — её "
+                    "подхватит worker и следующая active session."
+                )
 
             result = await run_agent_session(
                 provider=self._provider,
@@ -1159,6 +1191,43 @@ class InternalProcess:
     # ====================================================================
     # Stuck-loop detection
     # ====================================================================
+
+    def _should_force_selfmod_track(self, substrate: object) -> bool:
+        """Return True when active session should ignore Ivan-task pickup
+        and do selfmod / capability work instead.
+
+        Rule: if there have been >=4 consecutive active sessions since the
+        last self_mod.applied event, force the next one onto selfmod track.
+        Without this, a long-running Ivan-task (sweetcow recon, 25+ sessions)
+        consumes 100% of active-session ticks and Sonya never updates her
+        own code → "не само-совершенствуется".
+
+        Threshold 4 = ~8 hours of active-session cadence (every 2h). One
+        selfmod tick per 8 hours is enough to keep the loop alive without
+        starving real work.
+        """
+        if substrate is None:
+            return False
+        try:
+            cursor = substrate.connection.execute(
+                "SELECT seq FROM continuity_events "
+                "WHERE kind = 'self_mod.applied' "
+                "ORDER BY seq DESC LIMIT 1"
+            )
+            row = cursor.fetchone()
+            last_applied_seq = int(row[0]) if row else 0
+
+            cursor = substrate.connection.execute(
+                "SELECT COUNT(*) FROM continuity_events "
+                "WHERE kind IN ('internal.agent_session_outcome', "
+                "               'internal.agent_session_complete') "
+                "  AND seq > ?",
+                (last_applied_seq,),
+            )
+            sessions_since = int(cursor.fetchone()[0])
+            return sessions_since >= 4
+        except Exception:
+            return False
 
     def _count_recent_no_progress(self, task_id: str) -> int:
         """Count consecutive recent handoffs marked '(...no progress)' for

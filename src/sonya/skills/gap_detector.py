@@ -74,16 +74,83 @@ class GapDetector:
             "internal.thought",
             "internal.cognitive_tick",
         }
+        # Cache of open-gap fingerprints so we don't INSERT 20 copies of
+        # the same DNSError on the same URL.
+        existing_fps: set[str] = self._load_open_gap_fingerprints()
         for event in self._stream.read_since(since_seq):
             if event.kind in _SKIP_KINDS:
                 continue
-            if self._is_gap_signal(event.payload):
-                gap = self._create_gap(
-                    description=self._extract_description(event.payload),
-                    event_seq=event.seq,
-                )
-                gaps.append(gap)
+            if not self._is_gap_signal(event.payload):
+                continue
+            fp = self._fingerprint(event.payload)
+            if fp in existing_fps:
+                continue  # already tracked
+            gap = self._create_gap(
+                description=self._extract_description(event.payload),
+                event_seq=event.seq,
+                fingerprint=fp,
+            )
+            existing_fps.add(fp)
+            gaps.append(gap)
         return gaps
+
+    def _fingerprint(self, payload: dict) -> str:
+        """Stable fingerprint identifying *this kind* of gap.
+
+        For tool-error payloads ({tool, arg, error_type, error_message}):
+            "{tool}|{error_type}|{arg-host-prefix}"
+        For everything else: first 80 chars of payload repr.
+        """
+        if isinstance(payload, dict):
+            tool = payload.get("tool")
+            err_t = payload.get("error_type")
+            if tool and err_t:
+                arg = str(payload.get("arg") or "")
+                # Take just the host part of a URL arg so different URLs
+                # on the same host fold together.
+                host = ""
+                if "://" in arg:
+                    host = arg.split("://", 1)[1].split("/", 1)[0][:80]
+                else:
+                    host = arg[:80]
+                return f"{tool}|{err_t}|{host}"
+        return f"raw|{str(payload)[:80]}"
+
+    def _load_open_gap_fingerprints(self) -> set[str]:
+        """Reconstruct fingerprints of currently-open gaps from descriptions.
+
+        Schema doesn't have a fingerprint column (yet), so we derive it from
+        the payload signature embedded in the description by `_extract_description`.
+        Cheap — only `open` gaps are scanned.
+        """
+        try:
+            cursor = self._sub.connection.execute(
+                "SELECT description FROM capability_gaps WHERE status = 'open'"
+            )
+            fps: set[str] = set()
+            for (desc,) in cursor.fetchall():
+                # Try to recover the payload-shape from the stored description.
+                # description starts with "Gap detected from payload: {...}"
+                # We re-fingerprint that text via a very forgiving rule: pull
+                # 'tool' / 'error_type' / 'arg' substrings if present.
+                if "tool" in desc and "error_type" in desc:
+                    import re as _re
+                    tm = _re.search(r"'tool': '([^']+)'", desc)
+                    em = _re.search(r"'error_type': '([^']+)'", desc)
+                    am = _re.search(r"'arg': '([^']+)'", desc)
+                    if tm and em:
+                        arg = am.group(1) if am else ""
+                        host = ""
+                        if "://" in arg:
+                            host = arg.split("://", 1)[1].split("/", 1)[0][:80]
+                        else:
+                            host = arg[:80]
+                        fps.add(f"{tm.group(1)}|{em.group(1)}|{host}")
+                        continue
+                fps.add(f"raw|{desc[:80]}")
+            return fps
+        except Exception:
+            return set()
 
     def create_proposal_from_gap(
         self, gap: CapabilityGap, proposal_store: ProposalStore
@@ -112,9 +179,19 @@ class GapDetector:
             return f"Gap detected from triggers: {', '.join(str(t) for t in triggers)}"
         return f"Gap detected from payload: {str(payload)[:100]}"
 
-    def _create_gap(self, description: str, event_seq: int | None = None) -> CapabilityGap:
+    def _create_gap(
+        self,
+        description: str,
+        event_seq: int | None = None,
+        *,
+        fingerprint: str | None = None,
+    ) -> CapabilityGap:
         gap_id = f"gap-{uuid4().hex}"
         now = _utc_now_iso()
+        # Schema has no fingerprint column; we keep the kwarg for symmetry
+        # with scan_recent's dedup. The fingerprint is reconstructible from
+        # the description via _load_open_gap_fingerprints.
+        _ = fingerprint
         self._sub.connection.execute(
             "INSERT INTO capability_gaps(gap_id, description, detected_from_event_seq, status, created_at) "
             "VALUES (?, ?, ?, 'open', ?)",
