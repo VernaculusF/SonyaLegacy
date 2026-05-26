@@ -378,6 +378,36 @@ def build_full_context(
                     stream_block += f"- [{rel_ts}] [active session] {steps} шагов\n"
             system_prompt += stream_block
 
+        # Anti-repeat scaffold: explicit "you already told Ivan this" list.
+        # Without this, the model often reuses content from its previous TG
+        # reply when Ivan sends a short message ("просто проверяю") — the
+        # 26.05 12:14/12:16 case where Sonya's status-report appeared twice
+        # in two minutes. The dialog block above shows past replies but
+        # doesn't *prohibit* reuse; this block does.
+        outbound_kinds = {
+            "outgoing.response",
+            "outgoing.telegram_response",
+            "outgoing.telegram_initiative",
+        }
+        recent_outbound = [
+            e for e in recent_continuity
+            if e.kind in outbound_kinds
+        ][-3:]
+        if recent_outbound:
+            seen_block = "\n\n## Что ты уже сказала Ивану (НЕ повторяй ничего из этого):\n"
+            for e in recent_outbound:
+                rel_ts = _relative_time(e.created_at, now_utc)
+                text = (e.payload.get("text") or "")[:400]
+                seen_block += f"- [{rel_ts}] {text}\n"
+            seen_block += (
+                "\n**Правило:** если новый ответ повторяет хоть одну фразу или мысль "
+                "из этого списка — это спам. Если Ивану нечего сказать нового — "
+                "отвечай коротко и по делу, не набивай длину переcказом старого статуса. "
+                "Длина ответа должна быть пропорциональна длине его сообщения "
+                "(на 'просто проверяю' — 1-2 предложения, не статус-репорт на 5 строк).\n"
+            )
+            system_prompt += seen_block
+
         # Recent INTERNAL thoughts — separate block so they're never crowded out by
         # tg-traffic. This is what Sonya was missing in the "I don't see my past
         # thinking" complaint. Keep it tight — 5 thoughts × 400 chars max — to

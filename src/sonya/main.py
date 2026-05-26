@@ -430,6 +430,96 @@ def _bare_task_json_check(
     )
 
 
+# Reply-repeat detection — Sonya pads a short Ivan message with a status
+# report she already sent recently. The 26.05 12:14/12:16 case:
+#   12:14 long status about sweetcow worker progress
+#   12:15 Ivan: "просто проверяю"
+#   12:16 ack про инет + repeat of the same status with paraphrased wording
+#
+# We compare the response against the last few outgoing.telegram_*
+# texts using the same stem-based normalization as outbound dedup.
+def _reply_repeat_check(
+    response_text: str,
+    user_input: str,
+    substrate: "Substrate",
+) -> None:
+    """Log when Sonya's reply repeats content from her last 1-3 messages.
+
+    Triggers when:
+      - Ivan's input is short (<60 chars) — no real prompt to elaborate on
+      - Reply is long (>200 chars) — clearly padding
+      - Reply's stem-fingerprint overlaps >=50% with any of the last 3
+        outgoing TG texts within the past 30 minutes
+
+    Non-blocking — log only.
+    """
+    if not response_text or not user_input:
+        return
+    if len(user_input.strip()) > 60:
+        return  # Ivan asked something substantive; long reply is OK
+    if len(response_text) < 200:
+        return  # Already a short reply; no padding suspicion
+    try:
+        from sonya.initiative.outbound import _normalize_for_dedup
+        import json as _json
+        norm_new = _normalize_for_dedup(response_text)
+        if not norm_new:
+            return
+        new_tokens = set(norm_new.split())
+        if len(new_tokens) < 5:
+            return
+        cur = substrate.connection.execute(
+            "SELECT payload_json FROM continuity_events "
+            "WHERE kind IN ('outgoing.telegram_response', "
+            "               'outgoing.response', "
+            "               'outgoing.telegram_initiative') "
+            "  AND created_at > datetime('now', '-30 minutes') "
+            "ORDER BY seq DESC LIMIT 3"
+        )
+        for (payload_json,) in cur.fetchall():
+            try:
+                payload = _json.loads(payload_json or "{}")
+            except Exception:
+                continue
+            prior_text = (
+                payload.get("text")
+                or payload.get("response_text")
+                or payload.get("preview")
+                or ""
+            )
+            if not prior_text or len(prior_text) < 60:
+                continue
+            norm_prior = _normalize_for_dedup(str(prior_text))
+            if not norm_prior:
+                continue
+            prior_tokens = set(norm_prior.split())
+            if not prior_tokens:
+                continue
+            inter = len(new_tokens & prior_tokens)
+            # Containment ratio (asymmetric Jaccard variant) catches the
+            # padding-with-old-content pattern: new reply reuses substantive
+            # content from prior + adds fresh wrapper. Symmetric Jaccard
+            # underweights this because the wrapper drags union up.
+            min_size = min(len(new_tokens), len(prior_tokens))
+            if min_size == 0:
+                continue
+            containment = inter / min_size
+            if containment >= 0.50 and inter >= 5:
+                _log.warning(
+                    "reply_repeat_detected",
+                    extra={
+                        "preview": response_text[:240],
+                        "prior_preview": str(prior_text)[:240],
+                        "user_msg": user_input[:120],
+                        "containment": f"{containment:.0%}",
+                        "shared_tokens": inter,
+                    },
+                )
+                return
+    except Exception:
+        pass
+
+
 def _create_thinking_provider(config: AppConfig, substrate: "Substrate"):
     """Create a substrate-backed LLM provider with key rotation.
 
@@ -681,6 +771,13 @@ def _build_incoming_handler(
                     tg_result.raw.actions,
                     msg.text or "",
                 )
+
+                # Reply-repeat detection: short Ivan input + long reply that
+                # overlaps >=50% with one of the last 3 outbound texts
+                # (within 30 min). The 26.05 12:14/12:16 padding case where
+                # Sonya re-stated her sweetcow worker status in the next reply.
+                # Non-blocking, log only.
+                _reply_repeat_check(response_text, msg.text or "", substrate)
 
                 # If Sonya created or progressed a task in this TG turn,
                 # poke the worker so it picks up the new state in seconds
