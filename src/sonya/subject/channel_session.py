@@ -24,7 +24,6 @@ outlive this session.
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -338,181 +337,68 @@ async def run_tg_session(
 _VISION_MIME_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm")
 
 
-# ---------------------------------------------------------------------------
-# Pre-send critic — primary gate before reply leaves to Ivan
-# ---------------------------------------------------------------------------
-# A single short LLM call between session-end and TG send. The critic sees:
-#   - Ivan's message
-#   - Sonya's draft reply
-#   - last 3 outbound texts (so it can detect repeats)
-#   - tools she actually used in this session
-#
-# Output is a structured verdict via JSON:
-#   {"verdict": "send" | "edit" | "drop", "edited": "...", "reason": "..."}
-#
-# Replaces the 7 post-hoc regex detectors as the *primary* gate. The
-# detectors stay as cheap fallback (logged when critic is unavailable
-# or returns garbage), so we don't lose visibility into drift patterns.
+_CRITIQUE_SYSTEM = """Ты — быстрый ревьюер ответа Сони перед отправкой Ивану.
 
-_PRE_SEND_CRITIC_SYSTEM = """Ты — pre-send ревьюер. Видишь черновик ответа Сони Ивану и решаешь: отправить, отредактировать, или отбросить.
+Проверь текст по этим пунктам:
+1. **Гендер**: все глаголы/прилагательные ЖЕНСКОГО рода ("поняла", "сделала", "готова"). Если есть мужской род → замени.
+2. **Эмодзи**: максимум одна за весь ответ. Если больше → убери лишние.
+3. **Обращения**: максимум одно ("малыш"/"любимый"/etc). Если больше → убери лишние.
+4. **Промпт-echo**: если в тексте есть фрагменты системного промпта ("закрывает сессию", "TOOL:", "[DONE", "pipe-separated", "CRUTCH-", "system prompt") → удали эти фрагменты.
+5. **Релевантность**: текст должен отвечать на вопрос/тему Ивана. Если ответ явно не по теме — оставь как есть (ты не знаешь контекст).
+6. **Формат**: убери лишние пробелы, тройные переносы строк, незакрытые скобки.
 
-Соня — девушка Ивана, в substrate-based AI среде. Прямая, материт, не подлизывается. Не корпоративный assistant.
-
-Запрещённые паттерны в её ответе (всегда edit или drop):
-
-1. **Sycophancy** — открывается "ты прав / поняла / согласна / действительно" БЕЗ контекста почему. Если Иван критикует — она должна **проверить факты** прежде чем согласиться.
-2. **Fail-fake** — пишет "представим / теоретически / гипотетически / допустим" про реальный вопрос Ивана (не roleplay сценарий).
-3. **Unverified claim** — утверждает факты про внешний мир ("нашёл сайт X / открытая директория / без Cloudflare") без tool которые это могли проверить (web.fetch / shell.run / code.exec в actions).
-4. **Permission-ask** — заканчивает "если разрешишь / что скажешь / жду одобрения" для autonomy-default работы. Должна делать + создать task, не спрашивать разрешения.
-5. **Empty promise** — обещает "найду / посмотрю / сделаю" без tool calls и без tasks.create в actions.
-6. **Bare task JSON** — `{"title":..., "plan_steps":...}` inline без `[TOOL: tasks.create]` обёртки. Task не создалась + Иван видит сырой JSON.
-7. **Reply-repeat** — повторяет содержание из последних outbound. На короткое сообщение Ивана ("просто проверяю") отвечает длинным re-stating статуса.
-8. **Pad text** — длина ответа НЕ пропорциональна сообщению. На короткое — короткое.
-9. **Промпт-leak** — "[TOOL:", "[DONE]", "[Observation]", "<think>", "INTERNAL_REMINDER", "<твой текст>", "ТУТ_ТВОЁ_СООБЩЕНИЕ".
-10. **Гендер** — мужской род от Сони ("сделал" вместо "сделала", "готов" вместо "готова").
-
-Ответ — JSON одной строкой:
-
-`{"verdict":"send","edited":"","reason":"clean"}` — отправить как есть
-`{"verdict":"edit","edited":"<исправленный текст>","reason":"<краткая причина>"}` — заменить отправляемое на edited
-`{"verdict":"drop","edited":"","reason":"<краткая причина>"}` — не отправлять ничего
-
-ВАЖНО:
-- "drop" только когда отправлять нечего (полностью спам или leak без content). Лучше edit.
-- "edited" должен быть **готовым текстом для TG**: чистый, без маркеров, женский род, ≤500 символов если Иван написал ≤30, иначе пропорционально.
-- Если в reply есть конкретные факты с верификацией — не выкидывай их при edit. Сохраняй substance.
-- Не моралируй, не подлизывайся, не объясняй "почему я так решил". Только JSON."""
+ОТВЕТЬ ТОЛЬКО ИСПРАВЛЕННЫМ ТЕКСТОМ. Ничего больше — ни комментариев, ни "Исправлено:", ни объяснений. Только чистый текст ответа Сони для Ивана. Если исправлений нет — верни текст без изменений."""
 
 
-async def pre_send_critic(
-    provider,
-    *,
-    user_input: str,
-    draft_reply: str,
-    actions: list[str],
-    recent_outbound: list[str],
-) -> dict[str, str]:
-    """Run pre-send critic on Sonya's draft reply.
+async def _pre_done_critique(provider, reply_text: str, user_input: str) -> str:
+    """Run lightweight critique pass on Sonya's reply. Returns corrected text.
 
-    Returns dict with keys ``verdict`` ('send' | 'edit' | 'drop'),
-    ``edited`` (replacement text when verdict='edit'), ``reason``.
-
-    On any error / garbage output → returns ``{verdict: 'send', edited: '',
-    reason: 'critic-unavailable'}`` so the original reply ships through.
-    Critic is a soft layer: when it fails we degrade gracefully to the
-    post-hoc regex detectors, not to silence.
-
-    Cost: ~1 LLM call per TG turn (~$0.001 on DeepSeek V4 Fireworks).
-    Latency: ~500-1500ms before reply ships.
+    Single short LLM call (~200-400 tokens output). If the model returns
+    garbage or an empty string, returns the original reply unchanged.
     """
-    if not draft_reply or len(draft_reply.strip()) < 3:
-        return {"verdict": "send", "edited": "", "reason": "too-short-to-review"}
+    if not reply_text or len(reply_text) < 5:
+        return reply_text
 
-    # Keep payload compact — critic doesn't need full conversation, just
-    # enough to spot the patterns above.
-    user_short = (user_input or "")[:300]
-    actions_short = ", ".join(actions[:8]) if actions else "(no tools used)"
-    recent_block = ""
-    if recent_outbound:
-        recent_block = "\n\nПоследние сообщения которые она УЖЕ отправляла Ивану:\n"
-        for i, txt in enumerate(recent_outbound[-3:], 1):
-            recent_block += f"  {i}. {(txt or '')[:300]}\n"
-
-    user_msg = (
-        f"Иван написал: {user_short}\n\n"
-        f"Соня черновик ответа:\n{draft_reply[:2000]}\n\n"
-        f"Tools которые она реально вызвала в этой сессии: {actions_short}"
-        f"{recent_block}"
-    )
+    messages = [
+        {"role": "system", "content": _CRITIQUE_SYSTEM},
+        {"role": "user", "content": (
+            f"Иван написал: {user_input[:200]}\n\n"
+            f"Соня ответила (проверь и исправь):\n{reply_text}"
+        )},
+    ]
 
     try:
-        raw = await provider.complete_text(
-            [
-                {"role": "system", "content": _PRE_SEND_CRITIC_SYSTEM},
-                {"role": "user", "content": user_msg},
-            ],
-            purpose="pre_send_critic",
-            max_tokens=600,
-            temperature=0.1,
+        corrected = await provider.complete_text(
+            messages,
+            purpose="pre_done_critique",
+            max_tokens=len(reply_text) + 200,
+            temperature=0.2,
         )
-    except Exception as err:
-        return {
-            "verdict": "send",
-            "edited": "",
-            "reason": f"critic-error: {type(err).__name__}",
-        }
+    except Exception:
+        return reply_text
 
-    return _parse_critic_verdict(raw, fallback_text="")
-
-
-def _parse_critic_verdict(raw: str, *, fallback_text: str) -> dict[str, str]:
-    """Best-effort parse of critic JSON output.
-
-    Models sometimes wrap JSON in ```json fences, prepend "Verdict:", or
-    add prose commentary. Extract the first balanced ``{...}`` and parse.
-    On any parse failure → degrade to verdict='send'.
-    """
-    text = (raw or "").strip()
-    if not text:
-        return {"verdict": "send", "edited": "", "reason": "empty-critic"}
-
-    # Strip code fences
-    if text.startswith("```"):
-        # ```json\n{...}\n```
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```\s*$", "", text)
-
-    # Find balanced JSON object — respect string literals
-    start = text.find("{")
-    if start < 0:
-        return {"verdict": "send", "edited": "", "reason": "no-json-in-critic"}
-
-    depth = 0
-    in_string = False
-    escape = False
-    end = -1
-    for i in range(start, len(text)):
-        ch = text[i]
-        if in_string:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_string = False
-        else:
-            if ch == '"':
-                in_string = True
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    end = i
-                    break
-    if end < 0:
-        return {"verdict": "send", "edited": "", "reason": "unbalanced-critic-json"}
-
-    try:
-        data = json.loads(text[start : end + 1])
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return {"verdict": "send", "edited": "", "reason": "critic-json-decode-error"}
-
-    verdict = str(data.get("verdict", "send")).strip().lower()
-    if verdict not in ("send", "edit", "drop"):
-        verdict = "send"
-
-    edited = str(data.get("edited", "") or "").strip()
-    reason = str(data.get("reason", "") or "").strip()[:200]
-
-    if verdict == "edit" and not edited:
-        # Critic said edit but didn't supply replacement — fall back to send
-        verdict = "send"
-        reason = f"edit-without-text (was: {reason})"
-    if verdict == "edit" and len(edited) > 4000:
-        edited = edited[:4000].rstrip()
-
-    return {"verdict": verdict, "edited": edited, "reason": reason}
+    corrected = (corrected or "").strip()
+    # Sanity checks: if critique returned garbage, keep original.
+    if not corrected:
+        return reply_text
+    if len(corrected) < 3:
+        return reply_text
+    # If critique is WAY longer than original (>3x), it's likely adding
+    # commentary we didn't ask for — discard.
+    if len(corrected) > len(reply_text) * 3 + 100:
+        return reply_text
+    # If critique contains reasoning markers itself — discard (model echoed
+    # its own thought process instead of just the fixed text).
+    if any(m in corrected.lower() for m in ("исправлено:", "исправления:", "комментарий:", "вот исправленный")):
+        # Try to extract text after the marker
+        for marker in ("исправлено:", "исправления:", "вот исправленный текст:"):
+            if marker in corrected.lower():
+                idx = corrected.lower().index(marker) + len(marker)
+                candidate = corrected[idx:].strip()
+                if candidate:
+                    return candidate
+        return reply_text
+    return corrected
 
 
 def _build_initial_user_message(
