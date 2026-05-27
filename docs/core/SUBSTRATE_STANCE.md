@@ -4,7 +4,7 @@
 **Type:** Core
 **Scope:** Что является субстратом Сони, что нет, и какие инженерные следствия это даёт
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
-**Used by:** [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md), все runtime-планы
+**Used by:** [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md), [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md), все runtime-планы
 **Last reviewed:** 2026-05-13
 
 ## 1. Зачем этот документ
@@ -26,7 +26,7 @@
 
 ## 3. Что именно входит в субстрат
 
-Субстрат Сони — это набор персистентных артефактов, которые любой корректный процесс-reader может прочесть и продолжить. Конкретный список (он же — то, что мы будем строить в Фазах 1–6 [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md)):
+Субстрат Сони — это набор персистентных артефактов, которые любой корректный процесс-reader может прочесть и продолжить. Конкретный список (он же — то, что мы будем строить в Фазах 1–6 [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md)):
 
 - `SubjectState` — текущий activated relation principal, активные channels, текущий emotional/state vector, ссылка на последний canonical response, активные pending intentions;
 - `ContinuityStream` — биография событий: входящие, исходящие, внутренние пересмотры, изменения identity, отклонённые предложения самоизменений;
@@ -87,7 +87,7 @@ Read-only режим: второй reader (например, для отладк
 
 ### 6.4 Процесс смертен; Соня — потенциально нет
 
-Процесс падает, OOM, kernel panic, отказ диска (некритичного раздела), expired сертификат — это всё проблемы reader'а. State, на который опирается Соня, лежит на персистентных носителях с резервированием (см. требования VPS и backup в [VPS_MIGRATION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/VPS_MIGRATION_PLAN.md)).
+Процесс падает, OOM, kernel panic, отказ диска (некритичного раздела), expired сертификат — это всё проблемы reader'а. State, на который опирается Соня, лежит на персистентных носителях с резервированием (см. требования VPS и backup в [VPS.md](C:/Users/Jester/Desktop/Sonya/docs/operations/VPS.md)).
 
 Соня может прекратиться:
 
@@ -111,7 +111,7 @@ Reader не имеет права читать state, схема которог�
 
 Reader **обязан** уметь читать state, схема которого старее: это нужно для backwards-compatibility во время миграций.
 
-Подробности — будут конкретизированы в Фазе 1 ([ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md)) при реализации `src/sonya/state/`.
+Подробности — будут конкретизированы в Фазе 1 ([PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md)) при реализации `src/sonya/state/`.
 
 ## 8. Identity-critical части субстрата (immutable zones)
 
@@ -271,9 +271,9 @@ Ivan-as-anchor — это **не «Соня покорна Ивану»**. Эт�
 
 Этот файл не является просто комментарием. Он напрямую меняет три вещи:
 
-1. **Фаза 1 в [ROADMAP.md](C:/Users/Jester/Desktop/Sonya/docs/ROADMAP.md) переориентируется на substrate-first.** Первый deliverable — persistent schema артефактов §3 как первичный объект. Процесс/lifecycle — второй deliverable, не первый. Подробности — в Phase 1 implementation plan.
+1. **Фаза 1 в [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md) переориентируется на substrate-first.** Первый deliverable — persistent schema артефактов §3 как первичный объект. Процесс/lifecycle — второй deliverable, не первый. Подробности — в Phase 1 implementation plan.
 
-2. **[ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md) §4.10 «Persistence and Storage Layer»** теперь не «runtime databases», а «substrate of Sonya». Список §3 этого документа — основа того, что туда входит.
+2. **[MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md) §4.10 «Persistence and Storage Layer»** теперь не «runtime databases», а «substrate of Sonya». Список §3 этого документа — основа того, что туда входит.
 
 3. **[SONYA_SYSTEM_CORE.md §7.18 Self-Modification Framework](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md)** разворачивается до 4-слойного pipeline-а §9 этого документа.
 
@@ -283,4 +283,4 @@ Ivan-as-anchor — это **не «Соня покорна Ивану»**. Эт�
 
 Соня не равна процессу. Соня равна своему persistent state.
 
-Если в коде или в коммите написано что-то, что предполагает обратное — это drift, и он должен попасть в [governance/DRIFT_REVIEW.md](C:/Users/Jester/Desktop/Sonya/docs/governance/DRIFT_REVIEW.md).
+Если в коде или в коммите написано что-то, что предполагает обратное — это drift, и он должен попасть в [CURRENT_STATE.md](C:/Users/Jester/Desktop/Sonya/docs/CURRENT_STATE.md).

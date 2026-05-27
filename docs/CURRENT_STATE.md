@@ -327,18 +327,19 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 - `core/SONYA_SYSTEM_CORE.md`, `core/SONYA_CONSCIOUSNESS_POSITION.md` — philosophy и invariants
 - `core/SUBSTRATE_STANCE.md`, `core/SELF_REWRITE_STANCE.md`, `core/UNCENSORED_ENVIRONMENT_STANCE.md` — stances
+- `core/ENVIRONMENT_AS_SONYA.md` — приложение = Соня, multichannel UI, reason-streams, right_to_inner_privacy
 - `core/INTERIM_CRUTCHES.md` — реестр того что временное
 - `cognition/*` — anchors, memory, continuity (target architecture, частично реализовано)
 - `skills/SKILL_SYSTEM_PLAN.md` — skill lifecycle (registry есть, executor нет)
 - `research/*` — long-term tracks (RWKV, simulation, state tuning)
-- `mvp/MVP_BOUNDARIES.md` — что считать MVP
 - `personality/*` — SOUL/HEARTBEAT/USER/SELF/LESSONS
-- `agents/*` — onboarding/rules/failure-modes для внешних моделей
 - `план/` — original AGI vision (legacy reference)
 
-Удалены как stale/superseded:
-- `ROADMAP.md`, `GLOBAL_PROJECT_CHECKLIST.md`, `KNOWN_ISSUES.md`, `SYSTEM_BUILDOUT_PLAN.md` — закрытые фазы и устаревшие списки
-- `architecture/` целиком — план был для multi-channel, не реализован
+Удалены как stale/superseded (резюме чисток):
+- `agents/` целиком (EXTERNAL_MODEL_ONBOARDING, AGENT_OPERATING_RULES, AGENT_FAILURE_MODES) — дублировали MASTER + CURRENT_STATE, описывали реальность 2026-05-16
+- `mvp/MVP_BOUNDARIES.md` — реальность ушла далеко вперёд (Stage 3+ закрыт, score ~42)
+- `ROADMAP.md`, `GLOBAL_PROJECT_CHECKLIST.md`, `KNOWN_ISSUES.md`, `SYSTEM_BUILDOUT_PLAN.md` — закрытые фазы, заменены MASTER + PATH_TO_AGI + CURRENT_STATE
+- `architecture/` целиком — план был для multi-channel, заменён ENVIRONMENT_AS_SONYA
 - `governance/DRIFT_REVIEW.md` — cadence не соблюдалась
 - `core/DOCUMENTATION_SYSTEM.md` — meta-док про meta
-- `work/` — implementation plans (plans закрыты, их история в git)
+- `work/` — implementation plans (история в git)

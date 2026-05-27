@@ -3,17 +3,16 @@
 **Status:** Active for identity (§3-§4); Stale for memory (§5-§7, §12)
 **Type:** System Plan
 **Scope:** Identity layer, self-model, episodic memory, semantic memory, and continuity mechanics
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
-**Used by:** [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md), runtime implementation work
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)
+**Used by:** [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), runtime implementation work
 **Last reviewed:** 2026-05-16
 
-> **Reality note (2026-05-16):**
-> - **Identity (§3-§4):** Mostly real. `IdentityRecord` table exists, `things_not_to_betray` seeded, principals registry works.
-> - **Episodic memory (§5):** Single `episodic_events` table exists with `mark_accessed` + `apply_decay` (commit `bd864d5`). The class system (`dialogue_event / initiative_event / tool_event / ...`) is **aspirational** — current code uses freeform `event_type` string.
-> - **Semantic memory (§6):** `semantic_facts` table exists. ConsolidationPipeline code exists but **never runs** — semantic memory is effectively static.
-> - **Consolidation (§7):** Pipeline class exists, no trigger. See KNOWN_ISSUES G-11.
-> - **Forgetting curve (§12):** Mostly implemented in commit `bd864d5` — fields `retention_strength`, `last_accessed_at`, `access_count`, `archived` exist. `apply_decay()` works. Periodic trigger NOT wired.
-> - "Phase 8 (Memory Extraction)" referenced as future is partially done; `working_memory` table promised by ROADMAP §14 does NOT exist.
+> **Reality note (2026-05-27):**
+> - **Identity (§3-§4):** Real. `IdentityRecord` table exists, `things_not_to_betray` seeded, principals registry works.
+> - **Episodic memory (§5):** Single `episodic_events` table exists with `mark_accessed` + `apply_decay`. The class system (`dialogue_event / initiative_event / tool_event / ...`) is **aspirational** — current code uses freeform `event_type` string.
+> - **Semantic memory (§6):** `semantic_facts` table exists. ConsolidationPipeline runs once per 24h after active session as of late May 2026 (was paper for a while).
+> - **Forgetting curve (§12):** Implemented — fields `retention_strength`, `last_accessed_at`, `access_count`, `archived` exist. `apply_decay()` works. Indexer adaptive (5s active / 5min idle).
+> - "Working memory tables" promised by retired ROADMAP §14 do NOT exist; current architecture works without them. See `CURRENT_STATE.md` and `PATH_TO_AGI.md` for live snapshot.
 
 ## 1. Назначение документа
 

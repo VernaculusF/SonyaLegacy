@@ -3,7 +3,7 @@
 **Status:** Active
 **Type:** System Plan
 **Scope:** Skill lifecycle, skill artifacts, skill injection, trust levels, and skill evolution
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md), [MVP_BOUNDARIES.md](C:/Users/Jester/Desktop/Sonya/docs/mvp/MVP_BOUNDARIES.md)
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)
 **Used by:** implementation plans, runtime behavior design, self-modification work
 **Last reviewed:** 2026-05-01
 

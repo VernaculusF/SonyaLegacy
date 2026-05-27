@@ -3,7 +3,7 @@
 **Status:** Research (no MVP-level implementation exists)
 **Type:** Research Plan
 **Scope:** Simulation path, virtual embodiment, and future physical grounding
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)
 **Used by:** future channel/body work, research execution, embodiment planning
 **Last reviewed:** 2026-05-16
 

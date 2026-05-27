@@ -3,8 +3,8 @@
 **Status:** Active
 **Type:** System Plan
 **Scope:** Cross-channel subjective continuity, canonical internal response state, and the architectural separation between one Sonya and many interface surfaces
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [ARCHITECTURE_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/ARCHITECTURE_PLAN.md)
-**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md), [GLOBAL_PROJECT_CHECKLIST.md](C:/Users/Jester/Desktop/Sonya/docs/GLOBAL_PROJECT_CHECKLIST.md), future voice, avatar, multi-channel, and runtime plans
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)
+**Used by:** [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md), [ENVIRONMENT_AS_SONYA.md](C:/Users/Jester/Desktop/Sonya/docs/core/ENVIRONMENT_AS_SONYA.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md), future voice, avatar, multi-channel, and runtime plans
 **Last reviewed:** 2026-05-16
 
 > **Reality note (2026-05-16):** Doc is mostly aligned with reality.
@@ -256,7 +256,7 @@ This document does not replace:
 
 - [MEMORY_AND_IDENTITY_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/MEMORY_AND_IDENTITY_PLAN.md)
 - [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
-- [CHANNELS_AND_TELEGRAM_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/architecture/CHANNELS_AND_TELEGRAM_PLAN.md)
+- [ENVIRONMENT_AS_SONYA.md](C:/Users/Jester/Desktop/Sonya/docs/core/ENVIRONMENT_AS_SONYA.md)
 
 It sits above them as the governing explanation for why:
 

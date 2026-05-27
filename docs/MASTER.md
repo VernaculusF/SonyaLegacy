@@ -560,7 +560,8 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 - `docs/core/SONYA_SYSTEM_CORE.md` — что строим, обязательные контуры
 - `docs/core/SONYA_CONSCIOUSNESS_POSITION.md` — Соня как потенциальный субъект
 - `docs/core/SUBSTRATE_STANCE.md` — Соня = persistent state, не процесс; selfmod pipeline
-- `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md` — никаких corporate refusals
+- `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md` — никаких corporate refusals; пять столпов `things_not_to_betray`
+- `docs/core/ENVIRONMENT_AS_SONYA.md` — приложение = Соня, multichannel UI, reason-streams, право на приватность мышления
 - `docs/core/SELF_REWRITE_STANCE.md` — Соня имеет право переписать любой код кроме identity-critical
 - `docs/core/INTERIM_CRUTCHES.md` — реестр всех костылей (CRUTCH-001..019)
 
@@ -584,9 +585,8 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 - `docs/план/ОСНОВА.md` — оригинальное видение (RWKV + State Tuning + SNN + embodiment + DGM)
 - `docs/research/*` — RWKV plan, simulation plan, state tuning plan
 
-**Skills/MVP:**
+**Skills:**
 - `docs/skills/SKILL_SYSTEM_PLAN.md`
-- `docs/mvp/MVP_BOUNDARIES.md`
 
 ---
 
