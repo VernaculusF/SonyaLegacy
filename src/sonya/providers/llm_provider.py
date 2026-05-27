@@ -105,6 +105,52 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Per-purpose slot routing.
+#
+# Slot semantics in provider_keys:
+#   text       — generic text key (default)
+#   text-fast  — preferred for cheap/quick replies (DeepSeek V4 Flash, Haiku 4.5)
+#   text-deep  — preferred for analysis/planning (DeepSeek V4 Pro, Sonnet 4.5)
+#   code       — preferred for codegen/selfmod (Sonnet 4.5 quality)
+#   vision     — vision-capable (handled via separate path)
+#
+# Mapping below translates `purpose` (set by callers like run_window) into
+# a preferred slot. KeyStore.acquire(provider, slot=X) returns the highest-
+# priority eligible key with that slot in its slot list; if no slot match,
+# falls back to ANY eligible key for that provider. So this is a soft hint,
+# not a hard requirement — Sonya never gets NoKeysAvailable just because
+# her preferred slot is empty.
+
+_PURPOSE_SLOT_MAP: dict[str, str] = {
+    # Fast (cheap, lower latency, smaller context)
+    "tg_session": "text-fast",
+    "task_worker": "text-fast",
+    "idle_thinking": "text-fast",
+    "pre_done_critique": "text-fast",
+    # Deep (better quality, more steps, longer context)
+    "active_session": "text-deep",
+    # Codegen — Sonnet-class preferred
+    "selfmod_codegen": "code",
+    "selfmod_propose": "code",
+}
+
+
+def _slot_for_purpose(purpose: str) -> str:
+    """Return preferred slot for a given session purpose. Defaults to 'text'.
+
+    Heuristic: explicit map first, then prefix match for code-related
+    purposes, else generic 'text'.
+    """
+    if not purpose:
+        return "text"
+    if purpose in _PURPOSE_SLOT_MAP:
+        return _PURPOSE_SLOT_MAP[purpose]
+    # Codegen-shaped purposes that don't fit the explicit map
+    if "code" in purpose.lower() or "_codegen" in purpose.lower() or "selfmod" in purpose.lower():
+        return "code"
+    return "text"
+
+
 def _record_call(
     store: KeyStore,
     *,
@@ -183,6 +229,17 @@ class LLMProvider:
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
         purpose = kwargs.get("purpose", "unknown")
 
+        # Per-purpose slot routing. The slot is a soft preference — if no
+        # key has the preferred slot, acquire() in keystore falls back to
+        # any 'text' key automatically. Mapping reflects: deep work needs
+        # bigger context + better quality; idle/worker/TG can run on a
+        # cheaper fast model; selfmod codegen benefits from Sonnet-class
+        # code reasoning.
+        if "_purpose_slot" in kwargs:
+            preferred_slot = str(kwargs["_purpose_slot"])
+        else:
+            preferred_slot = _slot_for_purpose(purpose)
+
         # Fallback chain: try active_provider first; if no eligible keys
         # there, fall back to other providers in order. Each provider gets
         # one acquire attempt before moving on. This keeps the existing
@@ -200,13 +257,13 @@ class LLMProvider:
             key = None
             picked_provider = provider
             for prov in fallback_chain:
-                key = await self._store.acquire(prov, slot="text")
+                key = await self._store.acquire(prov, slot=preferred_slot)
                 if key is not None:
                     picked_provider = prov
                     if prov != provider and attempt == 0:
                         _log.info(
                             "provider_fallback_acquired",
-                            extra={"primary": provider, "fallback": prov, "purpose": purpose},
+                            extra={"primary": provider, "fallback": prov, "purpose": purpose, "slot": preferred_slot},
                         )
                     break
             if key is None:

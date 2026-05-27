@@ -654,13 +654,28 @@ const renderers = {
         const lastNotes = t.last_session_notes
           ? `<div style="margin-top:4px;font-size:11px;color:#8b949e;white-space:pre-wrap">notes: ${escapeHtml(t.last_session_notes.slice(0,200))}</div>`
           : '';
+        // Per-status action buttons. Failed/done tasks can be repurposed
+        // (reset to pending). Blocked tasks can be unblocked. Open tasks
+        // can be force-failed by operator. Delete is universal.
+        const actBtn = (label, color, action) => `<button onclick="event.stopPropagation();taskAction('${t.task_id}','${action}')" style="background:${color}22;color:${color};border:1px solid ${color}55;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px;margin-left:4px">${label}</button>`;
+        const actionButtons = [];
+        if (t.status === 'blocked') {
+          actionButtons.push(actBtn('🔓 unblock', '#3fb950', 'unblock'));
+        }
+        if (t.status === 'failed' || t.status === 'done') {
+          actionButtons.push(actBtn('♻️ repurpose', '#1f6feb', 'repurpose'));
+        }
+        if (t.status === 'in_progress' || t.status === 'pending' || t.status === 'blocked') {
+          actionButtons.push(actBtn('⏹ fail', '#d29922', 'fail'));
+        }
         return `
         <div class="event task-card" style="border-left-color:${statusColor[t.status] || '#30363d'};cursor:pointer" onclick="taskToggle('${t.task_id}', this)">
           <div class="meta" style="display:flex;justify-content:space-between;align-items:center">
             <span>[${t.task_id}] ${t.created_by === 'ivan' ? '👤 Ivan' : '🤖 Sonya'} • ${t.notify_mode} • ${t.created_at.slice(0,19)}</span>
             <span>
               <span style="color:#8b949e;font-size:11px;margin-right:6px" class="task-toggle-arrow">▶</span>
-              <button onclick="event.stopPropagation();taskDelete('${t.task_id}')" title="Delete task" style="background:#f8514922;color:#f85149;border:1px solid #f8514955;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px">✕ delete</button>
+              ${actionButtons.join('')}
+              <button onclick="event.stopPropagation();taskDelete('${t.task_id}')" title="Delete task" style="background:#f8514922;color:#f85149;border:1px solid #f8514955;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px;margin-left:4px">✕ delete</button>
             </span>
           </div>
           <div class="body"><b>${escapeHtml(t.title)}</b>${t.description ? '<br><span style="color:#8b949e">' + escapeHtml(t.description.slice(0,200)) + '</span>' : ''}</div>
@@ -691,6 +706,32 @@ async function taskDelete(taskId) {
       return;
     }
     setTimeout(() => loadPage('tasks'), 200);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function taskAction(taskId, action) {
+  // operatorTaskAction lives at the bottom of the file (operator panel
+  // shares the same backend endpoint). Reuse it so behavior stays
+  // identical across both tabs.
+  const promptText = {
+    fail:      'Fail reason (will reach Ivan via TG for non-silent tasks):',
+    unblock:   'New next_step hint (optional, blank to just clear blocker):',
+    repurpose: 'Why repurpose this task (audit note, optional):',
+  }[action] || 'Reason:';
+  const reason = prompt(promptText, '');
+  if (reason === null) return;  // cancelled
+  try {
+    const resp = await fetch(`${API}/api/operator/task/${taskId}/action`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action, reason: reason || ''}),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      setTimeout(() => loadPage('tasks'), 200);
+    } else {
+      alert('Error: ' + JSON.stringify(data));
+    }
   } catch(e) { alert('Error: ' + e.message); }
 }
 
