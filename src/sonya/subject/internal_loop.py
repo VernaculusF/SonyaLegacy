@@ -1338,6 +1338,65 @@ class InternalProcess:
                     )
                 except Exception:
                     pass
+                # Worker silent-tick guard: if this was an Ivan task with
+                # notify_mode=progress and the worker did real work but
+                # never sent chat.tell_ivan, surface a short auto-notify
+                # so Ivan sees the worker is alive. Without this, Sonya
+                # ack's "разблокирую и продолжаю" in TG, then the worker
+                # silently runs 5 steps and goes back to sleep — Ivan
+                # gets nothing for ~30 min until the next tick. The
+                # 27.05.20:31 mpbacademy incident.
+                try:
+                    notify = (task.notify_mode or "progress").lower()
+                    if notify == "progress" and task.is_ivan_task() and tools.get("outbound"):
+                        used_chat = any(
+                            a.startswith("chat.tell_ivan") for a in result.actions
+                        )
+                        # Real work = at least one non-tasks.* tool fired
+                        meaningful = any(
+                            not a.split(" ", 1)[0].startswith("tasks.")
+                            for a in result.actions
+                        )
+                        if not used_chat and meaningful:
+                            # Build a tight 1-line summary of what was tried
+                            # and what the next step is.
+                            tools_tried = []
+                            for a in result.actions[:5]:
+                                tname = a.split(" ", 1)[0]
+                                if tname.startswith("tasks."):
+                                    continue
+                                if tname not in tools_tried:
+                                    tools_tried.append(tname)
+                            notify_text = (
+                                f"Worker по «{task.title[:60]}»: "
+                                f"{result.steps} шага через "
+                                f"{', '.join(tools_tried[:4]) or 'tools'}. "
+                            )
+                            # Pull next_step_hint after the handoff was applied
+                            try:
+                                refreshed = TaskStore(substrate).get(task.task_id)
+                                if refreshed.next_step_hint:
+                                    notify_text += (
+                                        f"Дальше: {refreshed.next_step_hint[:160]}"
+                                    )
+                            except Exception:
+                                pass
+                            from sonya.initiative.outbound import (
+                                call_outbound_sync,
+                            )
+                            call_outbound_sync(tools["outbound"], notify_text)
+                            try:
+                                self._stream.append(ContinuityEvent(
+                                    kind="internal.worker_auto_progress_notify",
+                                    payload={
+                                        "task_id": task.task_id,
+                                        "preview": notify_text[:200],
+                                    },
+                                ))
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
                 # Auto-bump sessions_used if she didn't call handoff/complete/fail.
                 try:
                     used_handoff = any(a.startswith("tasks.handoff") for a in result.actions)

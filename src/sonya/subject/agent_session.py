@@ -290,8 +290,18 @@ _BLOCKER_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
     ),
     (
         "http_404",
-        re.compile(r"\b(404|not found)\b", re.IGNORECASE),
-        "404. Ресурс по этому пути отсутствует. Проверь близкие варианты "
+        # Require "404" adjacent to "Not Found" or "HTTP 404" prefix —
+        # NOT bare digit `404` (which appears in random URLs and side-fetches).
+        # The model can probe ten URLs in one code.exec call; if ALL of them
+        # are 404 the main task is dead, but if just sitemap.xml is 404 while
+        # the main fetch returns 200, we shouldn't fire the blocker.
+        re.compile(
+            r"(\bHTTP[/ ]?404\b|\b404\s+Not\s+Found\b"
+            r"|^\s*Status:?\s*404\b|status_code['\"]?\s*[:=]\s*404\b"
+            r"|^\s*\[?404\]?\s*$)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "Запрашиваемый ресурс — 404 Not Found. Проверь близкие варианты "
         "(другой path/host/protocol), не дёргай тот же URL.",
     ),
     (
@@ -308,7 +318,19 @@ _BLOCKER_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
     ),
     (
         "empty_result",
-        re.compile(r"^\s*\[OK\]\s*$|^\s*$", re.MULTILINE),
+        # Anchored to the WHOLE observation: only fire when the entire
+        # output is whitespace / "[OK]" / a few null-equivalents. A
+        # `[HTTP 200] ... Bytes: 21035 ... Login Toggle navigation ...`
+        # response has plenty of content but contained blank lines
+        # between header and body — earlier regex with MULTILINE matched
+        # those blanks and false-positived. We need to make sure THIS
+        # whole observation is empty, not just "contains some empty line".
+        # _detect_blocker uses re.search anchored on the truncated obs;
+        # here we use re.fullmatch via DOTALL to require everything.
+        re.compile(
+            r"\A\s*(\[OK\]|None|null|\{\s*\}|\[\s*\])?\s*\Z",
+            re.IGNORECASE | re.DOTALL,
+        ),
         "Пустой результат — tool вернулся без данных. Возможно, неверные параметры. "
         "Проверь arg перед повтором.",
     ),
@@ -344,6 +366,20 @@ def _detect_blocker(tool_name: str, observation: str) -> tuple[str, str] | None:
     if not observation:
         return None
     obs = observation[:6000]  # cap scan length
+    # Success-shape gate: if the response clearly STARTS with a successful
+    # HTTP/tool envelope and has substantive body afterwards, refuse to
+    # flag any blocker. This prevents the FP we saw in the wild where
+    # web.fetch returned [HTTP 200] ... 21KB body and the regex caught a
+    # blank line between headers and body as 'empty_result', or caught
+    # a `404` mention in the middle of a successful multi-fetch as
+    # 'http_404'. Real failures (5xx, exceptions, captcha, auth) are
+    # never preceded by a 2xx envelope so we don't lose those.
+    head = obs.lstrip()[:80]
+    if (
+        head.startswith("[HTTP 2") or head.startswith("[HTTP 3")
+        or head.startswith("HTTP/1.1 2") or head.startswith("HTTP/2 2")
+    ) and len(obs) > 200:
+        return None
     for kind, pat, hint in _BLOCKER_PATTERNS:
         # `empty_result` only meaningful for tools that normally return data
         if kind == "empty_result" and tool_name in _EMPTY_OK_TOOLS:
