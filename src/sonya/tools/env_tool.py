@@ -34,11 +34,46 @@ class EnvTool:
         if len(parts) < 2:
             return "[ERROR] env.set needs: <key> <value>"
         key, value = parts[0], parts[1]
+        # Capture pre-existing value before overwrite — used by the
+        # credential-shape hint below to flag label drift.
+        pre_existing_value = ""
+        pre_existing_at = ""
+        try:
+            prev = self._store.get(key)
+            if prev is not None:
+                pre_existing_value = prev.get("value", "")
+                pre_existing_at = prev.get("updated_at", "")
+        except Exception:
+            pass
         try:
             self._store.set(key, value, source="observation", updated_by="agent")
         except Exception as exc:
             return f"[ERROR] env.set failed: {exc}"
-        return f"[OK] env.set {key}={value!r}"
+        result = f"[OK] env.set {key}={value!r}"
+        # Soft hint when storing a credential-shaped key. Не блокирующий
+        # гейт — просто подсказка в observation что label лучше сверить с
+        # памятью прежде чем называть ключ от провайдера X. Появилось
+        # после 27.05 incident: Ivan дал Shodan key, Sonya записала как
+        # `apikey_openrouter`, потом 401 → "ключ невалидный" → апология.
+        # Memory.recall по prefix значения вернул бы утренний episodic
+        # с подтверждением что это Shodan.
+        kl = key.lower()
+        if any(marker in kl for marker in ("apikey", "api_key", "token", "secret", "credential")):
+            existing_hint = ""
+            if pre_existing_value and pre_existing_value != value:
+                existing_hint = (
+                    f" Note: this key was previously set to a different "
+                    f"value at {pre_existing_at[:19]} — overwriting."
+                )
+            result += (
+                "\n[hint] Это credential-shaped запись. Перед тем как "
+                "использовать этот label в задаче — сверь что провайдер "
+                "тот, что ты думаешь: `[TOOL: memory.recall <первые 8 "
+                "символов value>]` либо вспомни недавний контекст где "
+                "Иван дал ключ. Mislabel ведёт к 401 и потерянному "
+                "тику." + existing_hint
+            )
+        return result
 
     def get(self, key: str) -> str:
         key = key.strip()
