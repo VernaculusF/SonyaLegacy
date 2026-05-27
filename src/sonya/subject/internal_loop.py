@@ -373,40 +373,124 @@ class InternalProcess:
                 except Exception:
                     pass
 
-            # Task worker: if there's an in_progress task and worker is due, run
-            # a short continuation pass. Independent of active_session — fires
-            # every ~2 minutes when work exists.
+            # ----------------------------------------------------------
+            # Phase 2D — Priority scheduler.
+            #
+            # Collect all candidate windows (active session due, worker
+            # due, idle reflection, etc.) into Candidate objects, then
+            # let Scheduler.pick() return the highest-priority one. The
+            # loop tick then dispatches based on chosen.kind. Candidates
+            # that were ready but lost to a higher-priority sibling are
+            # still tracked in `runners_up` for audit.
+            #
+            # This replaces the previous if/elif tower that fired things
+            # on independent timers with no coordination.
+            # ----------------------------------------------------------
+            from sonya.subject.scheduler import (
+                Candidate,
+                Scheduler,
+                PRIO_ACTIVE_DUE,
+                PRIO_EXTERNAL_TRIGGER,
+                PRIO_IDLE,
+                PRIO_IDLE_LITE,
+                PRIO_HOMEOSTASIS,
+                PRIO_WORKER_DUE,
+                KIND_ACTIVE_SESSION,
+                KIND_IDLE_THOUGHT,
+                KIND_TASK_WORKER,
+            )
+            candidates: list[Candidate] = []
+
+            if should_active:
+                # External-trigger path was already detected above (sets
+                # _last_external_active_request_seq). We can tell whether
+                # this should_active fire is from external trigger by
+                # checking if active_elapsed was just nudged to == active_interval.
+                external_trigger = (
+                    self._last_active_session == now - self._active_interval
+                )
+                candidates.append(Candidate(
+                    priority=PRIO_EXTERNAL_TRIGGER if external_trigger else PRIO_ACTIVE_DUE,
+                    kind=KIND_ACTIVE_SESSION,
+                    reason="external_trigger" if external_trigger else "cadence_elapsed",
+                ))
+
+            # Worker only enters the queue when not running already and
+            # not blocked by busy_lock — same gates as before.
             worker_elapsed = now - self._last_task_worker_at
             effective_interval = self._effective_worker_interval()
             if (
                 worker_elapsed >= effective_interval
                 and not self._task_worker_running
                 and self._provider is not None
-                and not should_active   # avoid double-running with active session
-                and not self._busy_lock.locked()  # don't fire while TG / idle / active is busy
+                and not self._busy_lock.locked()
             ):
-                self._last_task_worker_at = now
-                # Run worker in background so the loop tick stays cheap.
-                asyncio.create_task(self._run_task_worker())
+                candidates.append(Candidate(
+                    priority=PRIO_WORKER_DUE,
+                    kind=KIND_TASK_WORKER,
+                    reason="worker_interval_elapsed",
+                ))
 
-            if should_active:
+            if should_think:
+                # Distinguish homeostasis-driven thinking from pure idle —
+                # crossed thresholds are higher signal than empty silence.
+                if crossed:
+                    candidates.append(Candidate(
+                        priority=PRIO_HOMEOSTASIS,
+                        kind=KIND_IDLE_THOUGHT,
+                        reason="homeostasis_crossed",
+                        payload={"crossed": list(crossed)},
+                    ))
+                elif idle_triggered or overdue_ids:
+                    candidates.append(Candidate(
+                        priority=PRIO_IDLE,
+                        kind=KIND_IDLE_THOUGHT,
+                        reason="idle_timeout" if idle_triggered else "deadline_overdue",
+                    ))
+
+            decision = Scheduler.pick(candidates)
+            if decision.chosen.priority > PRIO_IDLE_LITE:
+                # Audit which window won and what else was ready.
+                try:
+                    self._stream.append(ContinuityEvent(
+                        kind="internal.scheduler_pick",
+                        payload={
+                            "chosen_kind": decision.chosen.kind,
+                            "chosen_priority": decision.chosen.priority,
+                            "chosen_reason": decision.chosen.reason,
+                            "runners_up": [
+                                {"kind": c.kind, "prio": c.priority, "reason": c.reason}
+                                for c in decision.runners_up
+                            ],
+                        },
+                    ))
+                except Exception:
+                    pass
+
+            chosen_kind = decision.chosen.kind
+            if chosen_kind == KIND_ACTIVE_SESSION:
                 async with self._busy_lock:
                     await self._run_active_session()
                 self._last_active_session = now
-                # Этап F: consolidation runs after active sessions, but capped to once/24h
                 if now - self._last_consolidation_at >= self._consolidation_interval:
                     self._run_consolidation()
                     self._last_consolidation_at = now
-            elif should_think:
+            elif chosen_kind == KIND_TASK_WORKER:
+                self._last_task_worker_at = now
+                asyncio.create_task(self._run_task_worker())
+            elif chosen_kind == KIND_IDLE_THOUGHT:
                 if self._provider is not None:
-                    # Idle thinking: only if not already busy with TG/active/worker.
                     if not self._busy_lock.locked():
                         async with self._busy_lock:
-                            await self._emit_cognitive_events_async(crossed, idle_triggered, overdue_ids)
+                            await self._emit_cognitive_events_async(
+                                crossed, idle_triggered, overdue_ids,
+                            )
                 else:
-                    self._emit_cognitive_events_sync_fallback(crossed, idle_triggered, overdue_ids)
+                    self._emit_cognitive_events_sync_fallback(
+                        crossed, idle_triggered, overdue_ids,
+                    )
                 if idle_triggered:
-                    self._last_external_event = now  # reset idle timer
+                    self._last_external_event = now
 
             # Этап F: drift + gap detection every tick (cheap — scans since last seq)
             self._scan_drift_and_gaps()
@@ -638,7 +722,6 @@ class InternalProcess:
         if self._provider is None:
             return
         try:
-            from sonya.subject.agent_session import run_agent_session
             from sonya.tools import (
                 CodeTool,
                 FilesystemTool,
@@ -933,25 +1016,32 @@ class InternalProcess:
                     "результат. Тебе доверено."
                 )
 
-            result = await run_agent_session(
-                provider=self._provider,
-                stream=self._stream,
-                self_inspect=self_inspect,
-                filesystem=filesystem,
-                selfmod=selfmod,
-                tasks=tasks_tool,
-                web=web_tool,
-                code=code_tool,
-                shell=shell_tool,
-                memory=memory_tool,
-                env=env_tool,
-                skills=skills_tool,
-                outbound=self._outbound,
+            from sonya.subject.window import (
+                Window,
+                WINDOW_KIND_ACTIVE,
+                run_window,
+            )
+            window = Window(
+                kind=WINDOW_KIND_ACTIVE,
                 system_prompt=full_prompt,
+                tools={
+                    "self_inspect": self_inspect,
+                    "filesystem": filesystem,
+                    "selfmod": selfmod,
+                    "tasks": tasks_tool,
+                    "web": web_tool,
+                    "code": code_tool,
+                    "shell": shell_tool,
+                    "memory": memory_tool,
+                    "env": env_tool,
+                    "skills": skills_tool,
+                },
                 initial_thought=initial_thought,
-                max_steps=30,
-                max_seconds=1800.0,  # 30 min hard cap on a single active session
+                outbound=self._outbound,
                 purpose="active_session",
+            )
+            result = await run_window(
+                window, provider=self._provider, stream=self._stream,
             )
 
             # Log session outcome including budget_exceeded flag (S-10 fix)
@@ -1132,7 +1222,6 @@ class InternalProcess:
             ))
 
             # Build tools + system prompt
-            from sonya.subject.agent_session import run_agent_session
             from sonya.subject.channel_session import build_tools
             from sonya.planning.context_builder import build_full_context
 
@@ -1198,25 +1287,32 @@ class InternalProcess:
             )
 
             try:
-                result = await run_agent_session(
-                    provider=self._provider,
-                    stream=self._stream,
-                    self_inspect=tools["self_inspect"],
-                    filesystem=tools["filesystem"],
-                    selfmod=tools["selfmod"],
-                    tasks=tools["tasks"],
-                    web=tools["web"],
-                    code=tools["code"],
-                    shell=tools["shell"],
-                    memory=tools["memory"],
-                    env=tools["env"],
-                    skills=tools["skills"],
-                    outbound=tools["outbound"],
+                from sonya.subject.window import (
+                    Window,
+                    WINDOW_KIND_WORKER,
+                    run_window,
+                )
+                worker_window = Window(
+                    kind=WINDOW_KIND_WORKER,
                     system_prompt=worker_prompt,
+                    tools={
+                        "self_inspect": tools["self_inspect"],
+                        "filesystem": tools["filesystem"],
+                        "selfmod": tools["selfmod"],
+                        "tasks": tools["tasks"],
+                        "web": tools["web"],
+                        "code": tools["code"],
+                        "shell": tools["shell"],
+                        "memory": tools["memory"],
+                        "env": tools["env"],
+                        "skills": tools["skills"],
+                    },
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
-                    max_steps=5,
-                    max_seconds=60.0,
+                    outbound=tools["outbound"],
                     purpose="task_worker",
+                )
+                result = await run_window(
+                    worker_window, provider=self._provider, stream=self._stream,
                 )
                 self._stream.append(ContinuityEvent(
                     kind="internal.task_worker_outcome",

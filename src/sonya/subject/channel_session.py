@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sonya.channels.base import OutgoingMessage
-from sonya.subject.agent_session import run_agent_session, SessionResult, AgentProvider
+from sonya.subject.agent_session import SessionResult, AgentProvider
 from sonya.tools.code_tool import CodeTool
 from sonya.tools.env_tool import EnvTool
 from sonya.tools.filesystem import FilesystemTool
@@ -335,29 +335,36 @@ async def run_tg_session(
         # English reasoning leaks ("The user is asking me what I want to do...").
         initial_text = user_input
 
-    result = await run_agent_session(
-        provider=provider,
-        stream=stream,
-        self_inspect=tools["self_inspect"],
-        filesystem=tools["filesystem"],
-        selfmod=tools["selfmod"],
-        tasks=tools["tasks"],
-        web=tools["web"],
-        code=tools["code"],
-        shell=tools["shell"],
-        memory=tools["memory"],
-        env=tools["env"],
-        skills=tools["skills"],
-        outbound=tools["outbound"],
+    from sonya.subject.window import (
+        Window,
+        WINDOW_KIND_TG,
+        run_window,
+    )
+    tg_window = Window(
+        kind=WINDOW_KIND_TG,
         system_prompt=full_prompt,
+        tools={
+            "self_inspect": tools["self_inspect"],
+            "filesystem": tools["filesystem"],
+            "selfmod": tools["selfmod"],
+            "tasks": tools["tasks"],
+            "web": tools["web"],
+            "code": tools["code"],
+            "shell": tools["shell"],
+            "memory": tools["memory"],
+            "env": tools["env"],
+            "skills": tools["skills"],
+        },
         initial_thought=initial_thought,
         initial_user_message=initial_user_message,
         initial_user_text=initial_text,
         max_steps=max_steps,
         max_seconds=max_seconds,
-        purpose="tg_session",
+        outbound=tools["outbound"],
         inbox_drain=inbox_drain,
+        purpose="tg_session",
     )
+    result = await run_window(tg_window, provider=provider, stream=stream)
 
     reply_text = _extract_reply(result)
 
