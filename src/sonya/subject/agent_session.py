@@ -968,14 +968,129 @@ def _h_tasks_step(arg: str, ctx: _ToolContext) -> str:
     return err if err else ctx.tasks.step(arg)
 
 
+def _is_dup_of_outbound_sent(text: str, sent: list[str] | None) -> bool:
+    """True if ``text`` is essentially the same as any prior tell_ivan
+    message in this session — used to suppress double-notify when the
+    model called BOTH chat.tell_ivan AND tasks.complete with the same
+    body."""
+    if not sent or not text:
+        return False
+    norm_t = re.sub(r"\s+", " ", text.lower()).strip()
+    if not norm_t:
+        return False
+    for prior in sent:
+        norm_p = re.sub(r"\s+", " ", (prior or "").lower()).strip()
+        if not norm_p:
+            continue
+        # Exact / containment / strong prefix overlap
+        if norm_t == norm_p:
+            return True
+        if len(norm_t) > 40 and (norm_t in norm_p or norm_p in norm_t):
+            return True
+        prefix = min(80, len(norm_t), len(norm_p))
+        if prefix >= 40 and norm_t[:prefix] == norm_p[:prefix]:
+            return True
+    return False
+
+
+def _auto_notify_terminal(
+    *,
+    ctx: _ToolContext,
+    task_id: str,
+    notify_text: str,
+    title: str,
+) -> str:
+    """If notify_text is non-empty AND outbound is wired AND task notify_mode
+    isn't 'silent', send notify_text to Ivan via the outbound gate. Returns a
+    short status suffix for the tool result. The text is recorded in
+    outbound_sent so channel_session._extract_reply suppresses any [DONE: text]
+    echo of the same content (prevents double-message regression).
+
+    Used by tasks.complete (result -> Ivan) and tasks.fail (reason -> Ivan).
+    """
+    if ctx.tasks is None or not notify_text or ctx.outbound is None:
+        return ""
+    # Look up notify_mode
+    try:
+        task = ctx.tasks._service.get(task_id)
+    except Exception:
+        return ""
+    if (task.notify_mode or "progress") == "silent":
+        return ""
+    # Build the message — keep it tight, the agent's `result` may be a
+    # multi-paragraph summary which is exactly what Ivan should see.
+    text = notify_text.strip()
+    if not text:
+        return ""
+    # Suppress if model already chat.tell_ivan'd the same thing this session.
+    if _is_dup_of_outbound_sent(text, ctx.outbound_sent):
+        return " (notify suppressed: already sent this session)"
+    from sonya.initiative.outbound import call_outbound_sync
+    send_result = call_outbound_sync(ctx.outbound, text)
+    if ctx.outbound_sent is not None:
+        ctx.outbound_sent.append(text)
+    if send_result.startswith("[BLOCKED]"):
+        return f" (notify {send_result})"
+    return " (notify queued to Ivan)"
+
+
 def _h_tasks_complete(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.complete(arg)
+    if err:
+        return err
+    base_result = ctx.tasks.complete(arg)
+    if base_result.startswith("[ERROR]"):
+        return base_result
+    # Pull task_id + result text from arg (mirrors TasksTool.complete parsing)
+    task_id, result_text = "", ""
+    stripped = (arg or "").strip()
+    if stripped.startswith("{"):
+        try:
+            data = json.loads(stripped)
+            task_id = str(data.get("task_id", "")).strip()
+            result_text = str(data.get("result", "")).strip()
+        except Exception:
+            pass
+    else:
+        parts = (arg or "").split("|", 1)
+        if len(parts) >= 1:
+            task_id = parts[0].strip()
+        if len(parts) >= 2:
+            result_text = parts[1].strip()
+    notify_suffix = _auto_notify_terminal(
+        ctx=ctx, task_id=task_id, notify_text=result_text, title="task done",
+    )
+    return base_result + notify_suffix
 
 
 def _h_tasks_fail(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.fail(arg)
+    if err:
+        return err
+    base_result = ctx.tasks.fail(arg)
+    if base_result.startswith("[ERROR]"):
+        return base_result
+    task_id, reason_text = "", ""
+    stripped = (arg or "").strip()
+    if stripped.startswith("{"):
+        try:
+            data = json.loads(stripped)
+            task_id = str(data.get("task_id", "")).strip()
+            reason_text = str(data.get("reason", "")).strip()
+        except Exception:
+            pass
+    else:
+        parts = (arg or "").split("|", 1)
+        if len(parts) >= 1:
+            task_id = parts[0].strip()
+        if len(parts) >= 2:
+            reason_text = parts[1].strip()
+    # For fail, prepend a short marker so Ivan sees this is a failure note
+    fail_text = f"Не получилось закрыть задачу. {reason_text}".strip() if reason_text else ""
+    notify_suffix = _auto_notify_terminal(
+        ctx=ctx, task_id=task_id, notify_text=fail_text, title="task failed",
+    )
+    return base_result + notify_suffix
 
 
 def _h_tasks_block(arg: str, ctx: _ToolContext) -> str:
