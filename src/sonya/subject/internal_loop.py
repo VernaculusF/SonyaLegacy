@@ -1346,6 +1346,17 @@ class InternalProcess:
                 # silently runs 5 steps and goes back to sleep — Ivan
                 # gets nothing for ~30 min until the next tick. The
                 # 27.05.20:31 mpbacademy incident.
+                #
+                # 27.05.21:00 update: two extra guards added after the
+                # second mpbacademy incident where notify spammed Ivan
+                # with [no-progress retry #N] handoffs every 60-180s.
+                #
+                #   1. Skip when next_step starts with "[no-progress" —
+                #      the stuck-loop detector already flagged this tick
+                #      as no real movement; sending it as "progress" is
+                #      just noise.
+                #   2. Min-interval throttle: ≥10 minutes between auto
+                #      notifies for the SAME task. Audit table read.
                 try:
                     notify = (task.notify_mode or "progress").lower()
                     if notify == "progress" and task.is_ivan_task() and tools.get("outbound"):
@@ -1357,7 +1368,31 @@ class InternalProcess:
                             not a.split(" ", 1)[0].startswith("tasks.")
                             for a in result.actions
                         )
-                        if not used_chat and meaningful:
+                        # Pull next_step_hint after the handoff was applied
+                        refreshed_hint = ""
+                        try:
+                            refreshed = TaskStore(substrate).get(task.task_id)
+                            refreshed_hint = (refreshed.next_step_hint or "").strip()
+                        except Exception:
+                            pass
+                        # Stuck-loop / no-progress filter — don't notify
+                        # Ivan when the handoff itself is a retry marker.
+                        is_no_progress = refreshed_hint.lower().startswith("[no-progress")
+                        # Min-interval throttle (10 min) per task_id.
+                        from datetime import datetime, timezone, timedelta
+                        ten_min_ago = (
+                            datetime.now(timezone.utc) - timedelta(minutes=10)
+                        ).isoformat()
+                        recent_notify = substrate.connection.execute(
+                            "SELECT 1 FROM continuity_events "
+                            "WHERE kind = 'internal.worker_auto_progress_notify' "
+                            "  AND created_at > ? "
+                            "  AND payload_json LIKE ? "
+                            "LIMIT 1",
+                            (ten_min_ago, f'%"task_id": "{task.task_id}"%'),
+                        ).fetchone()
+                        throttled = recent_notify is not None
+                        if not used_chat and meaningful and not is_no_progress and not throttled:
                             # Build a tight 1-line summary of what was tried
                             # and what the next step is.
                             tools_tried = []
@@ -1372,15 +1407,8 @@ class InternalProcess:
                                 f"{result.steps} шага через "
                                 f"{', '.join(tools_tried[:4]) or 'tools'}. "
                             )
-                            # Pull next_step_hint after the handoff was applied
-                            try:
-                                refreshed = TaskStore(substrate).get(task.task_id)
-                                if refreshed.next_step_hint:
-                                    notify_text += (
-                                        f"Дальше: {refreshed.next_step_hint[:160]}"
-                                    )
-                            except Exception:
-                                pass
+                            if refreshed_hint:
+                                notify_text += f"Дальше: {refreshed_hint[:160]}"
                             from sonya.initiative.outbound import (
                                 call_outbound_sync,
                             )
@@ -1391,6 +1419,23 @@ class InternalProcess:
                                     payload={
                                         "task_id": task.task_id,
                                         "preview": notify_text[:200],
+                                    },
+                                ))
+                            except Exception:
+                                pass
+                        elif (not used_chat and meaningful) and (is_no_progress or throttled):
+                            # Audit-only suppression — useful when
+                            # debugging "why didn't worker notify Ivan?".
+                            try:
+                                self._stream.append(ContinuityEvent(
+                                    kind="internal.worker_auto_progress_suppressed",
+                                    payload={
+                                        "task_id": task.task_id,
+                                        "reason": (
+                                            "no_progress_retry" if is_no_progress
+                                            else "throttled_10min"
+                                        ),
+                                        "next_step_hint_preview": refreshed_hint[:120],
                                     },
                                 ))
                             except Exception:
