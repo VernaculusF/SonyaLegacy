@@ -82,7 +82,27 @@ def check_static_contract(proposal: SelfModificationProposal) -> ValidationResul
             reason="no FULL_CONTENT in diff_blob — Layer 1 skipped (nothing to parse)",
         )
 
-    # 1. Syntax check
+    # Non-Python targets (markdown prompts, JSON configs, etc.): skip
+    # the AST parse entirely — feeding markdown into ast.parse will fail
+    # on em-dashes, headers, etc. Just do basic sanity instead.
+    if not proposal.target_module.endswith((".py", ".pyi")):
+        if not new_content.strip():
+            return ValidationResult(
+                layer=1, passed=False,
+                reason="non-python target with empty content",
+            )
+        # Size sanity — refuse runaway proposals (>500KB)
+        if len(new_content) > 500_000:
+            return ValidationResult(
+                layer=1, passed=False,
+                reason=f"non-python target oversized: {len(new_content)} bytes",
+            )
+        return ValidationResult(
+            layer=1, passed=True,
+            reason=f"non-python target ({proposal.target_module.rsplit('.', 1)[-1]}), Layer 1 sanity OK",
+        )
+
+    # 1. Syntax check (Python only)
     try:
         new_tree = ast.parse(new_content)
     except SyntaxError as err:
