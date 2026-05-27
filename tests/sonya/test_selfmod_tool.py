@@ -70,6 +70,30 @@ def test_propose_rejects_outside_writable_zones(selfmod: SelfModTool) -> None:
     assert data["status"] == "rejected_pre_pipeline"
 
 
+def test_propose_accepts_prompts_dir(selfmod: SelfModTool) -> None:
+    """src/sonya/prompts/ is the natural target for self-tuning. Must be writable."""
+    result = selfmod.propose(
+        target_module="src/sonya/prompts/channel_telegram.md",
+        change_summary="add anti-stuck-loop rule to handoff section",
+        new_content="# refined prompt\n",
+    )
+    data = json.loads(result)
+    assert data["status"] == "created", f"got: {data}"
+    assert data["target_module"] == "src/sonya/prompts/channel_telegram.md"
+
+
+def test_propose_rejects_plugins_path(selfmod: SelfModTool) -> None:
+    """`plugins/...` is NOT in writable subpaths — common mistake we want surfaced."""
+    result = selfmod.propose(
+        target_module="plugins/anti_stuck_worker_rule.md",
+        change_summary="anti-stuck addendum",
+        new_content="# rule\n",
+    )
+    data = json.loads(result)
+    assert data["status"] == "rejected_pre_pipeline"
+    assert "not in SELFMOD_WRITABLE_SUBPATHS" in data["reason"]
+
+
 def test_propose_requires_content(selfmod: SelfModTool) -> None:
     result = selfmod.propose(
         target_module="src/sonya/tools/foo.py",

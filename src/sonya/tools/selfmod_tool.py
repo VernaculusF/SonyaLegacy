@@ -68,6 +68,7 @@ SELFMOD_WRITABLE_SUBPATHS: tuple[str, ...] = (
     "src/sonya/runtime",
     "src/sonya/providers",
     "src/sonya/harness",
+    "src/sonya/prompts",
     "src/sonya/main.py",
     "src/sonya/config.py",
     "src/sonya/logging.py",

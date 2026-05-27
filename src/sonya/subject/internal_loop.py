@@ -785,33 +785,54 @@ class InternalProcess:
             if not initial_thought:
                 # Check for pending selfmod proposals — if she proposed changes
                 # in a previous session, she should validate and apply them now.
+                # APPROVED takes priority — last session passed all 4 layers but
+                # ran out of steps before apply (the 27.05.07:25 case).
                 try:
                     from sonya.selfmod.proposal import ProposalStore, ProposalStatus
                     prop_store = ProposalStore(substrate)
-                    pending_proposals = [
-                        p for p in prop_store.list_all()
-                        if p.status in (ProposalStatus.PROPOSED, ProposalStatus.APPROVED)
+                    all_props = prop_store.list_all()
+                    approved = [
+                        p for p in all_props
+                        if p.status == ProposalStatus.APPROVED
                     ]
-                    if pending_proposals:
-                        p = pending_proposals[0]
-                        if p.status == ProposalStatus.PROPOSED:
-                            initial_thought = (
-                                f"У тебя есть selfmod proposal ожидающий валидации:\n"
-                                f"  proposal_id: {p.proposal_id}\n"
-                                f"  target: {p.target_module}\n"
-                                f"  summary: {p.change_summary[:200]}\n\n"
-                                f"Прогони полный цикл: `selfmod.validate {p.proposal_id}` → "
-                                f"если прошёл → `selfmod.apply {p.proposal_id}`. "
-                                f"Если не прошёл — исправь и propose заново."
-                            )
-                        elif p.status == ProposalStatus.APPROVED:
-                            initial_thought = (
-                                f"У тебя есть APPROVED selfmod proposal готовый к применению:\n"
-                                f"  proposal_id: {p.proposal_id}\n"
-                                f"  target: {p.target_module}\n"
-                                f"  summary: {p.change_summary[:200]}\n\n"
-                                f"Примени его: `selfmod.apply {p.proposal_id}`"
-                            )
+                    proposed = [
+                        p for p in all_props
+                        if p.status == ProposalStatus.PROPOSED
+                    ]
+                    if approved:
+                        p = approved[0]
+                        initial_thought = (
+                            f"У тебя есть APPROVED selfmod proposal — все 4 "
+                            f"layers прошли в прошлой сессии, но apply не "
+                            f"успел.\n\n"
+                            f"  proposal_id: {p.proposal_id}\n"
+                            f"  target: {p.target_module}\n"
+                            f"  summary: {p.change_summary[:300]}\n\n"
+                            f"**ПЕРВЫЙ ШАГ ЭТОЙ СЕССИИ**: "
+                            f"`selfmod.apply {p.proposal_id}`. "
+                            f"Это маленький, безопасный, уже валидированный "
+                            f"шаг — закрой его и переходи к новой работе. "
+                            f"Без apply в логах висит стаья работа.\n\n"
+                            f"После apply при остатке шагов — посмотри "
+                            f"`self_inspect.drift` и предложи следующую "
+                            f"правку через `selfmod.propose_edit`."
+                        )
+                    elif proposed:
+                        p = proposed[0]
+                        initial_thought = (
+                            f"У тебя есть selfmod proposal ожидающий "
+                            f"валидации:\n"
+                            f"  proposal_id: {p.proposal_id}\n"
+                            f"  target: {p.target_module}\n"
+                            f"  summary: {p.change_summary[:200]}\n\n"
+                            f"Прогони цикл: `selfmod.validate {p.proposal_id}` "
+                            f"→ если все 4 layers passed → "
+                            f"`selfmod.apply {p.proposal_id}`. "
+                            f"Если status стал requires_governed_change → "
+                            f"`selfmod.governed {p.proposal_id}`, потом "
+                            f"ждать approve, потом apply. "
+                            f"Если layer провалился — исправь и propose заново."
+                        )
                 except Exception:
                     pass
 
@@ -852,8 +873,8 @@ class InternalProcess:
                     "Что сделать в этом тике (порядок):\n"
                     "1. Посмотри на самый частый паттерн в drift summary "
                     "выше. Это **твоё** поведение, не Иваново.\n"
-                    "2. Найди **источник** в коде — где этот паттерн рождается. "
-                    "Чаще всего:\n"
+                    "2. Найди **источник** в коде — где этот паттерн "
+                    "рождается. Чаще всего:\n"
                     "   - `src/sonya/prompts/session_general.md` или "
                     "`channel_*.md` — когда дрейф в TG ответах\n"
                     "   - `src/sonya/main.py` — где детекторы "
@@ -861,15 +882,52 @@ class InternalProcess:
                     "   - `src/sonya/initiative/outbound.py` — gate-логика\n"
                     "   - `src/sonya/subject/internal_loop.py` — worker / "
                     "active loop\n"
-                    "3. `self_inspect.code <module>` чтобы прочитать "
-                    "конкретный файл.\n"
-                    "4. `selfmod.propose_edit` с **узкой** правкой "
-                    "(не переписывай весь файл — небольшое уточнение).\n"
-                    "5. `selfmod.validate` (4 layers).\n"
-                    "6. Если passed → `selfmod.apply`. Маленькое улучшение "
-                    "лучше нуля.\n\n"
-                    "НЕ возвращайся к Ивановской задаче в этом тике — её "
-                    "подхватит worker / следующая active session.\n\n"
+                    "3. `self_inspect.code <module>` или "
+                    "`filesystem.read <path>` чтобы прочитать файл.\n\n"
+                    "**API selfmod (не путай инструменты!):**\n"
+                    "Есть только два способа создать proposal:\n\n"
+                    "  a. `selfmod.propose_edit` — узкая in-place правка "
+                    "по substring-замене. Аргументы (JSON):\n"
+                    "     {\n"
+                    "       \"target_module\": \"src/sonya/prompts/channel_X.md\",\n"
+                    "       \"change_summary\": \"что и зачем\",\n"
+                    "       \"old_substring\": \"...уникальный кусок исходника...\",\n"
+                    "       \"new_substring\": \"...что должно быть вместо...\"\n"
+                    "     }\n"
+                    "     `old_substring` должен быть В ТОЧНОСТИ из файла "
+                    "(скопируй после filesystem.read) и должен встретиться "
+                    "ровно один раз — иначе reject. Это лучший выбор для "
+                    "правки промптов и небольших правок кода.\n\n"
+                    "  b. `selfmod.propose` — полное переписывание файла. "
+                    "Аргументы (JSON):\n"
+                    "     {\n"
+                    "       \"target_module\": \"src/sonya/...\",\n"
+                    "       \"change_summary\": \"что и зачем\",\n"
+                    "       \"new_content\": \"...весь новый текст файла...\"\n"
+                    "     }\n"
+                    "     Используй ТОЛЬКО если правка трогает >5 разных мест.\n\n"
+                    "  ❌ `selfmod.propose_edit` с полем `content` или "
+                    "`old`/`new` — НЕ существует.\n"
+                    "  ❌ `selfmod.governed` — нужен только для proposal "
+                    "уже в статусе REQUIRES_GOVERNED_CHANGE (после validate). "
+                    "Не вызывай его до validate.\n\n"
+                    "**Whitelist путей** (можно писать только сюда):\n"
+                    "  src/sonya/{prompts,channels,tools,skills,planning,"
+                    "initiative,memory,anchor,embodiment,admin,tasks,subject,"
+                    "runtime,providers,harness}\n"
+                    "  src/sonya/{main.py,config.py,logging.py}, tests/sonya/\n"
+                    "Что-нибудь вне списка → `rejected_pre_pipeline`. "
+                    "**Особенно частая ошибка**: `plugins/...` — НЕТ такого "
+                    "разрешённого пути. Промпты в `src/sonya/prompts/...`.\n\n"
+                    "4. `selfmod.propose_edit` с **узкой** правкой.\n"
+                    "5. `selfmod.validate <proposal_id>` (4 layers).\n"
+                    "6. Если все 4 passed → `selfmod.apply <proposal_id>`. "
+                    "Если статус requires_governed_change → "
+                    "`selfmod.governed <proposal_id>`, потом ждать approve, "
+                    "потом apply.\n\n"
+                    "Маленькое улучшение лучше нуля. Один apply за сессию = "
+                    "победа. НЕ возвращайся к Ивановской задаче в этом тике "
+                    "— её подхватит worker / следующая active session.\n\n"
                     "Это **твой** loop. Иван не правит твой код — он "
                     "видит твой apply через git push в admin и принимает "
                     "результат. Тебе доверено."
