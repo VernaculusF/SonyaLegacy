@@ -129,6 +129,12 @@ class InternalProcess:
         self._tick_count: int = 0
         self._last_external_event: float = 0.0
         self._last_active_session: float = 0.0
+        # Cross-process trigger: external scripts (admin endpoint, CLI) can
+        # append a continuity event of kind ``internal.active_session_requested_external``
+        # to ask the loop to fire an active session ASAP. We poll for new
+        # events of that kind every tick and pull `_last_active_session` back
+        # when we see one. Cursor avoids re-firing on the same request.
+        self._last_external_active_request_seq: int = 0
         # Этап F: drift/gap scan cursor + consolidation cadence
         self._last_drift_scan_seq: int = 0
         self._last_gap_scan_seq: int = 0
@@ -264,6 +270,12 @@ class InternalProcess:
         # active-session bug: _last_active_session=0.0 vs loop.time() large
         # made should_active==True on tick 1.
         self._last_active_session = now
+        # Cursor for external active-session triggers: start at latest seq
+        # so we don't replay historic requests.
+        try:
+            self._last_external_active_request_seq = int(self._stream.latest_seq())
+        except Exception:
+            self._last_external_active_request_seq = 0
         self._task = asyncio.create_task(self._loop())
         # Emit initial cognitive event on start
         self._stream.append(
@@ -331,6 +343,35 @@ class InternalProcess:
             # Check active session timeout
             active_elapsed = now - self._last_active_session
             should_active = active_elapsed >= self._active_interval and self._provider is not None
+
+            # Cross-process trigger: any external script can append a
+            # continuity event of kind 'internal.active_session_requested_external'
+            # to ask the loop to fire ASAP. We pull `_last_active_session`
+            # back so the next tick's `should_active` becomes True.
+            if not should_active and self._provider is not None and self._substrate is not None:
+                try:
+                    row = self._substrate.connection.execute(
+                        "SELECT seq FROM continuity_events "
+                        "WHERE kind = 'internal.active_session_requested_external' "
+                        "  AND seq > ? "
+                        "ORDER BY seq DESC LIMIT 1",
+                        (self._last_external_active_request_seq,),
+                    ).fetchone()
+                    if row is not None:
+                        self._last_external_active_request_seq = int(row[0])
+                        # Pull schedule back so should_active==True next tick.
+                        self._last_active_session = now - self._active_interval
+                        active_elapsed = self._active_interval
+                        should_active = True
+                        try:
+                            self._stream.append(ContinuityEvent(
+                                kind="internal.active_session_scheduled",
+                                payload={"reason": "external_request", "request_seq": int(row[0])},
+                            ))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
             # Task worker: if there's an in_progress task and worker is due, run
             # a short continuation pass. Independent of active_session — fires
