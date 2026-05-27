@@ -46,6 +46,21 @@ fi
 echo "=> Cleaning stale lock files..."
 rm -f "$SUBSTRATE_DIR"/*.lock
 
+echo "=> Checking sonya-omniroute container..."
+# kr/* models (Sonnet 4.5 / Haiku 4.5) reach Kiro via this local container.
+# It has restart=unless-stopped, so normally it self-recovers. But on some
+# host upgrades / kernel issues docker stops bringing it back. Check + nudge.
+if command -v docker >/dev/null 2>&1; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^sonya-omniroute$'; then
+        echo "   sonya-omniroute: running"
+    elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^sonya-omniroute$'; then
+        echo "   sonya-omniroute: starting (was stopped)"
+        docker start sonya-omniroute >/dev/null 2>&1 || true
+    else
+        echo "   sonya-omniroute: not present (kr/* fallback unavailable until reseeded)"
+    fi
+fi
+
 echo "=> Ensuring runtime dependencies..."
 # fastembed + numpy power memory.recall (semantic search over episodic memory).
 # pytest required for selfmod Layer 2 sandbox (runs project tests against modified code).
