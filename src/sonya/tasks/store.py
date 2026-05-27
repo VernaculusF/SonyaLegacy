@@ -104,6 +104,29 @@ class TaskStore:
         )
         return [_row_to_task(row) for row in cursor.fetchall()]
 
+    def list_recently_failed(self, *, hours: int = 6, limit: int = 5) -> list[Task]:
+        """Return tasks that hit `failed` status within the last `hours` hours.
+
+        Used by context_builder so idle thinking sees recently-failed Ivan
+        tasks instead of forgetting they existed. Without this, Sonya's
+        idle thoughts say things like "жду возможности проверить" when
+        the task is in fact dead — there's no worker that will pick it up.
+        She needs to see the failure to decide whether to retry / repurpose.
+        """
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        cursor = self._sub.connection.execute(
+            "SELECT task_id, title, description, status, principal_id, parent_task_id, "
+            "deadline, plan_steps_json, completed_steps_json, blocker, result, "
+            "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint "
+            "FROM tasks "
+            "WHERE status = 'failed' AND updated_at > ? "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (cutoff, limit),
+        )
+        return [_row_to_task(row) for row in cursor.fetchall()]
+
     def list_due_ivan_tasks(self) -> list[Task]:
         """Tasks created by Ivan that are open AND scheduled_for <= now."""
         all_open = self.list_open()

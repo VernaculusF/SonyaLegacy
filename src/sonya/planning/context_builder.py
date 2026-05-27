@@ -519,6 +519,33 @@ def build_full_context(
         else:
             tasks_block += "(пока пусто — могу создать через tasks.create в active session)\n"
         system_prompt += tasks_block
+
+        # Recently failed tasks (last 6h). Without this Sonya in idle thoughts
+        # writes things like "жду пока worker проверит" while in fact the
+        # task is dead and no worker will pick it up. Seeing 'failed' lets
+        # her decide: retry via tasks.unblock + new approach, repurpose, or
+        # genuinely close.
+        recent_failed = TaskStore(substrate).list_recently_failed(hours=6, limit=3)
+        if recent_failed:
+            failed_block = "\n## Недавно упавшие задачи (за 6ч):\n"
+            for t in recent_failed:
+                budget = ""
+                if t.max_sessions and t.sessions_used >= t.max_sessions:
+                    budget = " (бюджет сессий исчерпан)"
+                failed_block += (
+                    f"- [failed]{budget} {t.task_id}: {t.title}\n"
+                )
+                if t.last_session_notes:
+                    failed_block += f"    last_notes: {t.last_session_notes[:200]}\n"
+                if t.next_step_hint:
+                    failed_block += f"    last_next_step: {t.next_step_hint[:160]}\n"
+            failed_block += (
+                "\nWorker эти задачи не подхватит — они в `failed`. Если важно "
+                "продолжить: в active session `tasks.unblock` (если хочешь "
+                "тот же task_id) или `tasks.create` с новым подходом, не "
+                "пиши Ивану `жду` — никто не работает над этим.\n"
+            )
+            system_prompt += failed_block
     except Exception:
         pass
 
