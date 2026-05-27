@@ -911,6 +911,12 @@ def _default_base_url(provider: str) -> str:
         "anthropic": "https://api.anthropic.com/v1",
         "openai": "https://api.openai.com/v1",
         "google": "https://generativelanguage.googleapis.com/v1beta/openai",
+        # Local omniroute proxy on VPS — routes kr/* models through bundled
+        # Kiro OAuth pool (11 accounts) inside the docker container. Sonya
+        # uses this as a paid-quality fallback when fireworks slots are
+        # cooled down or for code/critical purposes that benefit from
+        # Sonnet-class quality.
+        "kr": "http://127.0.0.1:20128/v1",
     }.get(provider.lower(), "")
 
 

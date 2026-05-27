@@ -183,14 +183,36 @@ class LLMProvider:
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
         purpose = kwargs.get("purpose", "unknown")
 
+        # Fallback chain: try active_provider first; if no eligible keys
+        # there, fall back to other providers in order. Each provider gets
+        # one acquire attempt before moving on. This keeps the existing
+        # per-provider rotation but stops a single provider's cooldowns
+        # from causing NoKeysAvailable when other providers have spare
+        # capacity (esp. paid kr fallback for production-critical calls).
+        fallback_chain = [provider]
+        for fb in ("kr", "fireworks", "openrouter"):
+            if fb != provider and fb not in fallback_chain:
+                fallback_chain.append(fb)
+
         last_err: Exception | None = None
 
         for attempt in range(max_attempts):
-            key = await self._store.acquire(provider, slot="text")
+            key = None
+            picked_provider = provider
+            for prov in fallback_chain:
+                key = await self._store.acquire(prov, slot="text")
+                if key is not None:
+                    picked_provider = prov
+                    if prov != provider and attempt == 0:
+                        _log.info(
+                            "provider_fallback_acquired",
+                            extra={"primary": provider, "fallback": prov, "purpose": purpose},
+                        )
+                    break
             if key is None:
                 if attempt == 0:
                     raise NoKeysAvailable(
-                        f"no active keys for provider '{provider}'. "
+                        f"no active keys for provider '{provider}' or any fallback. "
                         f"Add via admin → Providers tab."
                     )
                 break
@@ -220,10 +242,10 @@ class LLMProvider:
                 latency_ms = int((time.time() - t_start) * 1000)
                 _log.warning(
                     "key_transient_error",
-                    extra={"key_id": key.key_id, "provider": provider, "type": type(err).__name__, "attempt": attempt},
+                    extra={"key_id": key.key_id, "provider": picked_provider, "type": type(err).__name__, "attempt": attempt},
                 )
                 _record_call(
-                    self._store, key_id=key.key_id, provider=provider, model=model,
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                     latency_ms=latency_ms, status="error", http_status=0,
                     error=f"{type(err).__name__}: {err}",
@@ -238,7 +260,7 @@ class LLMProvider:
                 latency_ms = int((time.time() - t_start) * 1000)
                 _log.error("key_unexpected_error", extra={"key_id": key.key_id, "type": type(err).__name__})
                 _record_call(
-                    self._store, key_id=key.key_id, provider=provider, model=model,
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                     latency_ms=latency_ms, status="error", http_status=0,
                     error=f"{type(err).__name__}: {err}",
@@ -252,7 +274,7 @@ class LLMProvider:
             if resp.status_code in (401, 403):
                 _log.warning("key_auth_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
                 _record_call(
-                    self._store, key_id=key.key_id, provider=provider, model=model,
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                     latency_ms=latency_ms, status="auth", http_status=resp.status_code,
                     error=resp.text[:300],
@@ -268,7 +290,7 @@ class LLMProvider:
                 retry_after = self._parse_retry_after(resp)
                 _log.warning("key_rate_limited", extra={"key_id": key.key_id, "retry_after": retry_after})
                 _record_call(
-                    self._store, key_id=key.key_id, provider=provider, model=model,
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                     latency_ms=latency_ms, status="rate_limit", http_status=429,
                     error=resp.text[:300],
@@ -284,7 +306,7 @@ class LLMProvider:
             if 500 <= resp.status_code < 600:
                 _log.warning("key_server_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
                 _record_call(
-                    self._store, key_id=key.key_id, provider=provider, model=model,
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                     latency_ms=latency_ms, status="server_error", http_status=resp.status_code,
                     error=resp.text[:300],
@@ -303,7 +325,7 @@ class LLMProvider:
                 _log.warning("key_http_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
 
                 _record_call(
-                    self._store, key_id=key.key_id, provider=provider, model=model,
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                     latency_ms=latency_ms, status="error", http_status=resp.status_code,
                     error=resp.text[:300],
@@ -325,7 +347,7 @@ class LLMProvider:
                 except Exception as err:
                     _log.warning("key_bad_response", extra={"key_id": key.key_id, "preview": text[:200]})
                     _record_call(
-                        self._store, key_id=key.key_id, provider=provider, model=model,
+                        self._store, key_id=key.key_id, provider=picked_provider, model=model,
                         purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                         latency_ms=latency_ms, status="error", http_status=resp.status_code,
                         error=f"unparseable: {text[:200]}",
@@ -341,7 +363,7 @@ class LLMProvider:
                 content = data["choices"][0]["message"]["content"]
             except (KeyError, IndexError) as err:
                 _record_call(
-                    self._store, key_id=key.key_id, provider=provider, model=model,
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
                     latency_ms=latency_ms, status="error", http_status=resp.status_code,
                     error=f"bad shape: {json.dumps(data)[:200]}",
@@ -358,7 +380,7 @@ class LLMProvider:
             ct = int(usage.get("completion_tokens", 0) or 0)
             tt = int(usage.get("total_tokens", pt + ct) or (pt + ct))
             _record_call(
-                self._store, key_id=key.key_id, provider=provider, model=model,
+                self._store, key_id=key.key_id, provider=picked_provider, model=model,
                 purpose=purpose, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt,
                 latency_ms=latency_ms, status="ok", http_status=resp.status_code,
                 error="",
