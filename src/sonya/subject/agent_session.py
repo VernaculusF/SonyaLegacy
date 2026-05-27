@@ -1320,13 +1320,92 @@ def _h_pip_install(arg: str, ctx: _ToolContext) -> str:
 def _h_chat_tell_ivan(arg: str, ctx: _ToolContext) -> str:
     if ctx.outbound is None:
         return "[ERROR] initiative gate not configured (set SONYA_PRIMARY_USER_TG_ID)"
+    text = (arg or "").strip()
+    if not text:
+        return "[ERROR] chat.tell_ivan: empty message"
+    # Within-session dedup. The cross-session OutboundGate dedup uses a
+    # 0.80 Jaccard threshold over a 6h window — that's appropriate for
+    # "stop worker spamming the same `Продолжаю разведку` line every
+    # tick". But within ONE session a much stricter threshold is correct:
+    # if the model in a single agent_session writes two near-identical
+    # progress messages back-to-back (the 27.05.21:42 incident — two
+    # almost-same "OWASP Top 10 уже вытащила, GitHub-репозитории дальше"
+    # in 60 seconds), the second is pure repetition. Block it before
+    # call_outbound_sync.
+    if ctx.outbound_sent:
+        if _within_session_duplicate(text, ctx.outbound_sent):
+            return (
+                "[BLOCKED] chat.tell_ivan within-session duplicate: this "
+                "message is too similar to one you just sent. Move on or "
+                "say something genuinely different."
+            )
     from sonya.initiative.outbound import call_outbound_sync
-    result = call_outbound_sync(ctx.outbound, arg)
+    result = call_outbound_sync(ctx.outbound, text)
     # Record sent text so channel_session can suppress a [DONE: ...] echo
     # of the same content (prevents duplicate messages to Ivan).
-    if ctx.outbound_sent is not None and arg.strip():
-        ctx.outbound_sent.append(arg.strip())
+    if ctx.outbound_sent is not None:
+        ctx.outbound_sent.append(text)
     return result
+
+
+def _within_session_duplicate(text: str, prior_sent: list[str]) -> bool:
+    """Stricter dedup for within-one-session repeats.
+
+    Approach: lowercase, strip punctuation, split into WORDS, compute
+    Jaccard on the word set. Threshold 0.40.
+
+    Rationale: char-shingle Jaccard underweights paraphrased restatement
+    where the model just rearranges the same nouns. The 27.05.21:42
+    incident — two messages with same key terms (OWASP, GitHub, ...)
+    arranged differently — scored ~0.15 on 4-char shingles but is
+    semantically the same. Word-set Jaccard catches that because the
+    bag of content words overlaps heavily.
+    """
+    if not text or not prior_sent:
+        return False
+
+    def words(s: str) -> set[str]:
+        # Strip non-letter/digit chars, split, drop short stopwords / fillers.
+        clean = re.sub(r"[^a-zа-я0-9 ]+", " ", s.lower())
+        out = set()
+        for tok in clean.split():
+            if len(tok) <= 2:
+                continue
+            if tok in _DEDUP_STOPWORDS:
+                continue
+            out.add(tok)
+        return out
+
+    a = words(text)
+    if len(a) < 3:
+        # Too short to compare meaningfully — short acks ("сделала", "ок")
+        # shouldn't dedup.
+        return False
+    for prior in prior_sent[-5:]:
+        b = words(prior)
+        if len(b) < 3:
+            continue
+        inter = len(a & b)
+        union = len(a | b)
+        if union == 0:
+            continue
+        jaccard = inter / union
+        if jaccard >= 0.40:
+            return True
+    return False
+
+
+_DEDUP_STOPWORDS = frozenset({
+    # Russian fillers that don't carry content
+    "это", "что", "как", "так", "уже", "тут", "там", "всё", "все",
+    "нет", "там", "ещё", "еще", "раз", "тоже", "только", "если",
+    "когда", "пока", "чтобы", "кто", "под", "над", "ведь", "был",
+    "была", "было", "были", "буду", "будет", "сейчас",
+    # Common Sonya-style filler
+    "малыш", "поняла", "ага", "блин", "хочу", "иду", "ну",
+    # English fillers (just in case)
+    "the", "and", "for", "but", "with", "this", "that",
+})
 
 
 # Registry: tool name → handler. Keep alphabetised within each family to
