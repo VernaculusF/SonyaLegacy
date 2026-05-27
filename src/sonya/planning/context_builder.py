@@ -538,7 +538,7 @@ def build_full_context(
         "\n\n## Что у меня есть\n"
         "В active/TG сессиях — реальные tools (filesystem, web, code, shell, "
         "memory, tasks, goals, env, skills, selfmod). Я их **вызываю**, не "
-        "симулирую. В idle тике tools нет, но есть маркер `[SEND_TO_IVAN: текст]` "
+        "симулирую. В idle тике tools нет, но есть маркер (НЕ генерирую его если ivan_status=спит/занят — gate всё равно заблокирует) `[SEND_TO_IVAN: текст]` "
         "для инициативы (через throttle). Если задача требует tool — закрываю idle "
         "и делегирую в active session через task создание.\n\n"
         "Память — это не только то что в этом промпте. В active session "
