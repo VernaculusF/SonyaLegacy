@@ -245,6 +245,114 @@ def _extract_tool_call(response: str) -> tuple[str, str] | None:
     return None
 
 
+# --- Blocker reflex (Phase 2B of unified loop) ----------------------------
+#
+# After every tool call, we scan the observation for explicit failure
+# signals. If we find one, we inject a one-line BLOCKER hint into the
+# next user-turn, before the model plans step N+1. Without this the model
+# tends to repeat the same call (especially when it's been told via prompt
+# "try alternatives on failure" — the rule is too far back in context to
+# survive into step N+1's attention).
+#
+# This is a cheap regex pass, NOT a separate LLM call. It nudges the
+# model with concrete observation-grounded text. The model still decides
+# what to actually do.
+
+_BLOCKER_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
+    (
+        "auth_401",
+        re.compile(r"\b(401|HTTP 401|unauthor[ie]z[e]?d|invalid[_ ]api[_ ]?key|invalid[_ ]?key)\b", re.IGNORECASE),
+        "Это auth-проблема (нет/неверный/просроченный ключ). Попробуй найти ключ через "
+        "`env.list` или `memory.recall`, или взять другой провайдер.",
+    ),
+    (
+        "auth_403",
+        re.compile(r"\b(403|forbidden|access[_ ]denied|permission denied)\b", re.IGNORECASE),
+        "Доступ запрещён. Альтернатива — другой эндпойнт, прокси, или другой подход к данным.",
+    ),
+    (
+        "rate_limit",
+        re.compile(r"\b(429|rate[_ ]limit(ed)?|too many requests|quota exceeded)\b", re.IGNORECASE),
+        "Rate-limit. Сейчас повтор не поможет — возьми другой ключ/IP/провайдер либо "
+        "подожди и переключись на параллельную работу.",
+    ),
+    (
+        "credits_exhausted",
+        re.compile(r"\b(credits[_ ]?(exhaust|depleted|empty|0)|usage[_ ]limit|quota[_ ]reach|payment[_ ]required|402|credits_exhausted|out[_ ]of[_ ]credits|insufficient[_ ]credit|insufficient[_ ]quota)\b", re.IGNORECASE),
+        "Кредиты/квота исчерпаны. Этот ключ мёртв до пополнения — найди другой "
+        "(env.list / memory.recall / создать новый аккаунт). Не повторяй с тем же ключом.",
+    ),
+    (
+        "http_5xx",
+        re.compile(r"\b(5\d{2})\b.*?(server error|internal|bad gateway|service unavailable|gateway timeout)", re.IGNORECASE | re.DOTALL),
+        "Upstream 5xx. Можно повторить ОДИН раз через ~10с, но если падает второй — "
+        "переключись на альтернативный backend.",
+    ),
+    (
+        "http_404",
+        re.compile(r"\b(404|not found)\b", re.IGNORECASE),
+        "404. Ресурс по этому пути отсутствует. Проверь близкие варианты "
+        "(другой path/host/protocol), не дёргай тот же URL.",
+    ),
+    (
+        "exception_traceback",
+        re.compile(r"\b(Traceback \(most recent call last\)|^[A-Z]\w+Error:|^[A-Z]\w+Exception:)", re.MULTILINE),
+        "Исключение в коде. Прочитай конкретное сообщение, исправь cause, "
+        "не запускай тот же код снова.",
+    ),
+    (
+        "dns_or_connect",
+        re.compile(r"\b(getaddrinfo failed|name resolution|connection refused|connect[_ ]?timeout|no route to host|network unreachable)\b", re.IGNORECASE),
+        "Сетевая ошибка (DNS/connect). Проверь хост, или попробуй прокси/альтернативный "
+        "URL. Тот же запрос не пройдёт.",
+    ),
+    (
+        "empty_result",
+        re.compile(r"^\s*\[OK\]\s*$|^\s*$", re.MULTILINE),
+        "Пустой результат — tool вернулся без данных. Возможно, неверные параметры. "
+        "Проверь arg перед повтором.",
+    ),
+    (
+        "ddg_blocked",
+        re.compile(r"\b(unusual traffic|verifying you are human|captcha|access denied for security)\b", re.IGNORECASE),
+        "Поисковик блокирует за антибот. Используй другой backend "
+        "(SearXNG fallback / web.fetch напрямую / Google scrape) или подожди.",
+    ),
+)
+
+
+# Tools where 'empty result' is normal and shouldn't fire (no false positives).
+_EMPTY_OK_TOOLS = frozenset({
+    "tasks.complete", "tasks.fail", "tasks.block", "tasks.unblock",
+    "tasks.handoff", "tasks.pause", "tasks.create", "tasks.pick",
+    "env.set", "env.clear", "goals.create", "goals.achieve",
+    "goals.abandon", "skills.register_builtins", "memory.index_status",
+    "selfmod.apply", "selfmod.validate", "selfmod.propose", "selfmod.propose_edit",
+})
+
+
+def _detect_blocker(tool_name: str, observation: str) -> tuple[str, str] | None:
+    """Return (kind, hint) if observation looks like a blocker.
+
+    Returns None for normal results. The kind is a short tag for audit;
+    hint is a one-sentence Russian nudge for the model. Cheap regex, no
+    LLM call. Designed for false-positive safety — better miss a blocker
+    than mis-flag a successful result.
+
+    See `_BLOCKER_PATTERNS`.
+    """
+    if not observation:
+        return None
+    obs = observation[:6000]  # cap scan length
+    for kind, pat, hint in _BLOCKER_PATTERNS:
+        # `empty_result` only meaningful for tools that normally return data
+        if kind == "empty_result" and tool_name in _EMPTY_OK_TOOLS:
+            continue
+        if pat.search(obs):
+            return (kind, hint)
+    return None
+
+
 # Markers that disqualify a candidate ack-preamble: model is leaking internal
 # scaffold rather than addressing Ivan.
 _ACK_REJECT_MARKERS = (
@@ -453,6 +561,38 @@ async def run_agent_session(
             # Feed observation back
             messages.append({"role": "assistant", "content": response})
             messages.append({"role": "user", "content": f"[Observation from {tool_name}]:\n{observation[:3000]}"})
+
+            # Blocker reflex: scan the tool result for clear failure signals
+            # (HTTP 4xx/5xx, "credits exhausted", "rate limit", explicit
+            # exceptions, empty stdout when output expected). If hit, drop a
+            # one-line BLOCKER hint AFTER the observation so the model sees
+            # it before planning the next step and is nudged to consider
+            # alternative approaches instead of repeating the same call.
+            # See `_detect_blocker` for the heuristic. Cheap (regex), fires
+            # at most once per step, never blocks the cycle.
+            blocker = _detect_blocker(tool_name, observation)
+            if blocker is not None:
+                kind, hint = blocker
+                stream.append(ContinuityEvent(
+                    kind="internal.blocker_detected",
+                    payload={
+                        "step": step,
+                        "tool": tool_name,
+                        "blocker_kind": kind,
+                        "preview": observation[:200],
+                    },
+                ))
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"INTERNAL_REMINDER [blocker:{kind}]: предыдущий "
+                        f"`{tool_name}` вернул сигнал блокера. {hint} "
+                        "Прежде чем повторять тот же вызов — обдумай альтернативу "
+                        "(другой URL/tool/approach, env.list для ключей, "
+                        "memory.recall для прошлого опыта)."
+                    ),
+                })
+
             continue  # don't fall through to DONE / thought branches
 
         # Check for DONE or PAUSE — only when there was no tool call this

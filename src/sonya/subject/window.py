@@ -1,0 +1,170 @@
+"""Unified `Window` abstraction over the 4 historic loop entry-points.
+
+Background (Phase 2 of the unified-loop plan, MASTER §6.2 P1):
+  Sonya currently has 4 separate functions running ReAct sessions:
+    - InternalProcess._run_active_session   (every 2h, deep work, full tools)
+    - InternalProcess._run_idle_thought     (every 30m, no tools, just text)
+    - InternalProcess._run_task_worker_body (urgent tasks, 5 steps/60s)
+    - main._on_incoming → run_tg_session    (TG reactive, 15 steps/150s)
+  Each builds its own prompt, picks a provider, decides what tools to expose,
+  chooses what counts as "done". This is the pre-RWKV cost-control workaround
+  that grew into 4 parallel codepaths with subtle drift between them.
+
+The plan (incremental, not big-bang):
+
+  Phase 2A (this commit) — `Window` dataclass + thin `run_window()` wrapper.
+    The 4 callers stay where they are; they just compose a Window instead of
+    calling run_agent_session directly with N parameters. No behavior change.
+
+  Phase 2B (next commit) — blocker reflex inside run_window. After every
+    tool result, a heuristic checks for "looks blocked" markers (HTTP 4xx/5xx,
+    exceptions, "credits", "rate limit", empty stdout >5s). If hit, an
+    inline system message is injected before the next LLM turn telling the
+    model what was blocked and asking for a different approach.
+
+  Phase 2C — idle gets read-only tools (self_inspect, tasks.list, memory.recall,
+    env.get, goals.list). Idle thought becomes a 1-3 step Window with limited
+    tool surface, so Sonya can actually *check* state instead of guessing
+    from context-builder injections.
+
+  Phase 2D (later) — Scheduler picks Windows by priority. Today the 4 callers
+    fire on independent timers, leading to "I'm waiting" while in fact nothing
+    is queued.
+
+Until 2D lands, this module is mostly a documentation + thin facade so caller
+code reads `await run_window(window)` instead of `await run_agent_session(...)`
+with 15 named parameters.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+from sonya.state.continuity_stream import ContinuityStream
+from sonya.subject.agent_session import (
+    SessionResult,
+    AgentProvider,
+    run_agent_session,
+)
+from sonya.tools.code_tool import CodeTool
+from sonya.tools.env_tool import EnvTool
+from sonya.tools.filesystem import FilesystemTool
+from sonya.tools.memory_tool import MemoryTool
+from sonya.tools.self_inspect import SelfInspectTool
+from sonya.tools.selfmod_tool import SelfModTool
+from sonya.tools.shell_tool import ShellTool
+from sonya.tools.skills_tool import SkillsTool
+from sonya.tools.tasks_tool import TasksTool
+from sonya.tools.web_tool import WebTool
+
+
+# Window kinds. Used for routing + accountability + later scheduling.
+WINDOW_KIND_TG = "tg_session"
+WINDOW_KIND_ACTIVE = "active_session"
+WINDOW_KIND_WORKER = "task_worker"
+WINDOW_KIND_IDLE = "idle_thought"
+
+
+@dataclass(slots=True)
+class Window:
+    """Description of one cognitive activation.
+
+    A Window says: who's calling Sonya, what tools she has, how much budget,
+    what initial context she sees. It does NOT pre-decide "done" — the model
+    closes itself via [DONE]/[PAUSE]/budget exhaustion.
+
+    Required:
+      kind           — WINDOW_KIND_*; affects audit and (later) scheduling.
+      system_prompt  — full assembled prompt (personality + memory + tasks +
+                       channel suffix). Built by caller, not by run_window.
+      tools          — dict of callable tool surfaces. None entries are skipped.
+
+    Optional:
+      initial_thought      — seed the first LLM turn with prior context.
+      initial_user_text    — the literal incoming user message (TG path).
+      initial_user_message — full chat-message-with-media (TG vision path).
+      max_steps            — ReAct step cap (default per-kind).
+      max_seconds          — wall-clock cap (default per-kind).
+      outbound             — OutboundGate; if set, chat.tell_ivan is wired.
+      inbox_drain          — () -> list[str], polled between steps for fresh
+                              user turns mid-session (TG inbox-aware).
+      purpose              — passed to provider for usage audit.
+    """
+
+    kind: str
+    system_prompt: str
+    tools: dict[str, Any]
+    initial_thought: str = ""
+    initial_user_text: str | None = None
+    initial_user_message: list[dict[str, Any]] | None = None
+    max_steps: int = 0  # 0 = use per-kind default
+    max_seconds: float = 0.0  # 0 = use per-kind default
+    outbound: Any = None
+    inbox_drain: Callable[[], list[str]] | None = None
+    purpose: str = ""
+
+
+_DEFAULT_BUDGETS: dict[str, tuple[int, float]] = {
+    WINDOW_KIND_TG: (15, 150.0),
+    WINDOW_KIND_ACTIVE: (30, 1800.0),
+    WINDOW_KIND_WORKER: (5, 60.0),
+    WINDOW_KIND_IDLE: (3, 60.0),  # Phase 2C will use this; today idle bypasses run_window
+}
+
+
+def _resolve_budget(window: Window) -> tuple[int, float]:
+    default_steps, default_seconds = _DEFAULT_BUDGETS.get(window.kind, (15, 300.0))
+    steps = window.max_steps if window.max_steps > 0 else default_steps
+    seconds = window.max_seconds if window.max_seconds > 0 else default_seconds
+    return steps, seconds
+
+
+async def run_window(
+    window: Window,
+    *,
+    provider: AgentProvider,
+    stream: ContinuityStream,
+) -> SessionResult:
+    """Execute a Window via the underlying agent session loop.
+
+    Thin wrapper today. Phase 2B will add blocker reflex injection between
+    steps. Phase 2C will let idle Windows run with a restricted tool subset
+    (the tools dict will simply not include code/shell/web/selfmod for those).
+    """
+    steps, seconds = _resolve_budget(window)
+    tools = window.tools or {}
+    purpose = window.purpose or window.kind
+    return await run_agent_session(
+        provider=provider,
+        stream=stream,
+        self_inspect=tools.get("self_inspect"),
+        filesystem=tools.get("filesystem"),
+        system_prompt=window.system_prompt,
+        selfmod=tools.get("selfmod"),
+        tasks=tools.get("tasks"),
+        web=tools.get("web"),
+        code=tools.get("code"),
+        shell=tools.get("shell"),
+        memory=tools.get("memory"),
+        env=tools.get("env"),
+        skills=tools.get("skills"),
+        outbound=window.outbound,
+        initial_thought=window.initial_thought,
+        initial_user_message=window.initial_user_message,
+        initial_user_text=window.initial_user_text,
+        max_steps=steps,
+        max_seconds=seconds,
+        purpose=purpose,
+        inbox_drain=window.inbox_drain,
+    )
+
+
+__all__ = [
+    "Window",
+    "run_window",
+    "WINDOW_KIND_TG",
+    "WINDOW_KIND_ACTIVE",
+    "WINDOW_KIND_WORKER",
+    "WINDOW_KIND_IDLE",
+]
