@@ -1098,11 +1098,23 @@ class InternalProcess:
                     )[:1500]
                     auto_next_step = "продолжить с того где остановилась — см. notes"
                     if final_text:
+                        # Skip lines that are plans/intents, not actual results.
+                        # These cause stuck-loops: worker writes "Дальше: mv файл",
+                        # auto-handoff copies it as next_step, next tick repeats.
+                        _plan_markers = (
+                            "дальше", "следующий шаг", "следующее", "продолжу",
+                            "перейду", "начну", "сделаю", "попробую", "займусь",
+                            "next step", "continue", "will try", "going to",
+                        )
                         for line in final_text.splitlines():
                             line = line.strip()
-                            if line and len(line) > 20 and len(line) < 200:
-                                auto_next_step = line[:200]
-                                break
+                            if not line or len(line) < 20 or len(line) > 200:
+                                continue
+                            lower = line.lower()
+                            if any(lower.startswith(m) for m in _plan_markers):
+                                continue  # skip plan-line, look for actual result
+                            auto_next_step = line[:200]
+                            break
                     svc.record_session_handoff(
                         in_prog[0].task_id,
                         notes=auto_notes,
