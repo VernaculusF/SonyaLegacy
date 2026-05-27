@@ -56,22 +56,71 @@ echo "=> Ensuring runtime dependencies..."
     2>&1 | grep -v "already satisfied" || true
 
 echo "=> Restarting services..."
+# Helper: verify Sonya core + admin are alive (or absent if expected) and
+# port 8877 is bound by the new admin process. Returns 0 if healthy.
+verify_sonya_running() {
+    local core_pid admin_pid
+    core_pid=$(pgrep -f '/home/jester-sonya/Sonya/.venv/bin/python -m sonya$' || true)
+    admin_pid=$(pgrep -f '/home/jester-sonya/Sonya/.venv/bin/python -m sonya.admin' || true)
+    if [ -z "$core_pid" ] || [ -z "$admin_pid" ]; then
+        echo "!! verify failed: core_pid=$core_pid admin_pid=$admin_pid"
+        return 1
+    fi
+    echo "   core=$core_pid admin=$admin_pid"
+    return 0
+}
+
+# Helper: kill any sonya core/admin using full venv path so we don't miss
+# them and don't accidentally hit unrelated python processes.
+kill_old_sonya() {
+    local pids
+    pids=$(pgrep -f '/home/jester-sonya/Sonya/.venv/bin/python -m sonya' || true)
+    if [ -n "$pids" ]; then
+        echo "   killing old PIDs: $pids"
+        kill -TERM $pids 2>/dev/null || true
+        sleep 2
+        # Anything still alive gets -9
+        pids=$(pgrep -f '/home/jester-sonya/Sonya/.venv/bin/python -m sonya' || true)
+        if [ -n "$pids" ]; then
+            echo "   force-killing: $pids"
+            kill -9 $pids 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+    # Free up admin port if anything is still squatting on it.
+    if command -v lsof >/dev/null && lsof -ti:8877 >/dev/null 2>&1; then
+        local port_pids
+        port_pids=$(lsof -ti:8877 || true)
+        if [ -n "$port_pids" ]; then
+            echo "   freeing port 8877 from PIDs: $port_pids"
+            kill -9 $port_pids 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+}
+
 if systemctl --user list-units 2>/dev/null | grep -q sonya; then
     systemctl --user restart sonya sonya-admin 2>/dev/null || true
 elif [ -f /etc/systemd/system/sonya.service ] && command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
     sudo systemctl restart sonya sonya-admin
 else
     echo "!! systemd not configured — falling back to nohup"
-    pkill -9 -f 'python.*sonya' 2>/dev/null || true
-    sleep 2
+    kill_old_sonya
     PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/packages/tg-userbot/src" \
         nohup "$PROJECT_DIR/.venv/bin/python" -m sonya.admin \
         > /tmp/sonya-admin.log 2>&1 &
-    echo "Admin started (nohup). Logs: /tmp/sonya-admin.log"
+    echo "Admin spawned (nohup). Logs: /tmp/sonya-admin.log"
     PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/packages/tg-userbot/src" \
         nohup "$PROJECT_DIR/.venv/bin/python" -m sonya \
         > /tmp/sonya.log 2>&1 &
-    echo "Core started (nohup). Logs: /tmp/sonya.log"
+    echo "Core spawned (nohup). Logs: /tmp/sonya.log"
+    sleep 3
+    if ! verify_sonya_running; then
+        echo "!! restart verification failed — admin/core didn't come up."
+        echo "   admin log tail:" && tail -n 20 /tmp/sonya-admin.log 2>/dev/null
+        echo "   core  log tail:" && tail -n 20 /tmp/sonya.log 2>/dev/null
+        exit 1
+    fi
 fi
 
 echo "=> Done."

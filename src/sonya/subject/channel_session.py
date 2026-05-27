@@ -97,6 +97,10 @@ def _strip_tool_markers(text: str) -> str:
 _DONE_RE = re.compile(r"\[DONE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
 _PAUSE_RE = re.compile(r"\[PAUSE(?::\s*(?P<body>.+?))?\]", re.DOTALL)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
+# Unclosed fence at the start of a thought: model opened ```json (or ```python)
+# but never closed it before EOM. Without this we leave a giant scratch dump
+# in the candidate, which then trips reasoning-leak detection.
+_UNCLOSED_FENCE_RE = re.compile(r"```\w*[\s\S]*\Z")
 # Models sometimes echo prior tool observations into their final answer when
 # they don't terminate cleanly. Strip those too.
 # We accept missing `]` because the model regularly drops it: "[Observation: Loaded
@@ -197,6 +201,36 @@ def _looks_like_code_leak(text: str) -> bool:
         return False
     matches = sum(1 for p in _INTERNAL_LEAK_PATTERNS if p.search(text))
     return matches >= 2
+
+
+# A thought that's mostly a JSON tool-result envelope echoed back by the model.
+# The 27.05.13:10 Shodan bug: step 0 was ```json {"status":"success","result":
+# {"type":"code_exec_result", "stdout":"..."}}``` — pure observation echo, no
+# content for Ivan. Stitching this into the final reply made _looks_like_
+# reasoning_leak fire and zeroed out the response.
+_TOOL_RESULT_ECHO_RE = re.compile(
+    r'```\s*json\b[\s\S]*?"(?:type"\s*:\s*"(?:code_exec_result|shell_result|web_fetch_result|tool_result)|status"\s*:\s*"(?:success|error|ok)|exit_code"\s*:\s*\d|stdout"\s*:|success"\s*:\s*(?:true|false))',
+    re.IGNORECASE,
+)
+
+
+def _is_tool_result_echo(text: str) -> bool:
+    """True if `text` is mostly a JSON envelope of a prior tool result.
+
+    Used by `_stitch_post_action_thoughts` to skip these as candidates for
+    stitching: the model sometimes burns a step echoing back its own tool
+    output as a fenced JSON block, which carries no content for the user.
+    """
+    if not text or not _TOOL_RESULT_ECHO_RE.search(text):
+        return False
+    # Count prose OUTSIDE fenced blocks. If almost all content is inside
+    # fences (closed or unclosed), it's an echo.
+    parts = text.split("```")
+    # Even-indexed segments are outside fences; odd are inside.
+    outside = "\n".join(parts[i] for i in range(0, len(parts), 2))
+    # Strip leftover language tags (e.g. "json" lingers if fence was unclosed)
+    outside_clean = re.sub(r"^\s*\w+\s*$", "", outside, flags=re.MULTILINE).strip()
+    return len(outside_clean) < 80
 
 
 # Prompt-echo patterns: if the reply contains verbatim snippets FROM our
@@ -676,6 +710,9 @@ def _scrub(text: str) -> str:
     text = _SYSTEM_REMINDER_RE.sub("", text)
     text = _INTERNAL_REMINDER_RE.sub("", text)
     text = _CODE_FENCE_RE.sub("", text)
+    # Strip unclosed fences (```json without trailing ```). Model sometimes
+    # opens a fence and just stops; the dangling block carries no value.
+    text = _UNCLOSED_FENCE_RE.sub("", text)
     text = _strip_tool_markers(text)
     text = _DONE_RE.sub("", text)
     text = _PAUSE_RE.sub("", text)
@@ -871,6 +908,10 @@ def _stitch_post_action_thoughts(result: SessionResult, final: str) -> str:
             continue
         # Skip the final itself if it matches (we'll stitch with it later)
         if t.strip() == final.strip():
+            continue
+        # Skip JSON tool-result echoes (model parroting its own observation
+        # as a fenced JSON block — no content for Ivan).
+        if _is_tool_result_echo(t):
             continue
         last_content = t
         break
