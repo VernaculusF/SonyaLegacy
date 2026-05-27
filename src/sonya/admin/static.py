@@ -88,6 +88,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="nav-item" data-page="approvals">✋ Approvals</div>
     <div class="nav-item" data-page="tasks">📋 Tasks</div>
     <div class="nav-item active" data-page="dashboard">⚡ Dashboard</div>
+    <div class="nav-item" data-page="operator">🎛️ Operator</div>
     <div class="nav-item" data-page="thoughts">💭 Thoughts</div>
     <div class="nav-item" data-page="memory">🧠 Memory</div>
     <div class="nav-item" data-page="telegram">📱 Telegram</div>
@@ -178,6 +179,22 @@ async function loadPage(page) {
         const resp = await fetch(`${API}/api/approvals`);
         const data = await resp.json();
         content.innerHTML = renderers.approvals(data);
+      } catch(e) {
+        content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
+      }
+      return;
+    }
+
+    if (page === 'operator') {
+      operatorStop();  // clear any previous polling
+      try {
+        const resp = await fetch(`${API}/api/operator/snapshot`);
+        const data = await resp.json();
+        content.innerHTML = renderers.operator(data);
+        // Initialise live tail at the latest seq so we don't backfill 1000
+        // historical events on first paint.
+        operatorLastSeq = data.latest_seq || 0;
+        operatorStart();  // begin live polling
       } catch(e) {
         content.innerHTML = `<div class="card"><pre>Error: ${e.message}</pre></div>`;
       }
@@ -528,6 +545,93 @@ const renderers = {
           </div>
         </div>`).join('')}
     </div>`;
+  },
+  operator(d) {
+    const session = d.active_session;
+    const lastPick = d.last_pick;
+    const summary = d.open_tasks_summary || {};
+    const drives = d.drives || {};
+    const lastExt = d.last_external_trigger;
+    const fmtTime = (s) => s ? s.slice(11, 19) : '—';
+    const sessionCard = session ? `
+      <div class="card" style="border-left:3px solid #3fb950">
+        <h3>🔴 Active session</h3>
+        <div style="font-size:13px;line-height:1.7">
+          <div>Step <b>${session.current_step}</b> · tool <code style="background:#0d1117;padding:2px 6px;border-radius:3px;color:#7ee787">${session.current_tool || '(thought)'}</code></div>
+          <div style="color:#8b949e">Started: ${fmtTime(session.started_at)} · last step: ${fmtTime(session.last_step_at)}</div>
+          <div style="color:#8b949e">First seq: ${session.first_step_seq}</div>
+        </div>
+      </div>` : `
+      <div class="card" style="border-left:3px solid #8b949e">
+        <h3>💤 Idle</h3>
+        <div style="color:#8b949e;font-size:13px">No active session right now. Last pick was ${lastPick ? `<b>${lastPick.chosen_kind}</b> at ${fmtTime(lastPick.at)}` : 'never'}.</div>
+      </div>`;
+    const driveBars = Object.entries(drives)
+      .filter(([k]) => !k.startsWith('_'))
+      .filter(([_, v]) => typeof v === 'number')
+      .map(([k, v]) => {
+        const pct = Math.min(100, Math.max(0, v * 100));
+        const color = v > 0.7 ? '#f85149' : v > 0.4 ? '#d29922' : '#3fb950';
+        return `<div style="margin:4px 0">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#8b949e"><span>${k}</span><span>${v.toFixed(2)}</span></div>
+          <div style="background:#0d1117;height:6px;border-radius:3px;overflow:hidden"><div style="background:${color};height:100%;width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+    const summaryCard = `
+      <div class="card">
+        <h3>📋 Tasks state</h3>
+        <div style="display:flex;gap:14px;font-size:13px;flex-wrap:wrap">
+          <span><b style="color:#3fb950">${summary.in_progress || 0}</b> in_progress</span>
+          <span><b style="color:#d29922">${summary.blocked || 0}</b> blocked</span>
+          <span><b style="color:#8b949e">${summary.pending || 0}</b> pending</span>
+          <span><b style="color:#f85149">${summary.recently_failed_24h || 0}</b> failed 24h</span>
+          <span><b style="color:#1f6feb">${d.approved_proposals_pending || 0}</b> APPROVED selfmod</span>
+        </div>
+      </div>`;
+    const drivesCard = driveBars ? `
+      <div class="card">
+        <h3>🌡️ Drive counters</h3>
+        ${driveBars}
+      </div>` : '';
+    const lastExtRow = lastExt ? `
+      <div style="font-size:12px;color:#8b949e;margin-top:6px">
+        Last external trigger: <code>${lastExt.reason}</code> at ${fmtTime(lastExt.at)} (seq=${lastExt.seq})
+      </div>` : '';
+    const triggerCard = `
+      <div class="card">
+        <h3>🎛️ Controls</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button onclick="operatorTriggerActive()" style="background:#1f6feb;color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px">⚡ Force active session now</button>
+          <button onclick="operatorInjectMessageDialog()" style="background:#6f42c1;color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px">💬 Inject message (substrate)</button>
+          <button onclick="loadPage('operator')" style="background:#30363d;color:#c9d1d9;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px">🔄 Refresh</button>
+        </div>
+        ${lastExtRow}
+      </div>`;
+    const recentPicks = (d.recent_picks || []).slice(0, 8);
+    const picksCard = recentPicks.length ? `
+      <div class="card">
+        <h3>🧮 Recent scheduler picks</h3>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead><tr style="color:#8b949e;text-align:left;border-bottom:1px solid #21262d">
+            <th style="padding:6px 4px">When</th><th>Kind</th><th>Pri</th><th>Reason</th><th>Other ready</th>
+          </tr></thead>
+          <tbody>
+            ${recentPicks.map(p => `<tr style="border-bottom:1px solid #161b22">
+              <td style="padding:6px 4px;color:#8b949e">${fmtTime(p.at)}</td>
+              <td><code style="background:#0d1117;padding:2px 6px;border-radius:3px;color:#7ee787">${p.chosen_kind}</code></td>
+              <td><b>${p.chosen_priority}</b></td>
+              <td>${p.chosen_reason || ''}</td>
+              <td style="color:#8b949e">${(p.runners_up || []).map(r => `${r.kind}@${r.prio}`).join(', ') || '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '';
+    const liveCard = `
+      <div class="card">
+        <h3>📜 Live event tail <span id="op-live-status" style="font-size:11px;color:#8b949e;font-weight:normal;margin-left:8px">connecting…</span></h3>
+        <div id="op-live-feed" style="max-height:480px;overflow-y:auto;font-family:'Consolas',monospace;font-size:11px;line-height:1.5;background:#0d1117;border-radius:4px;padding:10px"></div>
+      </div>`;
+    return sessionCard + summaryCard + drivesCard + triggerCard + picksCard + liveCard;
   },
   tasks(d) {
     const tasks = d.tasks || [];
@@ -1000,6 +1104,181 @@ async function sendChat() {
   btn.disabled = false;
   renderChat();
   document.getElementById('chat-msgs').scrollTop = 99999;
+}
+
+// --- Operator panel: live polling + controls -------------------------
+let operatorLastSeq = 0;
+let operatorPollTimer = null;
+
+function operatorStop() {
+  if (operatorPollTimer) {
+    clearTimeout(operatorPollTimer);
+    operatorPollTimer = null;
+  }
+}
+
+function operatorStart() {
+  operatorStop();
+  operatorTick();
+}
+
+async function operatorTick() {
+  // If user navigated away, stop polling.
+  const feed = document.getElementById('op-live-feed');
+  if (!feed) {
+    operatorStop();
+    return;
+  }
+  try {
+    const resp = await fetch(`${API}/api/operator/live?since=${operatorLastSeq}&limit=80`);
+    const data = await resp.json();
+    const events = data.events || [];
+    if (events.length > 0) {
+      const html = events.map(operatorRenderEvent).join('');
+      feed.insertAdjacentHTML('beforeend', html);
+      // Keep only last ~400 entries to bound DOM size
+      while (feed.children.length > 400) feed.removeChild(feed.firstChild);
+      feed.scrollTop = feed.scrollHeight;
+      operatorLastSeq = events[events.length - 1].seq;
+    }
+    const status = document.getElementById('op-live-status');
+    if (status) {
+      const stamp = new Date().toLocaleTimeString();
+      status.textContent = `live · last poll ${stamp} · seq ${operatorLastSeq}`;
+      status.style.color = '#3fb950';
+    }
+  } catch (e) {
+    const status = document.getElementById('op-live-status');
+    if (status) {
+      status.textContent = 'poll error: ' + e.message;
+      status.style.color = '#f85149';
+    }
+  }
+  // 3s poll cadence keeps cost low while still feeling live
+  operatorPollTimer = setTimeout(operatorTick, 3000);
+}
+
+function operatorRenderEvent(e) {
+  const t = (e.at || '').slice(11, 19);
+  const seq = e.seq;
+  const kind = e.kind || '';
+  const d = e.data || {};
+  let icon = '·', color = '#8b949e', body = '';
+  if (kind === 'internal.agent_step') {
+    if (d.type === 'action') {
+      icon = '🔧';
+      color = '#7ee787';
+      body = `step ${d.step} · <b>${d.tool}</b> ${d.arg ? '<span style="color:#8b949e">' + escapeHtml(d.arg.slice(0, 120)) + '</span>' : ''}`;
+    } else if (d.type === 'done') {
+      icon = '✅';
+      color = '#3fb950';
+      body = `[DONE] ${escapeHtml((d.content || '').slice(0, 200))}`;
+    } else {
+      icon = '💭';
+      body = escapeHtml((d.content || d.thought || '').slice(0, 200));
+    }
+  } else if (kind === 'internal.scheduler_pick') {
+    icon = '🎯';
+    color = '#79c0ff';
+    body = `pick: <b>${d.chosen_kind}</b> @${d.chosen_priority} (${d.chosen_reason || ''}) · ${d.runners_count || 0} other ready`;
+  } else if (kind === 'internal.blocker_detected') {
+    icon = '⚠️';
+    color = '#d29922';
+    body = `blocker [${d.blocker_kind}] on ${d.tool}: ${escapeHtml((d.preview || '').slice(0, 150))}`;
+  } else if (kind.startsWith('outgoing.')) {
+    icon = '➡️';
+    color = '#1f6feb';
+    body = `→ ${escapeHtml((d.text || '').slice(0, 240))}`;
+  } else if (kind.startsWith('incoming.')) {
+    icon = '⬅️';
+    color = '#a371f7';
+    body = `← ${escapeHtml((d.text || '').slice(0, 240))}`;
+  } else if (kind.startsWith('task.')) {
+    icon = '📋';
+    color = '#d29922';
+    body = `${kind.slice(5)} · ${d.task_id || ''} · ${escapeHtml((d.next_step || '').slice(0, 120))}`;
+  } else if (kind === 'internal.agent_session_complete') {
+    icon = '🏁';
+    color = '#7ee787';
+    body = `session complete (${kind})`;
+  } else if (kind === 'self_mod.applied' || kind === 'self_mod.git_pushed') {
+    icon = '🔧';
+    color = '#3fb950';
+    body = `${kind}: ${JSON.stringify(d).slice(0, 200)}`;
+  } else {
+    body = `${kind}`;
+  }
+  return `<div style="display:flex;gap:8px;margin-bottom:3px">
+    <span style="color:#484f58;flex-shrink:0">${t}</span>
+    <span style="flex-shrink:0">${icon}</span>
+    <span style="color:${color};flex:1;word-break:break-word">${body}</span>
+    <span style="color:#484f58;flex-shrink:0;font-size:10px">${seq}</span>
+  </div>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+async function operatorTriggerActive() {
+  const reason = prompt('Reason for the trigger (audit label)?', 'manual_admin');
+  if (reason === null) return;
+  try {
+    const resp = await fetch(`${API}/api/operator/trigger-active`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reason: reason || 'manual_admin'}),
+    });
+    const data = await resp.json();
+    alert(`Triggered.\nseq=${data.event_seq}\n${data.note || ''}`);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function operatorInjectMessageDialog() {
+  const text = prompt(
+    'Inject as Ivan-message (substrate-only — won\'t trigger TG reply by itself, ' +
+    'but the next active session will see it as recent context):'
+  );
+  if (!text) return;
+  try {
+    const resp = await fetch(`${API}/api/operator/inject-message`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text}),
+    });
+    const data = await resp.json();
+    alert(`Injected.\nseq=${data.event_seq}\n${data.note || ''}`);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function operatorTaskAction(taskId, action) {
+  let reason = '';
+  if (action !== 'delete') {
+    reason = prompt(`${action.toUpperCase()} task ${taskId.slice(0, 16)}... reason?`, '') || '';
+  } else {
+    if (!confirm(`Delete task ${taskId}?`)) return;
+  }
+  try {
+    const resp = await fetch(`${API}/api/operator/task/${taskId}/action`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action, reason}),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      loadPage('operator');
+    } else {
+      alert(`Error: ${JSON.stringify(data)}`);
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
 }
 
 loadPage('dashboard');

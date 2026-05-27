@@ -7,6 +7,7 @@ Opens on http://localhost:8877
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from sonya.admin.static import ADMIN_HTML
@@ -1269,6 +1270,432 @@ async def _placeholder_kt(request: web.Request) -> web.Response:
     return web.json_response({"error": "not used"}, status=404)
 
 
+# ============================================================
+# OPERATOR PANEL — live cognitive state + intervention controls
+# ============================================================
+#
+# Goal: give Ivan a single panel that shows what Sonya is doing right now
+# (which window, which scheduler picks, recent agent_step events) and
+# offers safe-but-direct controls (force active session, inject a
+# message, repurpose / cancel a task). This complements Tasks panel
+# (historical view) with a real-time operator view.
+#
+# All endpoints are read-only-ish or write a single substrate event —
+# we never call into a running core process directly. Core process
+# polls substrate and reacts, same way the existing trigger CLI does.
+
+
+async def api_operator_snapshot(request: web.Request) -> web.Response:
+    """Current cognitive state snapshot.
+
+    Returns:
+      - busy: whether something is running (last 60s scheduler events)
+      - last_pick: most recent scheduler decision
+      - active_session: currently-running session metadata if any
+      - recent_picks: last 10 scheduler_pick events (audit)
+      - open_tasks_summary: in_progress / blocked / pending counts
+      - approved_proposals: count of pending APPROVED selfmod proposals
+      - drives: current drive counter snapshot
+      - last_external_trigger: most recent CLI/admin trigger event
+    """
+    import json
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        latest = ContinuityStream(sub).latest_seq()
+        # Recent scheduler picks
+        rows = sub.connection.execute(
+            "SELECT seq, kind, created_at, payload_json FROM continuity_events "
+            "WHERE kind = 'internal.scheduler_pick' ORDER BY seq DESC LIMIT 10"
+        ).fetchall()
+        recent_picks = []
+        last_pick = None
+        for r in rows:
+            try:
+                p = json.loads(r[3])
+            except Exception:
+                p = {}
+            entry = {
+                "seq": r[0],
+                "at": r[2],
+                "chosen_kind": p.get("chosen_kind"),
+                "chosen_priority": p.get("chosen_priority"),
+                "chosen_reason": p.get("chosen_reason"),
+                "runners_up": p.get("runners_up", []),
+            }
+            recent_picks.append(entry)
+            if last_pick is None:
+                last_pick = entry
+        # Currently-active session: agent_session_complete is the close
+        # marker; if no complete after the last agent_step, we're inside
+        # an active window.
+        last_step = sub.connection.execute(
+            "SELECT seq, kind, created_at, payload_json FROM continuity_events "
+            "WHERE kind IN ('internal.agent_step', 'internal.agent_session_complete') "
+            "ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        active_session = None
+        if last_step is not None:
+            kind = last_step[1]
+            try:
+                step_payload = json.loads(last_step[3])
+            except Exception:
+                step_payload = {}
+            if kind == "internal.agent_step":
+                # Find session start by walking back to step 0
+                back = sub.connection.execute(
+                    "SELECT seq, created_at, payload_json FROM continuity_events "
+                    "WHERE kind = 'internal.agent_step' AND seq <= ? "
+                    "ORDER BY seq DESC LIMIT 60",
+                    (last_step[0],),
+                ).fetchall()
+                first_seq = last_step[0]
+                first_at = last_step[2]
+                for b in back:
+                    try:
+                        bp = json.loads(b[2])
+                    except Exception:
+                        continue
+                    if str(bp.get("step", "")) == "0":
+                        first_seq = b[0]
+                        first_at = b[1]
+                        break
+                active_session = {
+                    "first_step_seq": first_seq,
+                    "started_at": first_at,
+                    "current_step": step_payload.get("step"),
+                    "current_tool": step_payload.get("tool"),
+                    "last_step_at": last_step[2],
+                }
+        # Open tasks summary
+        from sonya.tasks.store import TaskStore
+        store = TaskStore(sub)
+        open_tasks = store.list_open()
+        recent_failed = store.list_recently_failed(hours=24, limit=10)
+        summary = {
+            "in_progress": sum(1 for t in open_tasks if t.status.value == "in_progress"),
+            "blocked": sum(1 for t in open_tasks if t.status.value == "blocked"),
+            "pending": sum(1 for t in open_tasks if t.status.value == "pending"),
+            "recently_failed_24h": len(recent_failed),
+        }
+        # APPROVED selfmod proposals
+        approved_count = 0
+        try:
+            from sonya.selfmod.proposal import ProposalStatus, ProposalStore
+            approved_count = sum(
+                1 for p in ProposalStore(sub).list_all()
+                if p.status == ProposalStatus.APPROVED
+            )
+        except Exception:
+            pass
+        # Drives
+        drives_snapshot = {}
+        try:
+            from sonya.initiative.drives import DriveCounters
+            d = DriveCounters.load(sub)
+            drives_snapshot = d.to_dict()
+        except Exception:
+            pass
+        # Last external trigger
+        ext_row = sub.connection.execute(
+            "SELECT seq, created_at, payload_json FROM continuity_events "
+            "WHERE kind = 'internal.active_session_requested_external' "
+            "ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        last_external = None
+        if ext_row is not None:
+            try:
+                ep = json.loads(ext_row[2])
+            except Exception:
+                ep = {}
+            last_external = {
+                "seq": ext_row[0],
+                "at": ext_row[1],
+                "reason": ep.get("reason", "(none)"),
+            }
+        return web.json_response({
+            "latest_seq": latest,
+            "active_session": active_session,
+            "last_pick": last_pick,
+            "recent_picks": recent_picks,
+            "open_tasks_summary": summary,
+            "approved_proposals_pending": approved_count,
+            "drives": drives_snapshot,
+            "last_external_trigger": last_external,
+        })
+    finally:
+        sub.close()
+
+
+async def api_operator_live_steps(request: web.Request) -> web.Response:
+    """Stream of recent agent_step events for live operator view.
+
+    Query params:
+      since: int seq (return events strictly after this seq)
+      limit: int max events to return (default 50, max 200)
+    """
+    import json
+    config = request.app["config"]
+    sub = _get_substrate(config)
+    try:
+        try:
+            since = int(request.query.get("since", "0"))
+        except ValueError:
+            since = 0
+        try:
+            limit = max(1, min(200, int(request.query.get("limit", "50"))))
+        except ValueError:
+            limit = 50
+        rows = sub.connection.execute(
+            "SELECT seq, kind, created_at, payload_json FROM continuity_events "
+            "WHERE seq > ? AND kind IN ("
+            "  'internal.agent_step', 'internal.agent_session_complete', "
+            "  'internal.agent_session_outcome', 'internal.scheduler_pick', "
+            "  'internal.blocker_detected', 'internal.task_worker_outcome', "
+            "  'internal.task_worker_tick', 'internal.cognitive_tick', "
+            "  'incoming.telegram_message', 'outgoing.telegram_progress', "
+            "  'outgoing.telegram_initiative', 'outgoing.telegram_response', "
+            "  'self_mod.applied', 'self_mod.git_pushed', "
+            "  'task.created', 'task.completed', 'task.failed', 'task.blocked', "
+            "  'task.session_handoff'"
+            ") ORDER BY seq ASC LIMIT ?",
+            (since, limit),
+        ).fetchall()
+        events = []
+        for r in rows:
+            try:
+                p = json.loads(r[3])
+            except Exception:
+                p = {}
+            short = {}
+            if r[1] == "internal.agent_step":
+                short = {
+                    "step": p.get("step"),
+                    "type": p.get("type"),
+                    "tool": p.get("tool"),
+                    "arg": (str(p.get("arg") or "")[:200]),
+                    "thought": (str(p.get("thought") or "")[:300]),
+                    "content": (str(p.get("content") or "")[:300]),
+                }
+            elif r[1] == "internal.scheduler_pick":
+                short = {
+                    "chosen_kind": p.get("chosen_kind"),
+                    "chosen_priority": p.get("chosen_priority"),
+                    "chosen_reason": p.get("chosen_reason"),
+                    "runners_count": len(p.get("runners_up", [])),
+                }
+            elif r[1] == "internal.blocker_detected":
+                short = {
+                    "step": p.get("step"),
+                    "tool": p.get("tool"),
+                    "blocker_kind": p.get("blocker_kind"),
+                    "preview": p.get("preview", "")[:200],
+                }
+            elif r[1].startswith("outgoing."):
+                short = {
+                    "text": (p.get("text") or p.get("preview") or "")[:300],
+                }
+            elif r[1].startswith("incoming."):
+                short = {
+                    "text": (p.get("text") or "")[:300],
+                    "channel": p.get("channel"),
+                }
+            elif r[1].startswith("task."):
+                short = {
+                    "task_id": p.get("task_id"),
+                    "status": p.get("status"),
+                    "next_step": (p.get("next_step") or "")[:200],
+                }
+            else:
+                short = {k: v for k, v in p.items() if k not in (
+                    "description", "result", "last_session_notes",
+                    "thought", "content", "stdout", "stderr",
+                )}
+            events.append({
+                "seq": r[0],
+                "kind": r[1],
+                "at": r[2],
+                "data": short,
+            })
+        return web.json_response({"events": events, "since": since})
+    finally:
+        sub.close()
+
+
+async def api_operator_trigger_active(request: web.Request) -> web.Response:
+    """Append `internal.active_session_requested_external` so the running
+    InternalProcess fires an active session within ~30s.
+
+    Body (JSON, optional): {"reason": "free text label for audit"}
+    """
+    config = request.app["config"]
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    reason = str(data.get("reason") or "operator_panel").strip()[:200]
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.state.continuity_stream import ContinuityEvent
+        ev = ContinuityStream(sub).append(ContinuityEvent(
+            kind="internal.active_session_requested_external",
+            payload={"reason": reason, "source": "admin/operator"},
+        ))
+        return web.json_response({
+            "ok": True,
+            "event_seq": ev.seq,
+            "reason": reason,
+            "note": "InternalProcess polls every ~30s; session should start within a tick.",
+        })
+    finally:
+        sub.close()
+
+
+async def api_operator_inject_message(request: web.Request) -> web.Response:
+    """Append `incoming.telegram_message` as if Ivan typed it in TG.
+
+    Useful for: pushing a clarification mid-task, scripted prompts,
+    testing reply behavior without going through Telegram.
+
+    Body: {"text": "...", "channel": "telegram" (optional)}
+    """
+    config = request.app["config"]
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return web.json_response(
+            {"error": "text required"}, status=400,
+        )
+    channel = str(data.get("channel") or "telegram").strip().lower()
+    primary_id = config.primary_user_tg_id or "5785127604"
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.state.continuity_stream import ContinuityEvent
+        ev = ContinuityStream(sub).append(ContinuityEvent(
+            kind=f"incoming.{channel}_message",
+            principal_id="ivan",
+            payload={
+                "channel": channel,
+                "chat_id": primary_id,
+                "sender_id": primary_id,
+                "text": text,
+                "media_kind": None,
+                "is_private": True,
+                "source": "admin/operator_inject",
+            },
+        ))
+        return web.json_response({
+            "ok": True,
+            "event_seq": ev.seq,
+            "text": text,
+            "channel": channel,
+            "note": (
+                "Note: this is a SUBSTRATE-only inject. The TG handler "
+                "doesn't poll substrate for new incoming events — it polls "
+                "Telegram itself. So this is recorded in Sonya's continuity "
+                "stream but won't trigger a TG reply session. To force a "
+                "real reply, use the trigger-active endpoint instead and "
+                "let the active session pick up the message via its "
+                "context-builder visibility."
+            ),
+        })
+    finally:
+        sub.close()
+
+
+async def api_operator_task_action(request: web.Request) -> web.Response:
+    """Operator-side task lifecycle actions.
+
+    Body: {"action": "fail|unblock|repurpose|delete", "reason": "..."}
+    Path: /api/operator/task/{task_id}/action
+
+    Actions:
+      fail      — force-fail with operator reason (reflects to TG via
+                  outbound for non-silent tasks)
+      unblock   — clear blocker, set in_progress (alias for tasks.unblock)
+      repurpose — failed/done → pending, fresh start; clears next_step_hint
+      delete    — hard remove (alias for existing api_tasks_delete)
+    """
+    from sonya.tasks.store import TaskStore
+    from sonya.tasks.service import TaskService
+    from sonya.tasks.models import TaskStatus
+    config = request.app["config"]
+    task_id = request.match_info["task_id"]
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    action = str(data.get("action") or "").strip().lower()
+    reason = str(data.get("reason") or "operator action").strip()[:500]
+    if action not in {"fail", "unblock", "repurpose", "delete"}:
+        return web.json_response(
+            {"error": f"unknown action: {action}"}, status=400,
+        )
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.tasks.models import TaskNotFoundError
+        store = TaskStore(sub)
+        try:
+            task = store.get(task_id)
+        except TaskNotFoundError:
+            return web.json_response({"error": "task not found"}, status=404)
+        svc = TaskService(store, stream=ContinuityStream(sub))
+        if action == "fail":
+            updated = svc.fail(task_id, reason=f"[operator] {reason}")
+            return web.json_response({"ok": True, "task_id": task_id, "status": updated.status.value})
+        if action == "unblock":
+            # If not currently blocked, force flip via store directly so
+            # operator can also revive an in_progress→stuck task.
+            try:
+                updated = svc.unblock(task_id)
+            except Exception:
+                updated = task
+            if updated.status.value != "in_progress":
+                from sonya.tasks.models import TaskStatus
+                updated = store.update_status(task_id, TaskStatus.IN_PROGRESS)
+                from sonya.state.continuity_stream import ContinuityEvent
+                ContinuityStream(sub).append(ContinuityEvent(
+                    kind="task.unblocked",
+                    payload={"task_id": task_id, "operator_reason": reason},
+                ))
+            # If reason given, set as next_step_hint
+            if reason:
+                sub.connection.execute(
+                    "UPDATE tasks SET next_step_hint = ?, updated_at = ? WHERE task_id = ?",
+                    (reason, datetime.now(timezone.utc).isoformat(), task_id),
+                )
+                sub.connection.commit()
+            return web.json_response({"ok": True, "task_id": task_id, "status": updated.status.value})
+        if action == "repurpose":
+            sub.connection.execute(
+                "UPDATE tasks SET status='pending', blocker='', "
+                "next_step_hint='', last_session_notes='', "
+                "sessions_used=0, updated_at=? WHERE task_id=?",
+                (datetime.now(timezone.utc).isoformat(), task_id),
+            )
+            sub.connection.commit()
+            from sonya.state.continuity_stream import ContinuityEvent
+            ContinuityStream(sub).append(ContinuityEvent(
+                kind="task.repurposed",
+                payload={
+                    "task_id": task_id,
+                    "operator_reason": reason,
+                    "previous_status": task.status.value,
+                },
+            ))
+            return web.json_response({"ok": True, "task_id": task_id, "status": "pending"})
+        if action == "delete":
+            sub.connection.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+            sub.connection.commit()
+            return web.json_response({"ok": True, "task_id": task_id, "deleted": True})
+        return web.json_response({"error": "unreachable"}, status=500)
+    finally:
+        sub.close()
+
+
 def create_app() -> web.Application:
     config = load_config()
     import os
@@ -1311,6 +1738,12 @@ def create_app() -> web.Application:
     # Approvals (shell.run / pip.install / governed selfmod gates)
     app.router.add_get("/api/approvals", api_approvals_get)
     app.router.add_post("/api/approvals/{request_id}/{decision}", api_approvals_decide)
+    # Operator panel (live cognitive view + intervention)
+    app.router.add_get("/api/operator/snapshot", api_operator_snapshot)
+    app.router.add_get("/api/operator/live", api_operator_live_steps)
+    app.router.add_post("/api/operator/trigger-active", api_operator_trigger_active)
+    app.router.add_post("/api/operator/inject-message", api_operator_inject_message)
+    app.router.add_post("/api/operator/task/{task_id}/action", api_operator_task_action)
     return app
 
 
