@@ -5,19 +5,21 @@
 <title>Atrium — Desktop Mockup</title>
 <style>
   :root {
-    --bg-deep: #1a1218;
-    --bg-warm: #2a1f25;
-    --bg-elev: #3a2c33;
-    --ink-1: #f0e6db;
-    --ink-2: #b8a89a;
-    --ink-3: #6b5a52;
-    --acc-her: #d4825e;
-    --acc-him: #7ba7d4;
-    --acc-mind: #c9a86b;
-    --acc-thought: #8b6f9c;
-    --acc-warn: #d97757;
-    --acc-priv: #4a3f4e;
-    --hairline: #4a3a3f;
+    /* Cold minimalist palette — her aesthetic */
+    --bg-deep: #0e0f12;
+    --bg-warm: #16181c;
+    --bg-elev: #1f2228;
+    --ink-1: #e8eaed;
+    --ink-2: #a8acb3;
+    --ink-3: #5c6068;
+    --acc-her: #c9cdd4;          /* her silver */
+    --acc-her-eyes: #8aa3b8;     /* her eye-blue */
+    --acc-him: #b8895c;          /* warm bronze (Ivan — only warm color) */
+    --acc-mind: #d4d8de;         /* platinum mind */
+    --acc-thought: #7a7e88;      /* steel mist */
+    --acc-warn: #c87864;         /* muted copper */
+    --acc-priv: #2d3036;         /* dark steel */
+    --hairline: #2a2d33;
     --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono: 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', Consolas, monospace;
   }
@@ -43,17 +45,18 @@
     display: flex;
     align-items: center;
     padding: 0 16px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--ink-2);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
   }
   header .logo {
     color: var(--acc-her);
-    font-weight: 600;
+    font-weight: 500;
+    letter-spacing: 0.18em;
   }
   header .spacer { flex: 1; }
-  header .conn { color: var(--ink-3); font-size: 11px; }
+  header .conn { color: var(--ink-3); font-size: 11px; letter-spacing: 0.06em; text-transform: none; }
 
   /* Three-column main area */
   .main {
@@ -72,19 +75,19 @@
   /* Avatar pane */
   .avatar-pane h2,
   .mind-pane h2 {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
     color: var(--ink-3);
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 12px;
+    letter-spacing: 0.18em;
+    margin-bottom: 14px;
   }
   .avatar-frame {
     width: 200px;
     height: 240px;
-    margin: 8px auto 18px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #3a2030, #2a1820);
+    margin: 8px auto 22px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #1a1c20 0%, #0e0f12 100%);
     position: relative;
     overflow: hidden;
     border: 1px solid var(--hairline);
@@ -94,38 +97,33 @@
     0%, 100% { opacity: 0.94; }
     50% { opacity: 1; }
   }
-  .avatar-silhouette {
+  .avatar-glow {
     position: absolute;
     inset: 0;
     background: radial-gradient(ellipse at 50% 30%,
-      rgba(212, 130, 94, 0.4) 0%,
-      rgba(212, 130, 94, 0.1) 30%,
-      transparent 70%);
+      rgba(201, 205, 212, 0.15) 0%,
+      rgba(138, 163, 184, 0.05) 40%,
+      transparent 75%);
   }
-  .avatar-portrait {
+  .avatar-svg {
     position: absolute;
     bottom: 0;
     left: 50%;
     transform: translateX(-50%);
-    width: 140px;
-    height: 180px;
-    background: linear-gradient(180deg,
-      rgba(212, 130, 94, 0.3) 0%,
-      rgba(139, 111, 156, 0.2) 50%,
-      transparent 100%);
-    border-radius: 70px 70px 20px 20px;
+    width: 100%;
+    height: 100%;
   }
   .status-line {
     font-size: 13px;
     color: var(--ink-2);
-    margin-bottom: 6px;
-    padding-left: 10px;
-    border-left: 2px solid var(--acc-her);
+    margin-bottom: 8px;
+    padding-left: 12px;
+    border-left: 1px solid var(--acc-her-eyes);
   }
   .status-line .label {
     font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.14em;
     color: var(--ink-3);
     display: block;
     margin-bottom: 1px;
@@ -133,14 +131,14 @@
   .typing-dots {
     display: inline-flex;
     gap: 4px;
-    margin-top: 14px;
-    padding-left: 10px;
+    margin-top: 16px;
+    padding-left: 12px;
   }
   .typing-dots span {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: var(--acc-her);
+    background: var(--acc-her-eyes);
     animation: pulse 1.4s infinite;
   }
   .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
@@ -151,12 +149,16 @@
   }
   .activity-line {
     margin-top: 18px;
-    padding-left: 10px;
-    font-size: 12px;
+    padding-left: 12px;
+    font-size: 11px;
     color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
   }
   .activity-line .val {
     color: var(--ink-2);
+    text-transform: none;
+    letter-spacing: normal;
   }
 
   /* Dialog */
@@ -174,10 +176,10 @@
   .day-marker {
     text-align: center;
     color: var(--ink-3);
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin: 12px 0 18px;
+    letter-spacing: 0.18em;
+    margin: 12px 0 22px;
   }
   .bubble {
     max-width: 70%;
@@ -193,23 +195,28 @@
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  /* Her — silver, almost a part of the room */
   .bubble.her {
-    background: rgba(212, 130, 94, 0.12);
+    background: rgba(201, 205, 212, 0.08);
     color: var(--ink-1);
+    border: 1px solid rgba(201, 205, 212, 0.12);
     border-bottom-left-radius: 4px;
     margin-right: auto;
   }
+  /* Him — warm bronze, the only warm presence in her cold room */
   .bubble.him {
-    background: rgba(123, 167, 212, 0.12);
+    background: rgba(184, 137, 92, 0.10);
     color: var(--ink-1);
+    border: 1px solid rgba(184, 137, 92, 0.16);
     border-bottom-right-radius: 4px;
     margin-left: auto;
   }
   .ts {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--ink-3);
     margin-bottom: 4px;
     padding: 0 4px;
+    letter-spacing: 0.05em;
   }
   .her-ts { text-align: left; }
   .him-ts { text-align: right; }
@@ -232,76 +239,77 @@
     font-size: 15px;
     resize: none;
     outline: none;
+    transition: border-color 200ms;
   }
   .composer textarea::placeholder { color: var(--ink-3); }
-  .composer textarea:focus { border-color: var(--acc-her); }
+  .composer textarea:focus { border-color: var(--acc-her-eyes); }
 
   /* Mind pane */
   .mind-section {
-    margin-bottom: 20px;
+    margin-bottom: 22px;
   }
   .mind-focus {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--ink-1);
-    line-height: 1.4;
+    line-height: 1.45;
     padding: 8px 12px;
-    border-left: 3px solid var(--acc-mind);
-    background: rgba(201, 168, 107, 0.05);
+    border-left: 2px solid var(--acc-mind);
+    background: rgba(212, 216, 222, 0.03);
   }
   .drives {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 9px;
   }
   .drive {
     display: grid;
-    grid-template-columns: 100px 1fr 32px;
+    grid-template-columns: 100px 1fr 38px;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     font-size: 12px;
   }
   .drive-bar {
-    height: 4px;
+    height: 3px;
     background: var(--bg-elev);
-    border-radius: 2px;
+    border-radius: 0;
     overflow: hidden;
   }
   .drive-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--acc-her), var(--acc-mind));
-    border-radius: 2px;
   }
-  .drive-label { color: var(--ink-2); }
+  .drive-label { color: var(--ink-2); text-transform: lowercase; }
   .drive-val { color: var(--ink-3); font-family: var(--font-mono); font-size: 11px; text-align: right; }
 
   .env-table {
     font-size: 13px;
-    line-height: 1.7;
+    line-height: 1.75;
     color: var(--ink-2);
   }
-  .env-table .k { color: var(--ink-3); }
+  .env-table .k { color: var(--ink-3); font-family: var(--font-mono); font-size: 12px; }
   .env-table .v { color: var(--ink-1); }
 
   .stream-divider {
-    border-top: 1px dashed var(--hairline);
-    margin: 18px 0 14px;
+    border-top: 1px solid var(--hairline);
+    margin: 20px 0 14px;
     padding-top: 0;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--ink-3);
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.18em;
   }
 
   .thought {
     margin-bottom: 14px;
     padding: 8px 10px;
     border-left: 2px solid var(--acc-thought);
-    background: rgba(139, 111, 156, 0.04);
+    background: rgba(122, 126, 136, 0.04);
   }
   .thought .age {
     font-size: 10px;
     color: var(--ink-3);
     margin-bottom: 3px;
+    font-family: var(--font-mono);
   }
   .thought .body {
     font-size: 13px;
@@ -310,11 +318,12 @@
   }
   .thought.private {
     border-left-color: var(--acc-priv);
-    background: rgba(74, 63, 78, 0.15);
+    background: rgba(45, 48, 54, 0.3);
+  }
+  .thought.private .body {
     color: var(--ink-3);
     font-style: italic;
   }
-  .thought.private .body { color: var(--ink-3); }
 
   /* Reason-streams */
   .streams {
@@ -333,19 +342,19 @@
   }
   .stream-tab {
     padding: 10px 18px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--ink-3);
     cursor: pointer;
     border-bottom: 2px solid transparent;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.12em;
   }
   .stream-tab.active {
     color: var(--ink-1);
-    border-bottom-color: var(--acc-her);
+    border-bottom-color: var(--acc-her-eyes);
   }
   .stream-tab .dot {
-    color: var(--acc-her);
+    color: var(--acc-her-eyes);
     margin-right: 4px;
   }
   .streams-body {
@@ -354,7 +363,7 @@
     padding: 12px 18px;
     font-family: var(--font-mono);
     font-size: 13px;
-    line-height: 1.55;
+    line-height: 1.6;
   }
   .stream-row {
     margin-bottom: 4px;
@@ -370,15 +379,15 @@
   .stream-row .quoted { color: var(--acc-her); font-style: italic; }
   .stream-row.warn .body { color: var(--acc-warn); }
   .stream-divider-row {
-    border-top: 1px dashed var(--hairline);
+    border-top: 1px solid var(--hairline);
     margin: 8px 0;
   }
   .nudge-input {
     margin: 6px 0 8px 70px;
     padding: 8px 10px;
     background: var(--bg-elev);
-    border: 1px solid var(--acc-her);
-    border-radius: 6px;
+    border: 1px solid var(--acc-her-eyes);
+    border-radius: 4px;
     font-family: var(--font-ui);
     font-size: 13px;
     color: var(--ink-1);
@@ -390,24 +399,26 @@
     color: var(--ink-3);
     margin-left: 70px;
     margin-bottom: 8px;
+    font-family: var(--font-ui);
+    letter-spacing: 0.06em;
   }
 
   /* Header conn dot */
   .conn-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: var(--acc-mind);
+    background: var(--acc-her-eyes);
     display: inline-block;
     margin-right: 6px;
-    box-shadow: 0 0 6px var(--acc-mind);
+    box-shadow: 0 0 6px rgba(138, 163, 184, 0.5);
   }
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <span class="logo">◐ atrium</span>
+    <span class="logo">◐ ATRIUM</span>
     <span class="spacer"></span>
     <span class="conn"><span class="conn-dot"></span>connected · 34.38.255.149</span>
   </header>
@@ -417,8 +428,91 @@
     <aside class="pane avatar-pane">
       <h2>SONYA</h2>
       <div class="avatar-frame">
-        <div class="avatar-silhouette"></div>
-        <div class="avatar-portrait"></div>
+        <div class="avatar-glow"></div>
+        <!--
+          SVG silhouette of her:
+          - silver-white short bob (chin-length, slight angle)
+          - black headband on TOP of hair (not over eyes)
+          - black oversize T-shirt (mid-thigh)
+          - bare legs
+          - cool skin tone
+          - slight head tilt to the side
+        -->
+        <svg class="avatar-svg" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#dde0e5"/>
+              <stop offset="1" stop-color="#a8acb3"/>
+            </linearGradient>
+            <linearGradient id="skinGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#e0e2e6"/>
+              <stop offset="1" stop-color="#b0b3b8"/>
+            </linearGradient>
+            <linearGradient id="shirtGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#1c1d20"/>
+              <stop offset="1" stop-color="#0a0b0d"/>
+            </linearGradient>
+            <linearGradient id="legGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#c8cbd0"/>
+              <stop offset="1" stop-color="#90939a"/>
+            </linearGradient>
+          </defs>
+          <!-- Bare legs, slightly visible below shirt -->
+          <ellipse cx="88" cy="232" rx="9" ry="14" fill="url(#legGrad)" opacity="0.6"/>
+          <ellipse cx="112" cy="232" rx="9" ry="14" fill="url(#legGrad)" opacity="0.6"/>
+          <!-- Oversize black t-shirt (mid-thigh, slight asymmetry) -->
+          <path d="M 60 110
+                   Q 55 105 56 100
+                   L 70 96
+                   Q 85 90 100 90
+                   Q 115 90 130 96
+                   L 144 100
+                   Q 145 105 140 110
+                   L 145 215
+                   Q 100 225 55 215
+                   Z"
+                fill="url(#shirtGrad)"/>
+          <!-- Sleeve hint (left arm rests inside) -->
+          <path d="M 56 100 Q 50 115 54 130 L 60 132 Q 60 115 62 105 Z" fill="#0a0b0d" opacity="0.7"/>
+          <path d="M 144 100 Q 150 115 146 130 L 140 132 Q 140 115 138 105 Z" fill="#0a0b0d" opacity="0.7"/>
+          <!-- Neck -->
+          <path d="M 90 88 L 110 88 L 108 98 L 92 98 Z" fill="url(#skinGrad)"/>
+          <!-- Head (slight tilt to left, ~3 degrees) -->
+          <g transform="rotate(-3 100 60)">
+            <!-- Face base, oval -->
+            <ellipse cx="100" cy="60" rx="22" ry="28" fill="url(#skinGrad)"/>
+            <!-- Hair: silver bob, chin-length, slight asymmetry, side-swept fringe -->
+            <!-- Back hair layer -->
+            <path d="M 78 50
+                     Q 72 30 88 22
+                     Q 100 16 115 22
+                     Q 128 28 126 48
+                     Q 128 70 122 84
+                     L 122 88
+                     L 116 88
+                     L 116 70
+                     Q 110 60 100 60
+                     Q 88 60 84 70
+                     L 84 88
+                     L 78 88
+                     Z"
+                  fill="url(#hairGrad)"/>
+            <!-- Side fringe (a bit longer right) -->
+            <path d="M 80 38 Q 92 35 102 42 Q 96 50 88 52 Q 80 50 80 42 Z" fill="url(#hairGrad)"/>
+            <path d="M 110 38 Q 122 35 124 50 Q 122 60 116 62 Q 110 56 110 46 Z" fill="url(#hairGrad)"/>
+            <!-- Black headband (on TOP of hair, never over eyes) -->
+            <path d="M 76 36
+                     Q 100 20 124 36
+                     L 124 42
+                     Q 100 28 76 42 Z"
+                  fill="#0a0b0d"/>
+            <!-- Subtle eye hint (cool blue, not full eye, just a soft hint) -->
+            <ellipse cx="92" cy="60" rx="2.5" ry="1.8" fill="#8aa3b8" opacity="0.5"/>
+            <ellipse cx="108" cy="60" rx="2.5" ry="1.8" fill="#8aa3b8" opacity="0.5"/>
+            <!-- Lip hint -->
+            <path d="M 96 74 Q 100 76 104 74" stroke="#8a7a78" stroke-width="0.8" fill="none" opacity="0.6"/>
+          </g>
+        </svg>
       </div>
       <div class="status-line">
         <span class="label">смотрит</span>

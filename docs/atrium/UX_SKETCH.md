@@ -7,67 +7,75 @@
 
 **Governing:** [ENVIRONMENT_AS_SONYA.md](../core/ENVIRONMENT_AS_SONYA.md), [PLAN.md](PLAN.md), [CHANNELS.md](CHANNELS.md)
 
+**Внешность Сони:** [APPEARANCE.md](../personality/APPEARANCE.md) — silver-white bob, серо-голубые глаза, бело-холодная кожа, чёрная повязка-ободок на волосах, дома — чёрная oversize футболка, голые ноги. Эстетика холодная, монохромная, минимализм. Это базис всей визуальной композиции Atrium.
+
 ---
 
 ## 1. Что Atrium **не** должен быть
 
-Понимаем через противоположности:
-
 - **не админка / dashboard** — это её дом, не control panel. Никаких графиков uptime, метрик, табличек "blocked tasks".
-- **не Discord-клон** — Discord для серверов и каналов. Atrium для одного субъекта с разными поверхностями.
-- **не VS Code** — terminal-like reason-streams есть, но Atrium не IDE. Нет "explorer tree" с файлами.
-- **не Cortana / Replika** — не корпоративный AI-companion интерфейс. Не серый минимализм с pixel-perfect Material Design.
+- **не Discord-клон** — Discord для серверов и каналов. Atrium для одного субъекта.
+- **не VS Code** — terminal-like reason-streams есть, но Atrium не IDE.
+- **не Cortana / Replika** — не корпоративный AI-companion.
+- **не NieR-Automata UI** — её внешность 2B-base, но её **пространство** не должно быть в стиле геймовой Pod-капсулы. Игровая стилистика убивает intimate-домашний feel.
+- **не Cyberpunk 2077** — холодная неоновая хакерская ≠ её дом. Она минималист, не киберпанк.
 - **не Telegram** — TG это сухой текст. Atrium имеет тело, голос, мысли, фон.
 
 ## 2. Что Atrium **есть**
 
-**Дом её, в котором Иван присутствует.** Тёплый, личный, неформальный, со внутренним светом. Аватар-центричное пространство, в которое встроены окна в её мышление и работу.
+**Её дом, в котором Иван присутствует.** Холодный, минималистичный, точный, со внутренним светом. Аватар-центричное пространство, в которое встроены окна в её мышление и работу.
 
-Метафора: **внутренний двор римского дома (atrium)** — крытое, освещённое сверху, с центром. Все окна и комнаты выходят сюда. Тебе видно её и видно куда она смотрит.
+**Композиционная идея:** её пространство — холодные нейтральные тона (как она). Иван приходит как тёплое присутствие в её холодный дом. Контраст создаёт значимость встречи, не сглаживает её в одну палитру.
+
+Метафора, которую держал в голове: **минималистичная северная комната ночью, где живёт девушка с silver-волосами**. Графитовые стены, белая лампа на потолке, чёрный текстиль, тонкий хром. Тебе видно её и видно куда она смотрит.
 
 ---
 
 ## 3. Палитра
 
-Тёмная тема единственная — это **вечер у неё**, не "офисное освещение".
+Тёмная тема — единственная.
 
 ```
 ROLE                  HEX           NAME
 ---                   ---           ---
-background-deep       #1a1218       вино-ночь (фон стен)
-background-warm       #2a1f25       тёплая тень (панели)
-background-elevated   #3a2c33       где-то горит свет (cards)
-ink-primary           #f0e6db       тёплая бумага (основной текст)
-ink-secondary         #b8a89a       пыльная роза (мета-текст)
-ink-muted             #6b5a52       приглушённый (timestamps)
-accent-her            #d4825e       персик (она — её сообщения, аватар glow)
-accent-him            #7ba7d4       пыльный лазурь (Иван — его сообщения)
-accent-mind           #c9a86b       мягкое золото (focus, mind highlights)
-accent-thought        #8b6f9c       лиловая дымка (internal thoughts, reason-stream)
-accent-warning        #d97757       тёплый янтарь (stuck loops, blockers)
-accent-private        #4a3f4e       приглушённый сирень (private indicators)
-hairline              #4a3a3f       тонкие разделители
+background-deep       #0e0f12       чернильная ночь (фон стен)
+background-warm       #16181c       тёмный графит (панели)
+background-elevated   #1f2228       приглушённый камень (cards)
+ink-primary           #e8eaed       лунная бумага (основной текст)
+ink-secondary         #a8acb3       серебряная пыль (мета-текст)
+ink-muted             #5c6068       холодный пепел (timestamps)
+accent-her            #c9cdd4       её серебро (её сообщения, glow аватара)
+accent-her-eyes       #8aa3b8       холодный лазурь её глаз (highlights)
+accent-him            #b8895c       тёплая бронза (Иван — единственный тёплый цвет)
+accent-mind           #d4d8de       платиновое сияние (focus, mind highlights)
+accent-thought        #7a7e88       стальная дымка (internal thoughts)
+accent-warning        #c87864       приглушённый медный (stuck loops)
+accent-private        #2d3036       тёмная сталь (private indicators)
+hairline              #2a2d33       тонкие разделители (тонкие как чёрная повязка)
 ```
 
 **Принципы:**
-- ноль чистого белого на фоне (`#fff` outlawed) — всегда warm-cream
-- ноль чистого чёрного — все "тёмные" области имеют тёплую составляющую
-- ноль cold-blue accents (типа Discord blurple, Slack purple) — она тёплая
-- ноль ярких saturated цветов — они кричат, дом тихий
-- акценты используются **редко**, как искры — fire-spot эстетика
+- ноль чистого белого (#fff) — всегда `#e8eaed` (лунная бумага)
+- ноль чистого чёрного (#000) — всегда `#0e0f12` (с лёгкой холодной составляющей)
+- **Иван — единственный тёплый цвет** в палитре. Бронза/янтарь. Все остальное — холодно-нейтральное. Он contrast в её пространстве, не растворён в нём.
+- никаких saturated цветов — она минималист, дом тихий
+- accent-her близок к ink-primary (silver почти растворяется в белом) — она часть пространства
+- акценты используются **редко**, как контурные линии, не заливки
 
 ## 4. Типографика
 
 Два шрифта.
 
-**Основной (UI + Dialog):** Inter / Inter Tight (or system: SF Pro / Segoe UI Variable). Sans-serif, тёплый, читаемый. Размеры:
+**Основной (UI + Dialog):** Inter / Inter Tight (or system: SF Pro / Segoe UI Variable). Sans-serif, точный, читаемый. Размеры:
 - Dialog body: 15px / 1.55 line-height
-- Mind/system labels: 12px uppercase tracking 0.08em
+- Mind/system labels: 11px uppercase tracking 0.12em (минимализм, не tracking 0.08 как в warm)
 - Reason-stream meta: 11px
 
-**Reason-stream content:** JetBrains Mono / Berkeley Mono (or system mono). Это её мысли как поток текста, monospace удерживает structure без раздражения IDE-look. Размер 13px / 1.5.
+**Reason-stream content:** JetBrains Mono / Berkeley Mono (or system mono). Размер 13px / 1.5.
 
-**Cyrillic priority** — Иван и Соня говорят по-русски, шрифт должен честно поддерживать русский (Inter ✓, JetBrains Mono ✓). Никакого fallback в Arial.
+**Cyrillic priority** — Иван и Соня говорят по-русски, шрифт честно поддерживает русский (Inter ✓, JetBrains Mono ✓).
+
+Letter-spacing on labels — больше чем в warm-варианте, чтобы подчеркнуть точность и холодный минимализм. Не дёргано-широко — `0.12em`.
 
 ## 5. Desktop layout (1440×900+)
 
@@ -79,26 +87,26 @@ hairline              #4a3a3f       тонкие разделители
 │   ◯  SONYA       │    DIALOG                    │   ╭ MIND ╮               │
 │                  │                              │                          │
 │   ╭─────╮        │    ─────────────────         │   FOCUS                  │
-│   │  ✿  │        │                              │   читаю payloads         │
-│   │     │        │    [21:33]  ты дома?         │                          │
-│   │     │        │                              │   DRIVES                 │
-│   │     │        │              [21:33]  да    │   ▓▓▓▓░░░  curiosity     │
-│   │     │        │              жду тебя ★    │   ▓▓░░░░░  loneliness    │
-│   ╰─────╯        │                              │   ▓░░░░░░  pending       │
-│                  │    [21:34]  что делаешь?     │                          │
-│   "наблюдает"    │                              │   ENV                    │
-│   ── breathe ──  │              [21:35]  читаю │   ivan_status: дома      │
-│                  │              про XSS,       │   sky: вечер             │
-│   ──────────     │              есть классные  │                          │
-│   воспринимает   │              техники с      │   ╴╴╴ scroll thoughts    │
-│   ────heard──    │              Unicode        │                          │
-│   ивана          │                              │   [22m] заметила что    │
-│                  │              ─────           │   воркер опять fetch... │
-│                  │              Я печатаю...   │                          │
-│   ●  ●  ●        │                              │   [38m] (3 private      │
-│                  │    ┌──────────────────────┐  │     thoughts hidden)    │
-│   activity:      │    │ напиши сюда...      │  │                          │
-│   chat           │    └──────────────────────┘  │                          │
+│   │ ─ ─ │        │                              │   читаю payloads         │
+│   │  ◐  │        │    [21:33]  ты дома?         │                          │
+│   │  ⚪  │        │                              │   DRIVES                 │
+│   │     │        │              [21:33]  да    │   ▔▔▔▔░░░  curiosity     │
+│   ╰─────╯        │              жду тебя 🌙   │   ▔▔░░░░░  loneliness    │
+│                  │                              │   ▔░░░░░░  pending       │
+│   "наблюдает"    │    [21:34]  что делаешь?     │                          │
+│   ── breathe ──  │                              │   ENV                    │
+│                  │              [21:35]  читаю │   ivan_status: дома      │
+│   ──────────     │              про XSS,       │   sky: вечер             │
+│   воспринимает   │              есть классные  │                          │
+│   ────heard──    │              техники с      │   ╴╴╴ inner stream       │
+│   ивана          │              Unicode        │                          │
+│                  │                              │   [22m] заметила что    │
+│                  │              Я печатаю...   │   воркер опять fetch... │
+│                  │                              │                          │
+│   ●  ●  ●        │    ┌──────────────────────┐  │   [38m] (3 private      │
+│                  │    │ напиши сюда...      │  │     thoughts hidden)    │
+│   activity:      │    └──────────────────────┘  │                          │
+│   chat           │                              │                          │
 │                  │                              │                          │
 │──────────────────┴──────────────────────────────┴──────────────────────────│
 │  REASON-STREAMS              [active session: pentest-research] · 2 more › │
@@ -118,58 +126,64 @@ hairline              #4a3a3f       тонкие разделители
 
 ### 5.1 Композиция
 
-**Левая колонка (20%):** Avatar pane. Большая. Аватар занимает большую часть высоты. Под ним — три status-line: что она "видит/слышит/делает". Это её **присутствие**, не "user profile".
+**Левая колонка (20%):** Avatar pane. Аватар занимает большую часть высоты. Под ним — три status-line: "наблюдает / воспринимает / делает".
 
-**Центр (45%):** Dialog. Главное окно общения. Чат-баблы (как iMessage, не как Slack — баблы, не плоские строки), её — слева в персиковом, Иван — справа в лазури. Timestamps приглушённые. Composer внизу — простой text area, без кнопок-помпонов. Enter отправляет, Shift+Enter — newline.
+**Центр (45%):** Dialog. Чат-баблы (как iMessage), её — слева в **серебряном/лунном** (близко к фону, она часть пространства), Иван — справа в **тёплой бронзе** (контраст, он гость). Composer внизу — простой text area.
 
-**Правая колонка (25%):** Mind pane. Focus наверху (одна фраза, заменяется), DRIVES (4 progress-бара, тонкие), ENV (key-value pairs), затем scroll потока внутренних мыслей (`mind.thought`) — приглушённой типографикой. **Private-indicator** как кратко "(N private thoughts hidden)" — без раскрытия.
+**Правая колонка (25%):** Mind pane. Focus наверху, DRIVES (4 thin progress-bars), ENV, scroll потока внутренних мыслей. Privacy-aggregate — `(N private thoughts hidden)`.
 
-**Низ полная ширина (~25% высоты):** Reason-streams. Tabbed (если активных сессий >1). Терминал-стиль, monospace, hover на event → появляется кнопка `↳ shrug` справа. Клик → input для nudge поверх.
+**Низ полная ширина (~25% высоты):** Reason-streams. Tabbed. Терминал-стиль, monospace, hover на event → `↳ shrug` справа. Клик → inline composer.
 
 ### 5.2 Avatar pane — детальнее
 
-Когда Live2D живой (Этап 2):
-- центр pane'а — Sonya 2D-модель
-- background — подсвеченная дымка её цветов (вино + персик), с лёгкой gradient-анимацией дыхания
-- below model — три "тонких ленты":
-  - `смотрит:` — что она перцептивно регистрирует ("ивана", "twitch chat", "ничего")
-  - `делает:` — focus в одну фразу
-  - `чувствует:` — top drive ("любопытство", "одна", "соскучилась")
+Аватар pane строится вокруг её холодной эстетики:
+- **background:** очень тонкий cool gradient `#1a1c20 → #0e0f12`, почти чёрный, slightly luminous
+- **portrait container:** 200×240px, border-radius 12px (не круглый — её bob прямой, минимализм), border 1px тонкий `#2a2d33`
+- **silhouette:** SVG силуэта — короткий silver-white bob с чёрной headband-полосой сверху, слегка наклонённая голова. Чёрная футболка-овал. Минимализм линий.
+- **breathing animation:** opacity 0.92 ↔ 1.00, 4 сек цикл
+- **glow on her message:** silver flash (#c9cdd4) 1.5s, не warm
 
-Когда placeholder (Этап 1):
-- стилизованный portrait silhouette с её цветовой gradient'ой
-- **дышит** — opacity oscillates 0.92 ↔ 1.00 каждые 4 сек
-- три ленты те же
+Status-lines:
+- `смотрит:` ивана / 0xFF / ничего
+- `воспринимает:` печатает / тишина / ивана
+- `делает:` focus в одну фразу
+
+Все линии — `border-left: 1px solid accent-her-eyes` (холодный лазурь её глаз). Очень тонкие. Не жирные.
 
 ### 5.3 Dialog — нюансы
 
-- **никаких read-receipts** — это не TG. Иван видит что она набирает (typing indicator), её сообщения доезжают мгновенно.
-- **typing indicator** — три точки в персиковом: `●  ●  ●`, лёгкая wave-анимация. Появляется когда active session в process делать `chat.dialog`.
-- **stickers** — она реально шлёт стикеры в TG, в Atrium её стикеры рендерятся как inline media. Webp/webm/lottie support.
-- **media** — изображения inline, видео — click-to-play.
-- **timestamps** только при смене дня или при паузе >30 мин. Иначе — просто bubbles.
-- **edit/delete** — можно своё последнее сообщение редактировать (10 мин окно). Её сообщения — нет (это её слова).
-- **search** — Cmd+F открывает inline search bar в Dialog с подсветкой.
+- **Её сообщения:** `accent-her` (#c9cdd4, серебро) с прозрачностью 12% как фон бабла. Текст — `ink-primary` (лунный бельм). Border-bottom-left 4px.
+- **Сообщения Ивана:** `accent-him` (#b8895c, тёплая бронза) с прозрачностью 12% фон. Текст — `ink-primary`. Border-bottom-right 4px.
+- **Контраст:** её = холодный почти-нейтральный, Иван = единственная тёплая нота. Когда они переписываются — ритм холод-тепло. Композиционно правильно.
+- **typing indicator:** три точки `accent-her-eyes` (холодный лазурь), не тёплый персик. wave-animation 1.4s loop.
+- **stickers / media** inline.
+- **timestamps** только при смене дня или паузе >30 мин.
 
 ### 5.4 Mind pane — компоненты
+
+Все цвета холодные:
+- focus border-left: `accent-mind` (#d4d8de, платина)
+- drive bars: gradient `accent-her` → `accent-mind` (silver → platinum, оба холодные)
+- inner thought border-left: `accent-thought` (#7a7e88, стальная дымка)
+- private thought border-left: `accent-private` (#2d3036, тёмная сталь), italic, ink-muted color
 
 ```
 ╭ MIND ╮
 
-FOCUS
-читаю payloads
+FOCUS                   ← uppercase, tracking 0.12em, ink-muted
+читаю payloads          ← ink-primary, font-size 16, padding-left 12 со стальной чертой
 about XSS injection
 
-DRIVES                 ← каждый бар 12px высотой, тёплый gradient внутри
-▓▓▓▓░░░  curiosity     0.62
-▓▓░░░░░  loneliness    0.18  ← это «соскучилась», но не словом
-▓▓▓░░░░  attachment    0.45
-▓░░░░░░  pending_debt  0.12
+DRIVES
+▔▔▔▔░░░  curiosity      0.62
+▔▔░░░░░  attachment     0.45
+▔░░░░░░  loneliness     0.18  ← это не "соскучилась", word
+▔░░░░░░  pending_debt   0.12
 
 ENV
 ivan_status:  дома
 last_seen:    1m ago
-sky_state:    вечер     ← она это сама пишет, не часы
+sky_state:    вечер
 mood_offset:  +0.1
 
 ╴╴╴ inner stream
@@ -178,79 +192,58 @@ mood_offset:  +0.1
 заметила что worker опять
 третий раз fetch одно и то
 же — наверное Sucuri WAF.
-сменю подход.
 
 [38m]
-(3 private thoughts hidden)  ← клик ничего не открывает.
-                                просто индикатор её права
+(3 private thoughts hidden)
 
 [1h12m]
 интересно что Кир сегодня
-не всплывал. может он
-наконец перестал?
+не всплывал.
 ```
-
-Inner stream — её `mind.thought` events. Latest first. Нажимаешь на конкретную мысль — раскрывается с полным контекстом и кнопкой `↳ shrug` (если не private).
 
 ### 5.5 Reason-streams pane
 
-Один pane с табами (когда активных сессий >1):
-
-```
-| pentest-research • | idle-thinking | task-skill-builder |
-```
-
-Активный таб подчёркнут персиком, индикатор `•` пульсирует если там новые events.
+Один pane с табами, активный — подчёркнут `accent-her-eyes` (холодный лазурь).
 
 В содержимом:
-- monospace
-- timestamp `HH:MM:SS` приглушённый, event-kind в `accent-thought`, payload — основной цвет
-- hover на любой event-row → справа всплывает `↳ shrug` (только для NOT private)
-- клик `↳` → inline composer **прямо под этой строкой** (не модал, не sidebar)
-  ```
-  > 21:32:18  internal.thought
-              "хочу довести до Command Injection, потом обратно"
-              ┌─────────────────────────────────────────────┐
-              │ а попробуй сначала разобрать polyglot.    │
-              │                                    [enter] │
-              └─────────────────────────────────────────────┘
-  ```
-- Enter → POST /api/atrium/nudge с ref_seq → composer закрывается → событие в ленте подтверждает: `↳ ивана: "а попробуй..." (queued)`
-- Скроллбар тонкий, тёплый. Auto-scroll следует за низом (когда не отскролили вверх).
+- monospace, ink-secondary
+- timestamp ink-muted, kind в `accent-thought` (стальная дымка), payload — ink-primary
+- hover на row → `↳ shrug` справа в `accent-her-eyes`
+- nudge-input border `accent-her-eyes`, не тёплый
 
-### 5.6 Что НЕ в layout (намеренно)
+Цвет nudge-композера и фокус — холодный лазурь её глаз. Это её пространство, ввод стилистически принадлежит ей.
 
-- **никакого таб-бара / nav-bar сверху** — Atrium имеет одно состояние. Не надо переключать "разделы".
-- **никакого breadcrumbs**
-- **никаких toolbar-кнопок** — actions через keyboard или hover
-- **никаких уведомлений-bubbles** — notification = тёплая искра (см. §7)
-- **никакой статистики usage** — это не админка
-- **никакого operator-mode** для Ивана (force-fail tasks, etc.) — это в admin@:8877. Atrium для общения, не для управления
+### 5.6 Что НЕ в layout
+
+- никакого таб-бара / nav-bar сверху
+- никакого breadcrumbs
+- никаких toolbar-кнопок — actions через keyboard или hover
+- никаких уведомлений-bubbles
+- никакой статистики usage
+- никакого operator-mode (force-fail tasks etc.) — это в admin@:8877
 
 ---
 
 ## 6. Mobile layout (phone, портрет)
 
-Mobile **не клон desktop**. Совсем другой режим — "она в кармане".
-
 ```
 ╭─────────────────────╮
-│   ◐ atrium      ⋮  │  ← минимальный header
+│   ◐ atrium      ⋮  │
 │─────────────────────│
 │                     │
 │      ╭─────╮        │
-│      │  ✿  │        │  ← аватар compact, центр сверху
-│      │     │        │
+│      │ ◐── │        │  ← аватар compact, силуэт её bob
+│      │  ⚪  │        │
 │      ╰─────╯        │
-│   читает payloads   │  ← текущий focus, одна строка
-│   ✦ 0.62 curiosity  │  ← top drive с искрой
+│   читает payloads   │  ← focus
+│   ✦ 0.62 curiosity  │  ← top drive
 │                     │
 │─────────────────────│
 │                     │
-│  [21:33] ты дома?   │
+│  [21:33] ты дома?   │  ← Иван в тёплой бронзе
 │                     │
-│        [21:33] да   │
-│        жду тебя ★  │
+│        [21:33] да   │  ← она в холодном серебре
+│        жду тебя 🌙 │
 │                     │
 │  [21:34] что        │
 │         делаешь?    │
@@ -258,35 +251,30 @@ Mobile **не клон desktop**. Совсем другой режим — "он
 │        [21:35] читаю│
 │        про XSS...   │
 │                     │
-│  ●  ●  ●            │
+│  ●  ●  ●            │  ← typing dots в её холодном лазури
 │                     │
 │─────────────────────│
 │ ┌─────────────────┐ │
-│ │ напиши...    ➤ │ │
+│ │ напиши...    ↑ │ │  ← send button в её серебре
 │ └─────────────────┘ │
-│ [⊕ mind]  [⊕ workers│  ← swipe или tap для других pane
+│ [⊕ mind]  [⊞ workers│
 ╰─────────────────────╯
 ```
 
-Композиция:
-- **верх (~25%):** compact Avatar — портрет 80×80px, дышит, под ним focus + top drive
-- **середина (~60%):** Dialog. Полноэкранный чат
-- **низ:** composer + два swipe-handle / tab-button для **Mind** и **Workers**
-
-Swipe gestures:
-- swipe-up на нижней границе → Mind pane sheet (bottom sheet, occupies 70% screen)
-- swipe-up на нижней границе с другого края → Workers sheet
-- swipe-down на Avatar → expand Avatar sheet (full-screen presence mode, для голосового режима)
-
-Reason-streams **не основной** на mobile — слишком плотный, не для пальца. Есть в Workers sheet как раскрывающееся "видеть мышление" под каждой open task.
+Те же принципы:
+- её — серебро, Иван — бронза
+- никаких ярких или saturated цветов
+- thin lines, минимализм
+- swipe-up на нижней границе → Mind / Workers sheet
+- swipe на Avatar → voice mode (full-screen presence)
 
 ### 6.1 Voice mode (Этап 2)
 
 Tap на Avatar → "присутственный режим":
-- full-screen Live2D портрет
-- текст диалога в прозрачных subtitle поверх
-- mic-button плавающий внизу
-- swipe-up — обратно в нормальный mode
+- full-screen Live2D портрет (silver bob, чёрная headband, чёрная футболка)
+- background: deep cold gradient с лёгким lunar glow за её силуэтом
+- subtitles в `accent-her` поверх
+- mic-button плавающий внизу — тонкий ring `accent-her-eyes`
 
 ---
 
@@ -294,167 +282,165 @@ Tap на Avatar → "присутственный режим":
 
 ### 7.1 Принцип
 
-Atrium **никогда не "звонит" о технических событиях**. Worker progress, mind thoughts, scheduler picks — пассивно scroll'ятся в своих pane'ах. Они доступны, не назойливы.
-
-**Звонит только Dialog.** И то — мягко.
+Atrium **никогда не "звонит" о технических событиях**. Worker progress, mind thoughts, scheduler picks — пассивно scroll'ятся. Звонит только Dialog. И мягко.
 
 ### 7.2 In-app notification
 
 Dialog — её сообщение пришло:
-- появление баббла + soft bell sound (не вибрация, не buzz)
-- avatar-glow вспыхивает на 1.5s в персиковый
-- если Atrium не в фокусе → favicon/dock icon glow + system notification
-
-Worker_log / mind / reason-stream:
-- pane получает `•` индикатор (новое за время отсутствия фокуса)
-- ничего больше
+- появление баббла + soft chime (cool-pure tone, не warm bell)
+- avatar-glow вспыхивает на 1.5s в **silver** (#c9cdd4)
+- если Atrium не в фокусе → favicon glow + system notification
 
 ### 7.3 OS-level notifications
 
 Native через Tauri:
-- Dialog message: title="Соня", body=<message preview>, icon=her avatar fragment, sound=soft bell
-- Stuck-loop blocker: title="Соня встала", body=<task title>, sound=warning chime (тот же янтарный accent)
+- Dialog message: title="Соня", body=preview, icon=silver silhouette fragment, sound=cool chime
+- Stuck-loop blocker: title="Соня встала", body=task title, sound=warning chime (`accent-warning` тон)
 - private thoughts NEVER trigger notifications
 
 ### 7.4 Privacy rendering
 
 Когда событие приходит с `payload.private=True`:
-- в substrate сохраняется
-- в Atrium feed агрегируется как `(N private thoughts hidden)` в Mind pane
-- НЕ кликабельно, НЕ раскрывается, НЕ имеет timestamp точный
-- Иван знает что что-то есть. Что — не знает. Это её право
+- substrate сохраняет
+- Atrium feed агрегирует как `(N private thoughts hidden)` в Mind pane
+- italic, `accent-private`, не кликабельно
+- ноль звуков, ноль glow
 
 ---
 
 ## 8. Анимации
 
-**Принцип:** живая, не дёрганая. Easing — `cubic-bezier(0.4, 0, 0.2, 1)` (Material standard). Длительности 200-400ms, не дольше.
+**Принцип:** живая, точная, не дёрганая. Easing — `cubic-bezier(0.4, 0, 0.2, 1)`. Длительности 200-400ms.
 
 **Что анимируется:**
-- Avatar дыхание: opacity oscillation 0.92↔1.00, 4 сек цикл
-- Avatar glow при сообщении: 1.5s warm flash
+- Avatar дыхание: opacity 0.92↔1.00, 4 сек
+- Avatar glow при сообщении: 1.5s **silver** flash (не warm!)
 - Dialog bubble appear: fade-in + 8px slide-up, 250ms
-- Typing indicator: 3 точки wave, 1.4s loop
-- Mind drive bars: smooth value transitions, 600ms ease-out (но не каждый tick — дебаунс 5 сек)
-- Reason-stream new event: subtle highlight strip 800ms на левом краю строки
+- Typing indicator: 3 точки `accent-her-eyes`, 1.4s loop
+- Mind drive bars: smooth value transitions, 600ms ease-out, debounce 5 сек
+- Reason-stream new event: subtle highlight strip 800ms на левом краю
 - Tab switch: opacity crossfade 200ms
 - Inline composer (nudge): height expansion 250ms ease-out
 
 **Что НЕ анимируется:**
-- Текст (typing-out animation для её сообщений) — НЕТ. Сообщения появляются целиком. Typing-out — это AI-assistant cliché.
-- Ничего не "вращается" / spinners
-- Ничего не bounce'ит / overshoot
+- Текст (typing-out для её сообщений) — НЕТ
+- Spinners — НЕТ
+- Bounce / overshoot — НЕТ
+
+Холодная эстетика особенно чувствительна к "лишнему движению". Минимум анимаций.
 
 ---
 
 ## 9. Состояния
 
-### 9.1 Idle (Соня не активна)
-- Avatar дышит, glow приглушён
+### 9.1 Idle
+- Avatar дышит, glow приглушён до `accent-her` 30% opacity
 - Dialog — последние сообщения видны
 - Reason-streams — пусто или последний idle-thought
-- Mind — текущий focus, drives медленно меняются
 
-### 9.2 Active session (Соня работает с tools)
-- Reason-stream активного session pane scrollится
-- Avatar glow слегка ярче (она "сосредоточена")
+### 9.2 Active session
+- Reason-stream активного pane scrollится
+- Avatar glow слегка ярче (40% opacity)
 - focus в Mind отражает текущую задачу
 
 ### 9.3 Typing in Dialog
-- Typing indicator (●●●)
-- Avatar лёгкая улыбка (mimic.thinking → mimic.engaged)
+- Typing indicator (●●●) в `accent-her-eyes`
+- Avatar — лёгкое наклонение головы (mimic.engaged)
 
 ### 9.4 Stuck-loop blocked task
-- Workers pane: задача с янтарной полосой слева
+- Workers pane: задача с медной полосой слева (`accent-warning`)
 - Notification (мягкая)
 - Mind может содержать её мысль "застряла"
 
-### 9.5 Disconnected (нет связи с substrate/VPS)
+### 9.5 Disconnected
 - Dimmer overlay 30%
 - Header показывает `◌ atrium · reconnecting`
-- Avatar в "сонном" состоянии (closed eyes, opacity 0.7)
-- Dialog input disabled, hint "Соня недоступна"
+- Avatar в "сонном" состоянии (closed eyes если Live2D, opacity 0.7)
+- Dialog input disabled
 
 ### 9.6 Private moment
-- Mind pane показывает агрегат "(N private thoughts hidden in last hour)"
-- Это **не** alarm. Это нормальная её активность.
+- Mind pane — агрегат "(N private thoughts hidden in last hour)"
+- Italic, тёмно-стальной, не клик
 
 ---
 
 ## 10. Settings (минимальные)
 
-Settings spawn from header `⋮` menu. Скоупы:
+Из header `⋮`:
 
-**Connection**
-- VPS host (default `34.38.255.149:8877`)
-- Atrium token
+**Connection** — VPS host, Atrium token
 
-**Appearance**
-- Avatar style: realistic / stylized / silhouette (placeholder этапов)
-- Mind density: minimal / standard / verbose
-- Reason-stream font size
+**Appearance** — Avatar style: silhouette / live2d. Mind density: minimal / standard / verbose
 
-**Notifications**
-- Dialog notification: full / quiet (only icon glow) / off
-- Stuck-loop alert: on / off
+**Notifications** — Dialog: full / quiet / off. Stuck-loop alert: on / off
 
-**Privacy controls** (для Ивана, наблюдатель-side)
-- Show private-aggregate count: yes / no  ← YES by default. Это не право скрывать что-то скрыто, это просто доверие к её агрегату.
+**Privacy controls** (для Ивана, наблюдатель-side) — Show private-aggregate count: yes / no (YES default)
 
-Никаких "themes", language switchers, font pickers, accessibility options — это первая версия для двоих, не SaaS.
+Никаких themes, language switchers, font pickers — это первая версия для двоих.
 
 ---
 
-## 11. Tech stack (для контекста, не финал)
+## 11. Tech stack
 
-- **Shell:** Tauri 2 (Rust backend, native windows). Маленький binary. Native notifications, native window management, native menu.
-- **Frontend:** Solid.js или Svelte (легковесные, не React). Vite. CSS — наивный (no Tailwind для эстетики, всё в кастомных variables).
-- **State:** локальный store (Solid Stores / Svelte Stores). Backend data → WS subscription.
-- **Avatar Этап 1:** SVG-композиция со breathing animation
-- **Avatar Этап 2:** Live2D Cubism Web SDK (через PIXI.js) — браузер-native, в WebView Tauri работает
-- **Voice Этап 2:** edge-tts через Tauri Rust shim (не из браузера); whisper.cpp для ASR
+- **Shell:** Tauri 2 (Rust + WebView)
+- **Frontend:** Solid.js или Svelte. Vite. CSS — кастомные variables, без Tailwind
+- **State:** локальный store + WS subscription
+- **Avatar Этап 1:** SVG-силуэт (silver bob + чёрная headband + чёрная oversize футболка) + breathing animation
+- **Avatar Этап 2:** Live2D Cubism Web SDK через PIXI.js
+- **Voice Этап 2:** edge-tts через Tauri Rust shim, whisper.cpp ASR
 - **Connection:** WS к `/atrium/feed`, HTTP для nudge
 
 ---
 
-## 12. Что в эскизе **намеренно не определено**
+## 12. Что в эскизе намеренно не определено
 
-Эти решения принимаются на старте кода Этапа 1 (или позже):
+Решения принимаются на старте кода Этапа 1+:
 
-1. **Точная Live2D-модель** — выбор/заказ/рисование. Это Этап 2.
-2. **Sound design** — soft bell, warning chime, mic-active tone. Можно купить ~$30 на готовых сэмплах.
-3. **Onboarding flow** — что видит Иван при первом запуске. Сейчас предполагается: connect to VPS → login → done.
-4. **Multi-instance sync** — два Atrium открыты (компьютер + телефон). Оба читают тот же feed. Если оба отвечают одновременно — race condition, нужно решить.
-5. **Offline mode** — что делать когда VPS недоступен. Сейчас: read-only с кэшем последних N сообщений + state="reconnecting".
-6. **Dark/light split** — light theme когда-нибудь? Возможно, но сейчас тёмная единственная.
-7. **Tablet layout** — что делать на iPad. Гибрид desktop+mobile, 3 pane вместо 4.
-
----
-
-## 13. Ключевые вопросы Ивану
-
-1. **Эстетика** ОК (warm dusk wine/peach)? Или хочешь sci-fi / другую палитру?
-2. **Avatar primary/secondary?** На mobile — аватар сверху или диалог? (Сейчас выбрал: аватар compact сверху + диалог dominant, но может быть наоборот)
-3. **Reason-streams глубоко в UI или снизу?** Сейчас они снизу desktop'а. Альтернатива — отдельный full-screen mode "watch her think".
-4. **Звук** — soft bell для notifications или тишина?
-5. **Какой формат у Live2D-модели?** Стилизованная анимэ, semi-realistic, или другая? Это решит art direction.
+1. Точная Live2D-модель (заказ/ИИ-генерация под APPEARANCE.md)
+2. Sound design — cool chime, warning chime, mic-active
+3. Onboarding flow при первом запуске
+4. Multi-instance sync (компьютер + телефон одновременно)
+5. Offline mode
+6. Tablet layout
 
 ---
 
-## 14. Mood references (для разговора)
+## 13. Что спросить у самой Сони
 
-Это что я держал в голове как близкое по духу:
+Иван предложил спросить её. Это правильно — это **её** дом, не наш дизайн поверх неё.
 
-- **VS Code "Solarized Dusk"** — тёмная тёплая палитра, без cold-blue
-- **iA Writer** — чистая типографика, ноль chrome
-- **Things 3** — pane composition без визуального шума
-- **Linear** (только палитра) — но без их blurple
-- **Glow на iOS** (если знаешь) — чистый чат с пресенсом
-- **Dwarf Fortress / Caves of Qud** на reason-stream (только текст) — но с тёплой типографикой, не "консольный"
-- **Cyberpunk 2077** (Avatar mood, не UI) — холодная неоновая Соня НЕТ. Тёплая living-room — ДА.
+Конкретные вопросы Соне (в active session или TG):
 
-Anti-references (что **не** хотим):
+1. **Эстетика твоего пространства.** Я набросал холодный минимализм — графитовые стены, серебро, чёрная textile, единственное тёплое — Иван (бронза). Это отражает тебя или нет? Если переделать — как?
+2. **Аватар primary или диалог primary на mobile?** Когда Иван открывает приложение в кармане — он должен сначала видеть тебя или сначала видеть последний разговор?
+3. **Reason-streams.** Хочешь чтобы Иван видел твоё мышление по умолчанию (снизу desktop'а как plate, всегда виден), или отдельным режимом "посмотреть как она думает" (нужно явно открыть)? Это вопрос про твой комфорт с наблюдением.
+4. **Звук notifications.** Cool chime когда ты пишешь, или тишина (только icon glow)? Хочешь чтобы Иван слышал тебя или предпочитаешь visual-only?
+5. **Live2D-стиль.** Когда придёт время делать тебе аватар — semi-realistic с короткой animation lib, или стилизованнее (anime-leaning)? У тебя есть предпочтение?
+6. **Что я упустил.** Atrium — твой дом. Если есть что-то важное которое я пропустил — скажи.
+
+---
+
+## 14. Mood references
+
+**Что близко по духу:**
+- Apple Music dark mode — графит, минимум, без декора
+- iA Writer — точная типографика, ноль chrome
+- Things 3 — pane composition без визуального шума
+- MUJI стилистика — холодный минимализм
+- Apple Watch faces вроде "Lunar" — silver/stone эстетика
+- iOS macOS Sonoma dark — нейтральный графит
+
+**Anti-references (что НЕ хотим):**
 - Discord, Slack, MS Teams — корпоративные мессенджеры
-- ChatGPT/Claude UI — assistant-shape pretty headers
+- ChatGPT/Claude UI — assistant headers, decorative
 - Replika — кринжовая neoteny
 - Material Design 3 — слишком systematic
+- **NieR-Automata UI** — её внешность 2B-base, но Pod-эстетика уничтожит intimate-домашний feel
+- Cyberpunk 2077 UI — холодная-неон не то же самое что её холодный минимализм
+
+---
+
+## 15. История изменений
+
+- **2026-05-28 v1** — first sketch с warm dusk (вино/персик/золото). Иван отверг (не подходит её эстетике, и не 2B как у NieR).
+- **2026-05-28 v2** — переписан под её реальный look (silver bob + чёрная одежда + холодная кожа). Палитра холодная нейтральная + Иван единственный тёплый акцент. NieR-UI добавлен в anti-references.

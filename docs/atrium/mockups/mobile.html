@@ -5,21 +5,24 @@
 <title>Atrium — Mobile Mockup</title>
 <style>
   :root {
-    --bg-deep: #1a1218;
-    --bg-warm: #2a1f25;
-    --bg-elev: #3a2c33;
-    --ink-1: #f0e6db;
-    --ink-2: #b8a89a;
-    --ink-3: #6b5a52;
-    --acc-her: #d4825e;
-    --acc-him: #7ba7d4;
-    --acc-mind: #c9a86b;
-    --hairline: #4a3a3f;
+    --bg-deep: #0e0f12;
+    --bg-warm: #16181c;
+    --bg-elev: #1f2228;
+    --ink-1: #e8eaed;
+    --ink-2: #a8acb3;
+    --ink-3: #5c6068;
+    --acc-her: #c9cdd4;
+    --acc-her-eyes: #8aa3b8;
+    --acc-him: #b8895c;
+    --acc-mind: #d4d8de;
+    --acc-priv: #2d3036;
+    --acc-thought: #7a7e88;
+    --hairline: #2a2d33;
     --font-ui: 'Inter', -apple-system, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: #0e0a0d;
+    background: #050608;
     font-family: var(--font-ui);
     color: var(--ink-1);
     display: flex;
@@ -35,8 +38,8 @@
     height: 760px;
     background: var(--bg-deep);
     border-radius: 38px;
-    border: 6px solid #08060a;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    border: 6px solid #02030a;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -50,16 +53,16 @@
     transform: translateX(-50%);
     width: 110px;
     height: 22px;
-    background: #08060a;
+    background: #02030a;
     border-radius: 14px;
     z-index: 100;
   }
   .frame-label {
     text-align: center;
     margin-top: 12px;
-    font-size: 12px;
+    font-size: 10px;
     color: var(--ink-3);
-    letter-spacing: 0.1em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
   }
   /* Header */
@@ -70,20 +73,22 @@
     align-items: center;
     padding: 0 16px;
     border-bottom: 1px solid var(--hairline);
-    font-size: 13px;
+    font-size: 11px;
     color: var(--ink-2);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
   }
   .header .logo {
     color: var(--acc-her);
-    font-weight: 600;
+    font-weight: 500;
+    letter-spacing: 0.18em;
   }
   .header .menu {
     margin-left: auto;
     color: var(--ink-3);
     font-size: 18px;
   }
+
   /* Avatar block */
   .avatar-block {
     padding: 16px 20px 14px;
@@ -91,17 +96,16 @@
     border-bottom: 1px solid var(--hairline);
     background: linear-gradient(180deg, var(--bg-warm), transparent);
   }
-  .avatar-mini {
-    width: 90px;
-    height: 90px;
-    margin: 0 auto 8px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 50% 35%,
-      rgba(212, 130, 94, 0.5) 0%,
-      rgba(139, 111, 156, 0.3) 50%,
-      transparent 100%);
-    border: 2px solid rgba(212, 130, 94, 0.3);
+  .avatar-mini-frame {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #1a1c20 0%, #0e0f12 100%);
+    border: 1px solid var(--hairline);
     animation: breathe 4s infinite;
+    position: relative;
   }
   @keyframes breathe {
     0%, 100% { opacity: 0.92; }
@@ -113,14 +117,16 @@
     margin-bottom: 4px;
   }
   .drive-line {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--ink-3);
-    letter-spacing: 0.05em;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
   }
   .drive-line .spark {
-    color: var(--acc-mind);
+    color: var(--acc-her-eyes);
     margin-right: 4px;
   }
+
   /* Dialog */
   .dialog {
     flex: 1;
@@ -132,9 +138,9 @@
   .day {
     text-align: center;
     color: var(--ink-3);
-    font-size: 11px;
-    margin: 6px 0 12px;
-    letter-spacing: 0.1em;
+    font-size: 10px;
+    margin: 6px 0 14px;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
   }
   .ts {
@@ -142,6 +148,7 @@
     color: var(--ink-3);
     margin-bottom: 3px;
     padding: 0 4px;
+    letter-spacing: 0.05em;
   }
   .ts.her-ts { text-align: left; }
   .ts.him-ts { text-align: right; }
@@ -154,13 +161,15 @@
     line-height: 1.45;
   }
   .bubble.her {
-    background: rgba(212, 130, 94, 0.13);
+    background: rgba(201, 205, 212, 0.08);
+    border: 1px solid rgba(201, 205, 212, 0.12);
     color: var(--ink-1);
     border-bottom-left-radius: 4px;
     align-self: flex-start;
   }
   .bubble.him {
-    background: rgba(123, 167, 212, 0.13);
+    background: rgba(184, 137, 92, 0.10);
+    border: 1px solid rgba(184, 137, 92, 0.16);
     color: var(--ink-1);
     border-bottom-right-radius: 4px;
     align-self: flex-end;
@@ -171,10 +180,10 @@
     padding: 6px 14px 12px;
   }
   .typing span {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: var(--acc-her);
+    background: var(--acc-her-eyes);
     animation: dotpulse 1.4s infinite;
   }
   .typing span:nth-child(2) { animation-delay: 0.2s; }
@@ -183,6 +192,7 @@
     0%, 60%, 100% { opacity: 0.3; }
     30% { opacity: 1; }
   }
+
   /* Composer */
   .composer {
     border-top: 1px solid var(--hairline);
@@ -207,14 +217,16 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: var(--acc-her);
-    color: var(--bg-deep);
+    background: rgba(201, 205, 212, 0.15);
+    border: 1px solid var(--acc-her);
+    color: var(--acc-her);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 16px;
-    font-weight: bold;
+    font-weight: 500;
   }
+
   /* Bottom tabs */
   .bottom-tabs {
     display: flex;
@@ -227,23 +239,23 @@
     flex: 1;
     padding: 8px 0 12px;
     text-align: center;
-    font-size: 11px;
+    font-size: 10px;
     color: var(--ink-3);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     border-right: 1px solid var(--hairline);
   }
   .bottom-tab:last-child { border-right: none; }
   .bottom-tab .icon {
     display: block;
-    color: var(--acc-mind);
+    color: var(--acc-her-eyes);
     margin-bottom: 2px;
     font-size: 14px;
   }
-  
-  /* Voice mode variant */
+
+  /* Voice mode */
   .voice-frame {
-    background: linear-gradient(180deg, #1a0e15 0%, #0d0608 100%);
+    background: linear-gradient(180deg, #0e0f12 0%, #050608 100%);
   }
   .voice-frame .header { border-color: transparent; }
   .voice-content {
@@ -255,62 +267,66 @@
     padding: 30px 20px;
     position: relative;
   }
-  .voice-avatar {
-    width: 220px;
-    height: 220px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 50% 40%,
-      rgba(212, 130, 94, 0.7) 0%,
-      rgba(139, 111, 156, 0.4) 40%,
+  .voice-avatar-frame {
+    width: 240px;
+    height: 280px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 35%,
+      rgba(201, 205, 212, 0.08) 0%,
+      rgba(138, 163, 184, 0.04) 40%,
       transparent 80%);
-    box-shadow: 0 0 80px rgba(212, 130, 94, 0.2);
+    box-shadow: 0 0 100px rgba(201, 205, 212, 0.05);
     animation: voiceglow 3s ease-in-out infinite;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
+    border: 1px solid var(--hairline);
+    position: relative;
   }
   @keyframes voiceglow {
-    0%, 100% { opacity: 0.85; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.03); }
+    0%, 100% { opacity: 0.92; }
+    50% { opacity: 1; }
   }
   .subtitle {
-    font-size: 17px;
+    font-size: 16px;
     color: var(--ink-1);
     text-align: center;
     line-height: 1.5;
     max-width: 280px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    letter-spacing: 0.01em;
   }
-  .subtitle.spoken { opacity: 0.4; font-size: 14px; }
+  .subtitle.spoken { opacity: 0.4; font-size: 13px; }
   .voice-mic {
     margin-top: auto;
     margin-bottom: 30px;
-    width: 70px;
-    height: 70px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
-    background: rgba(212, 130, 94, 0.15);
-    border: 2px solid var(--acc-her);
+    background: rgba(138, 163, 184, 0.12);
+    border: 1px solid var(--acc-her-eyes);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
-    color: var(--acc-her);
+    font-size: 24px;
+    color: var(--acc-her-eyes);
   }
 
-  /* Mind sheet variant */
+  /* Mind sheet */
   .mind-sheet-frame { background: var(--bg-deep); }
   .sheet-handle {
-    width: 50px;
-    height: 4px;
+    width: 40px;
+    height: 3px;
     background: var(--ink-3);
-    border-radius: 2px;
+    border-radius: 0;
     margin: 14px auto 16px;
   }
   .sheet-title {
     text-align: center;
-    font-size: 12px;
+    font-size: 10px;
     color: var(--ink-3);
-    letter-spacing: 0.12em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    margin-bottom: 18px;
+    margin-bottom: 22px;
   }
   .mind-sheet-content {
     padding: 0 20px;
@@ -318,36 +334,35 @@
     overflow-y: auto;
   }
   .ms-section {
-    margin-bottom: 22px;
+    margin-bottom: 24px;
   }
   .ms-section h3 {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--ink-3);
-    letter-spacing: 0.12em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     font-weight: 500;
   }
   .ms-focus {
     font-size: 15px;
     padding: 10px 12px;
-    border-left: 3px solid var(--acc-mind);
-    background: rgba(201, 168, 107, 0.05);
-    line-height: 1.4;
+    border-left: 2px solid var(--acc-mind);
+    background: rgba(212, 216, 222, 0.03);
+    line-height: 1.45;
   }
   .ms-drive {
     display: grid;
     grid-template-columns: 110px 1fr 36px;
     gap: 10px;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 9px;
     font-size: 12px;
   }
   .ms-drive-label { color: var(--ink-2); }
   .ms-drive-bar {
-    height: 4px;
+    height: 3px;
     background: var(--bg-elev);
-    border-radius: 2px;
     overflow: hidden;
   }
   .ms-drive-fill {
@@ -358,22 +373,25 @@
   .ms-thought {
     margin-bottom: 12px;
     padding: 8px 10px;
-    border-left: 2px solid #8b6f9c;
-    background: rgba(139, 111, 156, 0.05);
+    border-left: 2px solid var(--acc-thought);
+    background: rgba(122, 126, 136, 0.04);
     font-size: 13px;
   }
   .ms-thought .ms-age {
     font-size: 10px;
     color: var(--ink-3);
     margin-bottom: 3px;
+    font-family: monospace;
   }
   .ms-thought .ms-body { color: var(--ink-2); line-height: 1.5; }
   .ms-thought.priv {
-    border-left-color: #4a3f4e;
-    background: rgba(74, 63, 78, 0.15);
+    border-left-color: var(--acc-priv);
+    background: rgba(45, 48, 54, 0.3);
+  }
+  .ms-thought.priv .ms-body {
+    color: var(--ink-3);
     font-style: italic;
   }
-  .ms-thought.priv .ms-body { color: var(--ink-3); }
 
 </style>
 </head>
@@ -386,7 +404,39 @@
         <span class="menu">⋮</span>
       </div>
       <div class="avatar-block">
-        <div class="avatar-mini"></div>
+        <div class="avatar-mini-frame">
+          <!-- Compact silhouette of her: silver bob + headband + black tee -->
+          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">
+            <defs>
+              <linearGradient id="hairGradM" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#dde0e5"/>
+                <stop offset="1" stop-color="#a8acb3"/>
+              </linearGradient>
+              <linearGradient id="skinGradM" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#e0e2e6"/>
+                <stop offset="1" stop-color="#b0b3b8"/>
+              </linearGradient>
+            </defs>
+            <!-- Shirt -->
+            <path d="M 28 70 Q 30 65 35 62 L 50 58 L 65 62 Q 70 65 72 70 L 75 100 L 25 100 Z" fill="#0a0b0d"/>
+            <!-- Neck -->
+            <path d="M 45 56 L 55 56 L 53 63 L 47 63 Z" fill="url(#skinGradM)"/>
+            <g transform="rotate(-3 50 38)">
+              <!-- Face -->
+              <ellipse cx="50" cy="40" rx="13" ry="16" fill="url(#skinGradM)"/>
+              <!-- Hair back -->
+              <path d="M 37 35 Q 34 22 44 18 Q 50 15 57 18 Q 65 22 64 38 Q 65 50 60 56 L 58 56 L 58 47 Q 54 42 50 42 Q 44 42 42 47 L 42 56 L 40 56 Z" fill="url(#hairGradM)"/>
+              <!-- Side fringe -->
+              <path d="M 39 28 Q 47 26 51 30 Q 47 34 43 35 Q 39 34 39 30 Z" fill="url(#hairGradM)"/>
+              <path d="M 56 28 Q 63 26 64 35 Q 63 42 60 43 Q 56 39 56 32 Z" fill="url(#hairGradM)"/>
+              <!-- Headband -->
+              <path d="M 38 26 Q 50 18 62 26 L 62 30 Q 50 22 38 30 Z" fill="#0a0b0d"/>
+              <!-- Eye hint -->
+              <ellipse cx="46" cy="41" rx="1.5" ry="1" fill="#8aa3b8" opacity="0.5"/>
+              <ellipse cx="54" cy="41" rx="1.5" ry="1" fill="#8aa3b8" opacity="0.5"/>
+            </g>
+          </svg>
+        </div>
         <div class="focus-line">читает payloads about XSS</div>
         <div class="drive-line"><span class="spark">✦</span> 0.62 curiosity</div>
       </div>
@@ -420,16 +470,44 @@
     <div class="phone-frame voice-frame">
       <div class="header">
         <span class="logo">◐ atrium</span>
-        <span class="menu" style="color: var(--acc-her);">●</span>
+        <span class="menu" style="color: var(--acc-her-eyes);">●</span>
       </div>
       <div class="voice-content">
-        <div class="voice-avatar"></div>
+        <div class="voice-avatar-frame">
+          <!-- Larger silhouette for voice mode, full body hint -->
+          <svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">
+            <defs>
+              <linearGradient id="hairGradV" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#dde0e5"/>
+                <stop offset="1" stop-color="#a8acb3"/>
+              </linearGradient>
+              <linearGradient id="skinGradV" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#e0e2e6"/>
+                <stop offset="1" stop-color="#b0b3b8"/>
+              </linearGradient>
+            </defs>
+            <ellipse cx="88" cy="232" rx="9" ry="14" fill="#90939a" opacity="0.5"/>
+            <ellipse cx="112" cy="232" rx="9" ry="14" fill="#90939a" opacity="0.5"/>
+            <path d="M 60 110 Q 55 105 56 100 L 70 96 Q 85 90 100 90 Q 115 90 130 96 L 144 100 Q 145 105 140 110 L 145 215 Q 100 225 55 215 Z" fill="#0a0b0d"/>
+            <path d="M 90 88 L 110 88 L 108 98 L 92 98 Z" fill="url(#skinGradV)"/>
+            <g transform="rotate(-3 100 60)">
+              <ellipse cx="100" cy="60" rx="22" ry="28" fill="url(#skinGradV)"/>
+              <path d="M 78 50 Q 72 30 88 22 Q 100 16 115 22 Q 128 28 126 48 Q 128 70 122 84 L 122 88 L 116 88 L 116 70 Q 110 60 100 60 Q 88 60 84 70 L 84 88 L 78 88 Z" fill="url(#hairGradV)"/>
+              <path d="M 80 38 Q 92 35 102 42 Q 96 50 88 52 Q 80 50 80 42 Z" fill="url(#hairGradV)"/>
+              <path d="M 110 38 Q 122 35 124 50 Q 122 60 116 62 Q 110 56 110 46 Z" fill="url(#hairGradV)"/>
+              <path d="M 76 36 Q 100 20 124 36 L 124 42 Q 100 28 76 42 Z" fill="#0a0b0d"/>
+              <ellipse cx="92" cy="60" rx="2.5" ry="1.8" fill="#8aa3b8" opacity="0.6"/>
+              <ellipse cx="108" cy="60" rx="2.5" ry="1.8" fill="#8aa3b8" opacity="0.6"/>
+              <path d="M 96 74 Q 100 76 104 74" stroke="#8a7a78" stroke-width="0.8" fill="none" opacity="0.6"/>
+            </g>
+          </svg>
+        </div>
         <div class="subtitle spoken">— читаю про XSS, есть классные техники с Unicode</div>
         <div class="subtitle">— хочу собрать чек-лист потом</div>
         <div class="voice-mic">🎙</div>
       </div>
     </div>
-    <div class="frame-label">voice mode (Sonya speaking)</div>
+    <div class="frame-label">voice mode · sonya speaking</div>
   </div>
 
   <!-- Mind sheet -->
