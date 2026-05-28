@@ -90,6 +90,43 @@ class TaskService:
         task = self._store.increment_sessions_used(task_id)
         if notes or next_step:
             task = self._store.set_session_handoff(task_id, notes=notes, next_step=next_step)
+
+        # --- stuck-loop early detection ---
+        # Compare this next_step against the last 5 handoffs. If the same
+        # instruction appears 2+ times (including this one), the worker is
+        # spinning in place. Block immediately — don't wait for the
+        # internal_loop detector which needs 3 ticks and burns extra sessions.
+        if next_step and not task.is_resolved():
+            recent = self._store.get_last_handoffs(task_id, n=5)
+            # Count how many recent handoffs have the same next_step as this one.
+            # Use stem-normalized first-6-tokens for fuzzy matching (same logic
+            # as _detect_stuck_loop in internal_loop.py).
+            import re as _re
+            def _stem(s: str) -> str:
+                s = _re.sub(r"^\s*(?:\[no-progress retry(?:\s+#\d+)?\]\s*)+", "", s, flags=_re.IGNORECASE)
+                s = _re.sub(r"[^a-zа-яё0-9]+", " ", s.lower().strip())
+                tokens = s.split()[:6]
+                return " ".join(tokens)
+            this_stem = _stem(next_step)
+            repeat_count = sum(1 for h in recent if _stem(h) == this_stem)
+            # +1 for this handoff itself (not yet in continuity_events, but
+            # it's being written right now). If we have 2+ total, block.
+            if repeat_count >= 1:  # 1 in history + this one = 2 total
+                task = self._store.increment_stuck_loop_count(task_id)
+                blocker = (
+                    f"stuck loop detected: last {repeat_count + 1} handoffs all wrote the "
+                    f"same next_step ('{next_step[:120]}'). Worker tried this approach "
+                    f"{repeat_count + 1}x in a row without progress. Change approach "
+                    f"or fail the task."
+                )
+                task = self._store.set_blocker(task_id, blocker)
+                self._emit("task.stuck_loop_blocked", task, extra={
+                    "blocker": blocker[:200],
+                    "repeat_count": repeat_count + 1,
+                    "next_step": next_step[:200],
+                })
+                return task
+
         if task.session_budget_exhausted() and task.status not in (TaskStatus.DONE, TaskStatus.FAILED):
             failed = self._store.set_result(
                 task_id,
