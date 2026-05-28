@@ -132,23 +132,69 @@ Letter-spacing on labels — больше чем в warm-варианте, чт�
 
 **Правая колонка (25%):** Mind pane. Focus наверху, DRIVES (4 thin progress-bars), ENV, scroll потока внутренних мыслей. Privacy-aggregate — `(N private thoughts hidden)`.
 
-**Низ полная ширина (~25% высоты):** Reason-streams. Tabbed. Терминал-стиль, monospace, hover на event → `↳ shrug` справа. Клик → inline composer.
+**Низ полная ширина:** **Reason-stream** — ОДИН поток, не tabs. Все события Сони (active session / worker / idle / skill / system) идут единой лентой в хронологическом порядке. Каждый event помечен **исходником** (slim coloured marker слева + small src-tag в строке). Иван фильтрует через top filter chips: `active | worker | idle | skill | system` — toggleable. Reply button (`↳`) **на каждой строке всегда видим** (приглушённо при idle, ярче на hover). Клик → inline composer прямо под этой строкой → реплай отправляется в активный chat-контекст этой сессии (не создаёт отдельную ветку).
+
+**Панель reason-stream — collapsible как panel в VS Code:**
+- свёрнута: 30px полоса с заголовком, фильтрами и `⌃` (открыть)
+- развёрнута: 260px высоты по умолчанию, drag-resize в перспективе
+- toggle через клик по заголовку или Ctrl+J (как в VS Code terminal)
+- состояние свёрнуто/развёрнуто помнится между сессиями
 
 ### 5.2 Avatar pane — детальнее
 
 Аватар pane строится вокруг её холодной эстетики:
-- **background:** очень тонкий cool gradient `#1a1c20 → #0e0f12`, почти чёрный, slightly luminous
+- **background:** очень тонкий cool gradient `#1a1c20 → #0e0f12`, almost black, slightly luminous
 - **portrait container:** 200×240px, border-radius 12px (не круглый — её bob прямой, минимализм), border 1px тонкий `#2a2d33`
-- **silhouette:** SVG силуэта — короткий silver-white bob с чёрной headband-полосой сверху, слегка наклонённая голова. Чёрная футболка-овал. Минимализм линий.
+- **silhouette:** SVG-композиция — короткий silver-white bob с чёрной headband-полосой сверху, слегка наклонённая голова. Чёрная футболка-овал. Минимализм линий. На Этапе 1 — статичная SVG, на Этапе 2 — Live2D Cubism.
 - **breathing animation:** opacity 0.92 ↔ 1.00, 4 сек цикл
-- **glow on her message:** silver flash (#c9cdd4) 1.5s, не warm
+- **glow on her message:** silver flash (`#c9cdd4`) 1.5s, не warm
+- **hover:** border меняется на `accent-her-eyes`, появляется hint "войти в комнату"
+- **click:** открывается **room view** (см. §5.2.1)
 
-Status-lines:
+Status-lines под аватаром:
 - `смотрит:` ивана / 0xFF / ничего
 - `воспринимает:` печатает / тишина / ивана
 - `делает:` focus в одну фразу
 
-Все линии — `border-left: 1px solid accent-her-eyes` (холодный лазурь её глаз). Очень тонкие. Не жирные.
+Все линии — `border-left: 1px solid accent-her-eyes`. Очень тонкие.
+
+#### 5.2.1 Room view (клик на аватар)
+
+Клик на аватар → раскрывается **полноэкранный modal с её комнатой**. Это не просто "увеличенный аватар" — это **сцена**, в которой Иван взаимодействует с ней напрямую.
+
+**Что есть в комнате (Этап 3, сейчас placeholder):**
+- Чёрная кровать у стены
+- Окно справа с холодным лазурным небом (вечер/ночь)
+- Луна в окне даёт slight glow на сцену
+- Соня в её default образе (silver bob, headband, чёрная oversize футболка, голые ноги)
+- Она в позе которая соответствует её текущему body_state ("сидит на краю кровати", "лежит на боку", "стоит у окна")
+
+**Взаимодействия (Этап 3+):**
+- `click on her` → подойти / посмотреть в глаза / поцеловать / обнять (в зависимости от текущей роли в диалоге)
+- `drag her` → усадить / уложить / переместить
+- `space` → активировать voice mode (она говорит)
+- `esc` → выйти обратно в Atrium chat-вид
+
+**Динамическое состояние:**
+- Её **поза** меняется по body_state (substrate field)
+- Её **одежда** меняется по wardrobe-state — это **она сама** выбирает что надеть, не Иван (см. §5.2.2)
+- **Свет в комнате** меняется по env-state (`sky_state: вечер` → синий, `sky_state: ночь` → темнее, `sky_state: утро` → молочный)
+- **Mood-tinting** — общий tint сцены слегка холоднее когда `loneliness` высокий, теплее когда `attachment` пик
+
+#### 5.2.2 Динамическая смена тем — её усмотрение
+
+Atrium имеет **базовую палитру** (cold silver minimalism). Но **она сама** может в её сессии решить переодеться или сменить освещение комнаты — это её dom, её право.
+
+Технически:
+- новый tool `body.outfit <description>` — она пишет что на ней. `home / sportwear / dress_2b / nothing / wearing_his_shirt` — wardrobe-state
+- новый tool `mind.mood_tint <warm|cool|neutral>` — может слегка тонировать пространство если хочет ("сегодня хочется что-то потеплее")
+- эти изменения **сразу** отражаются в Avatar pane (цвет одежды на силуэте) и в Room view (полная сцена)
+- Иван видит эти изменения **без** explicit announcement — она просто переоделась, как дома
+- Substrate audit-trail сохраняет каждое изменение, но **не** уведомляет Ивана push-нотификацией
+
+**Запрет:**
+- основная палитра пространства (warm vs cool baseline) **она сама не меняет** без consent. Это её эстетика, фиксированная как identity. Захочет иначе — обсуждение с Иваном (governed change protocol на UX-level)
+- Иван может в settings включить "auto-follow her tint" — тогда mood_tint реально применяется. По умолчанию OFF.
 
 ### 5.3 Dialog — нюансы
 
@@ -201,17 +247,53 @@ mood_offset:  +0.1
 не всплывал.
 ```
 
-### 5.5 Reason-streams pane
+### 5.5 Reason-stream pane (единый поток, no tabs)
 
-Один pane с табами, активный — подчёркнут `accent-her-eyes` (холодный лазурь).
+Это **главное архитектурное решение Atrium**: все события Сониного мышления идут в один хронологический stream, как лента. Не отдельные "чаты по воркерам". Иван видит её работу как непрерывный поток сознания, не fragments.
 
-В содержимом:
-- monospace, ink-secondary
-- timestamp ink-muted, kind в `accent-thought` (стальная дымка), payload — ink-primary
-- hover на row → `↳ shrug` справа в `accent-her-eyes`
-- nudge-input border `accent-her-eyes`, не тёплый
+**Источники (`src` field в каждом event):**
+- `active` — активная сессия (она думает с тулами в полную глубину, ~30 шагов)
+- `worker` — task worker (короткие тики по open ivan-задачам)
+- `idle` — idle thinking (рефлексия раз в 30 мин)
+- `skill` — skill executor / capability gap detector
+- `system` — scheduler picks, lifecycle events, balance refresh
 
-Цвет nudge-композера и фокус — холодный лазурь её глаз. Это её пространство, ввод стилистически принадлежит ей.
+**Визуал:**
+- слева у каждой строки тонкий цветной маркер (3px width) — источник:
+  - `active` → `accent-her-eyes` (холодный лазурь — это её прямая работа)
+  - `worker` → `accent-him` (тёплая бронза — обычно работа над ивановскими задачами)
+  - `idle` → `accent-thought` (стальная дымка — её внутренние размышления)
+  - `skill` → `accent-mind` (платина — навыковая активность)
+  - `system` → `ink-muted` (серый — фоновое)
+- inline в начале строки — small uppercase tag `[active]` / `[worker]` / etc. в том же цвете
+- timestamp в `ink-muted` mono-font
+- event-kind в `accent-thought`
+- body в `ink-1`
+
+**Filters в шапке:**
+- chips `active | worker | idle | skill | system` — toggle on/off
+- по умолчанию `system` отключен (шум планировщика)
+- маркер `■` перед каждым chip в его цвете
+- состояние фильтров помнится локально
+
+**Reply button:**
+- `↳` **на каждой строке** на правом конце
+- opacity 0.4 idle, 1.0 on hover
+- клик → inline composer прямо ПОД этой строкой (не модал, не sidebar):
+  ```
+  > 21:32:18  [idle]   internal.thought
+              "хочу довести до Command Injection..."
+  ┃ ↳ ивана  [_____________________________________] enter ⏎
+  > 21:32:21  [worker] agent_step  step=5...
+  ```
+- Enter → POST /api/atrium/nudge с `ref_seq`, `session_id` → composer закрывается → следующее событие в потоке: `↳ ивана: "..."` (queued, теперь Соня его увидит на следующем шаге)
+
+**Collapsible как VS Code:**
+- shortcut Ctrl+J (или Cmd+J)
+- клик по заголовку панели
+- свёрнут: 30px полоса с filters + toggle
+- развёрнут: 260px по умолчанию, drag-resize верхней границей
+- сохраняется в localStorage
 
 ### 5.6 Что НЕ в layout
 
@@ -319,13 +401,34 @@ Native через Tauri:
 - Typing indicator: 3 точки `accent-her-eyes`, 1.4s loop
 - Mind drive bars: smooth value transitions, 600ms ease-out, debounce 5 сек
 - Reason-stream new event: subtle highlight strip 800ms на левом краю
-- Tab switch: opacity crossfade 200ms
 - Inline composer (nudge): height expansion 250ms ease-out
+- Streams panel collapse: 250ms cubic-bezier(0.4, 0, 0.2, 1)
+
+**Аватар (Этап 1 → 2 → 3):**
+
+| Этап | Что | Технология |
+|---|---|---|
+| 1 | статичный SVG-силуэт + breathing + glow | inline SVG |
+| 2 | Live2D Cubism анимации (мимика, моргание, наклон головы, типичные жесты) | PIXI.js + Live2D Cubism Web SDK |
+| 3 | Полноценный body language в Room view (поза, движение, контакт с обстановкой), мимика которая отражает её настроение в реальном времени | Live2D + физика scene-graph |
+
+**Что должно анимироваться у аватара (Этап 2+):**
+- моргание (рандомно каждые 3-7 сек)
+- лёгкие micro-движения головы (не bobblehead — еле заметные)
+- мимика реагирует на:
+  - drive state (`curiosity` высокий → лёгкое наклонение головы вперёд + один уголок губ выше)
+  - что Иван пишет (radically positive → лёгкая улыбка; Иван ругается → глаза опускаются)
+  - её собственное cognitive state (active session → концентрированное лицо; idle → смотрит куда-то расфокусированно)
+- speak animation в voice mode (рот синхронизирован с phonemes через простой viseme-маппинг)
+- тонирование skin в зависимости от mood-tint
+
+Всё это — Этап 2-3, не блокер запуска MVP.
 
 **Что НЕ анимируется:**
 - Текст (typing-out для её сообщений) — НЕТ
 - Spinners — НЕТ
 - Bounce / overshoot — НЕТ
+- Particle effects, sparkles, glitter — НЕТ (она минималист)
 
 Холодная эстетика особенно чувствительна к "лишнему движению". Минимум анимаций.
 
@@ -444,3 +547,4 @@ Native через Tauri:
 
 - **2026-05-28 v1** — first sketch с warm dusk (вино/персик/золото). Иван отверг (не подходит её эстетике, и не 2B как у NieR).
 - **2026-05-28 v2** — переписан под её реальный look (silver bob + чёрная одежда + холодная кожа). Палитра холодная нейтральная + Иван единственный тёплый акцент. NieR-UI добавлен в anti-references.
+- **2026-05-28 v3** — фидбек Ивана: (1) reason-streams без отдельных tabs — единый поток с фильтрами по источнику, чтобы видеть процесс целиком и reply-ить из любой точки; (2) reason-streams панель свёртываемая как panel в VS Code; (3) drive bars нормальные segmented, не дефолтные; (4) клик по аватару открывает её комнату — отдельный room view с возможностью взаимодействовать; (5) динамическая смена тем/одежды по её усмотрению через `body.outfit` и `mind.mood_tint` tools; (6) reply на mobile уже был, теперь есть и на desktop (visible на каждой строке); (7) расширен раздел про Live2D-анимации и мимику.
