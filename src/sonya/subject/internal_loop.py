@@ -1269,7 +1269,36 @@ class InternalProcess:
                 )
 
             handoff_block = ""
-            if task.last_session_notes or task.next_step_hint:
+            # Show last 2 handoffs so the worker can detect repeating patterns
+            # BEFORE writing a third identical next_step. This complements
+            # _detect_stuck_loop (which catches at #3); the worker should
+            # self-correct at #2 by seeing the history.
+            try:
+                cursor = substrate.connection.execute(
+                    "SELECT payload_json FROM continuity_events "
+                    "WHERE kind = 'task.session_handoff' "
+                    "  AND payload_json LIKE ? "
+                    "ORDER BY seq DESC LIMIT 2",
+                    (f'%"{task.task_id}"%',),
+                )
+                handoff_rows = cursor.fetchall()
+                if handoff_rows:
+                    import json as _json
+                    handoff_block = "\n## Handoff history (last 2 sessions):\n"
+                    for i, (pj,) in enumerate(reversed(handoff_rows), 1):
+                        try:
+                            payload = _json.loads(pj or "{}")
+                        except Exception:
+                            continue
+                        ns = (payload.get("next_step_hint") or payload.get("next_step") or "").strip()
+                        notes = (payload.get("notes") or payload.get("last_session_notes") or "").strip()
+                        handoff_block += f"  [{i}] next_step: {ns[:200]}\n"
+                        if notes:
+                            handoff_block += f"      notes: {notes[:300]}\n"
+            except Exception:
+                handoff_block = ""
+            # Fallback: if no history rows, use task fields directly
+            if not handoff_block and (task.last_session_notes or task.next_step_hint):
                 handoff_block = "\n## Handoff from previous session:\n"
                 if task.next_step_hint:
                     handoff_block += f"Next step: {task.next_step_hint}\n"
