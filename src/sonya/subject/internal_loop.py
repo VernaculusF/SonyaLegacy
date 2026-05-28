@@ -1524,6 +1524,31 @@ class InternalProcess:
                             notes=auto_notes,
                             next_step=auto_next_step,
                         )
+                        # If the handoff just blocked the task on a stuck-loop
+                        # (Sonya's selfmod 5307902 added that detector in
+                        # service.py), notify Ivan once so the silence after
+                        # the worker stops doesn't last hours. Without this
+                        # the next surface only happens when active session
+                        # picks up (every 2h) and even then only if she
+                        # remembers the blocked task. The notification is
+                        # gated by OutboundGate so it respects daily caps.
+                        try:
+                            from sonya.tasks.models import TaskStatus as _TS
+                            blocked_now = svc.get(task.task_id)
+                            if (
+                                blocked_now.status is _TS.BLOCKED
+                                and blocked_now.is_ivan_task()
+                                and self._outbound is not None
+                                and (blocked_now.blocker or "").startswith("stuck loop")
+                            ):
+                                msg = (
+                                    f"Задача «{blocked_now.title[:60]}» заблокирована: "
+                                    f"я писала один и тот же next_step несколько раз подряд. "
+                                    f"Нужен другой подход или fail."
+                                )
+                                self._outbound.send_via_tool(msg)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             except Exception as err:
