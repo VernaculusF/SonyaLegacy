@@ -46,6 +46,7 @@ class Task:
     sessions_used: int = 0
     last_session_notes: str = ""       # model writes summary at end of each session
     next_step_hint: str = ""           # one-line "where to start next time"
+    stuck_loop_count: int = 0          # incremented when next_step repeats; reset on change
 
     def is_open(self) -> bool:
         return self.status in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED}
