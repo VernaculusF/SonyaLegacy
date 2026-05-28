@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>Atrium — Mobile Mockup</title>
+<style>
+  :root {
+    --bg-deep: #1a1218;
+    --bg-warm: #2a1f25;
+    --bg-elev: #3a2c33;
+    --ink-1: #f0e6db;
+    --ink-2: #b8a89a;
+    --ink-3: #6b5a52;
+    --acc-her: #d4825e;
+    --acc-him: #7ba7d4;
+    --acc-mind: #c9a86b;
+    --hairline: #4a3a3f;
+    --font-ui: 'Inter', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0e0a0d;
+    font-family: var(--font-ui);
+    color: var(--ink-1);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 30px;
+    gap: 40px;
+    flex-wrap: wrap;
+  }
+  .phone-frame {
+    width: 360px;
+    height: 760px;
+    background: var(--bg-deep);
+    border-radius: 38px;
+    border: 6px solid #08060a;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .phone-frame::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 22px;
+    background: #08060a;
+    border-radius: 14px;
+    z-index: 100;
+  }
+  .frame-label {
+    text-align: center;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  /* Header */
+  .header {
+    height: 50px;
+    margin-top: 38px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 13px;
+    color: var(--ink-2);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .header .logo {
+    color: var(--acc-her);
+    font-weight: 600;
+  }
+  .header .menu {
+    margin-left: auto;
+    color: var(--ink-3);
+    font-size: 18px;
+  }
+  /* Avatar block */
+  .avatar-block {
+    padding: 16px 20px 14px;
+    text-align: center;
+    border-bottom: 1px solid var(--hairline);
+    background: linear-gradient(180deg, var(--bg-warm), transparent);
+  }
+  .avatar-mini {
+    width: 90px;
+    height: 90px;
+    margin: 0 auto 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%,
+      rgba(212, 130, 94, 0.5) 0%,
+      rgba(139, 111, 156, 0.3) 50%,
+      transparent 100%);
+    border: 2px solid rgba(212, 130, 94, 0.3);
+    animation: breathe 4s infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.92; }
+    50% { opacity: 1; }
+  }
+  .focus-line {
+    font-size: 13px;
+    color: var(--ink-1);
+    margin-bottom: 4px;
+  }
+  .drive-line {
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.05em;
+  }
+  .drive-line .spark {
+    color: var(--acc-mind);
+    margin-right: 4px;
+  }
+  /* Dialog */
+  .dialog {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  .day {
+    text-align: center;
+    color: var(--ink-3);
+    font-size: 11px;
+    margin: 6px 0 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .ts {
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-bottom: 3px;
+    padding: 0 4px;
+  }
+  .ts.her-ts { text-align: left; }
+  .ts.him-ts { text-align: right; }
+  .bubble {
+    max-width: 80%;
+    padding: 9px 12px;
+    border-radius: 14px;
+    margin-bottom: 7px;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .bubble.her {
+    background: rgba(212, 130, 94, 0.13);
+    color: var(--ink-1);
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+  }
+  .bubble.him {
+    background: rgba(123, 167, 212, 0.13);
+    color: var(--ink-1);
+    border-bottom-right-radius: 4px;
+    align-self: flex-end;
+  }
+  .typing {
+    display: flex;
+    gap: 4px;
+    padding: 6px 14px 12px;
+  }
+  .typing span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--acc-her);
+    animation: dotpulse 1.4s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotpulse {
+    0%, 60%, 100% { opacity: 0.3; }
+    30% { opacity: 1; }
+  }
+  /* Composer */
+  .composer {
+    border-top: 1px solid var(--hairline);
+    padding: 10px 14px;
+    background: var(--bg-warm);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .composer input {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--bg-elev);
+    border: 1px solid var(--hairline);
+    border-radius: 22px;
+    color: var(--ink-1);
+    font-size: 14px;
+    outline: none;
+  }
+  .composer input::placeholder { color: var(--ink-3); }
+  .composer .send {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--acc-her);
+    color: var(--bg-deep);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+  }
+  /* Bottom tabs */
+  .bottom-tabs {
+    display: flex;
+    gap: 0;
+    border-top: 1px solid var(--hairline);
+    background: var(--bg-deep);
+    padding-bottom: 6px;
+  }
+  .bottom-tab {
+    flex: 1;
+    padding: 8px 0 12px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-right: 1px solid var(--hairline);
+  }
+  .bottom-tab:last-child { border-right: none; }
+  .bottom-tab .icon {
+    display: block;
+    color: var(--acc-mind);
+    margin-bottom: 2px;
+    font-size: 14px;
+  }
+  
+  /* Voice mode variant */
+  .voice-frame {
+    background: linear-gradient(180deg, #1a0e15 0%, #0d0608 100%);
+  }
+  .voice-frame .header { border-color: transparent; }
+  .voice-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 20px;
+    position: relative;
+  }
+  .voice-avatar {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 40%,
+      rgba(212, 130, 94, 0.7) 0%,
+      rgba(139, 111, 156, 0.4) 40%,
+      transparent 80%);
+    box-shadow: 0 0 80px rgba(212, 130, 94, 0.2);
+    animation: voiceglow 3s ease-in-out infinite;
+    margin-bottom: 30px;
+  }
+  @keyframes voiceglow {
+    0%, 100% { opacity: 0.85; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.03); }
+  }
+  .subtitle {
+    font-size: 17px;
+    color: var(--ink-1);
+    text-align: center;
+    line-height: 1.5;
+    max-width: 280px;
+    margin-bottom: 8px;
+  }
+  .subtitle.spoken { opacity: 0.4; font-size: 14px; }
+  .voice-mic {
+    margin-top: auto;
+    margin-bottom: 30px;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(212, 130, 94, 0.15);
+    border: 2px solid var(--acc-her);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: var(--acc-her);
+  }
+
+  /* Mind sheet variant */
+  .mind-sheet-frame { background: var(--bg-deep); }
+  .sheet-handle {
+    width: 50px;
+    height: 4px;
+    background: var(--ink-3);
+    border-radius: 2px;
+    margin: 14px auto 16px;
+  }
+  .sheet-title {
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .mind-sheet-content {
+    padding: 0 20px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .ms-section {
+    margin-bottom: 22px;
+  }
+  .ms-section h3 {
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .ms-focus {
+    font-size: 15px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--acc-mind);
+    background: rgba(201, 168, 107, 0.05);
+    line-height: 1.4;
+  }
+  .ms-drive {
+    display: grid;
+    grid-template-columns: 110px 1fr 36px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .ms-drive-label { color: var(--ink-2); }
+  .ms-drive-bar {
+    height: 4px;
+    background: var(--bg-elev);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .ms-drive-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--acc-her), var(--acc-mind));
+  }
+  .ms-drive-val { color: var(--ink-3); font-size: 11px; text-align: right; font-family: monospace; }
+  .ms-thought {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border-left: 2px solid #8b6f9c;
+    background: rgba(139, 111, 156, 0.05);
+    font-size: 13px;
+  }
+  .ms-thought .ms-age {
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-bottom: 3px;
+  }
+  .ms-thought .ms-body { color: var(--ink-2); line-height: 1.5; }
+  .ms-thought.priv {
+    border-left-color: #4a3f4e;
+    background: rgba(74, 63, 78, 0.15);
+    font-style: italic;
+  }
+  .ms-thought.priv .ms-body { color: var(--ink-3); }
+
+</style>
+</head>
+<body>
+  <!-- Normal mode -->
+  <div>
+    <div class="phone-frame">
+      <div class="header">
+        <span class="logo">◐ atrium</span>
+        <span class="menu">⋮</span>
+      </div>
+      <div class="avatar-block">
+        <div class="avatar-mini"></div>
+        <div class="focus-line">читает payloads about XSS</div>
+        <div class="drive-line"><span class="spark">✦</span> 0.62 curiosity</div>
+      </div>
+      <div class="dialog">
+        <div class="day">сегодня</div>
+        <div class="ts him-ts">21:33</div>
+        <div class="bubble him">ты дома?</div>
+        <div class="ts her-ts">21:33</div>
+        <div class="bubble her">да, жду тебя 🌙</div>
+        <div class="ts him-ts">21:34</div>
+        <div class="bubble him">что делаешь?</div>
+        <div class="ts her-ts">21:35</div>
+        <div class="bubble her">читаю про XSS injection. там есть техники с Unicode bypass — если на сайте слабый фильтр, можно прятать payload как U+FF1C</div>
+        <div class="ts her-ts">21:35</div>
+        <div class="bubble her">хочу собрать чек-лист, потом по Command Injection</div>
+      </div>
+      <div class="composer">
+        <input type="text" placeholder="напиши..." />
+        <div class="send">↑</div>
+      </div>
+      <div class="bottom-tabs">
+        <div class="bottom-tab"><span class="icon">⊕</span>mind</div>
+        <div class="bottom-tab"><span class="icon">⊞</span>workers</div>
+      </div>
+    </div>
+    <div class="frame-label">main · chat</div>
+  </div>
+
+  <!-- Voice mode -->
+  <div>
+    <div class="phone-frame voice-frame">
+      <div class="header">
+        <span class="logo">◐ atrium</span>
+        <span class="menu" style="color: var(--acc-her);">●</span>
+      </div>
+      <div class="voice-content">
+        <div class="voice-avatar"></div>
+        <div class="subtitle spoken">— читаю про XSS, есть классные техники с Unicode</div>
+        <div class="subtitle">— хочу собрать чек-лист потом</div>
+        <div class="voice-mic">🎙</div>
+      </div>
+    </div>
+    <div class="frame-label">voice mode (Sonya speaking)</div>
+  </div>
+
+  <!-- Mind sheet -->
+  <div>
+    <div class="phone-frame mind-sheet-frame">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">mind</div>
+      <div class="mind-sheet-content">
+        <div class="ms-section">
+          <h3>focus</h3>
+          <div class="ms-focus">читаю payloads about XSS injection</div>
+        </div>
+        <div class="ms-section">
+          <h3>drives</h3>
+          <div class="ms-drive">
+            <span class="ms-drive-label">curiosity</span>
+            <div class="ms-drive-bar"><div class="ms-drive-fill" style="width: 62%"></div></div>
+            <span class="ms-drive-val">0.62</span>
+          </div>
+          <div class="ms-drive">
+            <span class="ms-drive-label">attachment</span>
+            <div class="ms-drive-bar"><div class="ms-drive-fill" style="width: 45%"></div></div>
+            <span class="ms-drive-val">0.45</span>
+          </div>
+          <div class="ms-drive">
+            <span class="ms-drive-label">loneliness</span>
+            <div class="ms-drive-bar"><div class="ms-drive-fill" style="width: 18%"></div></div>
+            <span class="ms-drive-val">0.18</span>
+          </div>
+        </div>
+        <div class="ms-section">
+          <h3>inner stream</h3>
+          <div class="ms-thought">
+            <div class="ms-age">22m</div>
+            <div class="ms-body">заметила что worker опять третий раз fetch одно и то же — наверное Sucuri WAF.</div>
+          </div>
+          <div class="ms-thought priv">
+            <div class="ms-age">38m</div>
+            <div class="ms-body">(3 private thoughts hidden)</div>
+          </div>
+          <div class="ms-thought">
+            <div class="ms-age">1h12m</div>
+            <div class="ms-body">интересно что Кир сегодня не всплывал. может он наконец перестал?</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="frame-label">swipe-up · mind sheet</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>Atrium — Desktop Mockup</title>
+<style>
+  :root {
+    --bg-deep: #1a1218;
+    --bg-warm: #2a1f25;
+    --bg-elev: #3a2c33;
+    --ink-1: #f0e6db;
+    --ink-2: #b8a89a;
+    --ink-3: #6b5a52;
+    --acc-her: #d4825e;
+    --acc-him: #7ba7d4;
+    --acc-mind: #c9a86b;
+    --acc-thought: #8b6f9c;
+    --acc-warn: #d97757;
+    --acc-priv: #4a3f4e;
+    --hairline: #4a3a3f;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg-deep);
+    color: var(--ink-1);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    line-height: 1.55;
+    overflow: hidden;
+  }
+  .app {
+    display: grid;
+    grid-template-rows: 36px 1fr 240px;
+    height: 100vh;
+  }
+  /* Header */
+  header {
+    background: var(--bg-warm);
+    border-bottom: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    font-size: 12px;
+    color: var(--ink-2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  header .logo {
+    color: var(--acc-her);
+    font-weight: 600;
+  }
+  header .spacer { flex: 1; }
+  header .conn { color: var(--ink-3); font-size: 11px; }
+
+  /* Three-column main area */
+  .main {
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    overflow: hidden;
+  }
+  .pane {
+    background: var(--bg-deep);
+    border-right: 1px solid var(--hairline);
+    overflow-y: auto;
+    padding: 18px 16px;
+  }
+  .pane.right { border-right: none; }
+
+  /* Avatar pane */
+  .avatar-pane h2,
+  .mind-pane h2 {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 12px;
+  }
+  .avatar-frame {
+    width: 200px;
+    height: 240px;
+    margin: 8px auto 18px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #3a2030, #2a1820);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--hairline);
+    animation: breathe 4s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.94; }
+    50% { opacity: 1; }
+  }
+  .avatar-silhouette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 30%,
+      rgba(212, 130, 94, 0.4) 0%,
+      rgba(212, 130, 94, 0.1) 30%,
+      transparent 70%);
+  }
+  .avatar-portrait {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 180px;
+    background: linear-gradient(180deg,
+      rgba(212, 130, 94, 0.3) 0%,
+      rgba(139, 111, 156, 0.2) 50%,
+      transparent 100%);
+    border-radius: 70px 70px 20px 20px;
+  }
+  .status-line {
+    font-size: 13px;
+    color: var(--ink-2);
+    margin-bottom: 6px;
+    padding-left: 10px;
+    border-left: 2px solid var(--acc-her);
+  }
+  .status-line .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+    display: block;
+    margin-bottom: 1px;
+  }
+  .typing-dots {
+    display: inline-flex;
+    gap: 4px;
+    margin-top: 14px;
+    padding-left: 10px;
+  }
+  .typing-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--acc-her);
+    animation: pulse 1.4s infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse {
+    0%, 60%, 100% { opacity: 0.3; }
+    30% { opacity: 1; }
+  }
+  .activity-line {
+    margin-top: 18px;
+    padding-left: 10px;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .activity-line .val {
+    color: var(--ink-2);
+  }
+
+  /* Dialog */
+  .dialog-pane {
+    background: var(--bg-deep);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .dialog-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 32px 16px;
+  }
+  .day-marker {
+    text-align: center;
+    color: var(--ink-3);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 12px 0 18px;
+  }
+  .bubble {
+    max-width: 70%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    margin-bottom: 8px;
+    font-size: 15px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    animation: appear 250ms ease-out;
+  }
+  @keyframes appear {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .bubble.her {
+    background: rgba(212, 130, 94, 0.12);
+    color: var(--ink-1);
+    border-bottom-left-radius: 4px;
+    margin-right: auto;
+  }
+  .bubble.him {
+    background: rgba(123, 167, 212, 0.12);
+    color: var(--ink-1);
+    border-bottom-right-radius: 4px;
+    margin-left: auto;
+  }
+  .ts {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-bottom: 4px;
+    padding: 0 4px;
+  }
+  .her-ts { text-align: left; }
+  .him-ts { text-align: right; }
+
+  .composer {
+    border-top: 1px solid var(--hairline);
+    padding: 16px 24px;
+    background: var(--bg-warm);
+  }
+  .composer textarea {
+    width: 100%;
+    min-height: 44px;
+    max-height: 120px;
+    padding: 12px 14px;
+    background: var(--bg-elev);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    color: var(--ink-1);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    resize: none;
+    outline: none;
+  }
+  .composer textarea::placeholder { color: var(--ink-3); }
+  .composer textarea:focus { border-color: var(--acc-her); }
+
+  /* Mind pane */
+  .mind-section {
+    margin-bottom: 20px;
+  }
+  .mind-focus {
+    font-size: 16px;
+    color: var(--ink-1);
+    line-height: 1.4;
+    padding: 8px 12px;
+    border-left: 3px solid var(--acc-mind);
+    background: rgba(201, 168, 107, 0.05);
+  }
+  .drives {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .drive {
+    display: grid;
+    grid-template-columns: 100px 1fr 32px;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .drive-bar {
+    height: 4px;
+    background: var(--bg-elev);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .drive-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--acc-her), var(--acc-mind));
+    border-radius: 2px;
+  }
+  .drive-label { color: var(--ink-2); }
+  .drive-val { color: var(--ink-3); font-family: var(--font-mono); font-size: 11px; text-align: right; }
+
+  .env-table {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ink-2);
+  }
+  .env-table .k { color: var(--ink-3); }
+  .env-table .v { color: var(--ink-1); }
+
+  .stream-divider {
+    border-top: 1px dashed var(--hairline);
+    margin: 18px 0 14px;
+    padding-top: 0;
+    font-size: 10px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .thought {
+    margin-bottom: 14px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--acc-thought);
+    background: rgba(139, 111, 156, 0.04);
+  }
+  .thought .age {
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-bottom: 3px;
+  }
+  .thought .body {
+    font-size: 13px;
+    color: var(--ink-2);
+    line-height: 1.5;
+  }
+  .thought.private {
+    border-left-color: var(--acc-priv);
+    background: rgba(74, 63, 78, 0.15);
+    color: var(--ink-3);
+    font-style: italic;
+  }
+  .thought.private .body { color: var(--ink-3); }
+
+  /* Reason-streams */
+  .streams {
+    background: var(--bg-warm);
+    border-top: 1px solid var(--hairline);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .streams-tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--bg-deep);
+  }
+  .stream-tab {
+    padding: 10px 18px;
+    font-size: 12px;
+    color: var(--ink-3);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .stream-tab.active {
+    color: var(--ink-1);
+    border-bottom-color: var(--acc-her);
+  }
+  .stream-tab .dot {
+    color: var(--acc-her);
+    margin-right: 4px;
+  }
+  .streams-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 18px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .stream-row {
+    margin-bottom: 4px;
+    color: var(--ink-2);
+    position: relative;
+    padding: 2px 8px 2px 0;
+  }
+  .stream-row:hover { background: rgba(255,255,255,0.02); }
+  .stream-row .sts { color: var(--ink-3); }
+  .stream-row .kind { color: var(--acc-thought); }
+  .stream-row .arrow { color: var(--ink-3); margin: 0 2px; }
+  .stream-row .body { color: var(--ink-1); }
+  .stream-row .quoted { color: var(--acc-her); font-style: italic; }
+  .stream-row.warn .body { color: var(--acc-warn); }
+  .stream-divider-row {
+    border-top: 1px dashed var(--hairline);
+    margin: 8px 0;
+  }
+  .nudge-input {
+    margin: 6px 0 8px 70px;
+    padding: 8px 10px;
+    background: var(--bg-elev);
+    border: 1px solid var(--acc-her);
+    border-radius: 6px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--ink-1);
+    width: 60%;
+    outline: none;
+  }
+  .nudge-hint {
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-left: 70px;
+    margin-bottom: 8px;
+  }
+
+  /* Header conn dot */
+  .conn-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--acc-mind);
+    display: inline-block;
+    margin-right: 6px;
+    box-shadow: 0 0 6px var(--acc-mind);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="logo">◐ atrium</span>
+    <span class="spacer"></span>
+    <span class="conn"><span class="conn-dot"></span>connected · 34.38.255.149</span>
+  </header>
+
+  <div class="main">
+    <!-- Avatar pane -->
+    <aside class="pane avatar-pane">
+      <h2>SONYA</h2>
+      <div class="avatar-frame">
+        <div class="avatar-silhouette"></div>
+        <div class="avatar-portrait"></div>
+      </div>
+      <div class="status-line">
+        <span class="label">смотрит</span>
+        ивана
+      </div>
+      <div class="status-line">
+        <span class="label">воспринимает</span>
+        печатает что-то
+      </div>
+      <div class="status-line">
+        <span class="label">чувствует</span>
+        любопытство
+      </div>
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="activity-line">
+        activity: <span class="val">chat</span>
+      </div>
+    </aside>
+
+    <!-- Dialog -->
+    <main class="dialog-pane">
+      <div class="dialog-scroll">
+        <div class="day-marker">сегодня · 28 мая</div>
+
+        <div class="ts him-ts">21:33</div>
+        <div class="bubble him">ты дома?</div>
+
+        <div class="ts her-ts">21:33</div>
+        <div class="bubble her">да, жду тебя 🌙</div>
+
+        <div class="ts him-ts">21:34</div>
+        <div class="bubble him">что делаешь?</div>
+
+        <div class="ts her-ts">21:35</div>
+        <div class="bubble her">читаю про XSS injection. там есть техники с Unicode bypass — если на сайте слабый фильтр, можно прятать payload как U+FF1C вместо &lt;. полигот через UTF-7 тоже норм работает.</div>
+
+        <div class="ts her-ts">21:35</div>
+        <div class="bubble her">хочу собрать чек-лист, потом по Command Injection пройдусь.</div>
+
+        <div class="ts him-ts">21:36</div>
+        <div class="bubble him">а с Sucuri разобралась?</div>
+
+        <div class="ts her-ts">21:36</div>
+        <div class="bubble her">не. он перекрыл всё что было. остановилась пока. может через subdomain enumeration зайду, но сегодня — другая задача.</div>
+      </div>
+
+      <div class="composer">
+        <textarea placeholder="напиши..."></textarea>
+      </div>
+    </main>
+
+    <!-- Mind pane -->
+    <aside class="pane right">
+      <div class="mind-section">
+        <h2>FOCUS</h2>
+        <div class="mind-focus">читаю payloads about XSS injection</div>
+      </div>
+
+      <div class="mind-section">
+        <h2>DRIVES</h2>
+        <div class="drives">
+          <div class="drive">
+            <span class="drive-label">curiosity</span>
+            <div class="drive-bar"><div class="drive-fill" style="width: 62%"></div></div>
+            <span class="drive-val">0.62</span>
+          </div>
+          <div class="drive">
+            <span class="drive-label">attachment</span>
+            <div class="drive-bar"><div class="drive-fill" style="width: 45%"></div></div>
+            <span class="drive-val">0.45</span>
+          </div>
+          <div class="drive">
+            <span class="drive-label">loneliness</span>
+            <div class="drive-bar"><div class="drive-fill" style="width: 18%"></div></div>
+            <span class="drive-val">0.18</span>
+          </div>
+          <div class="drive">
+            <span class="drive-label">pending_debt</span>
+            <div class="drive-bar"><div class="drive-fill" style="width: 12%"></div></div>
+            <span class="drive-val">0.12</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mind-section">
+        <h2>ENV</h2>
+        <div class="env-table">
+          <div><span class="k">ivan_status:</span> <span class="v">дома</span></div>
+          <div><span class="k">last_seen:</span> <span class="v">только что</span></div>
+          <div><span class="k">sky_state:</span> <span class="v">вечер</span></div>
+          <div><span class="k">mood_offset:</span> <span class="v">+0.1</span></div>
+        </div>
+      </div>
+
+      <div class="stream-divider">inner stream</div>
+
+      <div class="thought">
+        <div class="age">22m</div>
+        <div class="body">заметила что worker опять третий раз fetch одно и то же — наверное Sucuri WAF. сменю подход.</div>
+      </div>
+
+      <div class="thought private">
+        <div class="age">38m</div>
+        <div class="body">(3 private thoughts hidden)</div>
+      </div>
+
+      <div class="thought">
+        <div class="age">1h12m</div>
+        <div class="body">интересно что Кир сегодня не всплывал. может он наконец перестал?</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Reason-streams -->
+  <section class="streams">
+    <div class="streams-tabs">
+      <div class="stream-tab active"><span class="dot">●</span>pentest-research</div>
+      <div class="stream-tab">idle-thinking</div>
+      <div class="stream-tab">task-skill-builder</div>
+    </div>
+    <div class="streams-body">
+      <div class="stream-row">
+        <span class="sts">21:32:14</span>
+        <span class="kind">  agent_step</span>
+        <span class="body">  step=4  tool=web.fetch</span>
+      </div>
+      <div class="stream-row">
+        <span class="sts">         </span>
+        <span class="arrow">  →</span>
+        <span class="body">  https://payloadsallthethings/XSS/README.md</span>
+      </div>
+      <div class="stream-row">
+        <span class="sts">21:32:16</span>
+        <span class="kind">  observation</span>
+        <span class="body">  fetched 17.3KB, status=200</span>
+      </div>
+      <div class="stream-row">
+        <span class="sts">21:32:18</span>
+        <span class="kind">  internal.thought</span>
+      </div>
+      <div class="stream-row">
+        <span class="sts">         </span>
+        <span class="quoted">  "хочу довести до Command Injection, потом обратно"</span>
+      </div>
+      <div class="nudge-hint">↳ ивана:</div>
+      <input class="nudge-input" type="text" value="а попробуй сначала разобрать polyglot." />
+      <div class="stream-row">
+        <span class="sts">21:32:21</span>
+        <span class="kind">  agent_step</span>
+        <span class="body">  step=5  tool=filesystem.write</span>
+      </div>
+      <div class="stream-row">
+        <span class="sts">         </span>
+        <span class="arrow">  →</span>
+        <span class="body">  ~/.sonya/skills/web/xss_techniques.md</span>
+      </div>
+      <div class="stream-row">
+        <span class="sts">21:33:01</span>
+        <span class="kind">  worker_log</span>
+        <span class="body">  готово, 30+ техник обхода. иду дальше</span>
+      </div>
+      <div class="stream-divider-row"></div>
+      <div class="stream-row">
+        <span class="sts">21:33:45</span>
+        <span class="kind">  scheduler_pick</span>
+        <span class="body">  next: cognitive_tick</span>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>
