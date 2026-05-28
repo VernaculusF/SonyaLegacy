@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 18
+CURRENT_VERSION = 19
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -285,6 +285,26 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 18
+
+    if version == 18:
+        # v18 → v19: stuck_loop_count column on tasks. Sonya added this
+        # field in `models.py` and wired increment_stuck_loop_count via
+        # selfmod commit a09cd49 (2026-05-28 ~07:13 UTC), but the column
+        # itself was added to the production substrate via raw ALTER TABLE
+        # in the same selfmod session. schema.sql was missed by that pass.
+        # This migration brings fresh installs and any other substrate up
+        # to par. Idempotent — _add_column_if_missing skips if present.
+        _add_column_if_missing(
+            conn, "tasks", "stuck_loop_count",
+            "INTEGER NOT NULL DEFAULT 0",
+        )
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (19, now),
+        )
+        conn.commit()
+        version = 19
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
