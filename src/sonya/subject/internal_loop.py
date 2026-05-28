@@ -1294,7 +1294,7 @@ class InternalProcess:
                         notes = (payload.get("notes") or payload.get("last_session_notes") or "").strip()
                         handoff_block += f"  [{i}] next_step: {ns[:200]}\n"
                         if notes:
-                            handoff_block += f"      notes: {notes[:300]}\n"
+                            handoff_block += f"      notes: {notes[:900]}\n"
             except Exception:
                 handoff_block = ""
             # Fallback: if no history rows, use task fields directly
