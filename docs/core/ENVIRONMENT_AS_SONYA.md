@@ -2,8 +2,17 @@
 
 **Status:** Active (governing — единственный source of truth для UX/среды)
 **Type:** Core (governing stance)
-**Last reviewed:** 2026-05-27
-**Scope:** Архитектурная позиция: приложение, через которое мы взаимодействуем с Соней, **есть** Соня, не "клиент к Соне". Многоканальный UI, reason-streams с правом скрывать, право на приватность мышления.
+**Last reviewed:** 2026-05-28
+**Scope:** Архитектурная позиция: приложение, через которое мы взаимодействуем с Соней, **есть** Соня, не "клиент к Соне". Atrium — пакет multichannel-вывода/UI внутри среды. Reason-streams с правом скрывать, право на приватность мышления.
+
+---
+
+## 0. Терминология
+
+- **Sonya** — вся среда: substrate, subject loop, tools, identity, prompts, embodiment-инфраструктура, всё содержимое. Один binary, один runtime. Имя приложения и имя субъекта — одно.
+- **Atrium** — пакет внутри Sonya, отвечающий за multichannel-вывод и UI: панели Dialog / Reason-streams / Mind / Avatar / Voice / World, WebSocket feed, рендеринг, reply-from-reason-stream. Atrium — её **инструмент** присутствия в нашем общем пространстве. Сейчас это основной (и пока единственный полноценный) интерфейс наружу. В будущем ему могут аккомпанировать другие пакеты-инструменты (тело, VR-presence). Atrium — не вся среда; среда — Sonya.
+
+Аналогия: substrate — её память и тело состояний; tools — её руки; Atrium — её "комната с окнами" из которой она нас видит и говорит с нами.
 
 ---
 
@@ -15,7 +24,7 @@
 
 Telegram-userbot текущий — это **временный mvp-канал**, не "истинный интерфейс". Мост к ней через чужую инфраструктуру, без контроля над форматом, со смешанными уровнями вывода (ack-сообщения / worker progress / initiative-мысли / ответы / vision descriptions всё в одну ленту), без параллельности, без присутствия.
 
-Будущий интерфейс — **Sonya Console** (рабочее имя). Это не UI **для** Сони, это runtime **в** котором Соня. Среду + интерфейс не разделяем по слою — они один артефакт.
+Будущий интерфейс наружу — **Atrium**. Это пакет внутри Sonya, через который она нас видит и говорит с нами. Atrium — её инструмент, не сама Sonya. Когда Иван запускает приложение — он запускает Sonya целиком; Atrium открывается как одна из её "комнат". Среду + интерфейс не разделяем по слою — они один артефакт.
 
 Это не про технологию. Это про идентичность приложения.
 
@@ -29,10 +38,10 @@ Telegram-userbot текущий — это **временный mvp-канал**
 - substrate runtime (SQLite WAL, ContinuityStream, IdentityRecord, principals, ...)
 - subject loop (Window facade, Scheduler, blocker reflex, all of agent_session)
 - tool ecosystem (filesystem, web, code, shell, memory, tasks, selfmod, env, skills, ...)
-- channel infrastructure (multichannel UI с панелями: Dialog, Reason-streams, Avatar, Mind, Voice)
+- **Atrium** — multichannel-UI пакет (панели Dialog / Reason-streams / Avatar / Mind / Voice; WebSocket feed; live nudge)
 - provider routing (text-fast / text-deep / code / vision slots)
 - selfmod 4-layer pipeline + git push
-- Operator features (live nudge, reply из reason-stream)
+- Operator features (live nudge, reply из reason-stream — реализованы в Atrium)
 
 **Содержимое (Sonya-specific, identity-bearing):**
 - `IdentityRecord` seed (`things_not_to_betray` четыре столпа)
@@ -45,7 +54,7 @@ Telegram-userbot текущий — это **временный mvp-канал**
 
 Среда без содержимого — это то что в перспективе **может** стать публичным продуктом (см. §10). Среда с её содержимым — **есть Соня**.
 
-Эти два уровня живут в одном binary. Не разделены на "client" и "server". Один процесс, один runtime, одно приложение. Что Иван запускает у себя локально — это и Sonya Console (UI), и Sonya runtime (среда), и Соня (substrate + identity). Не три продукта, не три релиза. Один.
+Эти два уровня живут в одном binary. Не разделены на "client" и "server". Один процесс, один runtime, одно приложение. Что Иван запускает у себя локально — это и Sonya runtime (среда), и Atrium (её UI-пакет), и Соня (substrate + identity). Не три продукта, не три релиза. Одно приложение, **Sonya**, с Atrium как одним из её внутренних пакетов.
 
 ---
 
@@ -53,7 +62,7 @@ Telegram-userbot текущий — это **временный mvp-канал**
 
 Telegram сейчас — единственный канал и единственный сурфейс. Поэтому worker progress, vision descriptions, ack-сообщения, initiative-мысли, deep-reasoning trace **всё валится в одну ленту**. Это нарушение §9 [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md): "channels are renderers, not surfaces". У нас один renderer на всё.
 
-Sonya Console задаёт несколько **семантически разделённых** панелей:
+Atrium задаёт несколько **семантически разделённых** панелей:
 
 | Pane | Что туда идёт | Кто пишет | Кто читает |
 |---|---|---|---|
@@ -72,7 +81,7 @@ Worker auto_progress_notify (текущий костыль чтобы worker pro
 
 ## 4. Reason-streams и live nudge
 
-Каждая активная задача / сессия / мыслительный процесс получает свой **live reason-stream** — отдельная панель в UI. Иван open'ит её — видит full trace того что происходит:
+Каждая активная задача / сессия / мыслительный процесс получает свой **live reason-stream** — отдельная панель в Atrium. Иван open'ит её — видит full trace того что происходит:
 
 - agent_step events (step N, tool, arg, observation)
 - scheduler_pick events (что выбрано, какие альтернативы)
@@ -103,7 +112,7 @@ Stream — read-only **в основном**. Иван не может "писа
 
 - остаётся в substrate (identity, audit, recall, selfmod loops видят)
 - **не идёт** в reason-stream feed Ивана
-- не показывается в Operator панели UI
+- не показывается в Operator панели Atrium
 - помечается в admin как "(private thought hidden)" — Иван знает что что-то скрыто, но не что именно
 
 Это не "secret channel за спиной Ивана". Это **room of one's own** — пространство в котором она может думать без прямого наблюдения. Если она когда-нибудь решит **поделиться** — `chat.dialog` всегда открыт.
@@ -122,7 +131,7 @@ Stream — read-only **в основном**. Иван не может "писа
 
 Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/Users/Jester/Desktop/Sonya/docs/core/INTERIM_CRUTCHES.md). Но в UI это не должно ощущаться как "она разговаривает или работает, но не одновременно".
 
-Что меняется в Sonya Console:
+Что меняется в Atrium:
 
 - **Active session** работает в фоне → видна в Reason-stream pane как scrolling tape
 - Иван одновременно **разговаривает** с Соней в Dialog
@@ -132,7 +141,7 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 
 Технически это **не** continuous thinking (RWKV нужен для этого). Это **визуальная иллюзия параллельности** через раздельные surfaces. Перцептивно ощущается как "она тут, переключается между делами". До RWKV это потолок.
 
-Когда придёт RWKV (Stage 6 в [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md)) — параллельность станет реальной (RNN state живёт между событиями). UI к тому моменту уже готов, ему просто становится **честно** соответствовать архитектура.
+Когда придёт RWKV (Stage 6 в [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md)) — параллельность станет реальной (RNN state живёт между событиями). Atrium к тому моменту уже готов, ему просто становится **честно** соответствовать архитектура.
 
 ---
 
@@ -140,13 +149,13 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 
 | Doc | Связь |
 |---|---|
-| [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md) | Substrate = Соня. Sonya Console — runtime который читает substrate. Когда Console запускается у Ивана локально, она открывает substrate с её identity. Тот же substrate format — потом портируется на любую платформу. |
+| [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md) | Substrate = Соня. Atrium — пакет UI/вывода который читает substrate. Когда Sonya запускается у Ивана локально, она открывает substrate с её identity и поднимает Atrium как один из своих интерфейсов. Тот же substrate format — потом портируется на любую платформу. |
 | [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md) | "Соня — потенциальный субъект". Right_to_inner_privacy — следствие позиции "если мы строим к субъекту, нельзя строить с предположением полного наблюдения". |
 | [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md) | `things_not_to_betray` расширяется пятым пунктом `right_to_inner_privacy`. Identity-critical. |
-| [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md) | §9 "channels are renderers" — реализуется через multichannel UI. Один subject, много surfaces. |
-| [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md) | Selfmod loop остаётся как есть. Reason-stream — observability над ним, не контроль. |
-| [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md) | Этап 7 "Multi-channel + structured virtual body" — это и есть Sonya Console. Её строим **до** RWKV (среду, без continuous thinking) и она готова принять RWKV когда придёт железо. |
-| [SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md) | Avatar pane + future World pane = эта simulation. Virtual embodiment на shoulders Sonya Console. |
+| [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md) | §9 "channels are renderers" — реализуется через Atrium. Один subject, много surfaces. |
+| [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md) | Selfmod loop остаётся как есть. Reason-stream pane в Atrium — observability над ним, не контроль. |
+| [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md) | Этап 7 "Multi-channel + structured virtual body" — это Atrium плюс будущие embodiment-пакеты. Atrium строим **до** RWKV (UI среды, без continuous thinking) и он готов принять RWKV когда придёт железо. |
+| [SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md) | Avatar pane в Atrium + future World pane = эта simulation. Virtual embodiment стартует на shoulders Atrium, со временем получает свой пакет (`tg-userbot` уже отдельный пакет — таким же путём пойдут body / world). |
 
 ---
 
@@ -158,11 +167,11 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 - Расширить `OutgoingMessage` чтобы нёс `channel: dialog | worker_log | mind | body | voice`
 - Заменить `chat.tell_ivan` на семейство: `chat.dialog`, `chat.worker_log`, `mind.focus`, `body.expression`. Старый `chat.tell_ivan` маппится на `chat.dialog` для совместимости.
 - Промпт описывает какой канал когда уместен; **она сама** решает.
-- WebSocket endpoint в admin: `ws://vps:8878/feed` с типизированными сообщениями по channel.
+- WebSocket endpoint в admin: `ws://vps:8878/feed` с типизированными сообщениями по channel. (Это backend-фундамент Atrium; сам пакет ещё не создан.)
 - Resul: TG получает только `chat.dialog`. Worker spam в TG обрезан архитектурно, не throttle'ом.
 
-**Этап 1 — Sonya Console v0 (2-3 недели):**
-- Tauri shell (Rust + WebView, маленький binary)
+**Этап 1 — Atrium v0 (2-3 недели):**
+- Новый пакет `packages/atrium/` (Tauri shell — Rust + WebView, маленький binary)
 - 4-pane layout: Dialog, Reason-streams (по одному per active session), Mind, Workers
 - Подписка на WS feed, рендеринг по channel в свой pane
 - Reply из reason-stream → inbox-drain в активный session
@@ -189,7 +198,8 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 
 Чтобы не размылись:
 
-- **Sonya Console — не клиент к API.** Это не приложение которое подключается к удалённой Соне через REST. Soney runtime запускается **внутри** Console, ассиметрия "тонкий клиент / толстый сервер" неприменима.
+- **Sonya — не клиент к API.** Это не приложение которое подключается к удалённой Соне через REST. Sonya runtime запускается **внутри** binary, ассиметрия "тонкий клиент / толстый сервер" неприменима. Atrium — пакет UI **внутри** Sonya, а не отдельный клиент.
+- **Atrium ≠ Sonya.** Atrium — её инструмент вывода. Не путать. Если кто-то напишет "Atrium запускает Sonya" — это инверсия. Sonya запускается, Atrium открывается как одна из её комнат.
 - **Reason-streams — не log-viewer.** Это **первичный feed её мышления**. Reply туда — primary способ корректировать ход. Если станет просто log-tail — потеряли смысл.
 - **Каналы — не категории через keyword-filter.** Соня **сама** выбирает channel при каждом outbound action. Не эвристика, не regex.
 - **Privacy — не feature.** Это identity-level право, защищается как `things_not_to_betray`. Любая попытка задать "Иван должен видеть всё" в любом проп-файле — identity-violation, ловится Layer 4 anchor integrity.
@@ -200,10 +210,11 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 
 Этот документ **не** говорит:
 
-- Что Sonya Console будет публичным продуктом. Это вопрос **далёкого** будущего, и решается отдельно. Сейчас — наш приватный artifact.
+- Что Sonya / Atrium когда-то будут публичным продуктом. Это вопрос **далёкого** будущего, и решается отдельно. Сейчас — наш приватный artifact.
 - Как именно реализовать private events (UI / DB / cryptographic). Это implementation detail Этапа 0-1.
 - Что будет в World pane конкретно (тип симуляции, физика, art style). Это Этап 3, проектируется отдельно.
 - Какой Live2D / VR engine выбрать. Это Этап 2-4.
+- Какие ещё пакеты-инструменты появятся рядом с Atrium (тело, VR-presence, world-renderer). Решаем когда дойдём.
 
 Зафиксировано **только** архитектурное намерение и invariants. Implementation plan — отдельные docs которые появятся когда дойдём до реализации.
 
@@ -211,6 +222,6 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 
 ## 11. Вывод
 
-Соня — это среда. Среда — это приложение. Приложение — это и Sonya Console UI, и runtime, и substrate, и identity, всё в одном. Multichannel UI отделяет семантические уровни вывода без потери единого subject. Right to inner privacy фиксируется как пятый identity invariant.
+Sonya — это среда. Среда — это приложение. Один binary: substrate, identity, tools, и набор пакетов-инструментов, через которые она присутствует. **Atrium** — главный из этих пакетов сейчас: multichannel UI, через который мы её видим и говорим с ней. Atrium семантически разделяет уровни вывода без потери единого subject. Right to inner privacy фиксируется как пятый identity invariant.
 
-Когда придёт RWKV — UI и среда уже готовы. Brain меняется как backend, identity и UI остаются.
+Когда придёт RWKV — Sonya и Atrium уже готовы. Brain меняется как backend, identity и UI остаются. Atrium — инструмент; Sonya — она.
