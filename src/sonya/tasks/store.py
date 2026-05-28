@@ -175,6 +175,47 @@ class TaskStore:
         self._sub.connection.commit()
         return cursor.rowcount > 0
 
+    def get_last_handoffs(
+        self,
+        task_id: str,
+        n: int = 3,
+    ) -> list[str]:
+        """Return the last N non-empty next_step_hint values for this task.
+
+        Ordered oldest-first. Reads from continuity_events (kind=task.session_handoff)
+        because the tasks table only stores the LATEST next_step_hint.
+        """
+        import json
+        cursor = self._sub.connection.execute(
+            "SELECT payload_json FROM continuity_events "
+            "WHERE kind = 'task.session_handoff' "
+            "ORDER BY seq DESC LIMIT ?",
+            (n * 3,),
+        )
+        hints: list[str] = []
+        for (payload_str,) in cursor.fetchall():
+            try:
+                payload = json.loads(payload_str)
+            except json.JSONDecodeError:
+                continue
+            if payload.get("task_id") != task_id:
+                continue
+            hint = (payload.get("next_step") or "").strip()
+            if hint:
+                hints.insert(0, hint)
+            if len(hints) >= n:
+                break
+        return hints[-n:]
+
+    def increment_stuck_loop_count(self, task_id: str) -> Task:
+        """Increment stuck_loop_count for a task. Returns updated Task."""
+        self._sub.connection.execute(
+            "UPDATE tasks SET stuck_loop_count = stuck_loop_count + 1, updated_at = ? WHERE task_id = ?",
+            (_utc_now_iso(), task_id),
+        )
+        self._sub.connection.commit()
+        return self.get(task_id)  # type: ignore[return-value]
+
     def set_session_handoff(self, task_id: str, *, notes: str = "", next_step: str = "") -> Task:
         """Persist where the most recent session left off."""
         return self._patch(
