@@ -17,7 +17,7 @@ def _utc_now_iso() -> str:
 class SemanticFact:
     """A consolidated fact or rule derived from episodic events.
 
-    See: MEMORY_AND_IDENTITY_PLAN §6.
+    See: docs/cognition/COGNITION.md §12 (semantic memory).
     """
 
     fact_id: str
@@ -32,7 +32,7 @@ class SemanticFact:
 class SemanticMemory:
     """Persistent semantic memory — consolidated knowledge from episodic events.
 
-    See: MEMORY_AND_IDENTITY_PLAN §6.
+    See: docs/cognition/COGNITION.md §12 (semantic memory).
     """
 
     def __init__(self, substrate: Substrate) -> None:

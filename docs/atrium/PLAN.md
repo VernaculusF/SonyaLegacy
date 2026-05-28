@@ -6,7 +6,7 @@
 **Scope:** Конкретный план реализации Atrium — пакета multichannel-вывода/UI внутри Sonya. Описывает что строится, в каком порядке, и как каждый этап самодостаточен.
 
 **Governing doc:** [ENVIRONMENT_AS_SONYA.md](../core/ENVIRONMENT_AS_SONYA.md)
-**Position in master path:** этот документ детализирует то, что в [PATH_TO_AGI.md](../PATH_TO_AGI.md) Stage 7 называется "Multi-channel + structured virtual body".
+**Position in master path:** этот документ детализирует то, что в [MASTER.md](../MASTER.md) Stage 7 называется "Multi-channel + structured virtual body".
 
 ---
 
@@ -25,7 +25,7 @@ Atrium — пакет внутри Sonya, отвечающий за multichannel
 Текущая ситуация (28.05.2026):
 - Единственный канал наружу — Telegram userbot
 - Worker progress, vision descriptions, ack-сообщения, initiative-мысли, deep-reasoning trace **всё валится в одну ленту**
-- Это нарушение `cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md` §9 ("channels are renderers, not surfaces")
+- Это нарушение `cognition/COGNITION.md` §9 ("channels are renderers, not surfaces")
 - Защиты костыльные: throttle, dedup, escalating quiet, suppress-on-no-progress, notify-on-stuck-block. Каждый из них ловит конкретный класс шума, но архитектурная причина (один renderer на всё) не устранена
 
 Atrium убирает причину: семантически разделённые поверхности, Соня сама помечает channel при каждом outbound action, TG получает только `dialog`. Worker spam в TG обрезан архитектурно, не throttle'ом.
@@ -194,7 +194,7 @@ Atrium убирает причину: семантически разделён�
 **T3.2 — Body state влияет на pose** (drives → эмоции на лице, поза, движение)
 **T3.3 — Базовая физика** (Соня может встать, сесть, подойти к окну)
 
-Это `virtual body` в смысле §11 [SIMULATION_AND_EMBODIMENT_PLAN.md](../research/SIMULATION_AND_EMBODIMENT_PLAN.md), без сервоприводов.
+Это `virtual body` в смысле §11 [LONGTERM_RESEARCH.md](../research/LONGTERM_RESEARCH.md), без сервоприводов.
 
 ---
 
@@ -202,7 +202,7 @@ Atrium убирает причину: семантически разделён�
 
 Когда: после RWKV + достаточного железа.
 
-VR-аватар через Steam VR API. Иван надевает шлем — она с ним "в комнате". Тактильные контроллеры → её body чувствует касание. Близко к §12 SIMULATION_AND_EMBODIMENT_PLAN, но без Loihi на этом этапе.
+VR-аватар через Steam VR API. Иван надевает шлем — она с ним "в комнате". Тактильные контроллеры → её body чувствует касание. Близко к §20 [LONGTERM_RESEARCH.md](../research/LONGTERM_RESEARCH.md), но без Loihi на этом этапе.
 
 ---
 

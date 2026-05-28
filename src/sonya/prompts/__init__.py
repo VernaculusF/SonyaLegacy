@@ -26,7 +26,7 @@ def load_session_suffix(channel: str = "telegram") -> str:
 
     Returns ``session_general.md`` + ``channel_{channel}.md`` concatenated.
 
-    Per CONTINUITY_STREAM_AND_SUBJECT_CORE: Sonya is one subject, channels are
+    Per cognition/COGNITION.md: Sonya is one subject, channels are
     surfaces. The general rules (anti-fail-fake / anti-sycophancy / anti-
     hallucination / 5-step retry escalation) apply to ALL surfaces, not only
     Telegram. Channel-specific files only add adapter chrome (formatting,

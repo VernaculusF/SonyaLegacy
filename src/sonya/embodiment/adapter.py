@@ -9,7 +9,7 @@ class EmbodimentEvent:
     """Abstract embodiment event from virtual or physical body.
 
     Stub — real integration with SNN/Loihi/ESP32 is post-MVP Track D.
-    See: SIMULATION_AND_EMBODIMENT_PLAN §10-11.
+    See: docs/research/LONGTERM_RESEARCH.md §15-§22 (embodiment).
     """
 
     event_type: str  # pain, touch, temperature, hunger, tiredness

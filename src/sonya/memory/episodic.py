@@ -17,7 +17,7 @@ def _utc_now_iso() -> str:
 class EpisodicEvent:
     """One episodic memory event.
 
-    See: MEMORY_AND_IDENTITY_PLAN §5.
+    See: docs/cognition/COGNITION.md §11 (episodic memory).
     """
 
     event_id: str
@@ -41,7 +41,7 @@ class EpisodicMemory:
 
     Append-only baseline with retrieval by recency, type, and importance.
     Retention strength decays over time (Ebbinghaus curve applied externally).
-    See: MEMORY_AND_IDENTITY_PLAN §5, §12.
+    See: docs/cognition/COGNITION.md §11, §14 (forgetting curve).
     """
 
     def __init__(self, substrate: Substrate) -> None:

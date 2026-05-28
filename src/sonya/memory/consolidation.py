@@ -4,7 +4,7 @@ Scans unarchived episodic events above a threshold and promotes them
 to semantic_facts. Deduplicates by checking if a fact with the same
 statement already exists. Runs once per 24h from internal_loop.
 
-See: MEMORY_AND_IDENTITY_PLAN §7, §12.
+See: docs/cognition/COGNITION.md §13-§14 (consolidation pipeline + forgetting curve).
 """
 
 from __future__ import annotations

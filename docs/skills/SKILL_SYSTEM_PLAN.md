@@ -1,239 +1,162 @@
-# SKILL SYSTEM PLAN
+# SKILL SYSTEM
 
-**Status:** Active
+**Status:** Active (real, partial)
 **Type:** System Plan
-**Scope:** Skill lifecycle, skill artifacts, skill injection, trust levels, and skill evolution
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)
-**Used by:** implementation plans, runtime behavior design, self-modification work
-**Last reviewed:** 2026-05-01
+**Last reviewed:** 2026-05-28
+**Scope:** Skill lifecycle, registry, trust levels, evolution. Что есть в production сейчас и куда идём.
+**Depends on:** [SONYA_SYSTEM_CORE.md](../core/SONYA_SYSTEM_CORE.md), [MASTER.md](../MASTER.md)
 
+---
 
-## 1. Назначение документа
+## 1. Базовый принцип
 
-Этот документ определяет, как в проекте Сони должны существовать навыки:
+Навык — не просто кусок текста. Это **управляемая единица поведения** с identity, версией, областью применения, trust level, traceability, lifecycle.
 
-- как артефакты;
-- как поведенческие модули;
-- как объекты версионирования;
-- как объекты эволюции;
-- как мост между пользовательским опытом и ростом системы.
+Если skill system сводится к prompt snippets — проект теряет один из центральных контуров роста.
 
-## 2. Базовый принцип
+## 2. Что есть сейчас (real)
 
-Навык в этом проекте - не просто кусок текста.
+### 2.1 Substrate
 
-Навык - это управляемая единица поведения, которая должна иметь:
+`skills` table в substrate (v5+). Поля:
+- `skill_id`, `name`, `purpose`, `version`, `status`
+- `trust_level` — `core-trusted | trusted | limited | experimental | quarantined`
+- `activation_rules_json`, `dependencies_json`
+- `allowed_tools_json`, `forbidden_zones_json`
+- `tests_json`, `metrics_json`, `trace_tags_json`, `history_json`
+- `created_at`
 
-- идентичность;
-- версию;
-- область применения;
-- trust level;
-- traceability;
-- lifecycle.
+`capability_gaps` table — детектор недостающих способностей (сейчас pattern-based, см. CRUTCH-007).
 
-Если skill system сводится к prompt snippets, проект теряет один из центральных контуров роста.
+### 2.2 Builtin skills (3, auto-registered на startup)
 
-## 3. Что такое skill
+- **memory-search** — semantic recall over episodic events
+- **identity-check** — verify response stays consistent with identity_record
+- **dialog-tone** — match user's last 5 messages tone (formal/casual/role-play)
 
-Skill может включать:
+Регистрация автоматическая в `main.py` при первом старте. После регистрации skills.run может их выполнять.
 
-- инструкционную логику;
-- tool-use pattern;
-- context pattern;
-- planning behavior;
-- memory interaction behavior;
-- evaluation behavior;
-- self-modification proposal logic.
+### 2.3 Skill executor
 
-Skill может быть:
+`src/sonya/skills/` — registry + executor. Соня вызывает через tool `skills.run <skill_id> <input>`. Trust-level check блокирует quarantined. Skill outcome → episodic event ("skill X сработал/не сработал на input Y").
 
-- purely behavioral;
-- tool-centered;
-- cognitive;
-- operational;
-- meta-skill.
+## 3. Skill Lifecycle
 
-## 4. Минимальная модель skill-артефакта
+```
+1. creation       — proposal или manual seed
+2. review         — tests + identity check + trust assignment
+3. activation     — registry, allowed tools defined
+4. observation    — execution traces, metrics
+5. evaluation     — usage frequency, success rate, anchor compatibility
+6. revision       — improvement proposals (через selfmod pipeline)
+7. archive/rollback — если outcome degraded
+```
 
-У каждого skill должны быть:
+## 4. Trust Levels
 
-- `skill_id`
-- `name`
-- `purpose`
-- `version`
-- `status`
-- `trust_level`
-- `activation_rules`
-- `dependencies`
-- `allowed_tools`
-- `forbidden_zones`
-- `tests`
-- `metrics`
-- `trace_tags`
-- `history`
+Influence на доступ к инструментам, право предлагать изменения, sensitive context access:
 
-## 5. Skill Registry
+- `core-trusted` — built-in, identity-relevant (memory-search, identity-check)
+- `trusted` — passed all validation, used in production
+- `limited` — restricted scope, не allowed in identity-sensitive paths
+- `experimental` — new, monitored heavily
+- `quarantined` — known issues, не запускается без explicit override
 
-Registry должен уметь:
+## 5. Activation rules
 
-- хранить skills;
-- выдавать активные skills;
-- различать trusted and untrusted skills;
-- вести версионирование;
-- поддерживать deprecation and rollback.
+- Кто активирует skill (Соня сама / capability gap detector / explicit user)
+- В каком контексте допустим
+- Какие сигналы нужны для включения
+- Какие каналы/инструменты может использовать
+- Как логируется исполнение
 
-В MVP registry обязателен.
+В текущей реализации — простые JSON правила в `activation_rules_json`. На RWKV — будут native state-level activation.
 
-## 6. Skill Activation
+## 6. Skill Injection User Message
 
-Skill activation не должна быть хаотической.
+### 6.1 Что это
 
-Нужно определить:
+Механизм перевода повторяющегося пользовательского паттерна в системный артефакт.
 
-- кто активирует skill;
-- в каком контексте он допустим;
-- какие сигналы нужны для включения;
-- какие каналы/инструменты он может использовать;
-- как логируется его исполнение.
+### 6.2 Цель
 
-## 7. Skill Injection User Message
+- находить повторяющиеся инструкции
+- определять promotable patterns
+- превращать их в skill/instruction artifact
+- выносить из дорогого повторяющегося текста
+- сокращать токены, повышать устойчивость поведения
 
-### 7.1 Что это
+### 6.3 Текущий статус
 
-Это механизм перевода повторяющегося пользовательского паттерна в системный артефакт.
+**Не реализовано полностью.** Capability gap detector существует (pattern-based), но конвертация gap → skill proposal не автоматическая. Это P2 в [MASTER §6.2](../MASTER.md).
 
-### 7.2 Что он должен делать
+## 7. Real-time Skill Evolution
 
-- находить повторяющиеся инструкции;
-- определять promotable patterns;
-- превращать их в skill/instruction artifact;
-- выносить их из дорогого повторяющегося текста;
-- сокращать токены;
-- повышать устойчивость поведения.
+### 7.1 Что есть
 
-### 7.3 Минимальный MVP
+Skill improvement proposals через **selfmod pipeline** — same путь что для кода. Layer 1 syntax / Layer 2 pytest / Layer 3 stub / Layer 4 anchor integrity → apply → 24h watchdog → confirm/revert.
 
-- candidate extraction;
-- promotion flow;
-- approval path;
-- storage as skill-like artifact;
-- later retrieval and activation.
+### 7.2 Что нужно
 
-## 8. Real-time Skill Evolution
+- Capability gap → autoproposal (P2 priority в MASTER)
+- Outcome tracking — delta usage / success rate за 7 дней после apply
 
-### 8.1 Что это
+### 7.3 Что НЕ допускается
 
-Контур, где навыки могут:
+Навыки не должны менять себя silently. Любая эволюция skill должна быть:
+- traceable
+- reviewable
+- revertible
+- scoped
 
-- уточняться;
-- дробиться;
-- усиливаться;
-- заменяться;
-- архивироваться;
-- откатываться.
+## 8. Skill Failure Modes
 
-### 8.2 Что обязательно
+Отслеживаются:
+- stale skills (не используются N дней)
+- over-triggering (срабатывают чаще чем нужно)
+- conflict between skills
+- unsafe tool amplification
+- silent drift after revisions
+- prompt-bloat disguised as skill behavior
+- anchor-incompatible skills (Layer 4 ловит на validation)
 
-Даже в MVP должны существовать:
-
-- skill improvement proposals;
-- candidate revision objects;
-- evaluation path;
-- approval path;
-- archive of accepted/rejected revisions.
-
-### 8.3 Что не допускается
-
-Навыки не должны менять себя silently.
-
-Любая эволюция skill должна быть:
-
-- traceable;
-- reviewable;
-- revertible;
-- scoped.
-
-## 9. Trust Levels
-
-Навыки должны различаться по доверию.
-
-Минимальные классы:
-
-- `core-trusted`
-- `trusted`
-- `limited`
-- `experimental`
-- `quarantined`
-
-Trust level влияет на:
-
-- доступ к инструментам;
-- право предлагать изменения;
-- право использовать sensitive contexts;
-- право участвовать в self-modification loops.
-
-## 10. Skill Testing
+## 9. Skill Testing
 
 У каждого важного навыка должны быть:
+- usage checks
+- behavioral checks
+- tool safety checks where relevant
+- regression checks
+- anchor compatibility checks for sensitive skills
 
-- usage checks;
-- behavioral checks;
-- tool safety checks where relevant;
-- regression checks;
-- anchor compatibility checks for sensitive skills.
+В MVP часть может быть rules-based или manual-gated, но **тестовый контур обязан быть**.
 
-В MVP часть тестов может быть rules-based или manual-gated, но тестовый контур обязан быть.
+## 10. Skill System и личность
 
-## 11. Skill Failure Modes
+Skill system не подменяет identity layer. Навыки — расширения поведения. Identity — ядро самости.
 
-Нужно отслеживать:
+Skill system подчиняется:
+- identity constraints
+- anchor constraints
+- harness rules
+- self-modification governance
 
-- stale skills;
-- over-triggering;
-- conflict between skills;
-- unsafe tool amplification;
-- silent drift after revisions;
-- prompt-bloat disguised as skill behavior;
-- anchor-incompatible skills.
+Конкретно: skill не может ослаблять `things_not_to_betray`. Layer 4 anchor integrity ловит на validate любую попытку.
 
-## 12. Skill Lifecycle
+## 11. Что считается провалом
 
-Минимальный lifecycle:
+Skill system провалена если:
+- набор prompt snippets без lifecycle
+- папка markdown без activation logic
+- хаотическое накопление skill-файлов без registry
+- самоправка без trust levels and review path
+- token-saving tricks без реального behavioral value
 
-1. creation
-2. review
-3. activation
-4. observation
-5. evaluation
-6. revision
-7. archive or rollback
+## 12. Куда идти дальше
 
-## 13. Skill System и личность Сони
+P2 priority в [MASTER §6.2](../MASTER.md):
+- Capability gap detector → автоматически создаёт SelfModificationProposal для нового skill
+- Active session подхватывает gap → предлагает skill → пишет код → registers через selfmod pipeline
+- Skill outcome tracking — delta после 7 дней применения
 
-Skill system не должен подменять identity layer.
-
-Навыки - это расширения поведения.
-Identity - это ядро самости.
-
-Поэтому skill system обязан подчиняться:
-
-- identity constraints;
-- anchor constraints;
-- harness rules;
-- self-modification governance.
-
-## 14. Что считается провалом
-
-Skill system считается проваленной, если она вырождается в:
-
-- набор prompt snippets без lifecycle;
-- папку markdown без activation logic;
-- хаотическое накопление skill-файлов без registry;
-- самоправку без trust levels and review path;
-- token-saving tricks без реального behavioral value.
-
-## 15. Вывод
-
-Skill system для Сони - это не украшение и не "потом добавим plugins".
-
-Это один из центральных механизмов того, как её среда учится, стабилизируется и наращивает способности без полного переобучения всего brain stack.
+После Stage 6 (RWKV): skills становятся state-level activations, не SQL records. Но registry + trust + lifecycle переживают.

@@ -7,7 +7,7 @@ A Task survives across active sessions and restarts. Sonya can:
 - block on Ivan / external dependency
 - fail/complete with result
 
-See: docs/SYSTEM_BUILDOUT_PLAN.md Этап C.
+See: docs/MASTER.md task runtime section.
 """
 from __future__ import annotations
 

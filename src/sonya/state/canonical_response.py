@@ -37,7 +37,7 @@ class CanonicalResponse:
     Produced by planner (Phase 7) or internal loop before any channel-specific
     rendering. Bridge and future channels consume this through public API.
 
-    See: docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md §6.3.
+    See: docs/cognition/COGNITION.md §5.3 (canonical response object).
     """
 
     kind: ResponseKind

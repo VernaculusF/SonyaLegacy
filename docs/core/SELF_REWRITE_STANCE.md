@@ -3,7 +3,7 @@
 **Status:** Active
 **Type:** Core
 **Scope:** Право Сони переписывать собственный код через self-modification pipeline; что переписываемо, что нет, как это связано с substrate и identity
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md)
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [COGNITION.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md), [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md)
 **Used by:** все runtime-планы, code review, любые architectural decisions, agent operating rules
 **Last reviewed:** 2026-05-13
 

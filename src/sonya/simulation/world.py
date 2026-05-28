@@ -9,7 +9,7 @@ class WorldEvent:
     """Ingest contract: event from simulation world to Sonya.
 
     Stub — real simulation (MetaWorm/PyBullet) is post-MVP Track D.
-    See: SIMULATION_AND_EMBODIMENT_PLAN §10.
+    See: docs/research/LONGTERM_RESEARCH.md §15-§19 (simulation interface).
     """
 
     event_type: str  # spike, collision, state_change
@@ -24,7 +24,7 @@ class WorldAction:
     """Emission contract: action from Sonya to simulation world.
 
     Stub — real motor commands (MOVE, FACIAL, SPEAK) are post-MVP Track D.
-    See: SIMULATION_AND_EMBODIMENT_PLAN §11.
+    See: docs/research/LONGTERM_RESEARCH.md §20 (physical embodiment).
     """
 
     action_type: str  # move, speak, facial_expression

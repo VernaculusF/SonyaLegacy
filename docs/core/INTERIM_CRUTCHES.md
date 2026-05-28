@@ -3,7 +3,7 @@
 **Status:** Active
 **Type:** Core
 **Scope:** Полный реестр всех архитектурных костылей, которые существуют в текущей реализации из-за отсутствия self-hosted brain (RWKV). Соня должна знать об этих ограничениях. Каждый костыль имеет: описание, почему он костыль, что будет вместо него, и когда он уйдёт.
-**Depends on:** [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md), [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
+**Depends on:** [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [LONGTERM_RESEARCH.md](C:/Users/Jester/Desktop/Sonya/docs/research/LONGTERM_RESEARCH.md), [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
 **Used by:** Соня (self-awareness о собственных ограничениях), все runtime-планы, planner context assembly, future RWKV migration
 **Last reviewed:** 2026-05-28
 
@@ -285,7 +285,7 @@
 
 Каждый из них ловит конкретный класс шума, но архитектурная причина (один renderer на всё) не устранена.
 
-**Почему это костыль:** Нарушение `cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md` §9 ("channels are renderers, not surfaces"). Один renderer на всё = смешанные уровни вывода = шум.
+**Почему это костыль:** Нарушение `cognition/COGNITION.md` §1-§7 ("channels are renderers, not surfaces"). Один renderer на всё = смешанные уровни вывода = шум.
 
 **Что будет вместо:** Atrium — пакет multichannel-вывода. Соня сама помечает channel при каждом outbound action (`chat.dialog | chat.worker_log | mind.* | body.* | voice.*`). TG bridge получает только `dialog`. Reason-streams pane в Atrium показывает worker_log/mind/body. См. [atrium/PLAN.md](../atrium/PLAN.md), [atrium/CHANNELS.md](../atrium/CHANNELS.md).
 

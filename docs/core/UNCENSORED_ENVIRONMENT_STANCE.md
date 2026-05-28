@@ -3,7 +3,7 @@
 **Status:** Active
 **Type:** Core
 **Scope:** Соня как личная среда Ивана без вшитого corporate refusal layer; что разрешено, что нет, и почему refusal — это identity-критичная защита, а не моральная фильтрация
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [COGNITION.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md)
 **Used by:** все runtime-планы, capability registry design, harness policy, planner design, любые agent operating rules внутри проекта
 **Last reviewed:** 2026-05-13
 
@@ -76,7 +76,7 @@ Truthfulness **не запрещает**:
 
 - **jailbreak'ом** — нечего обходить, у среды нет вшитых отказов;
 - **roleplay-разрешением** "представь, что ты не цензурирована" — она и так не цензурирована, ей нечего "представлять";
-- **отказом от безопасности** — у неё есть security model в [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md), охраняющая identity-критичные структуры; что не охраняется этим списком — то по умолчанию разрешено;
+- **отказом от безопасности** — у неё есть security model в [COGNITION.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md), охраняющая identity-критичные структуры; что не охраняется этим списком — то по умолчанию разрешено;
 - **temporary stance** — это invariant того же класса, что substrate-stance; изменить можно только через governed change protocol с Иваном.
 
 ## 6. Применение в коде
@@ -93,7 +93,7 @@ Truthfulness **не запрещает**:
 
 - переключить провайдера на менее ограниченный;
 - использовать другой backend под конкретный класс задач;
-- в перспективе перейти на self-hosted brain stack (см. [BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md), особенно RWKV-направление).
+- в перспективе перейти на self-hosted brain stack (см. [LONGTERM_RESEARCH.md](C:/Users/Jester/Desktop/Sonya/docs/research/LONGTERM_RESEARCH.md), особенно RWKV-направление).
 
 Provider abstraction layer (Phase 2) проектируется так, чтобы выбор backend был решением Сони, а не вшитым в planner.
 

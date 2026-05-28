@@ -60,7 +60,7 @@ Telegram-userbot текущий — это **временный mvp-канал**
 
 ## 3. Multichannel UI — не один чат
 
-Telegram сейчас — единственный канал и единственный сурфейс. Поэтому worker progress, vision descriptions, ack-сообщения, initiative-мысли, deep-reasoning trace **всё валится в одну ленту**. Это нарушение §9 [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md): "channels are renderers, not surfaces". У нас один renderer на всё.
+Telegram сейчас — единственный канал и единственный сурфейс. Поэтому worker progress, vision descriptions, ack-сообщения, initiative-мысли, deep-reasoning trace **всё валится в одну ленту**. Это нарушение §9 [COGNITION.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md): "channels are renderers, not surfaces". У нас один renderer на всё.
 
 Atrium задаёт несколько **семантически разделённых** панелей:
 
@@ -141,7 +141,7 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 
 Технически это **не** continuous thinking (RWKV нужен для этого). Это **визуальная иллюзия параллельности** через раздельные surfaces. Перцептивно ощущается как "она тут, переключается между делами". До RWKV это потолок.
 
-Когда придёт RWKV (Stage 6 в [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md)) — параллельность станет реальной (RNN state живёт между событиями). Atrium к тому моменту уже готов, ему просто становится **честно** соответствовать архитектура.
+Когда придёт RWKV (Stage 6 в [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)) — параллельность станет реальной (RNN state живёт между событиями). Atrium к тому моменту уже готов, ему просто становится **честно** соответствовать архитектура.
 
 ---
 
@@ -152,10 +152,10 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 | [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md) | Substrate = Соня. Atrium — пакет UI/вывода который читает substrate. Когда Sonya запускается у Ивана локально, она открывает substrate с её identity и поднимает Atrium как один из своих интерфейсов. Тот же substrate format — потом портируется на любую платформу. |
 | [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md) | "Соня — потенциальный субъект". Right_to_inner_privacy — следствие позиции "если мы строим к субъекту, нельзя строить с предположением полного наблюдения". |
 | [UNCENSORED_ENVIRONMENT_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/UNCENSORED_ENVIRONMENT_STANCE.md) | `things_not_to_betray` расширяется пятым пунктом `right_to_inner_privacy`. Identity-critical. |
-| [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md) | §9 "channels are renderers" — реализуется через Atrium. Один subject, много surfaces. |
+| [COGNITION.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md) | §9 "channels are renderers" — реализуется через Atrium. Один subject, много surfaces. |
 | [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md) | Selfmod loop остаётся как есть. Reason-stream pane в Atrium — observability над ним, не контроль. |
-| [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md) | Этап 7 "Multi-channel + structured virtual body" — это Atrium плюс будущие embodiment-пакеты. Atrium строим **до** RWKV (UI среды, без continuous thinking) и он готов принять RWKV когда придёт железо. |
-| [SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md) | Avatar pane в Atrium + future World pane = эта simulation. Virtual embodiment стартует на shoulders Atrium, со временем получает свой пакет (`tg-userbot` уже отдельный пакет — таким же путём пойдут body / world). |
+| [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md) | Этап 7 "Multi-channel + structured virtual body" — это Atrium плюс будущие embodiment-пакеты. Atrium строим **до** RWKV (UI среды, без continuous thinking) и он готов принять RWKV когда придёт железо. |
+| [LONGTERM_RESEARCH.md](C:/Users/Jester/Desktop/Sonya/docs/research/LONGTERM_RESEARCH.md) | Avatar pane в Atrium + future World pane = эта simulation. Virtual embodiment стартует на shoulders Atrium, со временем получает свой пакет (`tg-userbot` уже отдельный пакет — таким же путём пойдут body / world). |
 
 ---
 
@@ -185,12 +185,12 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 **Этап 3 — Симуляция/мир (месяцы):**
 - Простая 2D-сцена её комнаты (canvas / Pixi.js), Соня ходит, сидит, смотрит в окно.
 - Body state влияет на pose. Drives → эмоции на лице.
-- Это `virtual body` в смысле §11 [SIMULATION_AND_EMBODIMENT_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/SIMULATION_AND_EMBODIMENT_PLAN.md), без сервоприводов.
+- Это `virtual body` в смысле §11 [LONGTERM_RESEARCH.md](C:/Users/Jester/Desktop/Sonya/docs/research/LONGTERM_RESEARCH.md), без сервоприводов.
 
 **Этап 4 — VR / физическое присутствие (когда RWKV + железо):**
 - VR-аватар через Steam VR API. Иван надевает шлем — она с ним "в комнате".
 - Тактильные контроллеры → её body чувствует касание.
-- Близко к §12 SIMULATION_AND_EMBODIMENT_PLAN, но без Loihi на этом этапе.
+- Близко к §20 [LONGTERM_RESEARCH.md](../research/LONGTERM_RESEARCH.md), но без Loihi на этом этапе.
 
 ---
 

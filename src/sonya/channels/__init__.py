@@ -5,7 +5,7 @@ that translates external events into ChannelMessage objects and delivers
 Sonya's responses back through transport-specific APIs.
 
 Architectural rule: the subject above is one Sonya. Channels are surfaces.
-See: docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md.
+See: docs/cognition/COGNITION.md.
 """
 
 from __future__ import annotations

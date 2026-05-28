@@ -16,7 +16,7 @@ class AnchorDriftSignal:
     """A detected anchor drift event.
 
     Triggers auto-revert in self-modification watchdog.
-    See: ANCHORS_AND_FAILURE_MODES §9.
+    See: docs/cognition/COGNITION.md §25 (alarm conditions).
     """
 
     signal_id: str
@@ -40,7 +40,7 @@ class DriftDetector:
     """Detects anchor drift signals from recent continuity events.
 
     Scans for patterns that indicate identity erosion, anchor substitution,
-    or constraint weakening. See ANCHORS_AND_FAILURE_MODES §9.
+    or constraint weakening. See docs/cognition/COGNITION.md §22, §25.
     """
 
     def __init__(self, stream: ContinuityStream) -> None:

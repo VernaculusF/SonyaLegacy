@@ -18,7 +18,7 @@ Flow:
 
   6. `selfmod.rollback proposal_id [reason]` — ручной откат (восстанавливает pre-state)
 
-См.: docs/SYSTEM_BUILDOUT_PLAN.md Этап A, SUBSTRATE_STANCE §9.
+См.: docs/core/SUBSTRATE_STANCE.md §9 (4-layer pipeline).
 """
 
 from __future__ import annotations

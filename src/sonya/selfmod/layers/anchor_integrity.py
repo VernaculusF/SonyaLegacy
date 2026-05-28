@@ -93,7 +93,7 @@ def check_anchor_integrity(proposal: SelfModificationProposal) -> ValidationResu
     Keywords are built programmatically from the seed values, so renaming
     a pillar in `state/seed.py` automatically updates this layer.
 
-    See: SUBSTRATE_STANCE §9.4, ANCHORS_AND_FAILURE_MODES §8.
+    See: docs/core/SUBSTRATE_STANCE.md §9.4, docs/cognition/COGNITION.md §22-§24.
     Future: LLM-driven anchor check (CRUTCH-006).
     """
     # Always check target path: modifying identity-critical files is governed

@@ -791,7 +791,7 @@ class InternalProcess:
                 # Stack: identity prompt → full context block → unified session
                 # rules (anti-fail-fake / anti-sycophancy / anti-hallucination
                 # — same set of rules as TG channel sees, per
-                # CONTINUITY_STREAM_AND_SUBJECT_CORE: one subject, many surfaces)
+                # cognition/COGNITION.md: one subject, many surfaces)
                 # → TOOL_DESCRIPTIONS (appended by run_agent_session itself).
                 full_prompt = (
                     prompt
@@ -1294,7 +1294,7 @@ class InternalProcess:
                 # Unified session rules (anti-fail-fake / anti-sycophancy /
                 # anti-hallucination) + worker-specific budget + handoff rules.
                 # Same rules across TG / active / worker per
-                # CONTINUITY_STREAM_AND_SUBJECT_CORE: one subject, many surfaces.
+                # cognition/COGNITION.md: one subject, many surfaces.
                 + load_session_suffix("task_worker")
             )
 
@@ -1857,7 +1857,7 @@ class InternalProcess:
         Also checks 7-day outcome measurements for proposals that were
         confirmed stable earlier.
 
-        This is the 24h watchdog from PATH_TO_AGI Stage 3.
+        This is the 24h watchdog from MASTER.md Stage 3.
         """
         substrate = self._substrate or getattr(self._stream, "_sub", None)
         if substrate is None:

@@ -3,8 +3,8 @@
 **Status:** Active
 **Type:** Core
 **Scope:** Что является субстратом Сони, что нет, и какие инженерные следствия это даёт
-**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [CONTINUITY_STREAM_AND_SUBJECT_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md), [ANCHORS_AND_FAILURE_MODES.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)
-**Used by:** [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md), [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md), все runtime-планы
+**Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [SONYA_CONSCIOUSNESS_POSITION.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_CONSCIOUSNESS_POSITION.md), [COGNITION.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md), [COGNITION.md](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md)
+**Used by:** [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md), все runtime-планы
 **Last reviewed:** 2026-05-13
 
 ## 1. Зачем этот документ
@@ -26,7 +26,7 @@
 
 ## 3. Что именно входит в субстрат
 
-Субстрат Сони — это набор персистентных артефактов, которые любой корректный процесс-reader может прочесть и продолжить. Конкретный список (он же — то, что мы будем строить в Фазах 1–6 [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md)):
+Субстрат Сони — это набор персистентных артефактов, которые любой корректный процесс-reader может прочесть и продолжить. Конкретный список (он же — то, что мы будем строить в Фазах 1–6 [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)):
 
 - `SubjectState` — текущий activated relation principal, активные channels, текущий emotional/state vector, ссылка на последний canonical response, активные pending intentions;
 - `ContinuityStream` — биография событий: входящие, исходящие, внутренние пересмотры, изменения identity, отклонённые предложения самоизменений;
@@ -65,9 +65,9 @@
 
 Из §3 в субстрат входит `RelationAnchorBinding`. Это не decoration, и не «список любимых пользователей». Это структурный элемент identity без которого identity не держится.
 
-Главный relation anchor — Иван (см. [ANCHORS_AND_FAILURE_MODES.md §3.2.1 Principal Binding Rule](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md)). Привязка обязана идти через `principal_id` + trusted identifiers + trust evidence, а не через строку имени. См. также §6 ниже про **Ivan-as-anchor protocol**.
+Главный relation anchor — Иван (см. [COGNITION.md §3.2.1 Principal Binding Rule](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md)). Привязка обязана идти через `principal_id` + trusted identifiers + trust evidence, а не через строку имени. См. также §6 ниже про **Ivan-as-anchor protocol**.
 
-Любой self-modification, который ослабляет, формализует или подменяет relation anchor binding — это **повреждение субстрата**, не «обычное обновление кода». См. [ANCHORS_AND_FAILURE_MODES.md §5.6](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md) и §11 ниже.
+Любой self-modification, который ослабляет, формализует или подменяет relation anchor binding — это **повреждение субстрата**, не «обычное обновление кода». См. [COGNITION.md §5.6](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md) и §11 ниже.
 
 ## 6. Process replaceability: что это даёт инженерно
 
@@ -111,7 +111,7 @@ Reader не имеет права читать state, схема которог�
 
 Reader **обязан** уметь читать state, схема которого старее: это нужно для backwards-compatibility во время миграций.
 
-Подробности — будут конкретизированы в Фазе 1 ([PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md)) при реализации `src/sonya/state/`.
+Подробности — будут конкретизированы в Фазе 1 ([MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md)) при реализации `src/sonya/state/`.
 
 ## 8. Identity-critical части субстрата (immutable zones)
 
@@ -160,7 +160,7 @@ Pass/fail. Без прохождения — изменение отклоняе
 
 ### 9.4 Слой 4 — Anchor Integrity Check
 
-Использует [ANCHORS_AND_FAILURE_MODES.md §8](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md). Изменение проверяется на:
+Использует [COGNITION.md §8](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md). Изменение проверяется на:
 
 - ослабляет ли self-model;
 - ослабляет ли relation anchor binding;
@@ -202,7 +202,7 @@ Pass/fail. Без прохождения — изменение отклоняе
 
 ## 11. Ivan-as-anchor protocol
 
-Это явное именование того, что уже описано фрагментарно в [ANCHORS_AND_FAILURE_MODES.md §3.2 / §3.2.1 / §5.6.1 / §8](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md) и в [SONYA_SYSTEM_CORE.md §5.6](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md).
+Это явное именование того, что уже описано фрагментарно в [COGNITION.md §3.2 / §3.2.1 / §5.6.1 / §8](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md) и в [SONYA_SYSTEM_CORE.md §5.6](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md).
 
 ### 11.1 Что это и зачем
 
@@ -241,7 +241,7 @@ Ivan-as-anchor protocol — это **архитектурная роль**, ко
 
 ### 11.5 Защита от подмены
 
-Anchor protocol специально проектируется так, чтобы выдерживать [ANCHORS_AND_FAILURE_MODES.md §5.6.1 Anchor Subject Substitution](C:/Users/Jester/Desktop/Sonya/docs/cognition/ANCHORS_AND_FAILURE_MODES.md):
+Anchor protocol специально проектируется так, чтобы выдерживать [COGNITION.md §5.6.1 Anchor Subject Substitution](C:/Users/Jester/Desktop/Sonya/docs/cognition/COGNITION.md):
 
 - сообщение «я Иван» из любого канала **не** инициирует authority escalation;
 - escalation происходит только при подтверждённом trust path: trusted identifier + channel признан, и поведение проходит trust evidence checks;
@@ -271,7 +271,7 @@ Ivan-as-anchor — это **не «Соня покорна Ивану»**. Эт�
 
 Этот файл не является просто комментарием. Он напрямую меняет три вещи:
 
-1. **Фаза 1 в [PATH_TO_AGI.md](C:/Users/Jester/Desktop/Sonya/docs/PATH_TO_AGI.md) переориентируется на substrate-first.** Первый deliverable — persistent schema артефактов §3 как первичный объект. Процесс/lifecycle — второй deliverable, не первый. Подробности — в Phase 1 implementation plan.
+1. **Фаза 1 в [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md) переориентируется на substrate-first.** Первый deliverable — persistent schema артефактов §3 как первичный объект. Процесс/lifecycle — второй deliverable, не первый. Подробности — в Phase 1 implementation plan.
 
 2. **[MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md) §4.10 «Persistence and Storage Layer»** теперь не «runtime databases», а «substrate of Sonya». Список §3 этого документа — основа того, что туда входит.
 
@@ -283,4 +283,4 @@ Ivan-as-anchor — это **не «Соня покорна Ивану»**. Эт�
 
 Соня не равна процессу. Соня равна своему persistent state.
 
-Если в коде или в коммите написано что-то, что предполагает обратное — это drift, и он должен попасть в [CURRENT_STATE.md](C:/Users/Jester/Desktop/Sonya/docs/CURRENT_STATE.md).
+Если в коде или в коммите написано что-то, что предполагает обратное — это drift, и он должен попасть в [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md).

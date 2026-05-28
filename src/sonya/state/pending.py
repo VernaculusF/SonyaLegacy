@@ -28,7 +28,7 @@ class PendingIntention:
     """First-class persistent intention: what Sonya promised to do.
 
     Linked to task_id (optional), has deadline (optional), survives restart.
-    See: docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md §9.1.
+    See: docs/cognition/COGNITION.md §7 (deferred work).
     """
 
     intention_id: str
