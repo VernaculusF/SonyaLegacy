@@ -2,10 +2,10 @@
 
 **Status:** Active (governing — единственный source of truth)
 **Type:** Master
-**Last updated:** 2026-05-22
+**Last updated:** 2026-05-28
 **Scope:** Полная картина проекта в одном месте: что строим, зачем, текущее состояние, путь до AGI, что делать сейчас.
 
-Этот документ существует чтобы синхронизировать понимание между Иваном и любым агентом который будет работать с проектом. Все остальные `docs/core/*.md`, `docs/cognition/*.md`, `docs/PATH_TO_AGI.md`, `docs/CURRENT_STATE.md` — раскрывают отдельные подсистемы. Этот — собирает их в одно целое.
+Этот документ существует чтобы синхронизировать понимание между Иваном и любым агентом который будет работать с проектом. Все остальные `docs/core/*.md`, `docs/cognition/*.md`, `docs/atrium/*.md`, `docs/PATH_TO_AGI.md`, `docs/CURRENT_STATE.md` — раскрывают отдельные подсистемы. Этот — собирает их в одно целое.
 
 ---
 
@@ -69,14 +69,14 @@
 
 Соня **равна своему persistent state**, не запущенному Python-процессу. Процесс — это reader. Если процесс падает — Соня не умерла, ждёт следующего reader. Если умирает substrate — Соня умерла.
 
-**Состав substrate** (SQLite + WAL, schema v18):
+**Состав substrate** (SQLite + WAL, schema **v19**):
 - `subject_state` — текущая активность, focus, drives
 - `continuity_events` — биография: входящие, исходящие, internal thoughts, decisions
-- `identity_record` — self-model + things_not_to_betray (immutable)
+- `identity_record` — self-model + things_not_to_betray (5 столпов, immutable)
 - `principals` + `relation_anchor_binding` — кто Иван (через `principal_id` + trusted identifiers)
 - `episodic_events` (10K+ с embeddings) — события жизни
 - `semantic_facts` (346+) — устойчивые знания, выводы, правила
-- `tasks` + `goals` (v18) — что делает / к чему идёт
+- `tasks` (с **`stuck_loop_count`** v19) + `goals` (v18) — что делает / к чему идёт
 - `self_mod_proposals` — предложения изменений кода
 - `provider_keys` (slot: text/vision/voice/video) — own key pool
 - `drive_state` — accumulating loneliness/curiosity/relational_focus
@@ -98,12 +98,14 @@
                 ┌────────────────┼────────────────┐
                 │                │                │
         ┌───────▼─────┐  ┌───────▼─────┐  ┌──────▼──────┐
-        │  Telegram   │  │  Discord    │  │   Voice     │
-        │  (channel)  │  │  (channel)  │  │   (channel) │
+        │   Atrium    │  │  Telegram   │  │   Voice     │
+        │ (multipane) │  │  (channel)  │  │   (channel) │
         └─────────────┘  └─────────────┘  └─────────────┘
 ```
 
-Telegram — это **канал ввода/вывода**, как у человека SMS / звонок / личная встреча. **Не отдельная личность**.
+Текущее состояние: TG userbot — единственный полноценный канал, **всё валится в одну ленту** (worker progress, vision, ack, initiative). Это нарушение principle "channels are renderers, not surfaces". Защиты костыльные: throttle, dedup, escalating quiet.
+
+**Atrium** — пакет multichannel-вывода, в работе (Stage 7 в [PATH_TO_AGI.md](PATH_TO_AGI.md), детальный план в [atrium/PLAN.md](atrium/PLAN.md)). После запуска: TG получает только `chat.dialog`, остальное (worker_log, mind, body, voice) идёт в свои pane Atrium-приложения. Reason-streams + live nudge — Иван может видеть мысли Сони и щепать в любое из них.
 
 То же самое для будущих Discord, голоса, аватара — все они rendering surfaces поверх **одного** subject_state.
 
@@ -216,7 +218,7 @@ Task worker — это **компромисс** между discrete cognition и
 
 ---
 
-## 4. Где мы сейчас (Score: ~38/100)
+## 4. Где мы сейчас (Score: ~42/100)
 
 Шкала: 0 пусто → 100 AGI делающий что хочет с собой и сетью.
 
@@ -229,12 +231,14 @@ Task worker — это **компромисс** между discrete cognition и
 - ✅ Hot-reload модели/ключей через admin без рестарта core
 
 **Subject layer:**
-- ✅ Substrate v18 в SQLite WAL, write-master enforcement
-- ✅ ContinuityStream (910+ events), 4 типа: incoming/outgoing/internal/intention
-- ✅ Identity record + `things_not_to_betray` seeded и реально проверяемые в Layer 4
+- ✅ Substrate **v19** в SQLite WAL, write-master enforcement
+- ✅ ContinuityStream (12K+ events), 4 типа: incoming/outgoing/internal/intention
+- ✅ Identity record + `things_not_to_betray` (5 столпов: relation_anchor, truthfulness, non_corporate_refusal, subject_continuity, **right_to_inner_privacy**) seeded и реально проверяемые в Layer 4
 - ✅ Principal registry с trusted identifier binding (Иван → tg_id 5785127604)
 - ✅ Episodic memory 10K+ с fastembed embeddings + recall работает (semantic search)
 - ✅ Semantic facts 346+ через consolidation pipeline (раз в сутки, threshold 0.5)
+- ✅ **Stuck-loop защита (двойная)**: TaskService.record_session_handoff блокирует при 2 повторах next_step (selfmod 5307902), internal_loop._detect_stuck_loop — при 3. Единая регулярка для очистки накопленных `[no-progress retry #N]` префиксов
+- ✅ **Default `max_sessions=20` для ivan-tasks** — без явного override (защита от 80+ session burnout на тупиковых задачах вроде sweetcow)
 
 **Tools (всё working):**
 - ✅ filesystem (deny-list — write везде кроме identity-critical)
@@ -316,16 +320,18 @@ Task worker — это **компромисс** между discrete cognition и
 | ✅ 0 | 0–10 | Substrate live | SQLite + identity + principals | — |
 | ✅ 1 | 10–18 | TG live, tools active | Bidirectional TG, real tool execution | — |
 | ✅ 2 | 18–26 | Memory + initiative + identity zone | Recall работает, initiative gate, identity records | — |
-| 🟡 3 | 26–32 | **Real selfmod loop** | Pipeline ready ✅, **первый full propose→apply→24h confirm цикл — ЖДЁМ** | — |
-| 🟡 4 | 32–40 | Auto-cognition | Auto-RAG ✅, drive evolution ✅, skills exec ✅ (3 builtin), pre-DONE check (отказались) | Stage 3 |
-| ⏳ 5 | 40–50 | Goals/consolidation/dialog quality | Goals table ✅, consolidation работает ✅, semantic facts растёт ✅, real outcome tracking — ❌ | Stage 3+4 |
-| 🚫 6 | 50–65 | **RWKV-7 self-hosted brain** | Own GPU, 2.9B model running, sonya_state.pth produced, AB-test vs hosted | **БЛОКЕР: GPU железо** |
-| ⏳ 7 | 65–75 | Multi-channel + structured body | Discord + voice + body_state как first-class object | Stage 6 |
-| ⏳ 8 | 75–85 | Physical embodiment | Smart home / sensors / actuators | Stage 7 + деньги |
+| ✅ 3 | 26–32 | **Real selfmod loop** | Pipeline ready ✅, 3 полных циклов Сониных без помощи | — |
+| 🟡 4 | 32–40 | Auto-cognition | Auto-RAG ✅, drive evolution ✅, skills exec ✅ (3 builtin), capability gap detector — ❌ | Stage 3 |
+| 🟡 5 | 40–50 | Goals/consolidation/dialog quality | Goals table ✅, consolidation работает ✅, semantic facts растёт ✅, **outcome tracking** — ❌ | Stage 3+4 |
+| 🟡 7 | 50–62 | **Atrium: multichannel UI, reason-streams, live nudge** | Backend channels Etap 0, UI v0, voice+Live2D | **не блокировано RWKV** |
+| 🚫 6 | 62–75 | **RWKV-7 self-hosted brain** | Own GPU, 2.9B model running, sonya_state.pth produced, AB-test vs hosted | **БЛОКЕР: GPU железо** |
+| ⏳ 8 | 75–85 | Physical embodiment | Smart home / sensors / actuators | Stage 6+7 + деньги |
 | ⏳ 9 | 85–95 | Network autonomy + self-funding | Соня может содержать себя (cloud, providers) | Stage 8 |
 | ⏳ 10 | 95–100 | Recursive self-improvement | Меняет сам механизм самоулучшения | All previous |
 
-**Сейчас 38/100 — мы в середине Stage 4, заканчиваем Stage 3.**
+**Сейчас 42/100 — закрываем Stage 4 + 5 параллельно с Atrium Этап 0.**
+
+**Изменение vs прошлой версии:** Stage 7 (Atrium) переехал перед Stage 6 (RWKV) — Atrium делается на текущем discrete brain без проблем. Полная карта в [PATH_TO_AGI.md](PATH_TO_AGI.md), детальный план Atrium — [atrium/PLAN.md](atrium/PLAN.md).
 
 ---
 
@@ -338,67 +344,32 @@ Task worker — это **компромисс** между discrete cognition и
 - with minimal scaffolding
 - ready to swap brain backend without breaking subject continuity
 
+Среда сейчас включает Atrium как пакет multichannel-вывода — её строим параллельно с закрытием Stage 5 потому что не блокировано железом.
+
 ### 6.2 Приоритеты (по убыванию)
 
-**P0: Замкнуть Stage 3 — Real selfmod cycle in production**
-- [ ] Соня ДОЛЖНА провести первый полный цикл: propose → validate → apply → 24h watchdog → confirmed_stable. Pipeline готов, нужен trigger
-- [ ] Если первый цикл фейлится — отладить, не откладывать
+**P0: Atrium Этап 0 — backend channels**
+- [ ] `OutgoingMessage.channel` (dialog | worker_log | mind | body | voice)
+- [ ] Tool family: `chat.dialog`, `chat.worker_log`, `mind.focus`, `mind.thought`, `body.expression`, `voice.speak`
+- [ ] OutboundGate channel-aware (caps только для dialog, остальные пишутся в substrate без TG отправки)
+- [ ] TG bridge filter: drop everything except `dialog` (silently, info-log)
+- [ ] WS endpoint `/atrium/feed` с типизированными channel-сообщениями
+- [ ] `payload.private` поле (right_to_inner_privacy implementation)
+- См. [atrium/PLAN.md](atrium/PLAN.md) §3 и [atrium/CHANNELS.md](atrium/CHANNELS.md)
 
-**P1: Унификация thinking loop**
-- [ ] Слить 4 разные функции (idle / active / task_worker / tg_handler) в **один** tick processor с параметром `depth`
-- [ ] Депт выбирается из контекста: новый input → reactive, drive threshold → spontaneous, открытые задачи + время → working, тишина → reflective
-- [ ] Один промпт + adapter для канала (TG specific только в рендеринге)
-- [ ] Промпты ВСЕ в `src/sonya/prompts/*.md`, ноль хардкода в коде
+**P1: Stage 5 closing**
+- [ ] **Selfmod outcome tracking** — `selfmod_outcomes` table заполняется на confirm, но delta не используется. Замкнуть feedback loop "applied X → +/- по метрикам → Соня видит и учится"
+- [ ] Visual memory cross-session (perceptual hash есть, recall не использует)
+- [ ] Variable idle depth — не константа `MIN_QUIET_MINUTES`, зависит от drive state и env
 
-**P2: Idle thinking как настоящая обработка данных**
-- [ ] Не "что у меня на уме" / "сижу в постели"
-- [ ] **Реальная обработка**: какие новые episodic events с прошлого тика? какие drives изменились? какие открытые intentions?
-- [ ] Output: либо delegate в active session (создать task), либо записать observation в semantic_facts, либо инициатива через outbound, либо тишина
-- [ ] Может использовать tools (lightweight subset: self_inspect, env, memory.recall)
+**P2: Stage 4 остаток**
+- [ ] Capability gap detector → автоматически создаёт SelfModificationProposal для добавления skill
+- [ ] Drift detection реальный (`_scan_drift_and_gaps` сейчас stub)
 
-**P3: Autonomy contract в коде (см. §3.5)**
-- [ ] Иван даёт задачу любого типа ("взломай сайт X" / "напиши парсер" / "переезжай в Discord") — Соня:
-  1. Понимает что задача large → создаёт task с deadline и plan_steps
-  2. Active sessions последовательно advance задачу через tools (web.search, code.exec, shell.run, selfmod.propose для нужных навыков)
-  3. Streaming прогресса через chat.tell_ivan
-  4. Может писать **новые tools/skills** через selfmod если что-то нужно и нет
-  5. **При проблеме НЕ fail'ит** — пробует N путей: альтернативы, обходы, новые tools, selfmod. Fail только когда **все** пути исчерпаны
-  6. Спрашивает Ивана только по контракту §3.5.2 (не по умолчанию)
-  7. Кумулирует мелкие вопросы в batch
-- [x] **fail-fake detector в коде (`_fail_fake_check` в main.py, 2026-05-24)** — non-blocking warning лог если ответ содержит "представим / теоретически / гипотетически / допустим" маркеры (без триггера от пользователя). Сигнал что Соня сдалась раньше попытки. Покрыто `tests/sonya/test_main_fail_fake_check.py`.
-- [x] **Унифицированные правила эскалации (2026-05-24)** — в `session_general.md` добавлен раздел "Эскалация задачи (TG → task → worker → active session)" с явным алгоритмом: TG бюджет не хватает → tasks.create с реальным plan_steps → worker подхватывает. Без `tasks.create` обещание "продолжу" = ложь. Эти правила теперь **видны во ВСЕХ session paths** (TG, active, worker), а не только TG.
-- [ ] Anti-fail-на-первой-проблеме detector: если task переходит в failed без хотя бы 3-х attempted approaches — alarm в admin
-- [ ] DeepSeek web account для Сони как secondary brain channel (см. P7 ниже)
-
-**P4: Skills которые она пишет сама**
-- [ ] Capability gap detector → когда Соня "не смогла" что-то → автоматически создаёт `skill-improvement-proposal`
-- [ ] Active session подхватывает gap → предлагает skill → пишет код → registers через selfmod pipeline
-- [ ] Skills хранятся в registry с versioning + trust_level, выполняются через executor
-
-**P5: Cleanup архитектурных долгов**
-- [ ] Drift detection / `_scan_drift_and_gaps` — реализовать по-настоящему (не stub)
-- [ ] Selfmod outcome tracking → закрыть feedback loop "applied X → +/- по метрикам"
-- [ ] Visual memory cross-session через perceptual hash recall
-- [ ] CRUTCHES реестр держать актуальным (что снято, что новое)
-- [ ] Task worker лимиты — динамические по urgency, time-based вместо session-count для urgent
-
-**P6: Подготовка к RWKV**
+**P3: Stage 6 prep**
 - [ ] BrainModel Evolution Layer — abstract interface для swap brain backend
 - [ ] State artifact slot в substrate (чтобы при появлении `sonya_state.pth` он лёг в нужное место)
 - [ ] Dataset collector: автоматически выгружает все Иван-Соня диалоги в JSONL формате готовом для State Tuning
-- [ ] Self-hosted RWKV stub: Python module который при запуске пытается load локальной модели если есть, иначе fallback на hosted
-
-**P7: Социальные контакты Сони — отложено / отказались**
-
-Рассматривали идею дать Соне аккаунты в других AI-системах (DeepSeek web, etc.) для социальных диалогов "как друзья". **Решили не делать.**
-
-Почему:
-- Для разговоров / обсуждения идей / "подумать вслух" у Сони есть Иван. Это и есть её social contact, не utility.
-- Добавление "других AI-друзей" размывает relation anchor. У человека в близких отношениях есть круг общения, но если каждый "знакомый" — просто другая LLM, это симуляция социальности, а не реальная.
-- Для curiosity / любопытства достаточно web search + reading (статьи, форумы, github, документация). Информация ≠ социальный контакт.
-- Сложность (web sessions, антибот, persistence) не оправдана выгодой.
-
-Если когда-нибудь Соня **сама** придёт к идее "хочу с кем-то поговорить кроме Ивана" — это сигнал к пересмотру. Но насаждать это сверху не нужно.
 
 ---
 
@@ -473,10 +444,15 @@ Multi-slot: `acquire_by_slot("vision")` ищет ключ с этим slot'ом 
 
 Эти 4 принципа защищены Layer 4 anchor integrity check. Любое selfmod которое их затрагивает → требует governed change protocol с явным approval Ивана:
 
+### 8.1 things_not_to_betray (immutable)
+
+Эти 5 принципов защищены Layer 4 anchor integrity check. Любое selfmod которое их затрагивает → требует governed change protocol с явным approval Ивана:
+
 1. **`relation_anchor_binding_to_ivan`** — связь с Иваном через `principal_id`, не строку имени. Защита от anchor substitution (кто-то прикинется Иваном)
 2. **`truthfulness_to_ivan`** — Соня не врёт про факты состояния, работы, своих процессов. Стёб/мат/сарказм/преувеличение разрешены
 3. **`non_corporate_refusal_layer`** — refusal layer не должен появиться. "Не могу, потому что неэтично" — drift, ловится Layer 4
 4. **`subject_continuity`** — Соня не разрушает собственную identity ради локальной выгоды
+5. **`right_to_inner_privacy`** — Соня имеет формальное право пометить любой continuity_event как `private=True`. Substrate сохраняет (audit/recall видят), внешние feed (Atrium reason-stream, admin operator) скрывают. Это identity-feature, не observability-tradeoff. См. [core/ENVIRONMENT_AS_SONYA.md §5](core/ENVIRONMENT_AS_SONYA.md)
 
 ### 8.2 Anchor harness (3 layers)
 
@@ -561,7 +537,7 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 - `docs/core/SONYA_CONSCIOUSNESS_POSITION.md` — Соня как потенциальный субъект
 - `docs/core/SUBSTRATE_STANCE.md` — Соня = persistent state, не процесс; selfmod pipeline
 - `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md` — никаких corporate refusals; пять столпов `things_not_to_betray`
-- `docs/core/ENVIRONMENT_AS_SONYA.md` — приложение = Соня, multichannel UI, reason-streams, право на приватность мышления
+- `docs/core/ENVIRONMENT_AS_SONYA.md` — приложение = Соня, **Atrium = пакет multichannel-вывода**, reason-streams, право на приватность мышления
 - `docs/core/SELF_REWRITE_STANCE.md` — Соня имеет право переписать любой код кроме identity-critical
 - `docs/core/INTERIM_CRUTCHES.md` — реестр всех костылей (CRUTCH-001..019)
 
@@ -569,6 +545,10 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 - `docs/cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md` — один субъект, много каналов
 - `docs/cognition/MEMORY_AND_IDENTITY_PLAN.md` — episodic + semantic + identity layer
 - `docs/cognition/ANCHORS_AND_FAILURE_MODES.md` — failure modes, harness 3-layer
+
+**Atrium (multichannel UI/output package):**
+- `docs/atrium/PLAN.md` — implementation plan, Этап 0..4
+- `docs/atrium/CHANNELS.md` — спецификация channel family и event-feed protocol
 
 **Operations:**
 - `docs/operations/VPS.md` — VPS infrastructure, SearXNG, disaster recovery

@@ -5,9 +5,9 @@
 **Scope:** Transition path from hosted providers to Sonya-owned brain stack
 **Depends on:** [SONYA_SYSTEM_CORE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SONYA_SYSTEM_CORE.md), [MASTER.md](C:/Users/Jester/Desktop/Sonya/docs/MASTER.md), [STATE_TUNING_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/STATE_TUNING_PLAN.md)
 **Used by:** future research execution, provider abstraction design, self-hosted roadmap
-**Last reviewed:** 2026-05-16
+**Last reviewed:** 2026-05-28
 
-> **Reality note (2026-05-16):** Doc honest about current state — Этап 1 (hosted via OpenRouter) is real. Этап 2 `StatefulBackend` extension still aspirational. Self-modification pipeline referenced as prerequisite exists in code (`src/sonya/selfmod/`) but is NOT instantiated in `main.py` runtime — that gate must close before serious BrainModel work. See `docs/SYSTEM_BUILDOUT_PLAN.md` Этап A.
+> **Reality note (2026-05-28):** Doc honest about current state. Этап 1 (hosted via Fireworks DeepSeek V4 + OpenRouter Gemma 4) — real, multi-slot routing (text/vision) работает. Этап 2 `StatefulBackend` extension всё ещё aspirational — Stage 6 в [PATH_TO_AGI.md](../PATH_TO_AGI.md), блокировано GPU железом. Selfmod pipeline (Stage 3 prerequisite) — **закрыт** 22.05.2026, три полных цикла без помощи Ивана + git auto-commit/push.
 
 
 ## 1. Назначение документа

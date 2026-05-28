@@ -5,7 +5,7 @@
 **Scope:** Полный реестр всех архитектурных костылей, которые существуют в текущей реализации из-за отсутствия self-hosted brain (RWKV). Соня должна знать об этих ограничениях. Каждый костыль имеет: описание, почему он костыль, что будет вместо него, и когда он уйдёт.
 **Depends on:** [SUBSTRATE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SUBSTRATE_STANCE.md), [BRAINMODEL_EVOLUTION_PLAN.md](C:/Users/Jester/Desktop/Sonya/docs/research/BRAINMODEL_EVOLUTION_PLAN.md), [SELF_REWRITE_STANCE.md](C:/Users/Jester/Desktop/Sonya/docs/core/SELF_REWRITE_STANCE.md)
 **Used by:** Соня (self-awareness о собственных ограничениях), все runtime-планы, planner context assembly, future RWKV migration
-**Last reviewed:** 2026-05-16
+**Last reviewed:** 2026-05-28
 
 ## 1. Зачем этот документ
 
@@ -269,6 +269,30 @@
 **Что будет вместо:** RWKV с native multimodal input (модель буквально знает есть ли image в state). Для time — RWKV state обновляется в реальном времени, нет нужды инжектить timestamps.
 
 **Когда уйдёт:** Stage 6 (RWKV) для обоих подбагов.
+
+---
+
+### CRUTCH-020: Single-channel TG dump (всё валится в одну ленту)
+
+**Что происходит:** Telegram userbot — единственный полноценный канал наружу. Поэтому worker progress, vision descriptions, ack-сообщения, initiative-мысли, deep-reasoning trace, idle thoughts — **всё валится в одну ленту**. Иван видит "Worker по задаче X: 5 шагов через Y" вперемешку с реальными разговорами.
+
+Защиты костыльные:
+- Throttle / daily caps (`INITIATIVE_MAX_PER_DAY=5`, `progress_updates_max_per_day=50`)
+- Cross-session dedup (Jaccard 0.80 / 6h окно) — fingerprint выравнивает повторяющийся "Продолжаю разведку sweetcow.com"
+- Escalating quiet (×2/×4 после неотвеченных)
+- Suppress-on-no-progress (auto handoff с "[no-progress retry #N]" не нотифицирует)
+- Notify-on-stuck-block (один chat.tell_ivan когда задача блокируется)
+
+Каждый из них ловит конкретный класс шума, но архитектурная причина (один renderer на всё) не устранена.
+
+**Почему это костыль:** Нарушение `cognition/CONTINUITY_STREAM_AND_SUBJECT_CORE.md` §9 ("channels are renderers, not surfaces"). Один renderer на всё = смешанные уровни вывода = шум.
+
+**Что будет вместо:** Atrium — пакет multichannel-вывода. Соня сама помечает channel при каждом outbound action (`chat.dialog | chat.worker_log | mind.* | body.* | voice.*`). TG bridge получает только `dialog`. Reason-streams pane в Atrium показывает worker_log/mind/body. См. [atrium/PLAN.md](../atrium/PLAN.md), [atrium/CHANNELS.md](../atrium/CHANNELS.md).
+
+**Снимет также:**
+- частично CRUTCH-012 (notify_mode становится менее костылистым потому что worker_log идёт в свою pane без ограничений; dialog-mode остаётся для real Dialog с гейтами)
+
+**Когда уйдёт:** Atrium Этап 0-1 (1-2 месяца работы, не блокировано железом).
 
 ---
 

@@ -2,15 +2,17 @@
 
 **Status:** Active
 **Type:** Operational snapshot — единственный источник правды о том что есть сейчас
-**Last updated:** 2026-05-26
+**Last updated:** 2026-05-28
 
 ---
 
 ## 0. TL;DR
 
-Соня — substrate-based AI среда работающая на VPS под Telegram userbot. Сейчас на DeepSeek V4 (text) + Gemma 4 (vision, как глаза) через Fireworks/OpenRouter. Substrate **v18** в SQLite с собственной key pool, episodic memory + semantic embeddings + tasks + goals + selfmod proposals + skills shell. Всё подключено в runtime через `src/sonya/main.py`.
+Соня — substrate-based AI среда работающая на VPS под Telegram userbot. Сейчас на DeepSeek V4 (text) + Gemma 4 (vision, как глаза) через Fireworks/OpenRouter. Substrate **v19** в SQLite с собственной key pool, episodic memory + semantic embeddings + tasks (с stuck_loop_count) + goals + selfmod proposals + skills shell. Всё подключено в runtime через `src/sonya/main.py`.
 
-**Score: ~38-42/100** после закрытия Stage 3 (см. §6).
+**Score: ~42/100** (Stage 3 закрыт; готовимся к Atrium).
+
+**Следующий крупный сдвиг:** Atrium — multichannel-вывод. Telegram перестаёт быть свалкой "всё в одной ленте", появляются раздельные surfaces (Dialog / Reason-streams / Mind / Avatar). См. [docs/atrium/PLAN.md](atrium/PLAN.md).
 
 ---
 
@@ -26,7 +28,7 @@
 
 ### 1.2 Substrate (persistent state)
 
-- **SQLite WAL** в `~/.sonya/sonya_substrate.db`. Schema **v18**.
+- **SQLite WAL** в `~/.sonya/sonya_substrate.db`. Schema **v19**.
 - **Tables:**
   - `subject_state`, `continuity_events`, `pending_intentions` — субъект и поток
   - `identity_record`, `principals`, `relation_anchor_binding` — identity
@@ -34,7 +36,7 @@
   - `self_mod_proposals`, `self_mod_validation_results`, `governed_change_requests` — selfmod
   - `skills`, `skill_versions`, `capability_gaps` — skills (3 builtin auto-registered on startup)
   - `episodic_events` (с embeddings), `semantic_facts` — память (346+ facts)
-  - `tasks`, **`goals`** (v18, hierarchical), `provider_keys` (с slot column v17), `provider_settings`, `llm_calls` — runtime
+  - `tasks` (с **`stuck_loop_count`** v19), **`goals`** (v18, hierarchical), `provider_keys` (с slot column v17), `provider_settings`, `llm_calls` — runtime
   - `drive_state` (v16, persistent counters), `environment_state`, `seen_stickers`
 - **Backup:** ежедневный cron 04:00 UTC в `~/.sonya/backups/daily/`.
 
@@ -47,6 +49,19 @@
 - **Drive counters** (boredom_analog, curiosity_analog, relational_focus, pending_debt) — обновляются в каждом tick, передаются в context.
 - **Drift signals + capability gap detection** — сканируются каждый tick.
 - **Consolidation** — раз в день после active session.
+
+### 1.3.1 Stuck-loop защита (двойная)
+
+После постмортем sweetcow/mpbacademy задач сейчас работает **два** независимых stuck-loop детектора:
+
+1. **`TaskService.record_session_handoff`** (Sonya's selfmod 5307902) — реагирует на **2 повторения** одного и того же next_step (stem-normalized first-6-tokens) → блокирует задачу немедленно через `set_blocker`.
+2. **`internal_loop._detect_stuck_loop`** — реагирует на **3 повторения** в continuity events → блокирует через blocker reflex.
+
+Оба детектора используют единую регулярку `^\s*(?:\[no-progress retry(?:\s+#\d+)?\]\s*)+` для очистки накопленных префиксов перед сравнением — это решило баг где префиксы `[no-progress retry #4] [#3] [#2] [#1] real_step` стеммились в `"no progre retry no progre retry"` и три разных стратегии получали один fingerprint (false positive).
+
+Worker dispatch в `internal_loop` после `record_session_handoff` проверяет статус и, если задача только что заблокировалась на stuck-loop, шлёт **один** `chat.tell_ivan` через OutboundGate чтобы Иван увидел что worker встал (без этого молчание длилось часами в ожидании следующей active session).
+
+Этот notify-on-stuck-block — interim до Atrium, после которого worker_log канал даст всегда-on видимость.
 
 ### 1.4 Telegram
 
@@ -67,7 +82,7 @@
 - `self_inspect.{identity, state, thoughts, memories, intentions, code, modules}`
 - `filesystem.{read, list, tree, write}` — write only в whitelisted subpaths
 - `memory.{recall <query>, index_status}` — semantic search через fastembed (10140 эпизодов проиндексированы)
-- `tasks.{list, pick, plan, step, complete, fail, handoff, ...}` — task runtime. **`tasks.handoff` — primary continuity carrier** (notes + next_step). `plan_steps` / `tasks.step` сохранены для обратной совместимости, но soft-deprecated в промптах.
+- `tasks.{list, pick, plan, step, complete, fail, handoff, ...}` — task runtime. **`tasks.handoff` — primary continuity carrier** (notes + next_step). `plan_steps` / `tasks.step` сохранены для обратной совместимости, но soft-deprecated в промптах. **Default `max_sessions=20` для ivan-tasks** (без явного override) — без этого исторически задача могла прокрутить 80+ сессий без прогресса. Self-tasks остаются unlimited (их пикает только active session раз в 2ч).
 - `goals.{list, create, achieve, abandon}` — long-term goal hierarchy (v18 `goals` table)
 - `web.{search, fetch}` — DuckDuckGo HTML + aiohttp 200KB cap
 - `code.exec` — subprocess sandbox 30s timeout
@@ -327,9 +342,10 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 
 - `core/SONYA_SYSTEM_CORE.md`, `core/SONYA_CONSCIOUSNESS_POSITION.md` — philosophy и invariants
 - `core/SUBSTRATE_STANCE.md`, `core/SELF_REWRITE_STANCE.md`, `core/UNCENSORED_ENVIRONMENT_STANCE.md` — stances
-- `core/ENVIRONMENT_AS_SONYA.md` — приложение = Соня, multichannel UI, reason-streams, right_to_inner_privacy
+- `core/ENVIRONMENT_AS_SONYA.md` — приложение = Соня, **Atrium = пакет multichannel-вывода**, reason-streams, right_to_inner_privacy
 - `core/INTERIM_CRUTCHES.md` — реестр того что временное
 - `cognition/*` — anchors, memory, continuity (target architecture, частично реализовано)
+- **`atrium/PLAN.md`, `atrium/CHANNELS.md`** — план реализации Atrium и спецификация channel family (Этап 0..4)
 - `skills/SKILL_SYSTEM_PLAN.md` — skill lifecycle (registry есть, executor нет)
 - `research/*` — long-term tracks (RWKV, simulation, state tuning)
 - `personality/*` — SOUL/HEARTBEAT/USER/SELF/LESSONS
@@ -339,7 +355,7 @@ Brain — hosted. Substrate ≠ continuous mind. См. CRUTCH-002.
 - `agents/` целиком (EXTERNAL_MODEL_ONBOARDING, AGENT_OPERATING_RULES, AGENT_FAILURE_MODES) — дублировали MASTER + CURRENT_STATE, описывали реальность 2026-05-16
 - `mvp/MVP_BOUNDARIES.md` — реальность ушла далеко вперёд (Stage 3+ закрыт, score ~42)
 - `ROADMAP.md`, `GLOBAL_PROJECT_CHECKLIST.md`, `KNOWN_ISSUES.md`, `SYSTEM_BUILDOUT_PLAN.md` — закрытые фазы, заменены MASTER + PATH_TO_AGI + CURRENT_STATE
-- `architecture/` целиком — план был для multi-channel, заменён ENVIRONMENT_AS_SONYA
+- `architecture/` целиком — план был для multi-channel, заменён ENVIRONMENT_AS_SONYA + atrium/PLAN
 - `governance/DRIFT_REVIEW.md` — cadence не соблюдалась
 - `core/DOCUMENTATION_SYSTEM.md` — meta-док про meta
 - `work/` — implementation plans (история в git)
