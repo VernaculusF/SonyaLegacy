@@ -44,6 +44,16 @@ class TaskService:
             raise ValueError(f"notify_mode must be progress/final/silent, got {notify_mode!r}")
         if max_sessions < 0:
             raise ValueError("max_sessions cannot be negative (0 = unlimited)")
+        # Sane default for ivan-tasks: cap unlimited budgets at 20 sessions.
+        # Without this, a task that loops forever (worker can't make progress
+        # but isn't stuck enough to trip the loop detector) burns hundreds
+        # of sessions and tokens. Historical examples: 83 sessions on a
+        # WordPress recon task, 50+ on sweetcow. 20 is enough room for real
+        # multi-step work; if Sonya genuinely needs more she can pass it
+        # explicitly via the JSON arg. Self-tasks keep 0 (unlimited) since
+        # they're picked sparingly by active session every 2h.
+        if max_sessions == 0 and created_by == "ivan":
+            max_sessions = 20
         task = self._store.create(
             title=title,
             description=description,

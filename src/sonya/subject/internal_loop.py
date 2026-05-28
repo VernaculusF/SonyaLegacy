@@ -1503,6 +1503,19 @@ class InternalProcess:
                         # so Sonya sees "tried 3x already, change approach".
                         if no_progress:
                             retry_count = self._count_recent_no_progress(task.task_id)
+                            # Strip ALL pre-existing "[no-progress retry #N]"
+                            # prefixes before we add our own. Otherwise prefixes
+                            # accumulate ("[#4] [#3] [#2] [#1] real_step"),
+                            # the dedup-fingerprinter stems all of them to
+                            # "no progre retry no progre retry", and the
+                            # stuck-loop detector falsely fires on the prefix
+                            # noise instead of the real instruction underneath.
+                            auto_next_step = re.sub(
+                                r"^\s*(?:\[no-progress retry(?:\s+#\d+)?\]\s*)+",
+                                "",
+                                auto_next_step,
+                                flags=re.IGNORECASE,
+                            )
                             auto_next_step = (
                                 f"[no-progress retry #{retry_count + 1}] {auto_next_step}"
                             )
@@ -1685,8 +1698,11 @@ class InternalProcess:
                 # ("no progre retry no progre retry") and the detector
                 # blocks the task even though Sonya was genuinely trying
                 # different approaches each tick.
+                # The `(?:...)+` quantifier strips ALL stacked prefixes
+                # — historical handoffs from before the auto-handoff fix
+                # accumulated them like "[#4] [#3] [#2] [#1] real_step".
                 ns_clean = re.sub(
-                    r"^\s*\[no-progress retry(?:\s+#\d+)?\]\s*",
+                    r"^\s*(?:\[no-progress retry(?:\s+#\d+)?\]\s*)+",
                     "",
                     ns,
                     flags=re.IGNORECASE,
