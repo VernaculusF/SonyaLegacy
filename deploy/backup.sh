@@ -32,14 +32,28 @@ fi
 gzip -f "$DAILY"
 echo "[backup] daily: ${DAILY}.gz"
 
+# Knowledge base — her markdown facts in ~/.sonya/knowledge/. Not in substrate,
+# so back it up separately as a tarball alongside the daily db snapshot.
+KNOWLEDGE_DIR="$HOME/.sonya/knowledge"
+if [ -d "$KNOWLEDGE_DIR" ]; then
+    KB_TAR="$BACKUP_DIR/daily/knowledge_$DATE.tar.gz"
+    tar -czf "$KB_TAR" -C "$HOME/.sonya" knowledge 2>/dev/null || true
+    echo "[backup] knowledge: $KB_TAR"
+fi
+
 # Sunday → also copy to weekly
 if [ "$WEEKDAY" = "7" ]; then
     cp "$DAILY.gz" "$BACKUP_DIR/weekly/sonya_$DATE.db.gz"
     echo "[backup] weekly: $BACKUP_DIR/weekly/sonya_$DATE.db.gz"
+    if [ -f "$BACKUP_DIR/daily/knowledge_$DATE.tar.gz" ]; then
+        cp "$BACKUP_DIR/daily/knowledge_$DATE.tar.gz" "$BACKUP_DIR/weekly/knowledge_$DATE.tar.gz"
+    fi
 fi
 
 # Rotation: keep last 14 daily, last 8 weekly
 ls -1t "$BACKUP_DIR/daily"/*.db.gz 2>/dev/null | tail -n +15 | xargs -r rm -v
+ls -1t "$BACKUP_DIR/daily"/knowledge_*.tar.gz 2>/dev/null | tail -n +15 | xargs -r rm -v
 ls -1t "$BACKUP_DIR/weekly"/*.db.gz 2>/dev/null | tail -n +9 | xargs -r rm -v
+ls -1t "$BACKUP_DIR/weekly"/knowledge_*.tar.gz 2>/dev/null | tail -n +9 | xargs -r rm -v
 
 echo "[backup] done"

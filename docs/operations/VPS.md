@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Operations
-**Last updated:** 2026-05-21
+**Last updated:** 2026-05-29
 
 ## 1. Где хостится
 
@@ -20,7 +20,7 @@
 | Service / Container | Port | Описание |
 |---------------------|------|----------|
 | `sonya.service` (systemd) | — | Ядро: substrate + thinking loop + telegram userbot + embedding indexer |
-| `sonya-admin.service` (systemd) | 8877 | Web-панель (пароль в .env) |
+| `sonya-admin.service` (systemd) | 8877 | Web-панель (пароль в .env) + Atrium WS feed `/atrium/feed` + nudge `/api/atrium/nudge` |
 | `sonya-searxng` (docker) | 127.0.0.1:8888 | Self-hosted SearXNG — meta-search для `web.search` |
 
 LLM-вызовы идут напрямую через `sonya.providers.llm_provider` с собственной key pool в substrate (provider_keys table). OmniRoute удалён.
@@ -57,9 +57,11 @@ Single user account (`jester-sonya`) с sudo. Sonya сервисы тоже ра
 │   └── .venv/                      — Python virtual environment (Python 3.11)
 │
 └── .sonya/                         — runtime data root
-    ├── sonya_substrate.db          — substrate (schema v18, SQLite WAL)
+    ├── sonya_substrate.db          — substrate (schema v20, SQLite WAL)
     ├── sonya_substrate.db-wal      — WAL file (live writes)
     ├── sonya_substrate.db-shm      — shared memory
+    ├── knowledge/                  — её факт-база (markdown). pentest/*.md, wp/*.md и т.д.
+    │                                 Пишется через knowledge.* tools, НЕ через filesystem.
     ├── media/                      — скачанные TG медиа (фото/стикеры/видео/webm)
     ├── backups/daily/              — daily substrate backup (cron 04:00 UTC)
     ├── searxng/
@@ -113,7 +115,7 @@ bash ~/Sonya/deploy/searxng/setup.sh
 ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 ```
 
-`update.sh` делает: `git fetch + reset --hard origin/develop` → `pip install` runtime deps (fastembed/numpy/imagehash) → `systemctl restart sonya sonya-admin`.
+`update.sh` делает: сохраняет diverged-коммиты Сони (если автопуш не прошёл) → `git fetch + reset --hard origin/develop` → `pip install` runtime deps (fastembed/numpy/imagehash) → `systemctl restart sonya sonya-admin`. На старте ядра запускается идемпотентная миграция knowledge (legacy repo-папки → `~/.sonya/knowledge/`, лог `knowledge_migrated`).
 
 **SearXNG не трогается** — у него отдельный setup.sh. Запускать только если меняется его конфиг.
 
@@ -227,6 +229,7 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 - `~/Sonya/tg.session` — авторизация Telegram (потеряешь — Соня выйдет из аккаунта)
 - ключи провайдеров в `provider_keys` table — правь через admin Providers tab
 - `~/.sonya/searxng/settings.yml` после auto-generate (там реальный secret_key)
+- `~/.sonya/knowledge/` — её факт-база. Читать можно, но писать/править руками не нужно: Соня сама управляет через `knowledge.*` tools. Editing вручную допустимо только для disaster-recovery (восстановление потерянного знания).
 
 ## 13. Что мониторить
 
@@ -261,6 +264,12 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 1. `sudo systemctl stop sonya`
 2. Восстановить из `~/.sonya/backups/daily/<latest>.db`
 3. `sudo systemctl start sonya`
+
+### Knowledge база потеряна
+Её факт-база (`~/.sonya/knowledge/`) бэкапится отдельным tarball'ом рядом с substrate:
+1. `cd ~/.sonya`
+2. `tar -xzf ~/.sonya/backups/daily/knowledge_<latest>.tar.gz`
+3. Перезапуск не нужен — `knowledge.*` tools читают директорию на лету.
 
 ### Telegram session invalid
 1. Удалить `~/Sonya/tg.session` и `tg.session-journal`

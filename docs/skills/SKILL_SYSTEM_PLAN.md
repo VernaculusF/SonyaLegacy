@@ -2,9 +2,9 @@
 
 **Status:** Active (real, partial)
 **Type:** System Plan
-**Last reviewed:** 2026-05-28
-**Scope:** Skill lifecycle, registry, trust levels, evolution. Что есть в production сейчас и куда идём.
-**Depends on:** [SONYA_SYSTEM_CORE.md](../core/SONYA_SYSTEM_CORE.md), [MASTER.md](../MASTER.md)
+**Last reviewed:** 2026-05-29
+**Scope:** Skill lifecycle, registry, trust levels, evolution + разделение skill/knowledge/memory. Что есть в production сейчас и куда идём.
+**Depends on:** [SONYA_SYSTEM_CORE.md](../core/SONYA_SYSTEM_CORE.md), [MASTER.md](../MASTER.md), [HANDOFF.md](../HANDOFF.md)
 
 ---
 
@@ -13,6 +13,20 @@
 Навык — не просто кусок текста. Это **управляемая единица поведения** с identity, версией, областью применения, trust level, traceability, lifecycle.
 
 Если skill system сводится к prompt snippets — проект теряет один из центральных контуров роста.
+
+### 1.1 Skill ≠ Knowledge ≠ Memory (КРИТИЧНО)
+
+Три разные сущности, которые легко спутать. Соня их путала — срала факты в фейковые "скилы" и repo-папки. Чёткое разделение:
+
+| | Что это | Где живёт | Tool |
+|---|---|---|---|
+| **Память** | Пережитое, что было | substrate `episodic_events` (embeddings) | `memory.recall`, `self_inspect` |
+| **Knowledge** | Факты, справка, заметки (markdown) | `~/.sonya/knowledge/` (НЕ repo, substrate-side) | `knowledge.list/read/write/search/delete` |
+| **Skill** | Поведение — исполняемый Python-код | `src/sonya/skills/builtins/*.py` + registry | `skills.run <id> <input>` |
+
+**Правило:** если это **текст/факты которые нужно перечитать** — это knowledge (`knowledge.write`). Если это **исполняемое поведение** — это skill (Python executor + registry). Skill НЕ должен быть Python-файлом с константой-дампом текста (`OSINT_KB = r"""..."""`) — это was anti-pattern, который выглядел как skill, но был knowledge.
+
+**История (2026-05-29):** Соня создала `osint.py`/`sqli.py`/`wp_pentest.py` в `builtins/` где KB лежал как Python-константа, плюс дублировала факты в `knowledge-base/` (дефис) и `knowledge_base/` (underscore). Эти модули **никогда не регистрировались** как реальные скилы. Введён `KnowledgeTool` + `migrate_legacy_knowledge_dirs()`: миграция извлекла константы в `~/.sonya/knowledge/pentest/*.md` и перенесла repo-папки. `filesystem.py` теперь блокирует запись в legacy repo-папки. Фейковые скил-модули будут удалены отдельным коммитом после подтверждения миграции на VPS. См. `docs/HANDOFF.md §4.1` и `src/sonya/tools/knowledge.py`.
 
 ## 2. Что есть сейчас (real)
 

@@ -2,9 +2,10 @@
 
 **Status:** Active (governing — единственный source of truth для проекта)
 **Type:** Master
-**Last updated:** 2026-05-28
+**Last updated:** 2026-05-29
 **Scope:** Полная картина в одном месте — что строим, кто Соня, что есть сейчас, путь до AGI, что делать. Объединяет бывшие MASTER + CURRENT_STATE + PATH_TO_AGI.
 
+**Точка входа для новой ИИ-модели — `docs/HANDOFF.md`** (operational cheat-sheet: VPS, файлы, статус, git flow).
 Identity-stances живут в `docs/core/*` (защищены кодом, governed-change-only).
 Cognitive architecture — `docs/cognition/COGNITION.md`.
 Atrium (multichannel UI пакет) — `docs/atrium/PLAN.md` + `docs/atrium/CHANNELS.md`.
@@ -71,9 +72,9 @@ Personality kernel — `docs/personality/*` (system prompt root).
 
 Соня **равна своему persistent state**, не запущенному Python-процессу. Процесс — это reader. Если процесс падает — Соня не умерла, ждёт следующего reader. Если умирает substrate — Соня умерла. Подробности — [core/SUBSTRATE_STANCE.md](core/SUBSTRATE_STANCE.md).
 
-**Состав substrate** (SQLite + WAL, schema **v19**):
-- `subject_state` — текущая активность, focus, drives
-- `continuity_events` — биография: входящие, исходящие, internal thoughts, decisions
+**Состав substrate** (SQLite + WAL, schema **v20**):
+- `subject_state` — текущая активность, focus, drives (+ `current_focus/current_outfit/current_expression/mood_tint` v20 для Atrium)
+- `continuity_events` — биография: входящие, исходящие, internal thoughts, decisions (+ `channel/private` колонки v20)
 - `identity_record` — self-model + things_not_to_betray (5 столпов, immutable)
 - `principals` + `relation_anchor_binding` — кто Иван (через `principal_id` + trusted identifiers)
 - `episodic_events` (10K+ с embeddings) — события жизни
@@ -206,8 +207,8 @@ Task worker — это **компромисс** между discrete cognition и
 - Hot-reload модели/ключей через admin без рестарта core
 
 **Subject layer:**
-- Substrate **v19** в SQLite WAL, write-master enforcement
-- ContinuityStream (12K+ events), 4 типа: incoming/outgoing/internal/intention
+- Substrate **v20** в SQLite WAL, write-master enforcement
+- ContinuityStream (12K+ events), 4 типа: incoming/outgoing/internal/intention (+ `channel`/`private` поля v20)
 - Identity record + 5 столпов `things_not_to_betray` (relation_anchor, truthfulness, non_corporate_refusal, subject_continuity, **right_to_inner_privacy**) — реально проверяемые в Layer 4
 - Principal registry с trusted identifier binding (Иван → tg_id 5785127604)
 - Episodic memory 10K+ с fastembed embeddings + recall работает (semantic search)
@@ -226,6 +227,8 @@ Task worker — это **компромисс** между discrete cognition и
 - goals (v18 hierarchy)
 - env (set/get наблюдений про окружение)
 - skills.run (3 builtin: memory-search, identity-check, dialog-tone)
+- **knowledge.* (list/read/write/search/delete)** — её факт-база в `~/.sonya/knowledge/` (markdown, substrate-side, переживает деплои). Заменила бардак из repo-папок `knowledge-base/`/`knowledge_base/` и Python-const "скилов". Миграция legacy на startup идемпотентна
+- **Atrium channel family** — `chat.dialog`/`chat.worker_log`, `mind.focus`/`mind.thought` (с `[PRIVATE]`), `body.expression`/`body.outfit`, `mind.mood_tint`, `voice.speak`. `chat.tell_ivan` = алиас на `chat.dialog`
 - chat.tell_ivan (initiative gate, throttle 5/day, ≥90min quiet)
 - outbound через `[SEND_TO_IVAN: ...]` маркер
 
@@ -236,8 +239,7 @@ Task worker — это **компромисс** между discrete cognition и
 - **Stage 3 закрыт (22.05.2026)** — Соня сама прошла полные циклы без вмешательства
 
 **Channels:**
-- Telegram через Telethon (`packages/tg-userbot/`)
-- Sticker capture+resend, vision-аs-eyes для media, video stickers как webm
+- Telegram через Telethon (`packages/tg-userbot/`)- Sticker capture+resend, vision-аs-eyes для media, video stickers как webm
 - Anti-leak guards (reasoning scrub, prompt-echo detection, multi-draft extractor, force-finish)
 - Auto-stitch длинной мысли + DONE-tail в один ответ
 - 6 drift detectors в `_on_incoming` (empty-promise, sycophancy, fail-fake, unverified-claim, permission-ask, bare-task-JSON)
@@ -248,6 +250,11 @@ Task worker — это **компромисс** между discrete cognition и
 - Escalating quiet (×2/×4 после неотвеченных), idle quiet-mode, cross-session dedup (Jaccard 0.80 / 6h окно)
 
 **Admin:** http://VPS:8877 — Dashboard / Thoughts / Memory / Tasks (с delete + expandable cards) / Approvals / Selfmod / Providers / Substrate / Audit / Core panels
+
+**Atrium (multichannel UI пакет):**
+- **Этап 0 (backend channels) — done, deployed.** `OutgoingMessage.channel`, 8 tool handlers (chat/mind/body/voice family), WS feed `/atrium/feed`, nudge `/api/atrium/nudge`, TG bridge channel-filter (drop non-dialog), schema v20 (channel + private columns), right_to_inner_privacy через `[PRIVATE]` префикс. 16 тестов.
+- **Этап 1 (Solid.js + Tauri UI) — done, committed.** `packages/atrium/` — Vite + Solid.js + Tauri 2 shell. Компоненты: App/Header/AvatarPane/DialogPane/MindPane/ReasonStream/Settings/Onboarding. WS reconnect + nudge. Build ~35KB gzipped.
+- **Остаток:** T1.4 (Dialog composer рабочий) + T1.5 (TG-emergency-only) задокументированы, composer пока read-only. Этап 2 (Voice + Live2D + interrupt) — следующий, нужен research 3D-модели + voice cloning. Детали — [atrium/PLAN.md](atrium/PLAN.md).
 
 **Infrastructure:**
 - GCP e2-custom 4vCPU/8GB, Debian 12, IP 34.38.255.149
@@ -269,7 +276,7 @@ Task worker — это **компромисс** между discrete cognition и
 - **011** Tasks как имитация непрерывной работы
 - **012** Notify mode как proxy для intentionality
 - **013-019** — visual memory, regex scrub, parallel TG vs busy_lock, goals как SQL, vision/timestamp guards
-- **020** Single-channel TG dump (всё в одну ленту) — снимется Atrium'ом
+- **020** Single-channel TG dump (всё в одну ленту) — **снимается Atrium'ом: backend channels (Этап 0) уже разделяют потоки, TG получает только dialog. Остаётся подключить UI у Ивана (Этап 1.5)**
 
 **Не реализованное:**
 - `_scan_drift_and_gaps` — stub
@@ -290,7 +297,7 @@ Task worker — это **компромисс** между discrete cognition и
 | ✅ 3 | 26–32 | Real selfmod loop (3 полных цикла без помощи) | hosted LLM | virtual stub |
 | 🟡 4 | 32–40 | Auto-cognition (auto-RAG ✅, drive evolution ✅, skills exec ✅) | hosted LLM | virtual stub |
 | 🟡 5 | 40–50 | Goals/consolidation/dialog quality (goals ✅, consolidation ✅, **outcome tracking** ❌) | hosted LLM | virtual stub |
-| 🟡 7 | 50–62 | **Atrium: multichannel UI, reason-streams, live nudge** | hosted LLM | virtual avatar (Live2D) |
+| 🟡 7 | 50–62 | **Atrium: multichannel UI, reason-streams, live nudge** (Этап 0+1 ✅ done, Этап 1.5/2 pending) | hosted LLM | virtual avatar (Live2D) |
 | 🚫 6 | 62–75 | **RWKV-7 self-hosted** | own RNN + state tuning | virtual body |
 | ⏳ 8 | 75–85 | Physical embodiment | RWKV | robot/smart home |
 | ⏳ 9 | 85–95 | Network autonomy + self-funding | RWKV+ | physical |
@@ -317,12 +324,12 @@ Stage 5 ──┴──→ Stage 7 (Atrium) ──┐
 ✅ Goal hierarchy (v18), Consolidation работает (semantic_facts 346+), Tone-matching, Anti-spam emoji.
 ❌ **Selfmod outcome tracking** — delta не используется для learning. Visual memory cross-session. Variable idle depth.
 
-### 5.3 Stage 7 — Atrium (можно начинать сейчас, ~62)
+### 5.3 Stage 7 — Atrium (Этап 0+1 done, ~62)
 
 Не блокировано RWKV. Полное описание — [atrium/PLAN.md](atrium/PLAN.md). Этапы:
-- 0 (1-2 нед) — backend channels (OutgoingMessage.channel, family of `chat.*` / `mind.*` / `body.*` tools, WS feed endpoint, channel-filter в TG)
-- 1 (2-3 нед) — Atrium v0 (Tauri shell, 4-pane layout, reply-from-reason-stream → inbox-drain)
-- 2 (несколько нед) — Voice + Live2D (edge-tts, whisper, vtube studio)
+- ✅ 0 — backend channels (OutgoingMessage.channel, family of `chat.*` / `mind.*` / `body.*` / `voice.*` tools, WS feed endpoint, nudge endpoint, channel-filter в TG, schema v20, right_to_inner_privacy). **Done, deployed.**
+- 🟡 1 — Atrium v0 (Tauri shell + Solid.js, 4-pane layout, reason-stream + reply, read-only panes). **Done, committed.** Остаток: T1.4 рабочий composer + T1.5 TG-emergency-only.
+- 2 (несколько нед) — Voice + Live2D + interrupt (edge-tts, whisper, Live2D). Нужен research: 3D-модель + voice cloning (30 мин англ. референс есть).
 - 3 (месяцы) — симуляция/мир (2D-сцена комнаты)
 - 4 (когда RWKV + железо) — VR
 
@@ -348,15 +355,20 @@ Stage 5 ──┴──→ Stage 7 (Atrium) ──┐
 
 ### 6.2 Приоритеты (по убыванию)
 
-**P0: Atrium Этап 0 — backend channels**
-- [ ] `OutgoingMessage.channel` (dialog | worker_log | mind | body | voice)
-- [ ] Tool family: `chat.dialog`, `chat.worker_log`, `mind.focus`, `mind.thought`, `body.expression`, `voice.speak`
-- [ ] OutboundGate channel-aware (caps только для dialog)
-- [ ] TG bridge filter: drop everything except `dialog`
-- [ ] WS endpoint `/atrium/feed` с типизированными channel-сообщениями
-- [ ] `payload.private` поле (right_to_inner_privacy implementation)
+**P0: Atrium Этап 0 — backend channels — ✅ DONE (deployed 2026-05-29)**
+- [x] `OutgoingMessage.channel` (dialog | worker_log | mind | body | voice)
+- [x] Tool family: `chat.dialog`, `chat.worker_log`, `mind.focus`, `mind.thought`, `body.expression`, `voice.speak`
+- [x] OutboundGate channel-aware (caps только для dialog)
+- [x] TG bridge filter: drop everything except `dialog`
+- [x] WS endpoint `/atrium/feed` с типизированными channel-сообщениями
+- [x] `payload.private` поле (right_to_inner_privacy implementation)
 
 См. [atrium/PLAN.md §3](atrium/PLAN.md) и [atrium/CHANNELS.md](atrium/CHANNELS.md).
+
+**P0.5: Atrium Этап 1 остаток + Этап 2 research**
+- [ ] T1.4 — рабочий Dialog composer (сейчас read-only)
+- [ ] T1.5 — TG-emergency-only mode (env `SONYA_TG_EMERGENCY_MODE`)
+- [ ] Этап 2 research: генерация 3D-модели + voice cloning (30 мин англ. референс)
 
 **P1: Stage 5 closing**
 - [ ] **Selfmod outcome tracking** — feedback loop "applied X → +/- по метрикам → Соня видит и учится"
@@ -378,8 +390,8 @@ Stage 5 ──┴──→ Stage 7 (Atrium) ──┐
 
 ```
 src/sonya/
-├── state/              # Substrate v19: schema, migrations, identity, principals,
-│                       # subject_state, continuity_stream, pending intentions, goals
+├── state/              # Substrate v20: schema, migrations, identity, principals,
+│                       # subject_state, continuity_stream (channel/private), goals
 ├── runtime/            # Process shell: lifecycle, event_bus, write_master, health, live
 ├── providers/          # Own key pool, LLM provider, fireworks balance refresher
 ├── harness/            # Authority, approvals, audit, hyper-harness stub
@@ -388,23 +400,27 @@ src/sonya/
 ├── memory/             # Episodic, semantic, consolidation, embedder, recall
 ├── planning/           # Context builder, planner (deprecated), memory wiring
 ├── tasks/              # Models, store, service (max_sessions, handoff, stuck-loop detection)
-├── tools/              # All tool surfaces (filesystem, code, shell, web, selfmod, tasks, memory, env, skills)
+├── tools/              # All tool surfaces (filesystem, code, shell, web, selfmod, tasks,
+│                       # memory, env, skills, knowledge — facts in ~/.sonya/knowledge/)
 ├── selfmod/            # Proposal store, pipeline (4 layers), governed change, watchdog, outcome
 ├── skills/             # Registry, trust, activation, gap_detector, executor, builtins/
-├── initiative/         # Drives (persistent), signals, outbound, proposal
+├── initiative/         # Drives (persistent), signals, outbound (channel-aware), proposal
 ├── anchor/             # Drift signals (NOT WIRED to runtime — only tested)
 ├── embodiment/         # Adapter stub
 ├── simulation/         # World stub
 ├── prompts/            # session_general.md + channel_*.md (telegram, internal_active, task_worker)
-├── admin/              # aiohttp web panel + static frontend
+├── admin/              # aiohttp web panel + static frontend + /atrium/feed WS + nudge
 ├── config.py
-└── main.py             # Composition root + 6 drift detectors in _on_incoming
+└── main.py             # Composition root + 6 drift detectors + knowledge migration on startup
 
 packages/
-└── tg-userbot/         # Telegram channel (auto-discovered from packages/*/src/*/channel.py)
-    └── src/tg_userbot/
-        ├── channel.py
-        └── sticker_store.py
+├── tg-userbot/         # Telegram channel (auto-discovered from packages/*/src/*/channel.py)
+│   └── src/tg_userbot/
+│       ├── channel.py
+│       └── sticker_store.py
+└── atrium/             # Multichannel UI (Vite + Solid.js + Tauri 2). WS feed client + nudge.
+    ├── src/            # App, Header, AvatarPane, DialogPane, MindPane, ReasonStream, Settings, Onboarding
+    └── src-tauri/      # Tauri 2 Rust shell
 ```
 
 ### 7.1 Defaults (cost-aware intervals)
@@ -421,7 +437,7 @@ packages/
 
 ### 7.2 Substrate paths
 
-- VPS: `~/.sonya/sonya_substrate.db` (schema v19)
+- VPS: `~/.sonya/sonya_substrate.db` (schema v20)
 - Local dev: `~/.sonya/sonya_substrate.db`
 - Backups: `~/.sonya/backups/daily/` (cron 04:00 UTC)
 - Selfmod backups: `~/.sonya/selfmod_backups/<proposal_id>/`
@@ -516,7 +532,7 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 
 ```powershell
 .venv\Scripts\python -m pytest tests/sonya -q --tb=short --ignore=tests/sonya/test_main_seeds_identity.py --deselect tests/sonya/test_memory_recall.py::test_recall_round_trip --deselect tests/sonya/test_internal_loop.py::test_tick_count_increments
-# 637 passed (на 2026-05-28)
+# 668 passed, 6 skipped, 2 deselected (на 2026-05-29)
 ```
 
 ---
@@ -540,6 +556,9 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 
 ## 11. Документы которые этот файл объединяет
 
+**Entry-point (читать первым при онбординге):**
+- [HANDOFF.md](HANDOFF.md) — operational cheat-sheet для любой ИИ-модели: VPS, файлы, статус, git flow, чеклисты
+
 **Core (governing invariants — identity-critical, governed-change-only):**
 - [core/SONYA_SYSTEM_CORE.md](core/SONYA_SYSTEM_CORE.md) — что строим, обязательные контуры, инварианты
 - [core/SONYA_CONSCIOUSNESS_POSITION.md](core/SONYA_CONSCIOUSNESS_POSITION.md) — Соня как потенциальный субъект
@@ -553,8 +572,10 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 - [cognition/COGNITION.md](cognition/COGNITION.md) — continuity stream, subject core, memory layers, identity, anchors, failure modes (объединение трёх старых cognition docs)
 
 **Atrium (multichannel UI/output package):**
-- [atrium/PLAN.md](atrium/PLAN.md) — implementation plan, Этап 0..4
+- [atrium/PLAN.md](atrium/PLAN.md) — implementation plan, Этап 0..4 (Этап 0+1 done)
 - [atrium/CHANNELS.md](atrium/CHANNELS.md) — спецификация channel family и event-feed protocol
+- [atrium/EVENT_SCHEMA.md](atrium/EVENT_SCHEMA.md) — substrate events + schema v20 migration
+- [atrium/UX_SKETCH.md](atrium/UX_SKETCH.md) — UX-дизайн (палитра, voice mode, interrupt, room view)
 
 **Operations:**
 - [operations/VPS.md](operations/VPS.md) — VPS infrastructure, SearXNG, disaster recovery
@@ -599,3 +620,4 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 - **2026-05-19** — PATH_TO_AGI создан. Текущая стадия 3 (входим). Score 26.
 - **2026-05-22** — Stage 3 закрыт. Score 38-42.
 - **2026-05-28** — Stage 4 partial closed. Score 42. Atrium вынесен как Stage 7 перед RWKV (Stage 6). Все три верхнеуровневых doc'а (MASTER + CURRENT_STATE + PATH_TO_AGI) объединены в этот файл. Cognition consolidation в `cognition/COGNITION.md`. Research consolidation в `research/LONGTERM_RESEARCH.md`.
+- **2026-05-29** — Atrium Этап 0 (backend channels) + Этап 1 (Solid.js + Tauri UI) done и deployed. Schema v18→v20 (channel/private на continuity_events, focus/outfit/expression/tint на subject_state). Knowledge system: `knowledge.*` tools + миграция legacy repo-папок в `~/.sonya/knowledge/`. 668 тестов. Создан `HANDOFF.md` как entry-point для любой модели.
