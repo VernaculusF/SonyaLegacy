@@ -1,0 +1,24 @@
+{
+  "name": "atrium",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Atrium — multichannel UI/output package for Sonya. См. docs/atrium/PLAN.md",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "solid-js": "^1.8.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "vite-plugin-solid": "^2.10.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "@tauri-apps/api": "^2.0.0"
+  }
+}

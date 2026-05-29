@@ -1717,16 +1717,35 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
 # ---------------------------------------------------------------------------
 
 
+def _atrium_cors(response: web.Response) -> web.Response:
+    """Add permissive CORS headers for Atrium endpoints.
+
+    Atrium runs as Tauri app or local dev server (vite на :1420), оба
+    отправляют Origin. Auth остаётся через X-Atrium-Token, поэтому
+    разрешаем все origins безопасно — без правильного токена нельзя ничего.
+    """
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Atrium-Token"
+    return response
+
+
+async def atrium_options(request: web.Request) -> web.Response:
+    """CORS preflight for atrium endpoints."""
+    return _atrium_cors(web.Response(status=204))
+
+
 async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
     """WebSocket feed of new continuity events for Atrium UI.
 
-    Auth: header `X-Atrium-Token` = SONYA_ADMIN_PASSWORD (Phase 0).
+    Auth: header `X-Atrium-Token` (preferred) ИЛИ query `?token=` (browser
+    fallback — WebSocket spec не позволяет custom headers from JS).
     Filters private=1 events at SQL layer.
     """
     config = request.app["config"]
     admin_password = request.app.get("admin_password", "")
-    # Auth
-    token = request.headers.get("X-Atrium-Token", "")
+    # Auth — accept token from header или query (browser-friendly)
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
     if admin_password and token != admin_password:
         return web.json_response({"error": "auth"}, status=401)
 
@@ -1880,9 +1899,9 @@ async def atrium_nudge(request: web.Request) -> web.Response:
     """
     config = request.app["config"]
     admin_password = request.app.get("admin_password", "")
-    token = request.headers.get("X-Atrium-Token", "")
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
     if admin_password and token != admin_password:
-        return web.json_response({"error": "auth"}, status=401)
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
     try:
         data = await request.json()
     except Exception:
@@ -1895,7 +1914,7 @@ async def atrium_nudge(request: web.Request) -> web.Response:
     except (TypeError, ValueError):
         ref_seq_int = None
     if not text:
-        return web.json_response({"error": "text required"}, status=400)
+        return _atrium_cors(web.json_response({"error": "text required"}, status=400))
 
     sub = _get_substrate_writable(config)
     try:
@@ -1927,11 +1946,11 @@ async def atrium_nudge(request: web.Request) -> web.Response:
                 "text": text,
             },
         ))
-        return web.json_response({
+        return _atrium_cors(web.json_response({
             "status": "queued",
             "session_id": session_id,
             "ref_seq": ref_seq_int,
-        })
+        }))
     finally:
         sub.close()
 
@@ -1987,6 +2006,7 @@ def create_app() -> web.Application:
     # Atrium (multichannel UI/output package — Этап 0)
     app.router.add_get("/atrium/feed", atrium_feed_ws)
     app.router.add_post("/api/atrium/nudge", atrium_nudge)
+    app.router.add_options("/api/atrium/nudge", atrium_options)
     return app
 
 

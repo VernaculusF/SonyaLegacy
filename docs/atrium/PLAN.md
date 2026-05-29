@@ -296,6 +296,59 @@ Mockup: `mockups/mobile.html`.
 - Воз можность tap stop / interrupt (Этап 2 — нужен voice)
 - Динамическая смена тем по `body.outfit` / `mind.mood_tint` (Этап 2)
 - Сцена комнаты с physics (Этап 3)
+- TG-emergency-only переключение (Этап 1.5 — после стабилизации Atrium у Ивана на всех устройствах)
+
+---
+
+## 4.5 Этап 1.5 — TG переходит в emergency-only (после стабилизации Atrium)
+
+**Когда:** после того как Atrium стабильно работает у Ивана на компьютере **и** телефоне минимум 1-2 недели + Иван явно подтвердил готовность переходить.
+
+**Цель:** Telegram перестаёт быть default-каналом для `chat.dialog`. Становится backup'ом для emergency или Atrium-disconnected ситуаций.
+
+### 4.5.1 Задачи
+
+**T1.5.1 — Atrium connection tracking**
+
+- Substrate field или config-cached time: `last_atrium_seen_at`
+- Обновляется на каждом `internal.atrium_connected` + при каждом message в WS feed (heartbeat)
+- Substrate event `internal.atrium_disconnected` пишется когда WS rolls 60s без активности
+
+**T1.5.2 — OutboundGate emergency logic**
+
+- В `_dispatch` (только для channel="dialog"):
+  ```python
+  atrium_offline_for = (now - last_atrium_seen_at).total_seconds()
+  is_emergency = atrium_offline_for > EMERGENCY_THRESHOLD or payload.get("emergency_override")
+  if config.tg_emergency_mode and not is_emergency:
+      # Skip TG dispatch — Atrium is the primary channel
+      log.info("dialog_atrium_only", text_preview=text[:80])
+      return  # event already в substrate, Atrium feed подхватит
+  # else: continue to existing TG dispatch logic
+  ```
+
+- New env var: `SONYA_TG_EMERGENCY_MODE=1` — включает emergency-only behavior. Default 0 (legacy).
+- New env var: `SONYA_TG_EMERGENCY_THRESHOLD_HOURS=24`
+
+**T1.5.3 — Promпт обновление**
+
+В `prompts/session_general.md` "## Каналы вывода":
+- `chat.dialog` теперь описывается как "Atrium-default, TG-backup". Промпт честно говорит что обычно сообщение пойдёт в Atrium и Иван увидит когда подключён.
+- Новое: возможность пометить mind.thought / dialog как emergency override. Когда это уместно (identity-critical, реальная опасность, persistent crisis).
+
+**T1.5.4 — Settings toggle**
+
+В Atrium settings:
+- "TG fallback delay" — после скольких часов без Atrium connection включать TG fallback (default 24h)
+- "Force TG always" — override emergency-only mode (для downgrade при нестабильности Atrium)
+
+### 4.5.2 Exit criteria
+
+- [ ] Atrium connection tracking работает (last_atrium_seen_at обновляется в substrate)
+- [ ] При `tg_emergency_mode=1` обычный `chat.dialog` не идёт в TG если Atrium недавно был online
+- [ ] Identity-critical alarms (Layer 4 anchor integrity, governed change activation) пробивают emergency-fallback
+- [ ] Прошло >7 дней Сониного использования Atrium без жалоб Ивана
+- [ ] Promпт обновлён, Соня понимает новое поведение
 
 ---
 

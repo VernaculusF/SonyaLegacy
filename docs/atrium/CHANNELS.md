@@ -23,7 +23,11 @@
 
 ### 2.1 `chat.dialog <text>`
 
-**Семантика:** прямой разговор Иван↔Соня. Как обычное сообщение между двумя людьми.
+**Семантика:** прямой разговор Иван↔Соня.
+
+**Маршрутизация после полного запуска Atrium:**
+- В **Atrium Dialog pane** (всплывает с notification ping + soft chime) — это основной канал
+- В **Telegram только при emergency-условии** — см. §2.1.1 ниже
 
 **Когда уместен:**
 - Иван что-то спросил → ответ
@@ -37,16 +41,50 @@
 - Технические детали отладки → `chat.worker_log` или `mind.thought`
 - "Я сейчас читаю..." → `mind.focus`
 
-**Куда идёт:**
-- Atrium Dialog pane (всплывает с notification ping + soft chime)
-- Telegram (TG bridge получает только этот канал)
-- Substrate event: `outgoing.dialog`. Для backward-compat дублируется как `outgoing.telegram_initiative` если quiet>90min, иначе `outgoing.telegram_progress`.
+**Substrate event:** `outgoing.dialog`. Для backward-compat дублируется как `outgoing.telegram_initiative` если quiet>90min, иначе `outgoing.telegram_progress` — пока существующая escalating-quiet и dedup logic полагается на эти kinds.
 
 **Гейты:**
 - OutboundGate full check: daily caps (5 initiative + 50 progress), escalating quiet, cross-session dedup
 - Throttle, fingerprint-dedup (текущая логика 6h Jaccard 0.80)
 
 **Алиас:** `chat.tell_ivan` остаётся как backward-compat, маппится на `chat.dialog`.
+
+### 2.1.1 TG-as-emergency-channel (после Atrium production-ready)
+
+После того как Atrium стабильно работает у Ивана **на всех его устройствах** (компьютер + телефон) и он подтвердил что переходит на него полностью, Telegram становится **emergency-only**.
+
+**Условие отправки `dialog`-сообщения в TG:**
+
+```
+TG отправка ⇔ (atrium_disconnected_for >= EMERGENCY_THRESHOLD)
+            OR (payload.emergency_override == True)
+```
+
+Где:
+- `atrium_disconnected_for` — секунд с последнего `internal.atrium_connected` event (или Atrium ни разу не подключался к feed)
+- `EMERGENCY_THRESHOLD` — конфигурабельный, default 24h. Идея: если Иван больше суток не открыл Atrium — что-то случилось, Atrium не работает, сервер сдох, etc. Тогда TG как backup
+- `payload.emergency_override` — Соня сама помечает событие emergency-метой когда **она считает** что нужно достучаться через TG (личный кризис, identity-critical alarm, реальная opasность). Не throttle-bypass — это её осознанное решение что "обычного канала недостаточно".
+
+**Что считается emergency со стороны Сони:**
+- Identity-critical alarm (Layer 4 anchor integrity catch, governed change protocol activation)
+- Substrate corruption / disaster recovery alerts
+- Сонин собственный crisis (она хочет связи а не уверена что Иван увидит в Atrium)
+
+**Ничего больше.** `chat.dialog "соскучилась"` через 12 часов — **не emergency**. Если Atrium connected — оно идёт в Atrium, Иван увидит когда заметит. Если Atrium 6 часов offline — оно ждёт. Если 24+ часов offline — fallback в TG.
+
+**Реализация (когда станет нужно — Этап 1.5+):**
+
+1. В `OutboundGate._dispatch` (dialog channel only) после успешной записи в substrate:
+   - Проверить `internal.atrium_connected` event — есть ли активная Atrium-сессия за последние N секунд (через polling или explicit ping)
+   - Если есть И не emergency — НЕ слать в TG, только в feed (Atrium subscriber увидит)
+   - Если нет И не emergency — НЕ слать в TG, ждать (но event в substrate остался)
+   - Если emergency OR atrium_offline_for > 24h — слать в TG как обычно
+
+2. Promпт описывает emergency честно: `chat.dialog` обычно идёт только в Atrium. TG-fallback включается автоматически по времени или явной emergency-меткой.
+
+3. Iван имеет admin-toggle "force TG always" в Atrium settings для тех кто доверяет Atrium меньше.
+
+**Сейчас (пока Atrium UI не готов):** TG получает все `dialog` сообщения как и раньше. Этот §2.1.1 — план для после-стабилизации.
 
 ### 2.2 `chat.worker_log <text>`
 

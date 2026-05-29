@@ -1,0 +1,242 @@
+/* WebSocket client for /atrium/feed.
+ *
+ * Connects with X-Atrium-Token header (Phase 0 auth). Note: WebSocket spec
+ * doesn't allow custom headers in browser — we pass token as query param
+ * instead. The server should accept either.
+ *
+ * Reconnects with exponential backoff (1s, 2s, 4s, 8s, max 30s).
+ *
+ * See: docs/atrium/CHANNELS.md §3.
+ */
+import {
+  feed, setFeed, settings,
+  pushDialogMessage, pushStreamEvent, pushInnerThought,
+  applyMeta, flashAvatar,
+} from './store.js';
+
+let ws = null;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+let intentionalClose = false;
+
+function classifySrc(kind, payload) {
+  // Server already infers src in event JSON. Fall back to client-side
+  // classification if missing.
+  if (payload && payload.src) return payload.src;
+  if (kind?.startsWith('outgoing.worker_log') || kind?.includes('task_worker')) return 'worker';
+  if (kind?.startsWith('internal.thought')) return 'idle';
+  if (kind?.startsWith('outgoing.dialog') || kind?.startsWith('outgoing.telegram') || kind?.startsWith('outgoing.response')) return 'active';
+  if (kind?.startsWith('outgoing.mind') || kind?.startsWith('outgoing.body') || kind?.startsWith('outgoing.voice')) return 'active';
+  if (kind?.startsWith('internal.scheduler') || kind?.startsWith('subject.lifecycle')) return 'system';
+  if (kind?.startsWith('skill.') || kind?.includes('capability_gap')) return 'skill';
+  return 'system';
+}
+
+function isHisIncoming(kind) {
+  return (
+    kind?.startsWith('incoming.telegram_message') ||
+    kind === 'incoming.atrium_dialog' ||
+    kind === 'incoming.atrium_voice'
+  );
+}
+
+function relativeAge(ts) {
+  if (!ts) return '';
+  try {
+    const dt = new Date(ts);
+    const ms = Date.now() - dt.getTime();
+    if (ms < 60000) return Math.floor(ms / 1000) + 's';
+    if (ms < 3600000) return Math.floor(ms / 60000) + 'm';
+    if (ms < 86400000) return Math.floor(ms / 3600000) + 'h';
+    return Math.floor(ms / 86400000) + 'd';
+  } catch {
+    return '';
+  }
+}
+
+function handleEvent(msg) {
+  const seq = msg.seq;
+  const ts = msg.ts;
+  const kind = msg.kind;
+  const channel = msg.channel || '';
+  const text = msg.text || '';
+  const payload = msg.payload || {};
+  const src = msg.src || classifySrc(kind, payload);
+
+  if (seq && seq > feed.last_seq) {
+    setFeed('last_seq', seq);
+  }
+
+  // Dialog messages (her replies in TG/Atrium)
+  if (kind === 'outgoing.dialog' || kind === 'outgoing.telegram_initiative' || kind === 'outgoing.telegram_progress' || kind === 'outgoing.telegram_response' || kind === 'outgoing.response') {
+    if (text) {
+      pushDialogMessage({ seq, ts, sender: 'her', text });
+      flashAvatar();
+    }
+  }
+  // Incoming from Ivan
+  if (isHisIncoming(kind) && text) {
+    pushDialogMessage({ seq, ts, sender: 'him', text });
+  }
+
+  // Inner thought stream (mind.thought events)
+  if (kind === 'outgoing.mind_thought' && text) {
+    pushInnerThought({
+      seq,
+      ts,
+      text,
+      age: relativeAge(ts),
+      private: !!payload.private,
+    });
+  }
+
+  // mind.focus updates focus directly (in addition to meta sync)
+  if (kind === 'outgoing.mind_focus' && text) {
+    setFeed('current_focus', text);
+  }
+
+  // Reason-stream — all events except pure dialog noise
+  // Skip pure-dialog kinds because they're already in Dialog pane
+  const skipFromStream = new Set([
+    'outgoing.telegram_initiative',
+    'outgoing.telegram_progress',
+    'outgoing.telegram_response',
+    'outgoing.response',
+  ]);
+  // Keep outgoing.dialog in stream so Иван sees it on the timeline too,
+  // but with src=active so it's visually marked.
+  if (!skipFromStream.has(kind)) {
+    let body = '';
+    if (kind === 'internal.thought' && payload.text) {
+      body = `"${payload.text}"`;
+    } else if (text) {
+      body = text;
+    } else if (payload.tool) {
+      body = `tool=${payload.tool} ${payload.arg ? '· ' + String(payload.arg).slice(0, 100) : ''}`;
+    } else if (payload.summary) {
+      body = payload.summary;
+    } else if (payload.next_step) {
+      body = `next: ${payload.next_step}`;
+    } else if (kind.startsWith('internal.scheduler')) {
+      body = '';
+    } else {
+      // Fallback: short payload preview
+      try {
+        body = JSON.stringify(payload).slice(0, 150);
+      } catch { body = ''; }
+    }
+    pushStreamEvent({
+      seq,
+      ts: ts ? new Date(ts).toLocaleTimeString('ru-RU', { hour12: false }) : '',
+      kind,
+      src,
+      channel,
+      session_id: msg.session_id,
+      body,
+    });
+  }
+}
+
+function handleMeta(msg) {
+  applyMeta(msg);
+}
+
+export function connectWS() {
+  intentionalClose = false;
+  if (!settings.vps_host || !settings.atrium_token) {
+    setFeed({ connected: false, last_error: 'connection settings missing' });
+    return;
+  }
+  setFeed({ reconnecting: true, last_error: '' });
+
+  // ws:// for plain http hosts; wss:// will be handled when we add TLS later.
+  const proto = settings.vps_host.startsWith('localhost') ? 'ws' : 'ws';
+  const url = `${proto}://${settings.vps_host}/atrium/feed?since_seq=${feed.last_seq}&token=${encodeURIComponent(settings.atrium_token)}`;
+
+  try {
+    // Browser WebSocket can't set custom headers; the server reads token from
+    // the X-Atrium-Token header by default but we also accept ?token=... for
+    // browser-based clients. Backend update may be needed (T1.4).
+    ws = new WebSocket(url);
+  } catch (err) {
+    setFeed({ connected: false, last_error: String(err) });
+    scheduleReconnect();
+    return;
+  }
+
+  ws.onopen = () => {
+    reconnectAttempt = 0;
+    setFeed({ connected: true, reconnecting: false, last_error: '' });
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'event') {
+        handleEvent(msg);
+      } else if (msg.type === 'meta') {
+        handleMeta(msg);
+      }
+    } catch (err) {
+      console.error('atrium ws parse error', err);
+    }
+  };
+
+  ws.onerror = () => {
+    // onclose will fire too, handle reconnect there.
+  };
+
+  ws.onclose = (ev) => {
+    setFeed({ connected: false });
+    if (!intentionalClose) {
+      scheduleReconnect();
+    }
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectAttempt = Math.min(reconnectAttempt + 1, 5);
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempt - 1), 30000);
+  setFeed({ reconnecting: true });
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWS();
+  }, delay);
+}
+
+export function disconnectWS() {
+  intentionalClose = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (ws) {
+    try {
+      ws.close();
+    } catch {}
+    ws = null;
+  }
+  setFeed({ connected: false, reconnecting: false });
+}
+
+// HTTP nudge endpoint — reply from reason-stream pane.
+export async function sendNudge({ session_id, text, ref_seq }) {
+  if (!settings.vps_host || !settings.atrium_token) {
+    throw new Error('connection settings missing');
+  }
+  const url = `http://${settings.vps_host}/api/atrium/nudge`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Atrium-Token': settings.atrium_token,
+    },
+    body: JSON.stringify({ session_id, text, ref_seq }),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${txt}`);
+  }
+  return resp.json();
+}
