@@ -33,6 +33,11 @@ const DEFAULT_SETTINGS = {
   avatar_model_url: '/models/sonya.vrm',
   // Optional GLB/glTF room scene for the room view. Empty → procedural room.
   room_model_url: '',
+  // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
+  avatar_mode: '2d',
+  // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
+  // e.g. ['/avatar/2b_closed.png','/avatar/2b_half.png','/avatar/2b_open.png']
+  avatar_frames: [],
 };
 
 function loadSettings() {
@@ -157,4 +162,29 @@ export const [avatarGlow, setAvatarGlow] = createSignal(0);
 
 export function flashAvatar() {
   setAvatarGlow((n) => n + 1);
+}
+
+// Speaking state — drives 2D mouth animation. setSpeaking(true) starts a
+// talk loop; mouthLevel (0..1) is the live amplitude when real TTS lands.
+export const [speaking, setSpeaking] = createSignal(false);
+export const [mouthLevel, setMouthLevel] = createSignal(0);
+
+let _speakTimer = null;
+// Simulate talking for `ms` (used until real TTS amplitude is wired): toggles
+// the mouth open/closed at a natural cadence, then settles closed.
+export function simulateSpeech(ms = 2500) {
+  setSpeaking(true);
+  if (_speakTimer) clearInterval(_speakTimer);
+  const start = Date.now();
+  _speakTimer = setInterval(() => {
+    if (Date.now() - start > ms) {
+      clearInterval(_speakTimer);
+      _speakTimer = null;
+      setMouthLevel(0);
+      setSpeaking(false);
+      return;
+    }
+    // pseudo-random mouth openness for a lively talk cadence
+    setMouthLevel(0.2 + Math.random() * 0.8);
+  }, 90);
 }

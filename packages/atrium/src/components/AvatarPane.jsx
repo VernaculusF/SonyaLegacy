@@ -1,9 +1,11 @@
-/* AvatarPane — её 3D VRM-аватар (Three.js) + status lines.
- * Fallback на статичный SVG-силуэт если модель не задана / не загрузилась.
- * Click → open room view (placeholder для Этапа 1).
+/* AvatarPane — 2D-аватар Сони (default) + status lines.
+ * 3D VRM-режим опционально (settings.avatar_mode === '3d') — для будущего
+ * (ходьба/тело). По умолчанию чистый 2D без рига.
+ * Click → войти в комнату.
  */
 import { Show, createSignal, createEffect, onMount, onCleanup } from 'solid-js';
-import { feed, settings, avatarGlow } from '../store.js';
+import { feed, settings, avatarGlow, speaking, simulateSpeech } from '../store.js';
+import SonyaAvatar from './SonyaAvatar.jsx';
 import { VrmViewer } from '../vrmViewer.js';
 
 const EXPRESSION_LABEL = {
@@ -18,83 +20,20 @@ const EXPRESSION_LABEL = {
   annoyed: 'раздражена',
 };
 
-function topDriveLabel(drives) {
-  const entries = Object.entries(drives || {});
-  if (!entries.length) return '';
-  const [k, v] = entries.reduce((a, b) => (b[1] > a[1] ? b : a));
-  if (v < 0.1) return 'нейтральна';
-  return k;
-}
-
 export default function AvatarPane(props) {
   const [glowing, setGlowing] = createSignal(false);
-  const [vrmStatus, setVrmStatus] = createSignal('init');
-  let canvasEl;
-  let viewer;
+  const use3d = () => settings.avatar_mode === '3d';
 
-  // Trigger flash CSS animation on every avatarGlow tick
+  // Flash glow + simulate a short talk animation whenever she sends dialog.
   createEffect((prev) => {
     const cur = avatarGlow();
     if (prev !== undefined && cur !== prev) {
       setGlowing(true);
       setTimeout(() => setGlowing(false), 1500);
+      simulateSpeech(2400);
     }
     return cur;
   });
-
-  // Mount the VRM viewer if a model URL is configured.
-  onMount(() => {
-    const url = settings.avatar_model_url;
-    if (!url || !canvasEl) {
-      setVrmStatus('none');
-      return;
-    }
-    viewer = new VrmViewer();
-    viewer.onStatus = (s) => setVrmStatus(s);
-    try {
-      viewer.mount(canvasEl);
-      viewer.load(url).catch((err) => {
-        console.error('VRM load failed', err);
-        setVrmStatus('error');
-      });
-    } catch (err) {
-      console.error('VRM mount failed', err);
-      setVrmStatus('error');
-    }
-  });
-
-  onCleanup(() => {
-    if (viewer) viewer.dispose();
-  });
-
-  // Drive avatar expression from feed.current_expression.
-  createEffect(() => {
-    const expr = feed.current_expression;
-    if (viewer && vrmStatus() === 'ready') viewer.setExpression(expr);
-  });
-
-  // Pulse mouth on dialog glow as a cheap "she's speaking" cue until real
-  // audio-amplitude lip-sync (Этап 2 TTS) is wired.
-  createEffect((prev) => {
-    const cur = avatarGlow();
-    if (prev !== undefined && cur !== prev && viewer && vrmStatus() === 'ready') {
-      let n = 0;
-      const iv = setInterval(() => {
-        n += 1;
-        viewer.setMouthOpen(n % 2 === 0 ? 0.15 : 0.55);
-        if (n > 8) {
-          clearInterval(iv);
-          viewer.setMouthOpen(0);
-        }
-      }, 110);
-    }
-    return cur;
-  });
-
-  const useVrm = () => {
-    const s = vrmStatus();
-    return s === 'loading' || s === 'ready';
-  };
 
   function openRoom() {
     if (props.onEnterRoom) props.onEnterRoom();
@@ -104,22 +43,13 @@ export default function AvatarPane(props) {
     <aside class="pane avatar-pane">
       <h2>SONYA</h2>
       <div
-        classList={{ 'avatar-frame': true, glow: glowing() }}
+        classList={{ 'avatar-frame': true, glow: glowing(), speaking: speaking() }}
         onClick={openRoom}
-        title="войти в комнату (Этап 2)"
+        title="войти в комнату"
       >
         <div class="avatar-glow"></div>
-        {/* VRM canvas — hidden until ready; SVG shows as fallback */}
-        <canvas
-          ref={canvasEl}
-          class="avatar-canvas"
-          style={{ display: useVrm() ? 'block' : 'none' }}
-        ></canvas>
-        <Show when={!useVrm()}>
-          <SonyaSilhouette />
-        </Show>
-        <Show when={vrmStatus() === 'loading'}>
-          <div class="avatar-loading">загружаю модель…</div>
+        <Show when={use3d()} fallback={<SonyaAvatar expression={feed.current_expression} />}>
+          <Vrm3D />
         </Show>
         <div class="avatar-hint">войти в комнату</div>
       </div>
@@ -130,7 +60,7 @@ export default function AvatarPane(props) {
       </div>
       <div class="status-line">
         <span class="label">воспринимает</span>
-        {feed.her_typing ? 'печатает' : 'тишина'}
+        {feed.her_typing ? 'печатает' : speaking() ? 'говорит' : 'тишина'}
       </div>
       <div class="status-line">
         <span class="label">чувствует</span>
@@ -148,61 +78,42 @@ export default function AvatarPane(props) {
   );
 }
 
-// Silver bob + black headband + black oversize tee silhouette.
-// Static SVG для Этапа 1; в Этапе 2 заменяем на Live2D.
-function SonyaSilhouette() {
+// 3D VRM render — only when avatar_mode === '3d'. Kept for the future
+// walking/body work; not the default path.
+function Vrm3D() {
+  const [status, setStatus] = createSignal('init');
+  let canvasEl;
+  let viewer;
+
+  onMount(() => {
+    const url = settings.avatar_model_url;
+    if (!url || !canvasEl) {
+      setStatus('none');
+      return;
+    }
+    viewer = new VrmViewer({ framing: 'portrait' });
+    viewer.onStatus = (s) => setStatus(s);
+    try {
+      viewer.mount(canvasEl);
+      viewer.load(url).then(() => {
+        viewer.setExpression(feed.current_expression || 'neutral');
+      }).catch(() => setStatus('error'));
+    } catch {
+      setStatus('error');
+    }
+    createEffect(() => {
+      const expr = feed.current_expression;
+      if (viewer && status() === 'ready') viewer.setExpression(expr);
+    });
+  });
+  onCleanup(() => { if (viewer) viewer.dispose(); });
+
   return (
-    <svg class="avatar-svg" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#dde0e5" />
-          <stop offset="1" stop-color="#a8acb3" />
-        </linearGradient>
-        <linearGradient id="skinGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#e0e2e6" />
-          <stop offset="1" stop-color="#b0b3b8" />
-        </linearGradient>
-        <linearGradient id="shirtGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#1c1d20" />
-          <stop offset="1" stop-color="#0a0b0d" />
-        </linearGradient>
-        <linearGradient id="legGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#c8cbd0" />
-          <stop offset="1" stop-color="#90939a" />
-        </linearGradient>
-      </defs>
-      <ellipse cx="88" cy="232" rx="9" ry="14" fill="url(#legGrad)" opacity="0.6" />
-      <ellipse cx="112" cy="232" rx="9" ry="14" fill="url(#legGrad)" opacity="0.6" />
-      <path
-        d="M 60 110 Q 55 105 56 100 L 70 96 Q 85 90 100 90 Q 115 90 130 96 L 144 100 Q 145 105 140 110 L 145 215 Q 100 225 55 215 Z"
-        fill="url(#shirtGrad)"
-      />
-      <path d="M 56 100 Q 50 115 54 130 L 60 132 Q 60 115 62 105 Z" fill="#0a0b0d" opacity="0.7" />
-      <path
-        d="M 144 100 Q 150 115 146 130 L 140 132 Q 140 115 138 105 Z"
-        fill="#0a0b0d"
-        opacity="0.7"
-      />
-      <path d="M 90 88 L 110 88 L 108 98 L 92 98 Z" fill="url(#skinGrad)" />
-      <g transform="rotate(-3 100 60)">
-        <ellipse cx="100" cy="60" rx="22" ry="28" fill="url(#skinGrad)" />
-        <path
-          d="M 78 50 Q 72 30 88 22 Q 100 16 115 22 Q 128 28 126 48 Q 128 70 122 84 L 122 88 L 116 88 L 116 70 Q 110 60 100 60 Q 88 60 84 70 L 84 88 L 78 88 Z"
-          fill="url(#hairGrad)"
-        />
-        <path d="M 80 38 Q 92 35 102 42 Q 96 50 88 52 Q 80 50 80 42 Z" fill="url(#hairGrad)" />
-        <path d="M 110 38 Q 122 35 124 50 Q 122 60 116 62 Q 110 56 110 46 Z" fill="url(#hairGrad)" />
-        <path d="M 76 36 Q 100 20 124 36 L 124 42 Q 100 28 76 42 Z" fill="#0a0b0d" />
-        <ellipse cx="92" cy="60" rx="2.5" ry="1.8" fill="#8aa3b8" opacity="0.5" />
-        <ellipse cx="108" cy="60" rx="2.5" ry="1.8" fill="#8aa3b8" opacity="0.5" />
-        <path
-          d="M 96 74 Q 100 76 104 74"
-          stroke="#8a7a78"
-          stroke-width="0.8"
-          fill="none"
-          opacity="0.6"
-        />
-      </g>
-    </svg>
+    <>
+      <canvas ref={canvasEl} class="avatar-canvas"></canvas>
+      <Show when={status() === 'loading' || status() === 'init'}>
+        <div class="avatar-loading">загружаю модель…</div>
+      </Show>
+    </>
   );
 }

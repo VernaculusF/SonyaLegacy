@@ -2,7 +2,7 @@
  * См. UX_SKETCH.md §5 для desktop layout.
  */
 import { Show, createSignal, onMount, onCleanup } from 'solid-js';
-import { settings, feed, updateSetting } from './store.js';
+import { settings, feed, updateSetting, simulateSpeech } from './store.js';
 import { connectWS, disconnectWS, startHeartbeat, stopHeartbeat } from './ws.js';
 import Onboarding from './components/Onboarding.jsx';
 import Header from './components/Header.jsx';
@@ -25,6 +25,8 @@ export default function App() {
     if (isConfigured()) {
       connectWS();
       startHeartbeat();
+      // One-time "she's here" cue so the talk animation is visible right away.
+      setTimeout(() => simulateSpeech(1800), 1200);
     }
     // Keyboard: Ctrl+J / Cmd+J → toggle reason-stream collapse
     const onKey = (e) => {

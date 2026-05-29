@@ -206,6 +206,10 @@ textarea {
 .avatar-frame.glow {
   animation: silver-flash 1.5s ease-out;
 }
+.avatar-frame.speaking {
+  border-color: var(--acc-her-eyes);
+  box-shadow: 0 0 20px rgba(138, 163, 184, 0.18);
+}
 @keyframes breathe {
   0%,
   100% {
@@ -244,6 +248,48 @@ textarea {
   transform: translateX(-50%);
   width: 100%;
   height: 100%;
+}
+
+/* ===== 2D avatar (PNGtuber-style) ===== */
+.sonya-2d {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+.sonya-2d-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* idle: breathing + tiny sway */
+  animation: s2d-breathe 4.2s ease-in-out infinite, s2d-sway 7s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+.sonya-2d.talking .sonya-2d-inner {
+  animation: s2d-breathe 2.6s ease-in-out infinite, s2d-sway 5s ease-in-out infinite;
+}
+.sonya-2d-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.sonya-2d-frame {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+}
+@keyframes s2d-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1.5px) scale(1.006); }
+}
+@keyframes s2d-sway {
+  0%, 100% { transform: rotate(-0.6deg); }
+  50% { transform: rotate(0.6deg); }
 }
 .avatar-canvas {
   position: absolute;
@@ -1112,6 +1158,63 @@ textarea {
   height: 100%;
   display: block;
 }
+/* atmospheric 2D scene layers */
+.room-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 20%, rgba(138,163,184,0.07), transparent 70%),
+    linear-gradient(180deg, #0a0c10 0%, #111419 55%, #16181c 100%);
+}
+.room-window {
+  position: absolute;
+  top: 8%;
+  right: 12%;
+  width: 200px;
+  height: 280px;
+  background: linear-gradient(180deg, #1a2030 0%, #0a0c14 100%);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 0 120px rgba(138,163,184,0.06), inset 0 0 60px rgba(138,163,184,0.05);
+}
+.room-window-cross::before, .room-window-cross::after {
+  content: "";
+  position: absolute;
+  background: rgba(42,45,51,0.6);
+}
+.room-window-cross::before { left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); }
+.room-window-cross::after { top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%); }
+.room-moon {
+  position: absolute;
+  top: 36px;
+  left: 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #eef0f3, #a8acb3);
+  box-shadow: 0 0 50px rgba(232,234,237,0.3);
+}
+.room-floor {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32%;
+  background: linear-gradient(180deg, transparent, rgba(5,6,8,0.7));
+}
+.room-avatar {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 460px;
+  max-width: 60%;
+  height: 92%;
+  filter: drop-shadow(0 10px 40px rgba(0,0,0,0.5));
+  transition: filter 400ms;
+}
+.room-avatar.speaking {
+  filter: drop-shadow(0 0 28px rgba(201,205,212,0.22));
+}
 .room-loading {
   position: absolute;
   top: 50%;
@@ -1170,6 +1273,17 @@ textarea {
   background: var(--ink-3);
   opacity: 0.3;
   transform: skewX(-8deg);
+}
+.vm-speaker.her:not(.idle) .vm-bar {
+  background: var(--acc-her);
+  opacity: 1;
+  animation: vm-pulse 0.7s ease-in-out infinite;
+}
+.vm-speaker.her:not(.idle) .vm-bar:nth-child(odd) { animation-delay: 0.15s; }
+.vm-speaker.her:not(.idle) .vm-bar:nth-child(3n) { animation-delay: 0.3s; }
+@keyframes vm-pulse {
+  0%, 100% { height: 4px; }
+  50% { height: 22px; }
 }
 .room-hints {
   display: flex;

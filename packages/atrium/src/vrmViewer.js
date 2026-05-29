@@ -174,12 +174,79 @@ export class VrmViewer {
       this.vrm = vrm;
       this._headBone = vrm.humanoid?.getNormalizedBoneNode?.('head') || null;
       this._cacheExpressionNames();
+      // Relax the default T-pose into a natural A-pose (arms down).
+      this._applyRestPose();
+      vrm.update(0);
+      // Frame the camera to the actual model bounds (head not cut off).
+      this._frameCamera();
       this._setStatus('ready');
       return vrm;
     } catch (err) {
       this._setStatus('error: ' + (err.message || err));
       throw err;
     }
+  }
+
+  // Lower the arms from the imported T-pose to a relaxed A-pose. VRM humanoid
+  // bones use normalized local rotations; rotating the upper arms ~70° around
+  // Z brings them down along the body.
+  _applyRestPose() {
+    const h = this.vrm?.humanoid;
+    if (!h) return;
+    const DEG = Math.PI / 180;
+    // [boneName, x, y, z]
+    this._restPose = [
+      ['leftUpperArm', 0, 0, -70 * DEG],
+      ['rightUpperArm', 0, 0, 70 * DEG],
+      ['leftLowerArm', 0, -10 * DEG, -8 * DEG],
+      ['rightLowerArm', 0, 10 * DEG, 8 * DEG],
+    ];
+    this._restNodes = this._restPose.map(([name, x, y, z]) => {
+      const node = h.getNormalizedBoneNode?.(name);
+      return node ? { node, x, y, z } : null;
+    }).filter(Boolean);
+    this._holdRestPose();
+    if (h.update) h.update();
+  }
+
+  _holdRestPose() {
+    if (!this._restNodes) return;
+    for (const r of this._restNodes) {
+      r.node.rotation.set(r.x, r.y, r.z);
+    }
+  }
+
+  // Auto-frame camera so the whole subject fits with margin. portrait =
+  // head-and-shoulders (top third), full = whole body.
+  _frameCamera() {
+    if (!this.vrm || !this.camera) return;
+    const box = new THREE.Box3().setFromObject(this.vrm.scene);
+    if (box.isEmpty()) return;
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const headY = box.max.y;          // top of head
+    const fov = this.camera.fov * (Math.PI / 180);
+
+    if (this._framing === 'full') {
+      // Fit full height with margin.
+      const targetH = size.y * 1.25;
+      const dist = (targetH / 2) / Math.tan(fov / 2);
+      this._target = new THREE.Vector3(center.x, center.y, center.z);
+      this.camera.position.set(center.x, center.y + size.y * 0.05, center.z + dist);
+    } else {
+      // Head-and-shoulders: look at upper chest / head, frame ~top 45%.
+      const lookY = headY - size.y * 0.12;
+      const targetH = size.y * 0.42;
+      const dist = (targetH / 2) / Math.tan(fov / 2);
+      this._target = new THREE.Vector3(center.x, lookY, center.z);
+      this.camera.position.set(center.x, lookY, center.z + dist);
+    }
+    this.camera.near = 0.05;
+    this.camera.far = 50;
+    this.camera.lookAt(this._target);
+    this.camera.updateProjectionMatrix();
   }
 
   // Probe which expression names this VRM actually exposes.
@@ -247,6 +314,7 @@ export class VrmViewer {
     if (this.camera) {
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
+      if (this._target) this.camera.lookAt(this._target);
     }
   }
 
@@ -275,6 +343,9 @@ export class VrmViewer {
       this._headBone.rotation.z = Math.sin(t * 0.5) * 0.02;
       this._headBone.rotation.x = Math.sin(t * 0.37) * 0.015;
     }
+    // --- keep arms in the relaxed A-pose (defensive: some rigs need it
+    // re-applied; cheap, prevents any T-pose flicker) ---
+    this._holdRestPose();
 
     if (!em) return;
 

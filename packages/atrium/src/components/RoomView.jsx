@@ -1,58 +1,21 @@
-/* RoomView — её комната. Полноэкранный 3D-вид (VRM в процедурной комнате).
- *
- * Этап 1/«сейчас»: настоящая 3D-сцена (не alert-заглушка) — комната + аватар
- * во весь рост, idle-анимации, мимика. Voice-mode UI (волны/субтитры/бюджет/
- * контролы) присутствует как каркас, но помечен «Этап 2» — реальные VAD/ASR/
- * TTS подключаются когда решится вопрос с GPU (см. ETAP2_RESEARCH).
- *
- * Esc / клик ⏏ — выйти. Дизайн — docs/atrium/mockups/room.html.
+/* RoomView — её комната (full-screen). 2D-аватар крупным планом в атмосферной
+ * ночной сцене (окно, луна, мягкое свечение) — CSS, без 3D-рига.
+ * 3D-режим опционально (avatar_mode === '3d') для будущей работы с телом.
+ * Esc / ⏏ — выйти. Voice-UI — каркас (Этап 2, ждёт GPU).
  */
-import { onMount, onCleanup, createSignal, Show } from 'solid-js';
-import { feed, settings } from '../store.js';
+import { onMount, onCleanup, createSignal, Show, createEffect } from 'solid-js';
+import { feed, settings, speaking } from '../store.js';
+import SonyaAvatar from './SonyaAvatar.jsx';
 import { VrmViewer } from '../vrmViewer.js';
 
 export default function RoomView(props) {
-  let canvasEl;
-  let viewer;
-  const [status, setStatus] = createSignal('init');
-
   onMount(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') props.onClose?.();
-    };
+    const onKey = (e) => { if (e.key === 'Escape') props.onClose?.(); };
     window.addEventListener('keydown', onKey);
-
-    const url = settings.avatar_model_url;
-    if (url && canvasEl) {
-      viewer = new VrmViewer({ framing: 'full', room: true });
-      viewer.onStatus = (s) => setStatus(s);
-      try {
-        viewer.mount(canvasEl);
-        viewer.load(url)
-          .then(() => {
-            viewer.setExpression(feed.current_expression || 'neutral');
-            // Optional: load a real GLB room if configured.
-            if (settings.room_model_url) {
-              viewer.loadRoom(settings.room_model_url).catch(() => {});
-            }
-          })
-          .catch((err) => {
-            console.error('room VRM load failed', err);
-            setStatus('error');
-          });
-      } catch (err) {
-        console.error('room mount failed', err);
-        setStatus('error');
-      }
-    } else {
-      setStatus('none');
-    }
-
-    onCleanup(() => {
-      window.removeEventListener('keydown', onKey);
-      if (viewer) viewer.dispose();
-    });
+    onCleanup(() => window.removeEventListener('keydown', onKey));
   });
+
+  const use3d = () => settings.avatar_mode === '3d';
 
   return (
     <div class="room-overlay">
@@ -69,15 +32,19 @@ export default function RoomView(props) {
         </div>
 
         <div class="room-scene">
-          <canvas ref={canvasEl} class="room-canvas"></canvas>
-          <Show when={status() === 'loading' || status() === 'init'}>
-            <div class="room-loading">захожу в комнату…</div>
-          </Show>
-          <Show when={status() === 'error' || status() === 'none'}>
-            <div class="room-loading">
-              модель не загружена. задай avatar_model_url в настройках.
-            </div>
-          </Show>
+          {/* atmospheric scene layers (CSS) */}
+          <div class="room-bg"></div>
+          <div class="room-window">
+            <div class="room-moon"></div>
+            <div class="room-window-cross"></div>
+          </div>
+          <div class="room-floor"></div>
+
+          <div classList={{ 'room-avatar': true, speaking: speaking() }}>
+            <Show when={use3d()} fallback={<SonyaAvatar expression={feed.current_expression} />}>
+              <Vrm3DRoom />
+            </Show>
+          </div>
         </div>
 
         {/* Voice-mode scaffold — Этап 2 (нужен GPU для TTS/ASR) */}
@@ -86,7 +53,7 @@ export default function RoomView(props) {
             voice mode · Этап 2 (VAD + ASR + TTS — ждёт GPU)
           </div>
           <div class="room-voice-row">
-            <div class="vm-speaker her idle">
+            <div classList={{ 'vm-speaker': true, her: true, idle: !speaking() }}>
               <span class="vm-label">соня</span>
               <div class="vm-wave">
                 {Array.from({ length: 28 }).map(() => <span class="vm-bar"></span>)}
@@ -108,4 +75,26 @@ export default function RoomView(props) {
       </div>
     </div>
   );
+}
+
+function Vrm3DRoom() {
+  let canvasEl;
+  let viewer;
+  const [status, setStatus] = createSignal('init');
+  onMount(() => {
+    const url = settings.avatar_model_url;
+    if (url && canvasEl) {
+      viewer = new VrmViewer({ framing: 'full', room: true });
+      viewer.onStatus = (s) => setStatus(s);
+      try {
+        viewer.mount(canvasEl);
+        viewer.load(url).then(() => {
+          viewer.setExpression(feed.current_expression || 'neutral');
+          if (settings.room_model_url) viewer.loadRoom(settings.room_model_url).catch(() => {});
+        }).catch(() => setStatus('error'));
+      } catch { setStatus('error'); }
+    }
+    onCleanup(() => { if (viewer) viewer.dispose(); });
+  });
+  return <canvas ref={canvasEl} class="room-canvas"></canvas>;
 }
