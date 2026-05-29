@@ -290,6 +290,7 @@ textarea {
   object-fit: contain;
   object-position: bottom center;
   opacity: 0;
+  transition: opacity 70ms linear;
   user-select: none;
   -webkit-user-drag: none;
 }
