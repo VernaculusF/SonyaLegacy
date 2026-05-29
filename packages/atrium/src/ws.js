@@ -71,7 +71,9 @@ function handleEvent(msg) {
   if (kind === 'outgoing.dialog' || kind === 'outgoing.telegram_initiative' || kind === 'outgoing.telegram_progress' || kind === 'outgoing.telegram_response' || kind === 'outgoing.response') {
     if (text) {
       pushDialogMessage({ seq, ts, sender: 'her', text });
-      flashAvatar();
+      // Only flash/notify for live events, not during the initial backlog
+      // replay (otherwise a cold start spams the avatar + notifications).
+      if (feed.synced) flashAvatar();
     }
   }
   // Incoming from Ivan
@@ -147,11 +149,18 @@ export function connectWS() {
     setFeed({ connected: false, last_error: 'connection settings missing' });
     return;
   }
-  setFeed({ reconnecting: true, last_error: '' });
+  // Reset sync state — suppress side-effects until this connection's backlog
+  // catch-up completes (server sends a 'synced' sentinel).
+  setFeed({ reconnecting: true, last_error: '', synced: false });
 
   // ws:// for plain http hosts; wss:// will be handled when we add TLS later.
   const proto = settings.vps_host.startsWith('localhost') ? 'ws' : 'ws';
-  const url = `${proto}://${settings.vps_host}/atrium/feed?since_seq=${feed.last_seq}&token=${encodeURIComponent(settings.atrium_token)}`;
+  // Cold start (last_seq=0): ask the server for a small recent tail only
+  // (backlog clamp) so we don't replay the entire history. On reconnect
+  // (last_seq>0) resume exactly from where we left off.
+  const sinceParam = `since_seq=${feed.last_seq}`;
+  const backlogParam = feed.last_seq > 0 ? '' : '&backlog=150';
+  const url = `${proto}://${settings.vps_host}/atrium/feed?${sinceParam}${backlogParam}&token=${encodeURIComponent(settings.atrium_token)}`;
 
   try {
     // Browser WebSocket can't set custom headers; the server reads token from
@@ -176,6 +185,12 @@ export function connectWS() {
         handleEvent(msg);
       } else if (msg.type === 'meta') {
         handleMeta(msg);
+      } else if (msg.type === 'synced') {
+        // Backlog catch-up done — live events follow. Enable side-effects.
+        if (msg.last_seq && msg.last_seq > feed.last_seq) {
+          setFeed('last_seq', msg.last_seq);
+        }
+        setFeed('synced', true);
       }
     } catch (err) {
       console.error('atrium ws parse error', err);

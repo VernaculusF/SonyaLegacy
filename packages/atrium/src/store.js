@@ -100,6 +100,10 @@ export const [feed, setFeed] = createStore({
   inner_thoughts: [], // {seq, ts, text}
   // Activity hint
   her_typing: false,
+  // True once the initial backlog catch-up is done (server 'synced' sentinel).
+  // While false, side-effects (avatar glow, notifications) are suppressed so
+  // the cold-start replay doesn't spam.
+  synced: false,
 });
 
 // Cap collections to avoid unbounded growth
@@ -109,6 +113,8 @@ const MAX_THOUGHTS = 50;
 
 export function pushDialogMessage(msg) {
   setFeed('dialog_messages', (cur) => {
+    // Dedup by seq — reconnects / overlapping catch-up must not double-post.
+    if (msg.seq != null && cur.some((m) => m.seq === msg.seq)) return cur;
     const next = [...cur, msg];
     if (next.length > MAX_DIALOG) next.splice(0, next.length - MAX_DIALOG);
     return next;
@@ -117,6 +123,7 @@ export function pushDialogMessage(msg) {
 
 export function pushStreamEvent(ev) {
   setFeed('stream_events', (cur) => {
+    if (ev.seq != null && cur.some((e) => e.seq === ev.seq)) return cur;
     const next = [...cur, ev];
     if (next.length > MAX_STREAM) next.splice(0, next.length - MAX_STREAM);
     return next;
@@ -125,6 +132,7 @@ export function pushStreamEvent(ev) {
 
 export function pushInnerThought(t) {
   setFeed('inner_thoughts', (cur) => {
+    if (t.seq != null && cur.some((x) => x.seq === t.seq)) return cur;
     const next = [t, ...cur]; // latest first
     if (next.length > MAX_THOUGHTS) next.length = MAX_THOUGHTS;
     return next;

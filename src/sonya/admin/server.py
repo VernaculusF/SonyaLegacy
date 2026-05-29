@@ -1735,6 +1735,20 @@ async def atrium_options(request: web.Request) -> web.Response:
     return _atrium_cors(web.Response(status=204))
 
 
+def _atrium_catchup_since(since_seq: int, latest: int, backlog: int) -> int:
+    """Compute the effective starting seq for /atrium/feed catch-up.
+
+    A cold-start client (since_seq<=0) must NOT replay the entire history —
+    that floods the UI and can trigger a reconnect→replay loop. Clamp the
+    backlog to a recent tail. A resuming client (since_seq>0) keeps its seq.
+    """
+    if since_seq > 0:
+        return since_seq
+    if backlog <= 0:
+        return 0
+    return max(0, latest - backlog)
+
+
 async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
     """WebSocket feed of new continuity events for Atrium UI.
 
@@ -1756,6 +1770,15 @@ async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
         since_seq = 0
     channel_filter = request.query.get("channel") or None
     session_filter = request.query.get("session_id") or None
+    # Catch-up clamp: a cold-start client (since_seq=0) must NOT get the full
+    # 10k+ event history replayed — that floods the UI, freezes it on O(n)
+    # re-renders, and can drop the socket → reconnect → replay loop. Clamp the
+    # backlog to a recent tail. Live events after connect always flow in full.
+    try:
+        backlog = int(request.query.get("backlog", "200"))
+    except ValueError:
+        backlog = 200
+    backlog = max(0, min(backlog, 2000))
 
     ws = web.WebSocketResponse(heartbeat=30.0)
     await ws.prepare(request)
@@ -1768,13 +1791,25 @@ async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
         # T1.5: mark Atrium connected so OutboundGate knows the primary
         # dialog channel is live (affects TG emergency-fallback decision).
         _atrium_mark_seen(sub)
-        # Initial catch-up: read everything since `since_seq`
-        last_seq = since_seq
+        # Initial catch-up: read since `since_seq`, but clamp the backlog so a
+        # cold-start client (since_seq=0) doesn't get the entire history
+        # replayed. We only need the recent tail to populate the UI; older
+        # events are reachable via the admin panel, not the live feed.
+        latest = stream.latest_seq()
+        effective_since = _atrium_catchup_since(since_seq, latest, backlog)
+        last_seq = effective_since
         for ev in stream.read_since_atrium(
             last_seq, channel=channel_filter, session_id=session_filter
         ):
             await ws.send_json(_atrium_event_to_json(ev))
             last_seq = ev.seq
+        # Sentinel: tells the client the backlog is done and live events
+        # follow. The client uses this to suppress notifications / avatar
+        # glow / chat scroll-jank during the initial sync.
+        try:
+            await ws.send_json({"type": "synced", "last_seq": last_seq})
+        except Exception:
+            pass
 
         # Live loop: poll every second for new events + meta every 60s
         import asyncio as _asyncio

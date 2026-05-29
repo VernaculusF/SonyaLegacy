@@ -208,3 +208,31 @@ def test_context_builder_shows_atrium_dialog(tmp_path: Path) -> None:
         assert "Иван написал" in prompt
     finally:
         sub.close()
+
+
+# ---------------------------------------------------------------------------
+# WS feed cold-start backlog clamp (regression: full-history replay flooded UI)
+# ---------------------------------------------------------------------------
+
+
+def test_catchup_clamps_cold_start():
+    """Cold start (since_seq=0) must clamp to a recent tail, not replay all."""
+    from sonya.admin.server import _atrium_catchup_since
+    # 14000 events in history, cold start, backlog 150 → start near the tail
+    assert _atrium_catchup_since(0, 14000, 150) == 13850
+    # backlog larger than history → start at 0 (but that's a small history)
+    assert _atrium_catchup_since(0, 100, 150) == 0
+
+
+def test_catchup_resumes_from_since_seq():
+    """A resuming client keeps its seq regardless of backlog."""
+    from sonya.admin.server import _atrium_catchup_since
+    assert _atrium_catchup_since(13900, 14000, 150) == 13900
+    # even if since_seq is old, we honor it (client wants the gap)
+    assert _atrium_catchup_since(5, 14000, 150) == 5
+
+
+def test_catchup_backlog_zero_means_no_history():
+    """backlog=0 on cold start → only live events (start at latest)."""
+    from sonya.admin.server import _atrium_catchup_since
+    assert _atrium_catchup_since(0, 14000, 0) == 0
