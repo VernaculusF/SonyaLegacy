@@ -50,3 +50,10 @@ model/
 *.vrm
 *.fbx
 *.glb
+
+# 2D avatar sprites — generated from Ivan's source 2B images (personal assets).
+# Render is client-side; not committed. Regenerate via tools/process_avatar.py.
+packages/atrium/public/avatar/
+
+# Isolated venv for image tooling (rembg etc) — not part of core.
+.venv-imgtools/

@@ -13,7 +13,7 @@
  *
  * props.expression — маркер из body.expression (neutral/smile/sad/...).
  */
-import { createSignal, onMount, onCleanup, createMemo, Show } from 'solid-js';
+import { createSignal, onMount, onCleanup, createMemo, Show, For } from 'solid-js';
 import { mouthLevel, speaking, settings } from '../store.js';
 
 const EXPR = {
@@ -63,18 +63,30 @@ export default function SonyaAvatar(props) {
   const expr = createMemo(() => EXPR[props.expression] || EXPR.neutral);
   const frames = () => settings.avatar_frames || [];
 
-  // Mouth open height (px) — closed line when idle, opens with mouthLevel.
+  // Mouth open amount 0..1 — closed when idle, opens with mouthLevel.
   const mouthOpen = createMemo(() => (speaking() ? mouthLevel() : 0));
 
   // Eye height — scales with blink.
   const eyeRy = createMemo(() => 0.6 + eyeOpen() * 5.4);
 
   // Pick a frame index for image-based mouth (if frames provided).
+  // Idle → always frame 0 (closed). Speaking → map amplitude to frames, but
+  // bias toward the middle frames so the "wide open" (last) only triggers on
+  // loud peaks (Ivan: the widest looks like too much for normal talk).
   const frameIdx = createMemo(() => {
     const f = frames();
     if (!f.length) return -1;
+    if (!speaking()) return 0;
+    const n = f.length;
     const lvl = mouthOpen();
-    return Math.min(f.length - 1, Math.floor(lvl * f.length));
+    if (n >= 4) {
+      // 0 closed, 1 half, 2 open, 3 wide — wide only above 0.85.
+      if (lvl < 0.18) return 0;
+      if (lvl < 0.5) return 1;
+      if (lvl < 0.85) return 2;
+      return 3;
+    }
+    return Math.min(n - 1, Math.floor(lvl * n));
   });
 
   return (
@@ -82,7 +94,21 @@ export default function SonyaAvatar(props) {
       <div class="sonya-2d-inner">
         <Show
           when={frameIdx() < 0}
-          fallback={<img class="sonya-2d-frame" src={frames()[Math.max(0, frameIdx())]} alt="Sonya" />}
+          fallback={
+            <div class="sonya-2d-frames">
+              <For each={frames()}>
+                {(src, i) => (
+                  <img
+                    class="sonya-2d-frame"
+                    classList={{ active: i() === frameIdx() }}
+                    src={src}
+                    alt="Sonya"
+                    draggable={false}
+                  />
+                )}
+              </For>
+            </div>
+          }
         >
           <DrawnHead expr={expr()} mouthOpen={mouthOpen()} eyeRy={eyeRy()} />
         </Show>

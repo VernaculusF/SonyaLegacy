@@ -36,8 +36,13 @@ const DEFAULT_SETTINGS = {
   // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
   avatar_mode: '2d',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
-  // e.g. ['/avatar/2b_closed.png','/avatar/2b_half.png','/avatar/2b_open.png']
-  avatar_frames: [],
+  // 4 AI-generated 2B frames: closed → half → open → wide.
+  avatar_frames: [
+    '/avatar/sonya_closed.png',
+    '/avatar/sonya_half.png',
+    '/avatar/sonya_open.png',
+    '/avatar/sonya_wide.png',
+  ],
 };
 
 function loadSettings() {
@@ -46,7 +51,7 @@ function loadSettings() {
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw);
     // Merge with defaults so new keys don't break old saves
-    return {
+    const merged = {
       ...DEFAULT_SETTINGS,
       ...parsed,
       streams_filters: {
@@ -54,6 +59,13 @@ function loadSettings() {
         ...(parsed.streams_filters || {}),
       },
     };
+    // Backfill avatar_frames from default if an old save had it empty/missing
+    // (so existing users get the new generated frames without re-onboarding).
+    if (!Array.isArray(merged.avatar_frames) || merged.avatar_frames.length === 0) {
+      merged.avatar_frames = [...DEFAULT_SETTINGS.avatar_frames];
+    }
+    if (!merged.avatar_mode) merged.avatar_mode = DEFAULT_SETTINGS.avatar_mode;
+    return merged;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
