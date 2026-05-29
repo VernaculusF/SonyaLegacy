@@ -1,103 +1,104 @@
 # Atrium
 
-Tauri + Solid.js multichannel UI for Sonya. Этап 1 — read-only с reply.
+Tauri + Solid.js — кросс-платформенное desktop-приложение Сони (её основной интерфейс присутствия). Собирается в нативный `.exe` (Windows), `.dmg`/`.app` (macOS), `.AppImage`/`.deb` (Linux).
+
+**Atrium — приложение, а не сайт.** `npm run dev` существует только для быстрой отладки фронта в браузере — это инструмент разработчика, не способ запуска. Конечный продукт — нативный бинарь (см. «Сборка .exe»).
 
 ## Status
 
-- ✅ Layout: 3-column + collapsible reason-stream
-- ✅ WS subscription к `/atrium/feed`
-- ✅ Reply из reason-stream через POST `/api/atrium/nudge`
+- ✅ Layout: 3 колонки + collapsible reason-stream
+- ✅ WS subscription к `/atrium/feed` (cold-start backlog clamp + reconnect + dedup)
+- ✅ Dialog composer — рабочий (Иван пишет → `/api/atrium/dialog` → active session → ответ)
+- ✅ Reply из reason-stream через `/api/atrium/nudge`
 - ✅ Mind pane (focus / drives / inner thoughts / private aggregate)
-- ✅ Avatar pane (статичный SVG силуэт + breathing + glow)
-- ✅ Onboarding (vps host + token)
-- ✅ Settings modal
-- ✅ Cmd+J / Ctrl+J toggle reason-stream
-- ⏳ Tauri shell (Cargo + tauri.conf.json готовы, но `cargo build` не запускался — нужен Rust toolchain)
-- ⏳ Mobile layout (отдельная итерация, см. `mockups/mobile.html`)
-- ⏳ Voice mode / room view (Этап 2)
+- ✅ Avatar pane — **3D VRM** (@pixiv/three-vrm): моргание, дыхание, мимика, мок-липсинк (SVG fallback)
+- ✅ Onboarding + Settings + Ctrl+J toggle
+- ✅ TG emergency-only heartbeat
+- ⏳ Voice (TTS/ASR) + room view — Этап 2
+- ⏳ Mobile layout — отдельная итерация
 
-## Установка
+## Сборка .exe (основной путь)
 
-Требования:
-- Node 18+
-- Rust 1.70+ (для Tauri-сборки)
-- На Linux: `webkit2gtk-4.1`, `libgtk-3-dev`, `libsoup-3.0-dev`
-- На Windows: WebView2 Runtime (обычно уже есть)
+### Что нужно один раз поставить (toolchain)
 
-```bash
+Tauri компилирует нативный бинарь из Rust против системного WebView — поэтому нужен тулчейн:
+
+1. **Rust** — https://rustup.rs (поставит `cargo`/`rustc`). На Windows rustup сам предложит MSVC.
+2. **MSVC C++ Build Tools** (линкер) — «Build Tools for Visual Studio» → workload «Desktop development with C++». Без него `cargo` не слинкует.
+3. **WebView2 Runtime** — на Windows 11 уже есть; на Win10 поставить Evergreen runtime от Microsoft (или он придёт с Edge).
+4. **Node 18+** — уже есть.
+
+Проверка что всё на месте:
+```powershell
+cargo --version    # cargo 1.7x
+rustc --version
+node --version
+```
+
+### Сборка
+
+```powershell
 cd packages/atrium
-npm install
-```
-
-## Запуск в dev-режиме
-
-### Browser-only (быстрая итерация UI)
-
-```bash
-npm run dev
-# Откройте http://localhost:1420
-```
-
-При первом запуске введите:
-- VPS host: `34.38.255.149:8877`
-- Atrium token: значение `SONYA_ADMIN_PASSWORD` из `.env`
-
-### Tauri (нативное приложение)
-
-```bash
-npm run tauri:dev
-```
-
-Запустит Vite + Rust shell + native window. Для полноценной сборки бинаря:
-
-```bash
+npm install                 # один раз — фронт-зависимости (three, solid, tauri cli)
 npm run tauri:build
 ```
 
-Артефакты в `src-tauri/target/release/bundle/`.
+Готовый бинарь и установщик:
+```
+src-tauri/target/release/atrium.exe                      # сам бинарь
+src-tauri/target/release/bundle/nsis/Atrium_0.1.0_x64-setup.exe   # установщик
+```
+
+Иконки уже сгенерированы (`src-tauri/icons/`, плейсхолдер в её палитре — заменить на финальный арт позже через `python src-tauri/gen_icons.py` или вручную).
+
+### Запуск нативного приложения в dev (с hot-reload)
+
+```powershell
+npm run tauri:dev
+```
+Поднимает Vite + Rust shell + нативное окно. Удобно при разработке.
+
+### Browser-only (ТОЛЬКО для отладки фронта)
+
+```powershell
+npm run dev          # http://localhost:1420 — НЕ конечный продукт, только для дебага UI
+```
+
+## Первый запуск (onboarding)
+
+При первом старте ввести:
+- VPS host: `34.38.255.149:8877`
+- Atrium token: значение `SONYA_ADMIN_PASSWORD` из `.env`
+
+## Модель аватара
+
+VRM-модель грузится из `public/models/sonya.vrm` (путь настраивается в Settings → `avatar_model_url`). Файл в `.gitignore` (большой бинарь, у Ивана локально). Подмена модели = замена файла, код не трогать.
 
 ## Архитектура
 
 ```
 packages/atrium/
 ├── src/                    # Solid.js frontend
-│   ├── main.jsx           # Entry point
 │   ├── App.jsx            # Onboarding gate + main shell
-│   ├── store.js           # Solid stores: settings (persisted) + feed (live)
-│   ├── ws.js              # WebSocket client + reconnect + nudge HTTP
-│   ├── styles.css         # Cold silver minimalism palette (см. UX_SKETCH.md §3)
-│   └── components/
-│       ├── Header.jsx
-│       ├── AvatarPane.jsx
-│       ├── DialogPane.jsx
-│       ├── MindPane.jsx
-│       ├── ReasonStream.jsx
-│       ├── Settings.jsx
-│       └── Onboarding.jsx
-├── src-tauri/             # Rust shell (минимальный, только WebView host)
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
-│   ├── build.rs
-│   └── src/
-│       ├── main.rs
-│       └── lib.rs
-├── index.html             # Vite entry HTML
-├── package.json
-└── vite.config.js
+│   ├── store.js           # settings (persisted) + feed (live, seq-dedup)
+│   ├── ws.js              # WS client (backlog clamp, reconnect, nudge, dialog, heartbeat)
+│   ├── vrmViewer.js       # Three.js + @pixiv/three-vrm рендер (idle anims, expr, lipsync)
+│   ├── styles.css         # cold silver minimalism (UX_SKETCH §3)
+│   └── components/        # Header, AvatarPane, DialogPane, MindPane, ReasonStream, Settings, Onboarding
+├── src-tauri/             # Rust shell (WebView host)
+│   ├── Cargo.toml, tauri.conf.json, build.rs
+│   ├── icons/             # bundled icons (generated by gen_icons.py)
+│   ├── gen_icons.py       # placeholder icon generator
+│   └── src/{main,lib}.rs
+├── public/models/         # VRM avatar (gitignored)
+├── package.json, vite.config.js, index.html
 ```
 
-## Backend интеграция
+## Backend интеграция (admin server, port 8877)
 
-Atrium общается с Sonya через два endpoint'а в admin server:
+- `ws://VPS:8877/atrium/feed?since_seq=N&backlog=M&token=...` — WS continuity feed (private-filtered, cold-start clamped, `synced` sentinel)
+- `POST /api/atrium/dialog` — Иван пишет Соне (триггерит active session)
+- `POST /api/atrium/nudge` — reply из reason-stream
+- `POST /api/atrium/heartbeat` — keep-alive (TG emergency-only tracking)
 
-- `ws://VPS:8877/atrium/feed?since_seq=N&token=...` — WebSocket с continuity events (фильтр по private)
-- `POST http://VPS:8877/api/atrium/nudge` — reply из reason-stream pane
-
-См. `docs/atrium/CHANNELS.md §3-§4` для protocol detail.
-
-## Ограничения Этапа 1
-
-- Composer **read-only** — отправка из Atrium DialogPane не реализована (нужен T1.5+ — путь в её inbox через admin API). Текущий вариант: смотрим Diagnostic, отвечаем через TG если нужно срочно.
-- Avatar **статичный SVG** — Live2D подключим в Этапе 2.
-- Voice mode — Этап 2 (Tauri permissions, edge-tts, whisper.cpp).
-- Notifications через chime/native только в Tauri-mode (browser permissions ограничены).
+См. `docs/atrium/CHANNELS.md §3-§4`.
