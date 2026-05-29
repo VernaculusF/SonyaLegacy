@@ -22,3 +22,4 @@ openrouter_keys.txt
 # Sonya plugin scratch — agent-created plugins for one-off tasks (hot-loaded on VPS).
 src/sonya/tools/plugins/*
 !src/sonya/tools/plugins/__init__.py
+tmp_commit_msg.txt  
