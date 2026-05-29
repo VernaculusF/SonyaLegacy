@@ -43,3 +43,10 @@ kb/
 # легитимных README.md / pyproject.toml.
 /*.csv
 /*.html
+
+# 3D avatar models (VRM/FBX/GLB). Большие бинарники, не в git — у Ивана локально,
+# на VPS не нужны (рендер клиентский). Atrium грузит из своей assets-папки.
+model/
+*.vrm
+*.fbx
+*.glb

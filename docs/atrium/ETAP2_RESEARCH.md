@@ -207,7 +207,7 @@ VRAM (8 ГБ) хватает с запасом (Chatterbox 0.5B). **Пробле
 (уточняет PLAN.md §5 — Live2D заменён на VRM-3D)
 
 1. **T2.0 (research) — ✅ этот документ.**
-2. **T2.2 — Avatar рендер на placeholder-VRM (можно начинать СЕЙЧАС, не блокировано моделью).** `@pixiv/three-vrm` в AvatarPane (заменить SVG silhouette) + idle-анимации (моргание/дыхание) + expressions через `body.expression`. Строится на любой стандартной VRoid-сэмпл-модели. Финальную Соню подставим позже — это просто замена файла `.vrm`.
+2. **T2.2 — Avatar рендер на placeholder-VRM (можно начинать СЕЙЧАС, не блокировано моделью). ✅ done (2026-05-30).** `@pixiv/three-vrm` (three 0.169 + three-vrm 3.5.3) в AvatarPane (заменяет SVG silhouette, SVG остаётся fallback'ом) + idle-анимации (моргание/дыхание/micro head-tilt) + expressions через `body.expression` (маппинг canonical-маркеров на VRM-экспрешены) + амплитудный мок липсинка на dialog-glow. `vrmViewer.js` — фреймворк-независимый класс. Модель грузится из `avatar_model_url` (default `/models/sonya.vrm`, в gitignore). Проверено на реальной VRM (2B_Yorha, VRM 0.x, визимы a/i/u/e/o + blink + happy/angry/sad).
 3. **T2.1 — Финальная VRM-модель Сони.** Получить через путь A/B/C (§2.0), утвердить с Иваном, положить в `packages/atrium/assets/`, подменить placeholder. Параллельно с T2.2/T2.3, не на критическом пути.
 4. **T2.3 — TTS-сервис.** Self-host Chatterbox Multilingual (FastAPI compute-helper). `voice.speak` → сервис → аудио. **Сначала CPU-first тест качества** русского клона с англ. референса (zero-shot → при нужде fine-tune), потом решение по железу.
 5. **T2.4 — Липсинк.** Уровень 1 (amplitude) сразу; уровень 2 (lam-a2e) когда есть GPU.

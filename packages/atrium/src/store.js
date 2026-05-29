@@ -28,6 +28,9 @@ const DEFAULT_SETTINGS = {
   show_private_count: true,
   notifications_dialog: 'full', // full | quiet | off
   notifications_stuck: true,
+  // Avatar VRM model URL. Default served from public/models by Vite/Tauri.
+  // Empty → fall back to the static SVG silhouette.
+  avatar_model_url: '/models/sonya.vrm',
 };
 
 function loadSettings() {

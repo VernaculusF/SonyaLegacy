@@ -1,8 +1,10 @@
-/* AvatarPane — её силуэт + status lines.
+/* AvatarPane — её 3D VRM-аватар (Three.js) + status lines.
+ * Fallback на статичный SVG-силуэт если модель не задана / не загрузилась.
  * Click → open room view (placeholder для Этапа 1).
  */
-import { Show, createSignal, createEffect } from 'solid-js';
-import { feed, avatarGlow } from '../store.js';
+import { Show, createSignal, createEffect, onMount, onCleanup } from 'solid-js';
+import { feed, settings, avatarGlow } from '../store.js';
+import { VrmViewer } from '../vrmViewer.js';
 
 const EXPRESSION_LABEL = {
   neutral: 'спокойна',
@@ -26,6 +28,9 @@ function topDriveLabel(drives) {
 
 export default function AvatarPane() {
   const [glowing, setGlowing] = createSignal(false);
+  const [vrmStatus, setVrmStatus] = createSignal('init');
+  let canvasEl;
+  let viewer;
 
   // Trigger flash CSS animation on every avatarGlow tick
   createEffect((prev) => {
@@ -37,10 +42,64 @@ export default function AvatarPane() {
     return cur;
   });
 
+  // Mount the VRM viewer if a model URL is configured.
+  onMount(() => {
+    const url = settings.avatar_model_url;
+    if (!url || !canvasEl) {
+      setVrmStatus('none');
+      return;
+    }
+    viewer = new VrmViewer();
+    viewer.onStatus = (s) => setVrmStatus(s);
+    try {
+      viewer.mount(canvasEl);
+      viewer.load(url).catch((err) => {
+        console.error('VRM load failed', err);
+        setVrmStatus('error');
+      });
+    } catch (err) {
+      console.error('VRM mount failed', err);
+      setVrmStatus('error');
+    }
+  });
+
+  onCleanup(() => {
+    if (viewer) viewer.dispose();
+  });
+
+  // Drive avatar expression from feed.current_expression.
+  createEffect(() => {
+    const expr = feed.current_expression;
+    if (viewer && vrmStatus() === 'ready') viewer.setExpression(expr);
+  });
+
+  // Pulse mouth on dialog glow as a cheap "she's speaking" cue until real
+  // audio-amplitude lip-sync (Этап 2 TTS) is wired.
+  createEffect((prev) => {
+    const cur = avatarGlow();
+    if (prev !== undefined && cur !== prev && viewer && vrmStatus() === 'ready') {
+      let n = 0;
+      const iv = setInterval(() => {
+        n += 1;
+        viewer.setMouthOpen(n % 2 === 0 ? 0.15 : 0.55);
+        if (n > 8) {
+          clearInterval(iv);
+          viewer.setMouthOpen(0);
+        }
+      }, 110);
+    }
+    return cur;
+  });
+
+  const useVrm = () => {
+    const s = vrmStatus();
+    return s === 'loading' || s === 'ready';
+  };
+
   function openRoom() {
     // Этап 1 placeholder — show a stub modal. Этап 2 will replace this
     // with real room view (voice mode entry point).
-    alert('Room view — Этап 2 (voice mode + Live2D). Сейчас placeholder.');
+    alert('Room view — Этап 2 (voice mode + 3D-сцена). Сейчас placeholder.');
   }
 
   return (
@@ -52,7 +111,18 @@ export default function AvatarPane() {
         title="войти в комнату (Этап 2)"
       >
         <div class="avatar-glow"></div>
-        <SonyaSilhouette />
+        {/* VRM canvas — hidden until ready; SVG shows as fallback */}
+        <canvas
+          ref={canvasEl}
+          class="avatar-canvas"
+          style={{ display: useVrm() ? 'block' : 'none' }}
+        ></canvas>
+        <Show when={!useVrm()}>
+          <SonyaSilhouette />
+        </Show>
+        <Show when={vrmStatus() === 'loading'}>
+          <div class="avatar-loading">загружаю модель…</div>
+        </Show>
         <div class="avatar-hint">войти в комнату</div>
       </div>
 
