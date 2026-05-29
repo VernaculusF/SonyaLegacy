@@ -127,18 +127,38 @@ class OutboundGate:
 
     # ---------- public ----------
 
-    async def send_via_tool(self, text: str, *, reason: str = "tool", ignore_quiet: bool = True) -> str:
+    async def send_via_tool(
+        self,
+        text: str,
+        *,
+        reason: str = "tool",
+        ignore_quiet: bool = True,
+        channel: str = "dialog",
+    ) -> str:
         """Tool entry point. Returns a status string for the agent.
 
         `ignore_quiet`: skip the quiet-window gate (default True) — when Sonya
         explicitly calls chat.tell_ivan from an agent session she's already
         actively talking to him. Daily cap still applies.
+
+        `channel` (v20 / Atrium Этап 0): which surface this message belongs to.
+        Only `dialog` goes through the full gate (caps / dedup / escalating
+        quiet) — other channels (worker_log / mind / body / voice) get
+        rate-limit only and are dispatched directly into substrate as
+        `outgoing.<channel>` events without being routed to TG.
+        См. docs/atrium/CHANNELS.md §2.
         """
         text = (text or "").strip()
         if not text:
-            return "[ERROR] chat.tell_ivan: empty message"
+            return f"[ERROR] {channel}: empty message"
         if _is_placeholder_text(text):
-            return f"[BLOCKED] chat.tell_ivan: placeholder text leaked, no real content ({text[:60]!r})"
+            return f"[BLOCKED] {channel}: placeholder text leaked, no real content ({text[:60]!r})"
+        # Non-dialog channels: skip dialog-specific gates entirely. Just
+        # apply rate-limit (TBD: real ratelimit, для Этапа 0 без него) и
+        # dispatch event прямо в substrate. TG bridge их сам отфильтрует.
+        if channel != "dialog":
+            return await self._dispatch_non_dialog(text, channel=channel, reason=reason)
+        # Dialog channel: full original gate logic.
         # Cross-session dedup: refuse near-duplicate of any outbound sent in
         # the last 6 hours. Catches the "Продолжаю разведку sweetcow..." spam
         # where worker repeats intent each tick instead of new content.
@@ -418,6 +438,79 @@ class OutboundGate:
 
     # ---------- dispatch ----------
 
+    async def _dispatch_non_dialog(
+        self, text: str, *, channel: str, reason: str
+    ) -> str:
+        """Dispatch event for non-dialog channels (worker_log / mind / body / voice).
+
+        These don't go through TG (TG bridge filters them out). They are
+        recorded in substrate as `outgoing.<channel>` events для рендеринга
+        в Atrium pane'ах через /atrium/feed. Никаких daily caps — рендеринг
+        в reason-stream / mind pane не ограничен throttle'ом.
+
+        Privacy: для `mind` channel — если text начинается с `[PRIVATE]`
+        (case-insensitive, optional whitespace), префикс убирается из text
+        и event помечается private=True. Substrate видит, /atrium/feed
+        пропускает. См. docs/atrium/EVENT_SCHEMA.md §3.
+        """
+        is_private = False
+        if channel == "mind":
+            stripped = re.sub(
+                r"^\s*\[PRIVATE\]\s*",
+                "",
+                text,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            if stripped != text:
+                is_private = True
+                text = stripped
+                if not text:
+                    return "[ERROR] mind: empty message after [PRIVATE] prefix"
+
+        kind = f"outgoing.{channel}_log" if channel == "worker" else f"outgoing.{channel}"
+        # Map channel → stable kind:
+        #   worker_log → outgoing.worker_log
+        #   mind       → outgoing.mind_thought  (focus уходит через _h_mind_focus напрямую,
+        #                                        а здесь — общий thought-канал)
+        #   body       → outgoing.body_expression
+        #   voice      → outgoing.voice_speak
+        if channel == "worker_log":
+            kind = "outgoing.worker_log"
+        elif channel == "mind":
+            kind = "outgoing.mind_thought"
+        elif channel == "body":
+            kind = "outgoing.body_expression"
+        elif channel == "voice":
+            kind = "outgoing.voice_speak"
+        else:
+            kind = f"outgoing.{channel}"
+
+        self._stream.append(ContinuityEvent(
+            kind=kind,
+            channel=channel,
+            private=is_private,
+            payload={
+                "text": text,
+                "reason": reason,
+                "private": is_private,
+            },
+        ))
+        # Mirror в episodic memory только для НЕ-private событий (audit/recall
+        # видит substrate напрямую, episodic — это long-term накопление).
+        if not is_private and self._substrate is not None:
+            try:
+                from sonya.planning.memory_wiring import record_initiative_as_memory
+                record_initiative_as_memory(
+                    self._substrate, text,
+                    reason=f"{channel}:{reason}",
+                    channel=f"atrium_{channel}",
+                )
+            except Exception:
+                pass
+        suffix = " [private]" if is_private else ""
+        return f"[OK] {channel}{suffix}"
+
     async def _dispatch(self, text: str, *, reason: str) -> str:
         try:
             ok = await self._registry.send(
@@ -485,7 +578,9 @@ class OutboundGate:
 
 # ---------- safe sync wrapper for tool dispatcher ----------
 
-def call_outbound_sync(gate: OutboundGate, text: str) -> str:
+def call_outbound_sync(
+    gate: OutboundGate, text: str, *, channel: str = "dialog"
+) -> str:
     """Call OutboundGate.send_via_tool from sync code (the agent dispatcher).
 
     The dispatcher is sync and runs inside the same event loop as the channel
@@ -497,22 +592,32 @@ def call_outbound_sync(gate: OutboundGate, text: str) -> str:
     Quiet-window is bypassed for explicit tool calls — Sonya is actively
     interacting (either in TG-session or active session). Daily cap still
     enforced. Idle-thought marker path still uses quiet-window gate.
+
+    `channel` (v20 / Atrium Этап 0): non-dialog channels skip TG and dialog
+    gates entirely; dispatched directly through `_dispatch_non_dialog`.
     """
     text = (text or "").strip()
     if not text:
-        return "[ERROR] chat.tell_ivan: empty message"
-    ok, why = gate._check_gates(ignore_quiet=True)
-    if not ok:
-        return f"[BLOCKED] initiative gate: {why}"
+        return f"[ERROR] {channel}: empty message"
 
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = None
 
-    coro = gate._dispatch(text, reason="tool")
+    if channel != "dialog":
+        # Non-dialog: skip dialog-only gates, dispatch through Atrium-only path.
+        coro = gate._dispatch_non_dialog(text, channel=channel, reason="tool")
+    else:
+        ok, why = gate._check_gates(ignore_quiet=True)
+        if not ok:
+            return f"[BLOCKED] initiative gate: {why}"
+        coro = gate._dispatch(text, reason="tool")
+
     if loop is not None and loop.is_running():
         loop.create_task(coro)
+        if channel != "dialog":
+            return f"[QUEUED] {channel} event recorded"
         return "[QUEUED] message scheduled for delivery (continuity will record outcome)"
     # No running loop — synchronous path (e.g. unit tests).
     return asyncio.run(coro)

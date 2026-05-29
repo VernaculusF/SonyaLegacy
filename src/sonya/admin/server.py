@@ -36,6 +36,11 @@ async def auth_middleware(request: web.Request, handler):
     password = request.app.get("admin_password")
     if not password:
         return await handler(request)
+    # Atrium endpoints use their own header-based auth (X-Atrium-Token).
+    # Skip cookie check here; the handler validates the header itself.
+    # См. docs/atrium/CHANNELS.md §3.2.
+    if request.path == "/atrium/feed" or request.path.startswith("/api/atrium/"):
+        return await handler(request)
     # Check cookie
     if request.cookies.get("sonya_auth") == password:
         return await handler(request)
@@ -1696,6 +1701,241 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
         sub.close()
 
 
+# ---------------------------------------------------------------------------
+# Atrium endpoints (T0.7 — WS feed, T0.9 — nudge endpoint)
+# ---------------------------------------------------------------------------
+# `/atrium/feed` — WebSocket. Streams new continuity_events (channel-aware,
+# excludes private). Atrium UI (Tauri app) подключается сюда для live-feed.
+# Auth: header `X-Atrium-Token` = SONYA_ADMIN_PASSWORD.
+# Query params: ?since_seq=N, ?channel=X, ?session_id=X.
+# Meta-message every 60s with private_count_last_hour + current_focus + drives.
+#
+# `/api/atrium/nudge` — HTTP POST. Reply из reason-stream pane → inbox-drain
+# активной session. Body: {session_id, text, ref_seq}.
+#
+# См. docs/atrium/CHANNELS.md §3 (WS) и §4 (nudge).
+# ---------------------------------------------------------------------------
+
+
+async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
+    """WebSocket feed of new continuity events for Atrium UI.
+
+    Auth: header `X-Atrium-Token` = SONYA_ADMIN_PASSWORD (Phase 0).
+    Filters private=1 events at SQL layer.
+    """
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    # Auth
+    token = request.headers.get("X-Atrium-Token", "")
+    if admin_password and token != admin_password:
+        return web.json_response({"error": "auth"}, status=401)
+
+    # Query params
+    try:
+        since_seq = int(request.query.get("since_seq", "0"))
+    except ValueError:
+        since_seq = 0
+    channel_filter = request.query.get("channel") or None
+    session_filter = request.query.get("session_id") or None
+
+    ws = web.WebSocketResponse(heartbeat=30.0)
+    await ws.prepare(request)
+
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.state.continuity_stream import ContinuityStream as _CS
+
+        stream = _CS(sub)
+        # Initial catch-up: read everything since `since_seq`
+        last_seq = since_seq
+        for ev in stream.read_since_atrium(
+            last_seq, channel=channel_filter, session_id=session_filter
+        ):
+            await ws.send_json(_atrium_event_to_json(ev))
+            last_seq = ev.seq
+
+        # Live loop: poll every second for new events + meta every 60s
+        import asyncio as _asyncio
+        meta_counter = 0
+        while not ws.closed:
+            try:
+                # Wait for client messages with timeout (also drains pings/closes)
+                try:
+                    msg = await _asyncio.wait_for(ws.receive(), timeout=1.0)
+                    if msg.type in (web.WSMsgType.CLOSE, web.WSMsgType.CLOSING, web.WSMsgType.CLOSED):
+                        break
+                except _asyncio.TimeoutError:
+                    pass
+                # Stream new events
+                for ev in stream.read_since_atrium(
+                    last_seq, channel=channel_filter, session_id=session_filter
+                ):
+                    await ws.send_json(_atrium_event_to_json(ev))
+                    last_seq = ev.seq
+                # Meta message every 60 ticks
+                meta_counter += 1
+                if meta_counter >= 60:
+                    meta_counter = 0
+                    try:
+                        meta = _atrium_meta(sub, stream)
+                        await ws.send_json(meta)
+                    except Exception:
+                        pass
+            except ConnectionResetError:
+                break
+            except Exception:
+                # Don't kill the connection on a single iteration error
+                continue
+    finally:
+        sub.close()
+    return ws
+
+
+def _atrium_event_to_json(ev) -> dict:
+    """Format a ContinuityEvent for /atrium/feed wire."""
+    payload = ev.payload or {}
+    src = ""
+    if isinstance(payload, dict):
+        src = payload.get("src") or _atrium_infer_src(ev.kind, payload)
+    return {
+        "type": "event",
+        "seq": ev.seq,
+        "ts": ev.created_at,
+        "kind": ev.kind,
+        "channel": ev.channel,
+        "src": src,
+        "session_id": payload.get("session_id") if isinstance(payload, dict) else None,
+        "task_id": payload.get("task_id") if isinstance(payload, dict) else None,
+        "principal_id": ev.principal_id,
+        "text": payload.get("text", "") if isinstance(payload, dict) else "",
+        "payload": payload,
+    }
+
+
+def _atrium_infer_src(kind: str, payload: dict) -> str:
+    """Best-effort src classification when event doesn't have explicit src."""
+    if kind.startswith("internal.thought"):
+        return "idle"
+    if kind.startswith("outgoing.worker_log") or kind.startswith("internal.task_worker"):
+        return "worker"
+    if kind.startswith("outgoing.dialog") or kind.startswith("outgoing.telegram") or kind.startswith("outgoing.response"):
+        return "active"
+    if kind.startswith("outgoing.mind") or kind.startswith("outgoing.body") or kind.startswith("outgoing.voice"):
+        return "active"
+    if kind.startswith("internal.scheduler") or kind.startswith("subject.lifecycle"):
+        return "system"
+    if kind.startswith("skill.") or "capability_gap" in kind:
+        return "skill"
+    return "system"
+
+
+def _atrium_meta(sub, stream) -> dict:
+    """Build periodic meta-message: private count + current focus + drives."""
+    private_count = stream.private_count_recent(hours=1)
+    try:
+        row = sub.connection.execute(
+            "SELECT current_focus, current_outfit, current_expression, mood_tint "
+            "FROM subject_state WHERE id = 1"
+        ).fetchone()
+        current = {
+            "current_focus": row[0] if row else "",
+            "current_outfit": row[1] if row else "home",
+            "current_expression": row[2] if row else "neutral",
+            "mood_tint": row[3] if row else "neutral",
+        }
+    except Exception:
+        current = {}
+    try:
+        ds_row = sub.connection.execute(
+            "SELECT boredom_analog, curiosity_analog, relational_focus, pending_debt "
+            "FROM drive_state WHERE id = 1"
+        ).fetchone()
+        drives = {
+            "boredom": ds_row[0] if ds_row else 0.0,
+            "curiosity": ds_row[1] if ds_row else 0.0,
+            "relational_focus": ds_row[2] if ds_row else 0.0,
+            "pending_debt": ds_row[3] if ds_row else 0.0,
+        }
+    except Exception:
+        drives = {}
+    from datetime import datetime, timezone
+    return {
+        "type": "meta",
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "private_count_last_hour": private_count,
+        "current": current,
+        "drives": drives,
+    }
+
+
+async def atrium_nudge(request: web.Request) -> web.Response:
+    """HTTP nudge endpoint — reply из reason-stream pane.
+
+    Body: {session_id, text, ref_seq}
+    Записывается как `internal.nudge_received` event. Текст также
+    кладётся в substrate как `incoming.atrium_nudge` чтобы её активная
+    session подхватила через context_builder. Если session уже завершилась
+    — пишется `internal.nudge_missed`, response status=missed.
+    См. docs/atrium/EVENT_SCHEMA.md §2.3.
+    """
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "")
+    if admin_password and token != admin_password:
+        return web.json_response({"error": "auth"}, status=401)
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    session_id = str(data.get("session_id") or "").strip()
+    text = str(data.get("text") or "").strip()
+    ref_seq = data.get("ref_seq")
+    try:
+        ref_seq_int = int(ref_seq) if ref_seq is not None else None
+    except (TypeError, ValueError):
+        ref_seq_int = None
+    if not text:
+        return web.json_response({"error": "text required"}, status=400)
+
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.state.continuity_stream import ContinuityStream, ContinuityEvent
+
+        stream = ContinuityStream(sub)
+        # Detect if a session is currently active. We can't easily tell from
+        # substrate alone whether the agent loop is mid-step, but we record
+        # both events: nudge_received (always) and incoming.atrium_nudge
+        # (which the session's context_builder picks up via inbox-drain).
+        stream.append(ContinuityEvent(
+            kind="internal.nudge_received",
+            principal_id="ivan",
+            payload={
+                "from": "atrium",
+                "session_id": session_id,
+                "ref_seq": ref_seq_int,
+                "text": text,
+            },
+        ))
+        # Also mirror as an incoming-style event so context_builder sees it
+        # in its "recent inbox" lookup.
+        stream.append(ContinuityEvent(
+            kind="incoming.atrium_nudge",
+            principal_id="ivan",
+            payload={
+                "session_id": session_id,
+                "ref_seq": ref_seq_int,
+                "text": text,
+            },
+        ))
+        return web.json_response({
+            "status": "queued",
+            "session_id": session_id,
+            "ref_seq": ref_seq_int,
+        })
+    finally:
+        sub.close()
+
+
 def create_app() -> web.Application:
     config = load_config()
     import os
@@ -1744,6 +1984,9 @@ def create_app() -> web.Application:
     app.router.add_post("/api/operator/trigger-active", api_operator_trigger_active)
     app.router.add_post("/api/operator/inject-message", api_operator_inject_message)
     app.router.add_post("/api/operator/task/{task_id}/action", api_operator_task_action)
+    # Atrium (multichannel UI/output package — Этап 0)
+    app.router.add_get("/atrium/feed", atrium_feed_ws)
+    app.router.add_post("/api/atrium/nudge", atrium_nudge)
     return app
 
 

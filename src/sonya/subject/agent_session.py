@@ -1340,12 +1340,256 @@ def _h_chat_tell_ivan(arg: str, ctx: _ToolContext) -> str:
                 "say something genuinely different."
             )
     from sonya.initiative.outbound import call_outbound_sync
-    result = call_outbound_sync(ctx.outbound, text)
+    result = call_outbound_sync(ctx.outbound, text, channel="dialog")
     # Record sent text so channel_session can suppress a [DONE: ...] echo
     # of the same content (prevents duplicate messages to Ivan).
     if ctx.outbound_sent is not None:
         ctx.outbound_sent.append(text)
     return result
+
+
+# v20 (Atrium Этап 0): channel-aware tool family.
+# `chat.tell_ivan` остаётся как BC-alias на `chat.dialog`. Новые tools:
+#   chat.dialog       → goes to Dialog pane + TG (full gate as chat.tell_ivan)
+#   chat.worker_log   → reason-stream pane only, no TG, no daily cap
+#   mind.focus        → replaces current_focus (mind pane)
+#   mind.thought      → adds to inner stream (mind pane). [PRIVATE] prefix supported.
+#   body.expression   → updates current_expression (avatar mimic)
+#   body.outfit       → updates current_outfit (avatar wardrobe, stage 2 rendering)
+#   mind.mood_tint    → updates mood_tint (room view tint, stage 2 rendering)
+#   voice.speak       → TTS placeholder, stage 2. Falls back to chat.dialog.
+# См. docs/atrium/CHANNELS.md §2 для семантики.
+
+def _h_chat_dialog(arg: str, ctx: _ToolContext) -> str:
+    """Same behavior as chat.tell_ivan — explicit channel naming."""
+    return _h_chat_tell_ivan(arg, ctx)
+
+
+def _h_chat_worker_log(arg: str, ctx: _ToolContext) -> str:
+    """Worker progress message. Goes to Atrium reason-stream, NOT to TG.
+
+    No daily cap, no dedup — repeats are signal not noise (see CHANNELS.md §2.2).
+    """
+    if ctx.outbound is None:
+        return "[ERROR] outbound gate not configured"
+    text = (arg or "").strip()
+    if not text:
+        return "[ERROR] chat.worker_log: empty message"
+    from sonya.initiative.outbound import call_outbound_sync
+    return call_outbound_sync(ctx.outbound, text, channel="worker_log")
+
+
+def _h_mind_focus(arg: str, ctx: _ToolContext) -> str:
+    """Update Sonya's current focus. Replaces previous (single-line, latest wins).
+
+    Updates subject_state.current_focus directly; emits outgoing.mind_focus event.
+    """
+    text = (arg or "").strip()[:200]
+    if not text:
+        return "[ERROR] mind.focus: empty"
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] mind.focus: substrate not available"
+    # Read previous
+    try:
+        row = sub.connection.execute(
+            "SELECT current_focus FROM subject_state WHERE id = 1"
+        ).fetchone()
+        previous = (row[0] if row else "") or ""
+    except Exception:
+        previous = ""
+    # Update state (replace)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    sub.connection.execute(
+        "INSERT INTO subject_state(id, current_focus, updated_at) VALUES (1, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET current_focus = excluded.current_focus, "
+        "updated_at = excluded.updated_at",
+        (text, now),
+    )
+    sub.connection.commit()
+    # Emit event
+    if ctx.stream is not None:
+        ctx.stream.append(ContinuityEvent(
+            kind="outgoing.mind_focus",
+            channel="mind",
+            payload={
+                "text": text,
+                "previous_focus": previous,
+            },
+        ))
+    return f"[OK] focus: {text[:60]}"
+
+
+def _h_mind_thought(arg: str, ctx: _ToolContext) -> str:
+    """Internal thought to the Mind pane inner stream.
+
+    Supports `[PRIVATE]` prefix (case-insensitive, optional whitespace) —
+    when present, the thought is saved to substrate but excluded from
+    /atrium/feed (right_to_inner_privacy, 5-й столп things_not_to_betray).
+    """
+    if ctx.outbound is None:
+        return "[ERROR] outbound gate not configured"
+    text = (arg or "").strip()
+    if not text:
+        return "[ERROR] mind.thought: empty"
+    from sonya.initiative.outbound import call_outbound_sync
+    return call_outbound_sync(ctx.outbound, text, channel="mind")
+
+
+_BODY_EXPRESSION_ALLOWED = frozenset({
+    "neutral", "smile", "thinking", "tired", "sad",
+    "excited", "curious", "tender", "annoyed",
+})
+
+
+def _h_body_expression(arg: str, ctx: _ToolContext) -> str:
+    """Set Sonya's current avatar expression. Stage 1 — placeholder for SVG/Live2D."""
+    marker = (arg or "").strip().lower()
+    if not marker:
+        return "[ERROR] body.expression: empty marker"
+    if marker not in _BODY_EXPRESSION_ALLOWED:
+        return (
+            f"[ERROR] body.expression: unknown marker {marker!r}. "
+            f"Allowed: {sorted(_BODY_EXPRESSION_ALLOWED)}"
+        )
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] body.expression: substrate not available"
+    try:
+        row = sub.connection.execute(
+            "SELECT current_expression FROM subject_state WHERE id = 1"
+        ).fetchone()
+        previous = (row[0] if row else "neutral") or "neutral"
+    except Exception:
+        previous = "neutral"
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    sub.connection.execute(
+        "INSERT INTO subject_state(id, current_expression, updated_at) VALUES (1, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET current_expression = excluded.current_expression, "
+        "updated_at = excluded.updated_at",
+        (marker, now),
+    )
+    sub.connection.commit()
+    if ctx.stream is not None:
+        ctx.stream.append(ContinuityEvent(
+            kind="outgoing.body_expression",
+            channel="body",
+            payload={"marker": marker, "previous": previous},
+        ))
+    return f"[OK] expression: {marker}"
+
+
+_BODY_OUTFIT_ALLOWED = frozenset({
+    "home", "sportwear", "dress_2b", "nothing", "wearing_his_shirt",
+})
+
+
+def _h_body_outfit(arg: str, ctx: _ToolContext) -> str:
+    """Set Sonya's current outfit (wardrobe state). Avatar render uses this.
+
+    Stage 2 placeholder — Этап 0 пишет в substrate, рендеринг в Этапе 2.
+    """
+    outfit = (arg or "").strip().lower()
+    if not outfit:
+        return "[ERROR] body.outfit: empty"
+    if outfit not in _BODY_OUTFIT_ALLOWED:
+        return (
+            f"[ERROR] body.outfit: unknown outfit {outfit!r}. "
+            f"Allowed: {sorted(_BODY_OUTFIT_ALLOWED)}"
+        )
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] body.outfit: substrate not available"
+    try:
+        row = sub.connection.execute(
+            "SELECT current_outfit FROM subject_state WHERE id = 1"
+        ).fetchone()
+        previous = (row[0] if row else "home") or "home"
+    except Exception:
+        previous = "home"
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    sub.connection.execute(
+        "INSERT INTO subject_state(id, current_outfit, updated_at) VALUES (1, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET current_outfit = excluded.current_outfit, "
+        "updated_at = excluded.updated_at",
+        (outfit, now),
+    )
+    sub.connection.commit()
+    if ctx.stream is not None:
+        ctx.stream.append(ContinuityEvent(
+            kind="outgoing.body_outfit",
+            channel="body",
+            payload={"outfit": outfit, "previous": previous},
+        ))
+    return f"[OK] outfit: {outfit}"
+
+
+_MOOD_TINT_ALLOWED = frozenset({"warm", "cool", "neutral"})
+
+
+def _h_mind_mood_tint(arg: str, ctx: _ToolContext) -> str:
+    """Set Sonya's subjective mood tint. Stage 2 placeholder for room view tinting."""
+    tint = (arg or "").strip().lower()
+    if not tint:
+        return "[ERROR] mind.mood_tint: empty"
+    if tint not in _MOOD_TINT_ALLOWED:
+        return (
+            f"[ERROR] mind.mood_tint: unknown tint {tint!r}. "
+            f"Allowed: {sorted(_MOOD_TINT_ALLOWED)}"
+        )
+    sub = _substrate_from(ctx)
+    if sub is None:
+        return "[ERROR] mind.mood_tint: substrate not available"
+    try:
+        row = sub.connection.execute(
+            "SELECT mood_tint FROM subject_state WHERE id = 1"
+        ).fetchone()
+        previous = (row[0] if row else "neutral") or "neutral"
+    except Exception:
+        previous = "neutral"
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    sub.connection.execute(
+        "INSERT INTO subject_state(id, mood_tint, updated_at) VALUES (1, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET mood_tint = excluded.mood_tint, "
+        "updated_at = excluded.updated_at",
+        (tint, now),
+    )
+    sub.connection.commit()
+    if ctx.stream is not None:
+        ctx.stream.append(ContinuityEvent(
+            kind="outgoing.mood_tint",
+            channel="mind",
+            payload={"tint": tint, "previous": previous},
+        ))
+    return f"[OK] mood_tint: {tint}"
+
+
+def _h_voice_speak(arg: str, ctx: _ToolContext) -> str:
+    """TTS speak. Stage 2 — настоящий TTS подключаем в Этапе 2.
+
+    В Этапе 0: записывается событие `outgoing.voice_speak` (для будущего
+    audio render) + дублируется как `chat.dialog` чтобы текст всё равно
+    дошёл до Ивана через TG (graceful fallback пока voice не работает).
+    """
+    text = (arg or "").strip()
+    if not text:
+        return "[ERROR] voice.speak: empty"
+    if ctx.outbound is None:
+        return "[ERROR] voice.speak: outbound gate not configured"
+    # Запишем voice event
+    if ctx.stream is not None:
+        ctx.stream.append(ContinuityEvent(
+            kind="outgoing.voice_speak",
+            channel="voice",
+            payload={"text": text},
+        ))
+    # Fallback: текст всё равно идёт через dialog, чтобы Иван не пропустил
+    from sonya.initiative.outbound import call_outbound_sync
+    return call_outbound_sync(ctx.outbound, text, channel="dialog")
 
 
 def _within_session_duplicate(text: str, prior_sent: list[str]) -> bool:
@@ -1479,6 +1723,15 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "shell.run": _h_shell_run,
     "pip.install": _h_pip_install,
     "chat.tell_ivan": _h_chat_tell_ivan,
+    # Atrium Этап 0: channel-aware tool family. См. docs/atrium/CHANNELS.md §2.
+    "chat.dialog":     _h_chat_dialog,
+    "chat.worker_log": _h_chat_worker_log,
+    "mind.focus":      _h_mind_focus,
+    "mind.thought":    _h_mind_thought,
+    "mind.mood_tint":  _h_mind_mood_tint,
+    "body.expression": _h_body_expression,
+    "body.outfit":     _h_body_outfit,
+    "voice.speak":     _h_voice_speak,
 }
 
 

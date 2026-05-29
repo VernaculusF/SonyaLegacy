@@ -358,7 +358,26 @@ class TelegramChannel:
         _log.info("tg_channel_stopped")
 
     async def send(self, chat_id: str, message: OutgoingMessage) -> None:
-        """Outbound message — used by initiative path or admin commands."""
+        """Outbound message — used by initiative path or admin commands.
+
+        v20 (Atrium Этап 0): channel-filter. Telegram bridge is a renderer
+        for the `dialog` channel only. Messages from worker_log / mind /
+        body / voice channels are silently dropped here — they render in
+        Atrium pane'ах через /atrium/feed, not in TG. См. docs/atrium/
+        CHANNELS.md §6.
+
+        This replaces the throttle-based suppression of worker spam — the
+        architectural fix instead of patching dedup/quiet-window endlessly.
+        """
+        # Channel filter: only dialog goes to TG.
+        msg_channel = getattr(message, "channel", "dialog") or "dialog"
+        if msg_channel != "dialog":
+            _log.debug(
+                "tg_skip_channel",
+                channel=msg_channel,
+                preview=(message.text or "")[:80],
+            )
+            return  # silently drop, не считаем в outbound metrics
         if not self._running or self._client is None:
             raise RuntimeError("telegram channel not running")
         try:

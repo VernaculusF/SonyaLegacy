@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS subject_state (
     pending_intentions_json TEXT NOT NULL DEFAULT '[]',
     emotional_vector_json TEXT NOT NULL DEFAULT '{}',
     drift_signals_json TEXT NOT NULL DEFAULT '[]',
+    -- v20 (Atrium Этап 0): Sonya-controlled state surfaces.
+    -- mind.focus / body.expression / body.outfit / mind.mood_tint tools
+    -- write here directly (replace semantics, not append). Source-of-truth
+    -- for Avatar / Room view rendering. См. docs/atrium/EVENT_SCHEMA.md §1.2.
+    current_focus TEXT NOT NULL DEFAULT '',
+    current_outfit TEXT NOT NULL DEFAULT 'home',
+    current_expression TEXT NOT NULL DEFAULT 'neutral',
+    mood_tint TEXT NOT NULL DEFAULT 'neutral',
     updated_at TEXT NOT NULL
 );
 
@@ -29,11 +37,22 @@ CREATE TABLE IF NOT EXISTS continuity_events (
     kind TEXT NOT NULL,
     principal_id TEXT,
     payload_json TEXT NOT NULL DEFAULT '{}',
+    -- v20 (Atrium Этап 0): channel + private fields (mirror payload values
+    -- to dedicated columns for SQL-level filtering без парсинга JSON).
+    -- channel: 'dialog' | 'worker_log' | 'mind' | 'body' | 'voice' | ''
+    -- private=1: skipped from /atrium/feed but kept in substrate.
+    -- См. docs/atrium/EVENT_SCHEMA.md §1.1.
+    channel TEXT NOT NULL DEFAULT '',
+    private INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_continuity_kind ON continuity_events(kind);
 CREATE INDEX IF NOT EXISTS idx_continuity_principal ON continuity_events(principal_id);
+-- Note: idx_continuity_channel and idx_continuity_private are created by
+-- migrations._ensure_atrium_indexes() to keep schema.sql safe for legacy
+-- migration paths (executescript on a v1 DB doesn't have the new columns
+-- yet — index creation там would fail on `no such column`).
 
 -- Continuity snapshots: point-in-time SubjectState captures.
 CREATE TABLE IF NOT EXISTS continuity_snapshots (

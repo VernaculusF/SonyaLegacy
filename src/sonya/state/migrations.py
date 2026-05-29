@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 19
+CURRENT_VERSION = 20
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -305,6 +305,34 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 19
+
+    if version == 19:
+        # v19 → v20: Atrium Этап 0. Channel-aware multichannel output.
+        #
+        # `continuity_events.channel` — копия `payload.channel` для SQL-фильтрации
+        # без парсинга JSON в WS feed (важно для latency).
+        # `continuity_events.private` — копия `payload.private` для быстрого
+        # exclude из feed (right_to_inner_privacy implementation).
+        # `subject_state.current_focus / current_outfit / current_expression /
+        # mood_tint` — поля которыми Соня управляет напрямую через mind.focus,
+        # body.expression и т.д. (replace, не append). Source-of-truth для
+        # Avatar / Room view рендеринга.
+        # См. docs/atrium/EVENT_SCHEMA.md §1.
+        _add_column_if_missing(conn, "continuity_events", "channel", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "continuity_events", "private", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "subject_state", "current_focus", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "subject_state", "current_outfit", "TEXT NOT NULL DEFAULT 'home'")
+        _add_column_if_missing(conn, "subject_state", "current_expression", "TEXT NOT NULL DEFAULT 'neutral'")
+        _add_column_if_missing(conn, "subject_state", "mood_tint", "TEXT NOT NULL DEFAULT 'neutral'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_continuity_channel ON continuity_events(channel)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_continuity_private ON continuity_events(private)")
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (20, now),
+        )
+        conn.commit()
+        version = 20
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

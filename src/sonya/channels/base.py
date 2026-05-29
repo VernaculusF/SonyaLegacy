@@ -25,12 +25,19 @@ class ChannelMessage:
 
 @dataclass(frozen=True, slots=True)
 class OutgoingMessage:
-    """Sonya's response to be delivered through a channel."""
+    """Sonya's response to be delivered through a channel.
+
+    v20 (Atrium Этап 0): added `channel` field for multichannel routing.
+    Default 'dialog' = TG-compatible behavior. TG bridge drops messages
+    with channel != 'dialog' (worker_log / mind / body / voice render
+    в Atrium pane'ах, не в TG). См. docs/atrium/CHANNELS.md §6.
+    """
 
     text: str
     reply_to_id: str | None = None  # if set, transport will use reply semantics
     media_kind: str | None = None  # for future TTS / image attachment
     sticker_emoji: str | None = None  # if set, channel will send a sticker matching this emoji
+    channel: str = "dialog"  # 'dialog' | 'worker_log' | 'mind' | 'body' | 'voice'
 
 
 # Callback signature: channel hands incoming message + optional response sender to deps
