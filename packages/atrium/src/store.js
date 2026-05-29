@@ -36,14 +36,13 @@ const DEFAULT_SETTINGS = {
   // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
   avatar_mode: '2d',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
-  // 5 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
-  // closed → half → open → wide → wide2. Используются как "talking" набор (рот двигается).
+  // 4 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
+  // closed → half → open → wide. wide (последний) — ОЧЕНЬ редкий (только пики).
   avatar_frames: [
     '/avatar/sonya_closed.png',
     '/avatar/sonya_half.png',
     '/avatar/sonya_open.png',
     '/avatar/sonya_wide.png',
-    '/avatar/sonya_wide2.png',
   ],
   // Emotion sprites: marker → image URL. Shown when an expression is set and
   // she's idle (not talking). Talking falls back to avatar_frames so the mouth
@@ -222,6 +221,7 @@ export function simulateSpeech(ms = 2500) {
   let target = 0;
   let nextSyllableAt = 0;
   let pausing = false;
+  let lastEmit = 0;
 
   const loop = (now) => {
     if (now >= _speakEnd) {
@@ -235,21 +235,26 @@ export function simulateSpeech(ms = 2500) {
     _speakRaf = requestAnimationFrame(loop);
 
     if (now >= nextSyllableAt) {
-      // ~8% chance of a short between-word pause (mouth near-closed)
+      // ~10% chance of a short between-word pause (mouth near-closed)
       pausing = Math.random() < 0.10;
       if (pausing) {
-        target = 0.05;
-        nextSyllableAt = now + 110 + Math.random() * 160;
+        target = 0.04;
+        nextSyllableAt = now + 120 + Math.random() * 180;
       } else {
-        // new syllable: random openness, biased to mid (gamma handled in view)
-        target = 0.35 + Math.random() * 0.6;
-        nextSyllableAt = now + 90 + Math.random() * 90; // ~5-10 syll/sec
+        // new syllable: random openness; gamma in the view keeps wide rare
+        target = 0.3 + Math.random() * 0.65;
+        nextSyllableAt = now + 110 + Math.random() * 110; // ~4-6 syll/sec
       }
     }
     // ease current mouthLevel toward target (snappy open, softer close)
     const cur = mouthLevel();
-    const k = target > cur ? 0.5 : 0.28;
-    setMouthLevel(cur + (target - cur) * k);
+    const k = target > cur ? 0.45 : 0.25;
+    const next = cur + (target - cur) * k;
+    // throttle reactive writes to ~30fps — enough for the mouth, less churn
+    if (now - lastEmit >= 33) {
+      lastEmit = now;
+      setMouthLevel(next);
+    }
   };
   _speakRaf = requestAnimationFrame(loop);
 }

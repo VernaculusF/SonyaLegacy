@@ -90,19 +90,17 @@ export default function SonyaAvatar(props) {
   // Eye height — scales with blink.
   const eyeRy = createMemo(() => 0.6 + eyeOpen() * 5.4);
 
-  // Pick a frame index for image-based mouth (if frames provided).
-  // Idle → frame 0 (closed). Speaking → map amplitude to frames. The mapping
-  // is gamma-biased so the widest frames only hit on loud peaks (Ivan: the
-  // widest looks like too much for normal talk). Works for any frame count.
+  // Frame index for image-based mouth. Idle → 0 (closed). Speaking → amplitude
+  // → frame, gamma-biased HARD so the widest (last) frame is VERY rare —
+  // only on genuine loud peaks. Works for any frame count.
   const frameIdx = createMemo(() => {
     const f = frames();
     if (!f.length) return -1;
     if (!speaking()) return 0;
     const n = f.length;
-    const lvl = mouthOpen();              // 0..1
-    // gamma > 1 pushes most values toward lower (more closed/half) frames,
-    // reserving the top frames for genuine peaks.
-    const biased = Math.pow(Math.max(0, Math.min(1, lvl)), 1.7);
+    const lvl = Math.max(0, Math.min(1, mouthOpen()));
+    // gamma 2.6 pushes most syllables to frames 1-2; frame 3 (wide) needs ~>0.9.
+    const biased = Math.pow(lvl, 2.6);
     return Math.min(n - 1, Math.floor(biased * n));
   });
 
@@ -116,16 +114,22 @@ export default function SonyaAvatar(props) {
           fallback={<DrawnHead expr={expr()} mouthOpen={mouthOpen()} eyeRy={eyeRy()} />}
         >
           <div class="sonya-2d-frames">
-            {/* talking / base mouth frames — visible when NOT showing emotion */}
+            {/* PERSISTENT base layer (closed frame) — always visible so there's
+                never a transparent gap between frame swaps (kills flicker). */}
+            <img class="sonya-2d-frame base" src={frames()[0]} alt="Sonya" draggable={false} />
+            {/* mouth overlay frames (1..n-1) — fade in over the base. Hidden
+                while showing an emotion sprite. */}
             <For each={frames()}>
               {(src, i) => (
-                <img
-                  class="sonya-2d-frame"
-                  classList={{ active: !showEmotion() && i() === frameIdx() }}
-                  src={src}
-                  alt="Sonya"
-                  draggable={false}
-                />
+                <Show when={i() > 0}>
+                  <img
+                    class="sonya-2d-frame"
+                    classList={{ active: !showEmotion() && i() === frameIdx() }}
+                    src={src}
+                    alt="Sonya"
+                    draggable={false}
+                  />
+                </Show>
               )}
             </For>
             {/* emotion sprite — visible when set and idle */}

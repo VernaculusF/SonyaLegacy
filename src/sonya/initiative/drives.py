@@ -27,29 +27,34 @@ class DriveCounters:
     pending_debt_rate: float = 0.02  # rate per active intention per tick
 
     threshold: float = 0.7
+    max_value: float = 1.0  # drives are bounded analogs, never exceed this
 
     def tick(self, active_intentions_count: int = 0) -> list[str]:
-        """Increment counters. Returns list of drives that crossed threshold."""
+        """Increment counters (clamped to max_value). Returns drives that
+        crossed threshold this tick."""
         crossed: list[str] = []
+        m = self.max_value
 
         prev = self.boredom_analog
-        self.boredom_analog += self.boredom_rate
+        self.boredom_analog = min(m, self.boredom_analog + self.boredom_rate)
         if self.boredom_analog >= self.threshold and prev < self.threshold:
             crossed.append("boredom_analog")
 
         prev = self.curiosity_analog
-        self.curiosity_analog += self.curiosity_rate
+        self.curiosity_analog = min(m, self.curiosity_analog + self.curiosity_rate)
         if self.curiosity_analog >= self.threshold and prev < self.threshold:
             crossed.append("curiosity_analog")
 
         prev = self.relational_focus
-        self.relational_focus += self.relational_rate
+        self.relational_focus = min(m, self.relational_focus + self.relational_rate)
         if self.relational_focus >= self.threshold and prev < self.threshold:
             crossed.append("relational_focus")
 
         if active_intentions_count > 0:
             prev = self.pending_debt
-            self.pending_debt += self.pending_debt_rate * active_intentions_count
+            self.pending_debt = min(
+                m, self.pending_debt + self.pending_debt_rate * active_intentions_count
+            )
             if self.pending_debt >= self.threshold and prev < self.threshold:
                 crossed.append("pending_debt")
 
@@ -100,15 +105,21 @@ class DriveCounters:
 
     @classmethod
     def load(cls, substrate) -> "DriveCounters":
-        """Load persisted drive state from substrate. Returns fresh if empty."""
+        """Load persisted drive state from substrate. Returns fresh if empty.
+
+        Values are clamped to [0, max_value] on load — older builds let drives
+        accumulate unbounded (pending_debt ran to 5-digit values), so we heal
+        any runaway state here.
+        """
         row = substrate.connection.execute(
             "SELECT boredom_analog, curiosity_analog, relational_focus, pending_debt "
             "FROM drive_state WHERE id = 1"
         ).fetchone()
         dc = cls()
         if row is not None:
-            dc.boredom_analog = float(row[0])
-            dc.curiosity_analog = float(row[1])
-            dc.relational_focus = float(row[2])
-            dc.pending_debt = float(row[3])
+            m = dc.max_value
+            dc.boredom_analog = max(0.0, min(m, float(row[0])))
+            dc.curiosity_analog = max(0.0, min(m, float(row[1])))
+            dc.relational_focus = max(0.0, min(m, float(row[2])))
+            dc.pending_debt = max(0.0, min(m, float(row[3])))
         return dc

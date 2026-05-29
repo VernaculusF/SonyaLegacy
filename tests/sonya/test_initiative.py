@@ -43,6 +43,44 @@ def test_pending_debt_increments_with_intentions() -> None:
     assert d.pending_debt == pytest.approx(0.06)
 
 
+def test_drives_clamp_to_max_on_tick() -> None:
+    """Drives must never exceed max_value — regression for runaway pending_debt
+    (ran to 12475 on the VPS before clamping)."""
+    d = DriveCounters(max_value=1.0)
+    d.pending_debt = 0.99
+    for _ in range(50):
+        d.tick(active_intentions_count=5)
+    assert d.pending_debt <= 1.0
+    # other drives too
+    d2 = DriveCounters(max_value=1.0, boredom_rate=0.5)
+    for _ in range(100):
+        d2.tick()
+    assert d2.boredom_analog <= 1.0
+    assert d2.curiosity_analog <= 1.0
+    assert d2.relational_focus <= 1.0
+
+
+def test_drives_load_heals_runaway_value(tmp_path) -> None:
+    """A persisted out-of-range value is clamped on load."""
+    from sonya.state.substrate import Substrate
+    sub = Substrate.open(tmp_path / "drv.db")
+    try:
+        # Write a runaway value directly.
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        sub.connection.execute(
+            "INSERT INTO drive_state(id, boredom_analog, curiosity_analog, "
+            "relational_focus, pending_debt, updated_at) VALUES (1,0,0,0,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET pending_debt=excluded.pending_debt",
+            (12475.96, now),
+        )
+        sub.connection.commit()
+        d = DriveCounters.load(sub)
+        assert d.pending_debt <= 1.0
+    finally:
+        sub.close()
+
+
 def test_create_signal() -> None:
     sig = create_signal(kind="drive_threshold_hit", source_drive="boredom_analog", priority=5)
     assert sig.signal_id.startswith("sig-")
