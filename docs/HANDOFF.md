@@ -52,6 +52,7 @@
 | `docs/atrium/CHANNELS.md` | Channel family spec + WS protocol + nudge |
 | `docs/atrium/EVENT_SCHEMA.md` | Substrate events + schema v20 migration + PR checklist |
 | `docs/atrium/UX_SKETCH.md` | UX-дизайн Atrium (палитра, voice mode, interrupt, room view) |
+| `docs/atrium/ETAP2_RESEARCH.md` | Research Этапа 2: голос (Chatterbox EN→RU cross-lingual) + 3D (VRoid→VRM) + рендер/липсинк |
 | `docs/atrium/mockups/*.html` | Интерактивные mockup'ы (desktop/mobile/room) |
 | `docs/skills/SKILL_SYSTEM_PLAN.md` | Skill lifecycle, trust levels, **knowledge vs skills** |
 | `docs/operations/VPS.md` | **VPS детально** — хостинг, сервисы, disaster recovery |
@@ -174,7 +175,7 @@ Disaster recovery (сервер умер / substrate corrupt / TG session invali
 
 ### 5.2 Не доделано / следующие шаги
 - **Atrium T1.4** (Dialog composer) и **T1.5** (TG-emergency-only) — **done (2026-05-29)**. Composer рабочий (`POST /api/atrium/dialog` → active session → ответ). Emergency-mode реализован, выключен по умолчанию (`SONYA_TG_EMERGENCY_MODE=0`) — включить после 1-2 недель стабильной работы Atrium у Ивана. `chat.emergency` пробивает emergency-режим для ЧС.
-- **Atrium Этап 2** — Voice + Live2D + interrupt. Перед стартом Иван просил **research:** генерация 3D-модельки + voice cloning (есть 30 мин англ. аудио-референс).
+- **Atrium Этап 2** — Voice + 3D VRM-аватар + interrupt. **Research done** (`docs/atrium/ETAP2_RESEARCH.md`): голос = Chatterbox Multilingual (MIT, cross-lingual англ.→рус из коробки), 3D = VRoid Studio→`.vrm` + `@pixiv/three-vrm` рендер, липсинк amplitude→viseme. **Главный блокер real-time голоса — GPU** (VPS CPU-only, общий вопрос с RWKV Stage 6).
 - Удалить фейковые скилы osint/sqli/wp_pentest (после подтверждения миграции, см. §4.1).
 - T1.5.4 — UI-тоггл "Force TG always" в Atrium settings (мелочь, backend готов).
 - Stage 5 closing: selfmod outcome tracking, visual memory cross-session, variable idle depth.

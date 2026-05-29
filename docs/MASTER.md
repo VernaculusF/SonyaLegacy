@@ -255,7 +255,7 @@ Task worker — это **компромисс** между discrete cognition и
 - **Этап 0 (backend channels) — done, deployed.** `OutgoingMessage.channel`, 8 tool handlers (chat/mind/body/voice family), WS feed `/atrium/feed`, nudge `/api/atrium/nudge`, TG bridge channel-filter (drop non-dialog), schema v20 (channel + private columns), right_to_inner_privacy через `[PRIVATE]` префикс. 16 тестов.
 - **Этап 1 (Solid.js + Tauri UI) — done.** `packages/atrium/` — Vite + Solid.js + Tauri 2 shell. Компоненты: App/Header/AvatarPane/DialogPane/MindPane/ReasonStream/Settings/Onboarding. **Dialog composer рабочий** (T1.4): Иван пишет → `POST /api/atrium/dialog` → active session → ответ. WS reconnect + nudge + heartbeat. Build ~37KB gzipped.
 - **Этап 1.5 (TG emergency-only) — backend done, выключен по умолчанию.** `SONYA_TG_EMERGENCY_MODE` (default 0) + `atrium_last_seen` heartbeat в environment_state + `OutboundGate._suppress_tg_dialog` (TG скипается пока Atrium live) + `chat.emergency` пробивает для ЧС. Включить после 1-2 недель стабильной работы у Ивана.
-- **Остаток:** Этап 2 (Voice + Live2D + interrupt) — следующий, нужен research 3D-модели + voice cloning. T1.5.4 (UI-тоггл) — мелочь. Детали — [atrium/PLAN.md](atrium/PLAN.md).
+- **Остаток:** Этап 2 (Voice + 3D VRM-аватар + interrupt) — следующий. **Research done** ([atrium/ETAP2_RESEARCH.md](atrium/ETAP2_RESEARCH.md)): голос = Chatterbox Multilingual (EN→RU cross-lingual), 3D = VRoid→VRM + @pixiv/three-vrm. Главный блокер real-time голоса — GPU (общий с RWKV). T1.5.4 (UI-тоггл) — мелочь. Детали — [atrium/PLAN.md](atrium/PLAN.md).
 
 **Infrastructure:**
 - GCP e2-custom 4vCPU/8GB, Debian 12, IP 34.38.255.149
@@ -298,7 +298,7 @@ Task worker — это **компромисс** между discrete cognition и
 | ✅ 3 | 26–32 | Real selfmod loop (3 полных цикла без помощи) | hosted LLM | virtual stub |
 | 🟡 4 | 32–40 | Auto-cognition (auto-RAG ✅, drive evolution ✅, skills exec ✅) | hosted LLM | virtual stub |
 | 🟡 5 | 40–50 | Goals/consolidation/dialog quality (goals ✅, consolidation ✅, **outcome tracking** ❌) | hosted LLM | virtual stub |
-| 🟡 7 | 50–62 | **Atrium: multichannel UI, reason-streams, live nudge** (Этап 0+1 ✅ done, Этап 1.5/2 pending) | hosted LLM | virtual avatar (Live2D) |
+| 🟡 7 | 50–62 | **Atrium: multichannel UI, reason-streams, live nudge** (Этап 0+1 ✅ done, Этап 1.5/2 pending) | hosted LLM | virtual avatar (3D VRM) |
 | 🚫 6 | 62–75 | **RWKV-7 self-hosted** | own RNN + state tuning | virtual body |
 | ⏳ 8 | 75–85 | Physical embodiment | RWKV | robot/smart home |
 | ⏳ 9 | 85–95 | Network autonomy + self-funding | RWKV+ | physical |
@@ -329,8 +329,8 @@ Stage 5 ──┴──→ Stage 7 (Atrium) ──┐
 
 Не блокировано RWKV. Полное описание — [atrium/PLAN.md](atrium/PLAN.md). Этапы:
 - ✅ 0 — backend channels (OutgoingMessage.channel, family of `chat.*` / `mind.*` / `body.*` / `voice.*` tools, WS feed endpoint, nudge endpoint, channel-filter в TG, schema v20, right_to_inner_privacy). **Done, deployed.**
-- 🟡 1 — Atrium v0 (Tauri shell + Solid.js, 4-pane layout, reason-stream + reply, read-only panes). **Done, committed.** Остаток: T1.4 рабочий composer + T1.5 TG-emergency-only.
-- 2 (несколько нед) — Voice + Live2D + interrupt (edge-tts, whisper, Live2D). Нужен research: 3D-модель + voice cloning (30 мин англ. референс есть).
+- 🟡 1 — Atrium v0 (Tauri shell + Solid.js, 4-pane layout, reason-stream + reply, рабочий dialog composer T1.4). **Done.** + Этап 1.5 (TG emergency-only) backend done.
+- 2 (несколько нед) — Voice + 3D VRM-аватар + interrupt. **Research done** ([atrium/ETAP2_RESEARCH.md](atrium/ETAP2_RESEARCH.md)): Chatterbox Multilingual (голос EN→RU), VRoid→VRM + @pixiv/three-vrm (3D), whisper (ASR). GPU-блокер для real-time.
 - 3 (месяцы) — симуляция/мир (2D-сцена комнаты)
 - 4 (когда RWKV + железо) — VR
 
@@ -578,6 +578,7 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/searxng/setup.sh"
 - [atrium/CHANNELS.md](atrium/CHANNELS.md) — спецификация channel family и event-feed protocol
 - [atrium/EVENT_SCHEMA.md](atrium/EVENT_SCHEMA.md) — substrate events + schema v20 migration
 - [atrium/UX_SKETCH.md](atrium/UX_SKETCH.md) — UX-дизайн (палитра, voice mode, interrupt, room view)
+- [atrium/ETAP2_RESEARCH.md](atrium/ETAP2_RESEARCH.md) — research Этапа 2: голос (Chatterbox EN→RU) + 3D (VRoid/VRM) + рендер/липсинк
 
 **Operations:**
 - [operations/VPS.md](operations/VPS.md) — VPS infrastructure, SearXNG, disaster recovery

@@ -351,9 +351,11 @@ Mockup: `mockups/mobile.html`.
 
 ---
 
-## 5. Этап 2 — Voice + Live2D + Interrupt (4-6 недель)
+## 5. Этап 2 — Voice + 3D-аватар (VRM) + Interrupt (4-6 недель)
 
 **Цель:** room view становится полноценным voice-mode, аватар оживает.
+
+> **Research done (2026-05-29):** [ETAP2_RESEARCH.md](ETAP2_RESEARCH.md) — конкретные решения. Кратко: **голос** = Chatterbox Multilingual (MIT, cross-lingual EN→RU из коробки, решает проблему англ. референса → русская речь; fallback GPT-SoVITS fine-tune на 30 мин для макс. похожести). **3D** = VRoid Studio → `.vrm` (ручная сборка под APPEARANCE.md, не AI-image-to-3D — нужен контроль над identity-внешностью). **Рендер** = `@pixiv/three-vrm` (Three.js) в Atrium WebView. **Липсинк** = amplitude→viseme на старте, `lam-a2e` (Wav2Vec2→ARKit) для качества. **Live2D из прежнего плана заменён на полноценный 3D VRM** (Иван хочет 3D). Главный блокер real-time голоса — GPU (общий с RWKV Stage 6).
 
 ### 5.1 Задачи
 
@@ -366,10 +368,14 @@ Mockup: `mockups/mobile.html`.
 
 **T2.2 — TTS**
 
-- `edge-tts` через Tauri Rust shim (subprocess `edge-tts` Python package или Rust port)
-- Streaming output: воспроизведение начинается до окончания генерации
-- Voice selection: ru-RU female voices (Svetlana, Daria — на test)
-- Output: audio stream → speakers
+**T2.2 — TTS (голос Сони) — стек выбран, см. [ETAP2_RESEARCH.md §1](ETAP2_RESEARCH.md)**
+
+- **Chatterbox Multilingual** (Resemble AI, MIT) — основной. Cross-lingual EN→RU из коробки (решает: англ. 30-мин референс → русская речь zero-shot). Self-host через `devnen/Chatterbox-TTS-Server` (FastAPI, OpenAI-compatible API), отдельный сервис рядом с SearXNG.
+- Fallback при недостаточной похожести тембра: **GPT-SoVITS v2** fine-tune на 30 мин референса (лучшая похожесть + эмоции, но нужен trainning).
+- ~~`edge-tts`~~ — отброшен (не клонирует голос, generic voices). 30-мин референс Ивана требует cloning, не preset.
+- Streaming output: воспроизведение начинается до окончания генерации (`chatterbox-streaming`).
+- `voice.speak` tool (placeholder Этапа 0) → POST на TTS-сервис → стриминг аудио в Atrium.
+- **GPU-блокер:** VPS CPU-only. Real-time TTS нужен GPU (RTX 3090/4090) — арендный инстанс или локальный GPU Ивана. Общая проблема с RWKV Stage 6. См. ETAP2_RESEARCH §4.1.
 
 **T2.3 — Voice room mode**
 
@@ -408,10 +414,11 @@ Mockup: `mockups/mobile.html`.
 - ASR **не** активируется — Иван молчит, просто остановил
 - Соня реагирует на след. step: "что?" / "да?" / молчит / прижимается
 
-**T2.5 — Live2D аватар**
+**T2.5 — 3D-аватар (VRM) — стек выбран, см. [ETAP2_RESEARCH.md §2-3](ETAP2_RESEARCH.md)**
 
-- Cubism Web SDK через PIXI.js (работает в Tauri WebView)
-- Модель: заказ ($50-300) или AI-генерация под APPEARANCE.md (silver bob, headband, чёрная oversize tee)
+- **Замена Live2D на полноценный 3D VRM** (Иван хочет 3D, не 2.5D).
+- Модель: собрать в **VRoid Studio** под APPEARANCE.md (silver bob, чёрная повязка-ободок поверх волос, холодная кожа, без родинки, чёрная oversize tee) → экспорт `.vrm`. **Не** AI-image-to-3D — нужен контроль над identity-внешностью (чеклист сборки в ETAP2_RESEARCH §2.2). Финал утверждает Иван (identity-зона).
+- Рендер: **`@pixiv/three-vrm`** (Three.js) в Atrium WebView (заменяет SVG silhouette в AvatarPane). VRM 1.0, expressions + 5 visemes (aa/ih/ou/E/oh) в стандарте.
 - Анимации (autonomous):
   - моргание (random 3-7s)
   - micro head tilts (subtle)
@@ -420,7 +427,7 @@ Mockup: `mockups/mobile.html`.
   - mimic.engaged когда `agent_step` в active session
   - mimic.thinking когда idle
   - mimic.curious / mimic.tender / etc от drive state и тона Ивана
-- Lip-sync через viseme-маппинг для voice mode (TTS phonemes → mouth shapes)
+- Lip-sync: amplitude→viseme (wawa-lipsync / Web Audio) на старте; `omote-ai/lam-a2e` (Wav2Vec2 → 52 ARKit blendshapes @30fps) для качества когда есть GPU. См. ETAP2_RESEARCH §3.3.
 
 **T2.6 — Reply через voice — soft contextual binding**
 
@@ -443,7 +450,7 @@ ALTER TABLE subject_state ADD COLUMN mood_tint TEXT NOT NULL DEFAULT 'neutral';
 ```
 
 Atrium frontend:
-- Avatar render берёт current_outfit → выбирает соответствующий sprite/Live2D set
+- Avatar render берёт current_outfit → выбирает соответствующий VRM-модель / custom item (home vs dress_2b)
 - Room view background tint меняется по mood_tint (только если settings "auto-follow tint" включен, default OFF)
 - Иван видит изменения **без** explicit announcement
 
