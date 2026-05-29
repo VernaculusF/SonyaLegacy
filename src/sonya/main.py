@@ -1156,6 +1156,10 @@ class _RuntimeBundle:
                 # Substrate so OutboundGate can read environment_state and
                 # respect Sonya's own observation that Ivan is sleeping/busy.
                 substrate=substrate,
+                # Этап 1.5 — TG emergency-only mode (default off until Atrium
+                # is stable on Ivan's devices).
+                tg_emergency_mode=config.tg_emergency_mode,
+                tg_emergency_threshold_hours=config.tg_emergency_threshold_hours,
             )
             self.internal_process.set_outbound_gate(outbound)
             _log.info(

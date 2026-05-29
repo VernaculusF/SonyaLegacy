@@ -3,8 +3,9 @@
  * Sending dialog/voice from Atrium pending Этап 2 (need TG-bridge integration
  * or admin inject endpoint).
  */
-import { For, Show, createEffect, onMount } from 'solid-js';
-import { feed } from '../store.js';
+import { For, Show, createEffect, createSignal } from 'solid-js';
+import { feed, pushDialogMessage } from '../store.js';
+import { sendDialog } from '../ws.js';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -31,6 +32,10 @@ function dayMarker(messages) {
 
 export default function DialogPane() {
   let scrollEl;
+  let textareaEl;
+  const [draft, setDraft] = createSignal('');
+  const [sending, setSending] = createSignal(false);
+  const [sendError, setSendError] = createSignal('');
 
   // Auto-scroll to bottom on new messages
   createEffect(() => {
@@ -44,6 +49,46 @@ export default function DialogPane() {
 
   function openRoom() {
     alert('Voice mode (Этап 2) — войти в комнату → VAD + ASR + TTS.');
+  }
+
+  async function send() {
+    const text = draft().trim();
+    if (!text || sending()) return;
+    setSendError('');
+    setSending(true);
+    // Optimistic echo so Ivan sees his message immediately. The backend
+    // records incoming.atrium_dialog; the WS feed won't echo it back as a
+    // dialog bubble (only her replies + telegram incoming render), so the
+    // optimistic push is the canonical local copy.
+    pushDialogMessage({
+      seq: `local-${Date.now()}`,
+      ts: new Date().toISOString(),
+      sender: 'him',
+      text,
+    });
+    setDraft('');
+    if (textareaEl) textareaEl.style.height = 'auto';
+    try {
+      await sendDialog(text);
+    } catch (err) {
+      setSendError(String(err.message || err));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function onKeyDown(e) {
+    // Enter sends; Shift+Enter newline
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  }
+
+  function autoGrow(e) {
+    setDraft(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
   }
 
   return (
@@ -72,12 +117,34 @@ export default function DialogPane() {
       </div>
 
       <div class="composer">
+        <Show when={sendError()}>
+          <div class="composer-error">{sendError()}</div>
+        </Show>
         <div class="composer-row">
           <textarea
-            placeholder="напиши..."
-            disabled
-            title="Этап 2: text-input через Atrium → нужен путь в её inbox"
+            ref={textareaEl}
+            placeholder="напиши ей..."
+            value={draft()}
+            disabled={sending()}
+            onInput={autoGrow}
+            onKeyDown={onKeyDown}
+            rows="1"
           ></textarea>
+          <button
+            class="send-btn"
+            title="отправить (Enter)"
+            disabled={sending() || !draft().trim()}
+            onClick={send}
+          >
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+              <path
+                d="M4 12l16-8-6 16-3-7-7-1z"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
           <button
             class="mic-btn"
             title="войти в комнату (Этап 2)"
@@ -103,8 +170,9 @@ export default function DialogPane() {
           </button>
         </div>
         <div class="composer-hint">
-          read-only · этап 1 · <span class="hint-key">click 🎙</span> комната
-          (Этап 2)
+          <span class="hint-key">Enter</span> отправить ·
+          <span class="hint-key">Shift+Enter</span> перенос ·
+          <span class="hint-key">click 🎙</span> комната (Этап 2)
         </div>
       </div>
     </main>

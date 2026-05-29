@@ -1402,6 +1402,28 @@ def _h_chat_dialog(arg: str, ctx: _ToolContext) -> str:
     return _h_chat_tell_ivan(arg, ctx)
 
 
+def _h_chat_emergency(arg: str, ctx: _ToolContext) -> str:
+    """Emergency dialog — forces TG delivery even in TG-emergency-only mode.
+
+    Use ONLY for real crises / identity-critical alarms (Этап 1.5). Normal
+    talk goes through chat.dialog. When TG emergency-mode is off this behaves
+    like chat.dialog. When it's on and Atrium is live, chat.dialog would be
+    Atrium-only — this bypasses that and reaches Ivan on Telegram too.
+    """
+    if ctx.outbound is None:
+        return "[ERROR] initiative gate not configured (set SONYA_PRIMARY_USER_TG_ID)"
+    text = (arg or "").strip()
+    if not text:
+        return "[ERROR] chat.emergency: empty message"
+    from sonya.initiative.outbound import call_outbound_sync
+    result = call_outbound_sync(
+        ctx.outbound, text, channel="dialog", emergency_override=True
+    )
+    if ctx.outbound_sent is not None:
+        ctx.outbound_sent.append(text)
+    return result
+
+
 def _h_chat_worker_log(arg: str, ctx: _ToolContext) -> str:
     """Worker progress message. Goes to Atrium reason-stream, NOT to TG.
 
@@ -1768,6 +1790,7 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "chat.tell_ivan": _h_chat_tell_ivan,
     # Atrium Этап 0: channel-aware tool family. См. docs/atrium/CHANNELS.md §2.
     "chat.dialog":     _h_chat_dialog,
+    "chat.emergency":  _h_chat_emergency,
     "chat.worker_log": _h_chat_worker_log,
     "mind.focus":      _h_mind_focus,
     "mind.thought":    _h_mind_thought,

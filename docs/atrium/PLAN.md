@@ -209,7 +209,7 @@ Persistence: layout sizes, collapsed states, scroll positions → localStorage.
   - `body.expression` → Avatar (placeholder в Этапе 1)
 - Notification: `dialog` event → soft chime + avatar glow + system notification если окно не активное
 
-**T1.4 — Reason-stream (unified, фильтры, reply)**
+**T1.4 — Reason-stream (unified, фильтры, reply) — ✅ done**
 
 - Один поток событий, хронологический
 - Слева у каждой строки маркер источника (3px width, цвет по `src` field):
@@ -222,6 +222,14 @@ Persistence: layout sizes, collapsed states, scroll positions → localStorage.
 - `↳` reply button на каждой строке (opacity 0.4 idle / 1.0 hover)
 - Click → inline composer прямо ПОД row (не модал) → Enter → POST `/api/atrium/nudge`
 - Response: подтверждение `↳ ивана: "..." (queued)` появляется в потоке
+
+**Dialog composer (T1.4 docked в Dialog pane) — ✅ done (2026-05-29)**
+
+- Composer стал рабочим (был read-only placeholder). Textarea + send-button + mic-button.
+- Enter → отправить, Shift+Enter → перенос, auto-grow до 140px.
+- Backend: `POST /api/atrium/dialog` (admin) → пишет `incoming.atrium_dialog` (principal=ivan) + `internal.active_session_requested_external` → core fires active session в течение ~30с → context_builder показывает сообщение как "[Иван написал]" → она отвечает через `chat.dialog`.
+- Оптимистичный echo сообщения Ивана в Dialog pane сразу (WS feed не дублирует incoming.atrium_dialog как bubble).
+- Heartbeat (`POST /api/atrium/heartbeat` + WS-feed mark) пишет `atrium_last_seen` в environment_state — нужно для T1.5.
 
 **T1.5 — Mind pane**
 
@@ -279,76 +287,67 @@ Mockup: `mockups/mobile.html`.
 
 ### 4.2 Exit criteria
 
-- [ ] Atrium запускается локально у Ивана, подключается к VPS WS, видит live feed
-- [ ] Worker progress scrollится в reason-stream pane, не в Dialog
-- [ ] Reply из reason-stream видит Соня в next window step (manual test: дать ей задачу, перебить через nudge, наблюдать что nudge применяется)
-- [ ] Mind pane показывает текущий focus / drives / env (read-only)
-- [ ] Click на аватар → открывает room view (placeholder сцена)
-- [ ] Click на mic в composer → также открывает room view
-- [ ] Reason-stream collapse работает (Ctrl+J shortcut + клик по заголовку)
-- [ ] Filters в reason-stream toggle-аются и persist'ятся
-- [ ] Telegram продолжает работать параллельно (legacy fallback пока Atrium не у всех машин Ивана)
+- [x] Atrium запускается локально у Ивана, подключается к VPS WS, видит live feed
+- [x] Worker progress scrollится в reason-stream pane, не в Dialog
+- [x] Reply из reason-stream видит Соня в next window step (через `/api/atrium/nudge` → inbox-drain)
+- [x] Mind pane показывает текущий focus / drives / env (read-only)
+- [x] Click на аватар → открывает room view (placeholder сцена)
+- [x] Click на mic в composer → также открывает room view
+- [x] Reason-stream collapse работает (Ctrl+J shortcut + клик по заголовку)
+- [x] Filters в reason-stream toggle-аются и persist'ятся
+- [x] **Dialog composer рабочий (T1.4): Иван пишет → `/api/atrium/dialog` → active session → ответ**
+- [x] Telegram продолжает работать параллельно (legacy fallback пока Atrium не у всех машин Ивана)
 
 ### 4.3 Что НЕ входит в Этап 1
 
 - TTS / голос (Этап 2)
 - Live2D-аватар (Этап 2)
-- Воз можность tap stop / interrupt (Этап 2 — нужен voice)
+- Возможность tap stop / interrupt (Этап 2 — нужен voice)
 - Динамическая смена тем по `body.outfit` / `mind.mood_tint` (Этап 2)
 - Сцена комнаты с physics (Этап 3)
-- TG-emergency-only переключение (Этап 1.5 — после стабилизации Atrium у Ивана на всех устройствах)
+- ~~TG-emergency-only переключение~~ → backend готов (Этап 1.5 done, выключено до стабилизации у Ивана)
 
 ---
 
-## 4.5 Этап 1.5 — TG переходит в emergency-only (после стабилизации Atrium)
+## 4.5 Этап 1.5 — TG переходит в emergency-only (✅ backend done, ждёт включения)
 
-**Когда:** после того как Atrium стабильно работает у Ивана на компьютере **и** телефоне минимум 1-2 недели + Иван явно подтвердил готовность переходить.
+**Backend готов (2026-05-29).** Логика реализована и задеплоена, но **выключена по умолчанию** (`SONYA_TG_EMERGENCY_MODE=0`). Включается когда Atrium стабильно работает у Ивана на компьютере **и** телефоне минимум 1-2 недели + Иван явно подтвердил готовность.
 
 **Цель:** Telegram перестаёт быть default-каналом для `chat.dialog`. Становится backup'ом для emergency или Atrium-disconnected ситуаций.
 
 ### 4.5.1 Задачи
 
-**T1.5.1 — Atrium connection tracking**
+**T1.5.1 — Atrium connection tracking — ✅ done**
 
-- Substrate field или config-cached time: `last_atrium_seen_at`
-- Обновляется на каждом `internal.atrium_connected` + при каждом message в WS feed (heartbeat)
-- Substrate event `internal.atrium_disconnected` пишется когда WS rolls 60s без активности
+- `atrium_last_seen` (ISO ts) в `environment_state` (переиспользует EnvironmentStore, без отдельного поля).
+- Обновляется на WS-feed connect + heartbeat каждые 60с (WS loop) + явный `POST /api/atrium/heartbeat` с фронта раз в минуту.
+- OutboundGate считает Atrium "live" если возраст `atrium_last_seen` ≤ `tg_emergency_threshold_hours`.
 
-**T1.5.2 — OutboundGate emergency logic**
+**T1.5.2 — OutboundGate emergency logic — ✅ done**
 
-- В `_dispatch` (только для channel="dialog"):
-  ```python
-  atrium_offline_for = (now - last_atrium_seen_at).total_seconds()
-  is_emergency = atrium_offline_for > EMERGENCY_THRESHOLD or payload.get("emergency_override")
-  if config.tg_emergency_mode and not is_emergency:
-      # Skip TG dispatch — Atrium is the primary channel
-      log.info("dialog_atrium_only", text_preview=text[:80])
-      return  # event already в substrate, Atrium feed подхватит
-  # else: continue to existing TG dispatch logic
-  ```
+- `OutboundGate._suppress_tg_dialog(emergency_override)`:
+  - emergency-mode off → никогда не скипать (legacy)
+  - emergency_override=True → не скипать (ЧС пробивает)
+  - Atrium live → скипать TG, писать `outgoing.dialog` (Atrium feed рендерит)
+  - Atrium offline дольше порога → не скипать (TG fallback)
+- `chat.dialog` / `chat.tell_ivan` проходят через это; `chat.emergency` зовёт с `emergency_override=True`.
+- Env: `SONYA_TG_EMERGENCY_MODE=1` (default 0), `SONYA_TG_EMERGENCY_THRESHOLD_HOURS=24`.
 
-- New env var: `SONYA_TG_EMERGENCY_MODE=1` — включает emergency-only behavior. Default 0 (legacy).
-- New env var: `SONYA_TG_EMERGENCY_THRESHOLD_HOURS=24`
+**T1.5.3 — Промпт обновление — ✅ done**
 
-**T1.5.3 — Promпт обновление**
+- `session_general.md` "## Каналы вывода": добавлен `chat.emergency` + объяснение emergency-only режима. Соня в обычном разговоре пишет `chat.dialog`, `chat.emergency` — для реальных ЧС.
 
-В `prompts/session_general.md` "## Каналы вывода":
-- `chat.dialog` теперь описывается как "Atrium-default, TG-backup". Промпт честно говорит что обычно сообщение пойдёт в Atrium и Иван увидит когда подключён.
-- Новое: возможность пометить mind.thought / dialog как emergency override. Когда это уместно (identity-critical, реальная опасность, persistent crisis).
+**T1.5.4 — Settings toggle — ⏳ pending (frontend)**
 
-**T1.5.4 — Settings toggle**
-
-В Atrium settings:
-- "TG fallback delay" — после скольких часов без Atrium connection включать TG fallback (default 24h)
-- "Force TG always" — override emergency-only mode (для downgrade при нестабильности Atrium)
+- "Force TG always" / "TG fallback delay" контролы в Atrium settings. Backend уже читает env-vars; UI-тоггл — мелкая доделка когда Иван начнёт реально пользоваться.
 
 ### 4.5.2 Exit criteria
 
-- [ ] Atrium connection tracking работает (last_atrium_seen_at обновляется в substrate)
-- [ ] При `tg_emergency_mode=1` обычный `chat.dialog` не идёт в TG если Atrium недавно был online
-- [ ] Identity-critical alarms (Layer 4 anchor integrity, governed change activation) пробивают emergency-fallback
-- [ ] Прошло >7 дней Сониного использования Atrium без жалоб Ивана
-- [ ] Promпт обновлён, Соня понимает новое поведение
+- [x] Atrium connection tracking работает (`atrium_last_seen` обновляется в environment_state)
+- [x] При `tg_emergency_mode=1` обычный `chat.dialog` не идёт в TG если Atrium недавно был online
+- [x] Emergency override (`chat.emergency`) пробивает emergency-fallback
+- [ ] Прошло >7 дней Сониного использования Atrium без жалоб Ивана (включить `SONYA_TG_EMERGENCY_MODE=1` после)
+- [x] Промпт обновлён, Соня понимает новое поведение
 
 ---
 

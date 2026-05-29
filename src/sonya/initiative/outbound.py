@@ -109,6 +109,8 @@ class OutboundGate:
         channel_name: str = "telegram",
         progress_updates_max_per_day: int = 50,
         substrate: object = None,
+        tg_emergency_mode: bool = False,
+        tg_emergency_threshold_hours: float = 24.0,
     ) -> None:
         self._registry = registry
         self._stream = stream
@@ -120,6 +122,10 @@ class OutboundGate:
         # Optional substrate for env-status checks. When provided, initiative
         # blocks if Sonya herself recorded ivan_status='спит' / 'занят' / etc.
         self._substrate = substrate
+        # Atrium Этап 1.5 — TG emergency-only mode. When enabled, dialog to TG
+        # is suppressed while Atrium is alive (seen within threshold).
+        self._tg_emergency_mode = tg_emergency_mode
+        self._tg_emergency_threshold_hours = tg_emergency_threshold_hours
 
         self._date_key: str = ""
         self._sent_today: int = 0
@@ -134,6 +140,7 @@ class OutboundGate:
         reason: str = "tool",
         ignore_quiet: bool = True,
         channel: str = "dialog",
+        emergency_override: bool = False,
     ) -> str:
         """Tool entry point. Returns a status string for the agent.
 
@@ -147,6 +154,10 @@ class OutboundGate:
         rate-limit only and are dispatched directly into substrate as
         `outgoing.<channel>` events without being routed to TG.
         См. docs/atrium/CHANNELS.md §2.
+
+        `emergency_override` (Этап 1.5): when TG is in emergency-only mode,
+        a True value forces the TG dispatch even if Atrium is live (for
+        identity-critical alarms / real crises).
         """
         text = (text or "").strip()
         if not text:
@@ -158,6 +169,11 @@ class OutboundGate:
         # dispatch event прямо в substrate. TG bridge их сам отфильтрует.
         if channel != "dialog":
             return await self._dispatch_non_dialog(text, channel=channel, reason=reason)
+        # Этап 1.5 — TG emergency-only: if Atrium is the live primary surface,
+        # record the dialog for Atrium to render but skip the TG mirror.
+        suppress, why = self._suppress_tg_dialog(emergency_override=emergency_override)
+        if suppress:
+            return await self._dispatch_dialog_atrium_only(text, reason=reason)
         # Dialog channel: full original gate logic.
         # Cross-session dedup: refuse near-duplicate of any outbound sent in
         # the last 6 hours. Catches the "Продолжаю разведку sweetcow..." spam
@@ -215,6 +231,44 @@ class OutboundGate:
         return await self._dispatch(body, reason="idle_thought")
 
     # ---------- gates ----------
+
+    def _atrium_is_live(self) -> bool:
+        """True if Atrium was seen within the emergency threshold.
+
+        Reads `atrium_last_seen` from environment_state (written by the admin
+        heartbeat / WS feed). When live and emergency-mode is on, TG dialog is
+        suppressed — Atrium is the primary surface.
+        """
+        if self._substrate is None:
+            return False
+        try:
+            from sonya.state.environment import EnvironmentStore
+            rec = EnvironmentStore(self._substrate).get("atrium_last_seen")
+            if not rec or not rec.get("value"):
+                return False
+            seen = datetime.fromisoformat(rec["value"])
+            age_h = (_utc_now() - seen).total_seconds() / 3600.0
+            return age_h <= self._tg_emergency_threshold_hours
+        except Exception:
+            return False
+
+    def _suppress_tg_dialog(self, *, emergency_override: bool) -> tuple[bool, str]:
+        """Decide whether to skip TG dispatch for a dialog message (T1.5).
+
+        Returns (suppress, reason). Suppress only when:
+          - emergency-mode is enabled, AND
+          - this is NOT flagged as an emergency override, AND
+          - Atrium was seen recently (still the live primary surface).
+        The message is already recorded in substrate as outgoing.dialog, so
+        Atrium renders it regardless; we only gate the TG mirror.
+        """
+        if not self._tg_emergency_mode:
+            return False, ""
+        if emergency_override:
+            return False, "emergency_override"
+        if self._atrium_is_live():
+            return True, "atrium_live"
+        return False, "atrium_offline_past_threshold"
 
     def _check_gates(self, *, ignore_quiet: bool = False) -> tuple[bool, str]:
         if not self._target:
@@ -438,6 +492,34 @@ class OutboundGate:
 
     # ---------- dispatch ----------
 
+    async def _dispatch_dialog_atrium_only(self, text: str, *, reason: str) -> str:
+        """Record a dialog message for Atrium only (T1.5 emergency-mode).
+
+        TG is suppressed because Atrium is the live primary surface. The event
+        is `outgoing.dialog` (channel=dialog) so the Atrium feed renders it in
+        the Dialog pane, but it never reaches Telegram.
+        """
+        self._stream.append(ContinuityEvent(
+            kind="outgoing.dialog",
+            channel="dialog",
+            payload={
+                "text": text,
+                "reason": reason,
+                "tg_suppressed": True,
+                "surface": "atrium",
+            },
+        ))
+        if self._substrate is not None:
+            try:
+                from sonya.planning.memory_wiring import record_initiative_as_memory
+                record_initiative_as_memory(
+                    self._substrate, text, reason=f"dialog:{reason}",
+                    channel="atrium_dialog",
+                )
+            except Exception:
+                pass
+        return "[OK] dialog (Atrium-only, TG suppressed — emergency-mode)"
+
     async def _dispatch_non_dialog(
         self, text: str, *, channel: str, reason: str
     ) -> str:
@@ -579,7 +661,8 @@ class OutboundGate:
 # ---------- safe sync wrapper for tool dispatcher ----------
 
 def call_outbound_sync(
-    gate: OutboundGate, text: str, *, channel: str = "dialog"
+    gate: OutboundGate, text: str, *, channel: str = "dialog",
+    emergency_override: bool = False,
 ) -> str:
     """Call OutboundGate.send_via_tool from sync code (the agent dispatcher).
 
@@ -609,10 +692,17 @@ def call_outbound_sync(
         # Non-dialog: skip dialog-only gates, dispatch through Atrium-only path.
         coro = gate._dispatch_non_dialog(text, channel=channel, reason="tool")
     else:
-        ok, why = gate._check_gates(ignore_quiet=True)
-        if not ok:
-            return f"[BLOCKED] initiative gate: {why}"
-        coro = gate._dispatch(text, reason="tool")
+        # Этап 1.5 — emergency-only TG: suppress TG mirror if Atrium is live,
+        # unless this is an explicit emergency override (identity-critical /
+        # real crisis) which forces the TG dispatch.
+        suppress, _why = gate._suppress_tg_dialog(emergency_override=emergency_override)
+        if suppress:
+            coro = gate._dispatch_dialog_atrium_only(text, reason="tool")
+        else:
+            ok, why = gate._check_gates(ignore_quiet=True)
+            if not ok:
+                return f"[BLOCKED] initiative gate: {why}"
+            coro = gate._dispatch(text, reason="tool")
 
     if loop is not None and loop.is_running():
         loop.create_task(coro)

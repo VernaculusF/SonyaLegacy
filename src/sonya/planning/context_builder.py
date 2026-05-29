@@ -354,10 +354,12 @@ def build_full_context(
         # Recent dialog events (incoming/outgoing)
         dialog_kinds = {
             "incoming.telegram_message",
+            "incoming.atrium_dialog",
             "outgoing.response",
             "outgoing.telegram_response",
             "outgoing.telegram_initiative",
             "outgoing.telegram_progress",
+            "outgoing.dialog",
             "internal.agent_session_outcome",
         }
         recent_dialog = [e for e in recent_continuity if e.kind in dialog_kinds][-12:]
@@ -365,10 +367,10 @@ def build_full_context(
             stream_block = "\n\n## Недавний диалог:\n"
             for e in recent_dialog:
                 rel_ts = _relative_time(e.created_at, now_utc)
-                if e.kind == "incoming.telegram_message":
+                if e.kind in ("incoming.telegram_message", "incoming.atrium_dialog"):
                     text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{rel_ts}] [Иван написал] {text}\n"
-                elif e.kind in ("outgoing.response", "outgoing.telegram_response"):
+                elif e.kind in ("outgoing.response", "outgoing.telegram_response", "outgoing.dialog"):
                     text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{rel_ts}] [я ответила] {text}\n"
                 elif e.kind == "outgoing.telegram_initiative":

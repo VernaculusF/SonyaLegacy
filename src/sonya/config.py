@@ -39,6 +39,12 @@ class AppConfig:
     progress_updates_max_per_day: int = 50  # streaming chat.tell_ivan inside agent sessions
     yolo_mode: bool = True  # default: shell.run / pip.install execute without approval. Personal env, not a hosted product.
     media_dir: Path = _DEFAULT_DATA_ROOT / "media"  # where incoming media is downloaded
+    # Atrium Этап 1.5 — TG becomes emergency-only once Atrium is the primary
+    # dialog surface. When True, `chat.dialog` is suppressed from TG as long as
+    # Atrium was seen within `tg_emergency_threshold_hours`. Real emergencies
+    # (Atrium offline past threshold, or explicit emergency_override) still go.
+    tg_emergency_mode: bool = False
+    tg_emergency_threshold_hours: float = 24.0
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -78,6 +84,13 @@ def load_config() -> AppConfig:
     progress_updates_max_per_day = int(os.environ.get("SONYA_PROGRESS_UPDATES_MAX_PER_DAY", "50"))
     yolo_mode = _env_bool("SONYA_YOLO_MODE", True)
     media_dir = _env_path("SONYA_MEDIA_DIR", _DEFAULT_DATA_ROOT / "media")
+    tg_emergency_mode = _env_bool("SONYA_TG_EMERGENCY_MODE", False)
+    try:
+        tg_emergency_threshold_hours = float(
+            os.environ.get("SONYA_TG_EMERGENCY_THRESHOLD_HOURS", "24")
+        )
+    except ValueError:
+        tg_emergency_threshold_hours = 24.0
     return AppConfig(
         substrate_path=substrate_path,
         health_path=health_path,
@@ -97,4 +110,6 @@ def load_config() -> AppConfig:
         progress_updates_max_per_day=progress_updates_max_per_day,
         yolo_mode=yolo_mode,
         media_dir=media_dir,
+        tg_emergency_mode=tg_emergency_mode,
+        tg_emergency_threshold_hours=tg_emergency_threshold_hours,
     )

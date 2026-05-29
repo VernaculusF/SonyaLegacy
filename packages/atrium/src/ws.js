@@ -240,3 +240,58 @@ export async function sendNudge({ session_id, text, ref_seq }) {
   }
   return resp.json();
 }
+
+// HTTP dialog endpoint (T1.4) — Ivan types in the composer. Records an
+// incoming dialog turn + triggers an active session so she replies.
+export async function sendDialog(text) {
+  if (!settings.vps_host || !settings.atrium_token) {
+    throw new Error('connection settings missing');
+  }
+  const url = `http://${settings.vps_host}/api/atrium/dialog`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Atrium-Token': settings.atrium_token,
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${txt}`);
+  }
+  return resp.json();
+}
+
+// HTTP heartbeat (T1.5) — keep-alive so the backend knows Atrium is the live
+// primary surface (affects TG emergency-fallback). Fire-and-forget.
+export async function sendHeartbeat() {
+  if (!settings.vps_host || !settings.atrium_token) return;
+  try {
+    await fetch(`http://${settings.vps_host}/api/atrium/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Atrium-Token': settings.atrium_token,
+      },
+      body: '{}',
+    });
+  } catch {
+    // non-fatal — WS feed also marks heartbeat
+  }
+}
+
+let _heartbeatTimer = null;
+
+export function startHeartbeat(intervalMs = 60000) {
+  stopHeartbeat();
+  sendHeartbeat();
+  _heartbeatTimer = setInterval(sendHeartbeat, intervalMs);
+}
+
+export function stopHeartbeat() {
+  if (_heartbeatTimer) {
+    clearInterval(_heartbeatTimer);
+    _heartbeatTimer = null;
+  }
+}

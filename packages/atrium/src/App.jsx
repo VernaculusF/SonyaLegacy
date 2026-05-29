@@ -3,7 +3,7 @@
  */
 import { Show, createSignal, onMount, onCleanup } from 'solid-js';
 import { settings, feed, updateSetting } from './store.js';
-import { connectWS, disconnectWS } from './ws.js';
+import { connectWS, disconnectWS, startHeartbeat, stopHeartbeat } from './ws.js';
 import Onboarding from './components/Onboarding.jsx';
 import Header from './components/Header.jsx';
 import AvatarPane from './components/AvatarPane.jsx';
@@ -22,6 +22,7 @@ export default function App() {
   onMount(() => {
     if (isConfigured()) {
       connectWS();
+      startHeartbeat();
     }
     // Keyboard: Ctrl+J / Cmd+J → toggle reason-stream collapse
     const onKey = (e) => {
@@ -34,6 +35,7 @@ export default function App() {
     onCleanup(() => {
       window.removeEventListener('keydown', onKey);
       disconnectWS();
+      stopHeartbeat();
     });
   });
 
@@ -44,6 +46,7 @@ export default function App() {
         <Onboarding
           onConfigured={() => {
             connectWS();
+            startHeartbeat();
           }}
         />
       }

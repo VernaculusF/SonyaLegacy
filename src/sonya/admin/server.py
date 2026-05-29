@@ -1765,6 +1765,9 @@ async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
         from sonya.state.continuity_stream import ContinuityStream as _CS
 
         stream = _CS(sub)
+        # T1.5: mark Atrium connected so OutboundGate knows the primary
+        # dialog channel is live (affects TG emergency-fallback decision).
+        _atrium_mark_seen(sub)
         # Initial catch-up: read everything since `since_seq`
         last_seq = since_seq
         for ev in stream.read_since_atrium(
@@ -1791,10 +1794,12 @@ async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
                 ):
                     await ws.send_json(_atrium_event_to_json(ev))
                     last_seq = ev.seq
-                # Meta message every 60 ticks
+                # Meta message every 60 ticks; also refresh the connection
+                # heartbeat so OutboundGate sees Atrium as live.
                 meta_counter += 1
                 if meta_counter >= 60:
                     meta_counter = 0
+                    _atrium_mark_seen(sub)
                     try:
                         meta = _atrium_meta(sub, stream)
                         await ws.send_json(meta)
@@ -1955,6 +1960,111 @@ async def atrium_nudge(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def atrium_dialog(request: web.Request) -> web.Response:
+    """HTTP dialog endpoint (T1.4) — Ivan types in the Atrium composer.
+
+    Unlike `/api/atrium/nudge` (which targets a *running* session), this is a
+    fresh turn from Ivan addressed to Sonya whether she's idle or busy. It:
+
+      1. Records `incoming.atrium_dialog` (principal=ivan) — context_builder
+         surfaces it as "[Иван написал]" so the next session replies to it.
+      2. Appends `internal.active_session_requested_external` so the core's
+         InternalProcess fires an active session within ~30s. That session
+         reads the message via its context-builder and answers via chat.dialog.
+
+    Admin and core are separate processes sharing only the substrate, so this
+    substrate-event + trigger combo is the cross-process path (same mechanism
+    the operator inject + trigger-active endpoints already use).
+
+    Body: {"text": "..."}
+    """
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
+    if admin_password and token != admin_password:
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return _atrium_cors(web.json_response({"error": "text required"}, status=400))
+
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.state.continuity_stream import ContinuityStream, ContinuityEvent
+
+        stream = ContinuityStream(sub)
+        primary_id = config.primary_user_tg_id or "5785127604"
+        ev = stream.append(ContinuityEvent(
+            kind="incoming.atrium_dialog",
+            channel="dialog",
+            principal_id="ivan",
+            payload={
+                "channel": "dialog",
+                "chat_id": primary_id,
+                "sender_id": primary_id,
+                "text": text,
+                "source": "atrium/composer",
+                "is_private": True,
+            },
+        ))
+        # Wake the core: request an active session so she replies promptly.
+        stream.append(ContinuityEvent(
+            kind="internal.active_session_requested_external",
+            payload={"reason": "atrium_dialog", "source": "atrium/composer"},
+        ))
+        return _atrium_cors(web.json_response({
+            "status": "queued",
+            "event_seq": ev.seq,
+            "text": text,
+            "note": "active session triggered; reply within ~30s",
+        }))
+    finally:
+        sub.close()
+
+
+async def atrium_heartbeat(request: web.Request) -> web.Response:
+    """HTTP heartbeat (T1.5) — Atrium tells the backend it's alive.
+
+    Writes `atrium_last_seen` (ISO ts) into environment_state. OutboundGate
+    reads it to decide whether TG should act as fallback: when Atrium has been
+    seen recently, `chat.dialog` stays Atrium-only (TG suppressed) if
+    `SONYA_TG_EMERGENCY_MODE=1`. When Atrium has been silent past the
+    threshold, TG resumes as the dialog channel.
+
+    Also called implicitly by the WS feed loop, but the explicit endpoint lets
+    the UI heartbeat even when no events are flowing.
+    """
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
+    if admin_password and token != admin_password:
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
+    sub = _get_substrate_writable(config)
+    try:
+        _atrium_mark_seen(sub)
+        return _atrium_cors(web.json_response({"status": "ok"}))
+    finally:
+        sub.close()
+
+
+def _atrium_mark_seen(sub) -> None:
+    """Record that Atrium is connected right now (environment_state)."""
+    from datetime import datetime, timezone
+    from sonya.state.environment import EnvironmentStore
+    try:
+        EnvironmentStore(sub).set(
+            "atrium_last_seen",
+            datetime.now(timezone.utc).isoformat(),
+            source="atrium/heartbeat",
+            updated_by="atrium",
+        )
+    except Exception:
+        pass
+
+
 def create_app() -> web.Application:
     config = load_config()
     import os
@@ -2007,6 +2117,11 @@ def create_app() -> web.Application:
     app.router.add_get("/atrium/feed", atrium_feed_ws)
     app.router.add_post("/api/atrium/nudge", atrium_nudge)
     app.router.add_options("/api/atrium/nudge", atrium_options)
+    # Atrium Этап 1 — dialog composer (T1.4) + connection heartbeat (T1.5)
+    app.router.add_post("/api/atrium/dialog", atrium_dialog)
+    app.router.add_options("/api/atrium/dialog", atrium_options)
+    app.router.add_post("/api/atrium/heartbeat", atrium_heartbeat)
+    app.router.add_options("/api/atrium/heartbeat", atrium_options)
     return app
 
 

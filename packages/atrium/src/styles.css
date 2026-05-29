@@ -434,6 +434,41 @@ textarea {
   border-color: var(--acc-her);
   background: rgba(201, 205, 212, 0.1);
 }
+/* Send button — same footprint as mic, accent on her-eyes */
+.send-btn {
+  width: 44px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--acc-her-eyes);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms;
+}
+.send-btn:hover:not(:disabled) {
+  border-color: var(--acc-her-eyes);
+  background: rgba(138, 163, 184, 0.12);
+}
+.send-btn:active:not(:disabled) {
+  background: rgba(138, 163, 184, 0.2);
+}
+.send-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.composer textarea:disabled {
+  opacity: 0.5;
+}
+.composer-error {
+  font-size: 11px;
+  color: #c98a8a;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(201, 138, 138, 0.08);
+  border: 1px solid rgba(201, 138, 138, 0.2);
+  border-radius: 6px;
+}
 .composer-hint {
   margin-top: 8px;
   font-size: 10px;
