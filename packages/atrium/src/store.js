@@ -36,12 +36,13 @@ const DEFAULT_SETTINGS = {
   // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
   avatar_mode: '2d',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
-  // 4 AI-generated 2B frames: closed → half → open → wide.
+  // 4 AI-generated 2B frames (Ivan's originals — фон пока как есть, аккуратно
+  // вырежем через ИИ позже). closed → half → open → wide.
   avatar_frames: [
-    '/avatar/sonya_closed.png',
-    '/avatar/sonya_half.png',
-    '/avatar/sonya_open.png',
-    '/avatar/sonya_wide.png',
+    '/avatar/sonya_closed.jpg',
+    '/avatar/sonya_half.jpg',
+    '/avatar/sonya_open.jpg',
+    '/avatar/sonya_wide.jpg',
   ],
 };
 
@@ -59,9 +60,13 @@ function loadSettings() {
         ...(parsed.streams_filters || {}),
       },
     };
-    // Backfill avatar_frames from default if an old save had it empty/missing
-    // (so existing users get the new generated frames without re-onboarding).
-    if (!Array.isArray(merged.avatar_frames) || merged.avatar_frames.length === 0) {
+    // Backfill / refresh avatar_frames. Empty → use default. Also refresh when
+    // the saved frames point at the bundled /avatar/sonya_ assets (so a version
+    // change of the bundled frames — e.g. .png→.jpg — takes effect without
+    // re-onboarding). Custom user paths (not /avatar/sonya_) are preserved.
+    const isBundled = Array.isArray(merged.avatar_frames)
+      && merged.avatar_frames.every((u) => typeof u === 'string' && u.startsWith('/avatar/sonya_'));
+    if (!Array.isArray(merged.avatar_frames) || merged.avatar_frames.length === 0 || isBundled) {
       merged.avatar_frames = [...DEFAULT_SETTINGS.avatar_frames];
     }
     if (!merged.avatar_mode) merged.avatar_mode = DEFAULT_SETTINGS.avatar_mode;
