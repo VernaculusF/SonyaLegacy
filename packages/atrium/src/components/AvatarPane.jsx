@@ -26,7 +26,7 @@ function topDriveLabel(drives) {
   return k;
 }
 
-export default function AvatarPane() {
+export default function AvatarPane(props) {
   const [glowing, setGlowing] = createSignal(false);
   const [vrmStatus, setVrmStatus] = createSignal('init');
   let canvasEl;
@@ -97,9 +97,7 @@ export default function AvatarPane() {
   };
 
   function openRoom() {
-    // Этап 1 placeholder — show a stub modal. Этап 2 will replace this
-    // with real room view (voice mode entry point).
-    alert('Room view — Этап 2 (voice mode + 3D-сцена). Сейчас placeholder.');
+    if (props.onEnterRoom) props.onEnterRoom();
   }
 
   return (

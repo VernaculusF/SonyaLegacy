@@ -17,58 +17,42 @@ Tauri + Solid.js — кросс-платформенное desktop-прилож�
 - ⏳ Voice (TTS/ASR) + room view — Этап 2
 - ⏳ Mobile layout — отдельная итерация
 
-## Сборка .exe (основной путь)
+## Запуск сейчас (этап разработки — localhost)
 
-### Что нужно один раз поставить (toolchain)
-
-Tauri компилирует нативный бинарь из Rust против системного WebView — поэтому нужен тулчейн:
-
-1. **Rust** — https://rustup.rs (поставит `cargo`/`rustc`). На Windows rustup сам предложит MSVC.
-2. **MSVC C++ Build Tools** (линкер) — «Build Tools for Visual Studio» → workload «Desktop development with C++». Без него `cargo` не слинкует.
-3. **WebView2 Runtime** — на Windows 11 уже есть; на Win10 поставить Evergreen runtime от Microsoft (или он придёт с Edge).
-4. **Node 18+** — уже есть.
-
-Проверка что всё на месте:
-```powershell
-cargo --version    # cargo 1.7x
-rustc --version
-node --version
-```
-
-### Сборка
+Пока идёт разработка, гоняем фронт в браузере (быстрый hot-reload, Rust не нужен):
 
 ```powershell
 cd packages/atrium
-npm install                 # один раз — фронт-зависимости (three, solid, tauri cli)
-npm run tauri:build
+npm install        # один раз
+npm run dev        # http://localhost:1420
 ```
 
-Готовый бинарь и установщик:
-```
-src-tauri/target/release/atrium.exe                      # сам бинарь
-src-tauri/target/release/bundle/nsis/Atrium_0.1.0_x64-setup.exe   # установщик
-```
-
-Иконки уже сгенерированы (`src-tauri/icons/`, плейсхолдер в её палитре — заменить на финальный арт позже через `python src-tauri/gen_icons.py` или вручную).
-
-### Запуск нативного приложения в dev (с hot-reload)
-
-```powershell
-npm run tauri:dev
-```
-Поднимает Vite + Rust shell + нативное окно. Удобно при разработке.
-
-### Browser-only (ТОЛЬКО для отладки фронта)
-
-```powershell
-npm run dev          # http://localhost:1420 — НЕ конечный продукт, только для дебага UI
-```
+Это **этап разработки**, не релиз. Нативное окно (`tauri:dev`) и установщик
+(`tauri:build`) — позже, когда приложение будет готово к упаковке (см. ниже).
 
 ## Первый запуск (onboarding)
 
 При первом старте ввести:
 - VPS host: `34.38.255.149:8877`
 - Atrium token: значение `SONYA_ADMIN_PASSWORD` из `.env`
+
+## Релиз: нативное приложение (.exe) — ПОЗЖЕ
+
+Когда приложение допилено и пора паковать в нативный бинарь. Tauri компилирует
+Rust против системного WebView, поэтому нужен тулчейн (разовая установка):
+
+1. **Rust** — https://rustup.rs (предложит MSVC на Windows).
+2. **MSVC C++ Build Tools** — «Build Tools for Visual Studio» → «Desktop development with C++».
+3. **WebView2** — на Win11 есть; на Win10 идёт с Edge (уже стоит).
+
+Проверка готовности: `powershell -ExecutionPolicy Bypass -File check-build-env.ps1`
+
+```powershell
+npm run tauri:dev      # нативное окно + hot-reload (разработка в реальном окне)
+npm run tauri:build    # релизный бинарь + установщик
+```
+Артефакты: `src-tauri/target/release/atrium.exe` и `.../bundle/nsis/*-setup.exe`.
+Иконки уже сгенерированы (`src-tauri/icons/`, плейсхолдер — заменить позже).
 
 ## Модель аватара
 

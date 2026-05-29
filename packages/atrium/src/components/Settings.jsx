@@ -6,11 +6,16 @@ import { connectWS, disconnectWS } from '../ws.js';
 export default function Settings(props) {
   const [host, setHost] = createSignal(settings.vps_host || '');
   const [token, setToken] = createSignal(settings.atrium_token || '');
+  const [avatarUrl, setAvatarUrl] = createSignal(settings.avatar_model_url || '');
+  const [roomUrl, setRoomUrl] = createSignal(settings.room_model_url || '');
 
   function save() {
     const newHost = host().trim();
     const newToken = token().trim();
     const changed = newHost !== settings.vps_host || newToken !== settings.atrium_token;
+    // Avatar / room model URLs (applied on next mount).
+    updateSetting('avatar_model_url', avatarUrl().trim());
+    updateSetting('room_model_url', roomUrl().trim());
     if (changed) {
       updateSetting('vps_host', newHost);
       updateSetting('atrium_token', newToken);
@@ -42,6 +47,32 @@ export default function Settings(props) {
             value={token()}
             onInput={(e) => setToken(e.currentTarget.value)}
           />
+        </div>
+
+        <div class="modal-section">
+          <label>avatar model (vrm)</label>
+          <input
+            type="text"
+            value={avatarUrl()}
+            placeholder="/models/sonya.vrm"
+            onInput={(e) => setAvatarUrl(e.currentTarget.value)}
+          />
+          <span style="margin-left: 0; color: var(--ink-3); font-size: 12px;">
+            путь к .vrm (применится при следующем открытии)
+          </span>
+        </div>
+
+        <div class="modal-section">
+          <label>room model (glb, опц.)</label>
+          <input
+            type="text"
+            value={roomUrl()}
+            placeholder="пусто = процедурная комната"
+            onInput={(e) => setRoomUrl(e.currentTarget.value)}
+          />
+          <span style="margin-left: 0; color: var(--ink-3); font-size: 12px;">
+            свой 3D-room .glb/.gltf (если есть) — иначе встроенная сцена
+          </span>
         </div>
 
         <div class="modal-section">

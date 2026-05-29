@@ -11,9 +11,11 @@ import DialogPane from './components/DialogPane.jsx';
 import MindPane from './components/MindPane.jsx';
 import ReasonStream from './components/ReasonStream.jsx';
 import Settings from './components/Settings.jsx';
+import RoomView from './components/RoomView.jsx';
 
 export default function App() {
   const [showSettings, setShowSettings] = createSignal(false);
+  const [showRoom, setShowRoom] = createSignal(false);
 
   // Onboarding done if both fields are set
   const isConfigured = () => Boolean(settings.vps_host && settings.atrium_token);
@@ -60,8 +62,8 @@ export default function App() {
         <Header onOpenSettings={() => setShowSettings(true)} />
 
         <div class="main">
-          <AvatarPane />
-          <DialogPane />
+          <AvatarPane onEnterRoom={() => setShowRoom(true)} />
+          <DialogPane onEnterRoom={() => setShowRoom(true)} />
           <MindPane />
         </div>
 
@@ -69,6 +71,10 @@ export default function App() {
 
         <Show when={showSettings()}>
           <Settings onClose={() => setShowSettings(false)} />
+        </Show>
+
+        <Show when={showRoom()}>
+          <RoomView onClose={() => setShowRoom(false)} />
         </Show>
       </div>
     </Show>

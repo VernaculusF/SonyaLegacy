@@ -30,7 +30,7 @@ function dayMarker(messages) {
   }
 }
 
-export default function DialogPane() {
+export default function DialogPane(props) {
   let scrollEl;
   let textareaEl;
   const [draft, setDraft] = createSignal('');
@@ -48,7 +48,7 @@ export default function DialogPane() {
   });
 
   function openRoom() {
-    alert('Voice mode (Этап 2) — войти в комнату → VAD + ASR + TTS.');
+    if (props.onEnterRoom) props.onEnterRoom();
   }
 
   async function send() {

@@ -31,6 +31,8 @@ const DEFAULT_SETTINGS = {
   // Avatar VRM model URL. Default served from public/models by Vite/Tauri.
   // Empty → fall back to the static SVG silhouette.
   avatar_model_url: '/models/sonya.vrm',
+  // Optional GLB/glTF room scene for the room view. Empty → procedural room.
+  room_model_url: '',
 };
 
 function loadSettings() {
