@@ -30,7 +30,7 @@ const EXPRESSION_LABEL = {
 
 // Markers Ivan can click to preview (dev affordance, hover to reveal).
 const PREVIEW_MARKERS = [
-  'neutral', 'calm', 'tender', 'playful', 'shy', 'desire',
+  'neutral', 'calm', 'joy', 'tender', 'playful', 'shy', 'desire',
   'sad', 'sad_tears', 'angry', 'surprised', 'thinking',
 ];
 

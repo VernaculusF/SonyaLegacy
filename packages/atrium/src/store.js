@@ -54,13 +54,12 @@ const DEFAULT_SETTINGS = {
     sad_tears: '/avatar/emotions/sad_tears.png',
     angry: '/avatar/emotions/angry.png',
     shy: '/avatar/emotions/shy.png',
+    joy: '/avatar/emotions/joy.png',
     tender: '/avatar/emotions/tender.png',
     surprised: '/avatar/emotions/surprised.png',
     thinking: '/avatar/emotions/thinking.png',
     playful: '/avatar/emotions/playful.png',
     calm: '/avatar/emotions/calm.png',
-    // joy: no dedicated sprite yet (no 'радость' source) → falls back to
-    // talking/base frames. Add '/avatar/emotions/joy.png' when generated.
   },
 };
 
@@ -207,22 +206,61 @@ export function flashAvatar() {
 export const [speaking, setSpeaking] = createSignal(false);
 export const [mouthLevel, setMouthLevel] = createSignal(0);
 
-let _speakTimer = null;
-// Simulate talking for `ms` (used until real TTS amplitude is wired): toggles
-// the mouth open/closed at a natural cadence, then settles closed.
+let _speakRaf = null;
+let _speakEnd = 0;
+
+// Simulate natural talking until `ms` elapses. Instead of constant random
+// jitter, we model speech as syllable pulses: the mouth opens to a target,
+// then relaxes, with brief between-word closes — reads like a talking gif.
+// Replaced 1:1 by real TTS amplitude later (call setMouthLevel from audio).
 export function simulateSpeech(ms = 2500) {
   setSpeaking(true);
-  if (_speakTimer) clearInterval(_speakTimer);
-  const start = Date.now();
-  _speakTimer = setInterval(() => {
-    if (Date.now() - start > ms) {
-      clearInterval(_speakTimer);
-      _speakTimer = null;
+  _speakEnd = performance.now() + ms;
+  if (_speakRaf) return; // loop already running; just extended _speakEnd
+
+  // syllable envelope state
+  let target = 0;
+  let nextSyllableAt = 0;
+  let pausing = false;
+
+  const loop = (now) => {
+    if (now >= _speakEnd) {
+      // settle mouth closed, stop
       setMouthLevel(0);
       setSpeaking(false);
+      cancelAnimationFrame(_speakRaf);
+      _speakRaf = null;
       return;
     }
-    // pseudo-random mouth openness for a lively talk cadence
-    setMouthLevel(0.2 + Math.random() * 0.8);
-  }, 90);
+    _speakRaf = requestAnimationFrame(loop);
+
+    if (now >= nextSyllableAt) {
+      // ~8% chance of a short between-word pause (mouth near-closed)
+      pausing = Math.random() < 0.10;
+      if (pausing) {
+        target = 0.05;
+        nextSyllableAt = now + 110 + Math.random() * 160;
+      } else {
+        // new syllable: random openness, biased to mid (gamma handled in view)
+        target = 0.35 + Math.random() * 0.6;
+        nextSyllableAt = now + 90 + Math.random() * 90; // ~5-10 syll/sec
+      }
+    }
+    // ease current mouthLevel toward target (snappy open, softer close)
+    const cur = mouthLevel();
+    const k = target > cur ? 0.5 : 0.28;
+    setMouthLevel(cur + (target - cur) * k);
+  };
+  _speakRaf = requestAnimationFrame(loop);
+}
+
+// Real TTS hook (Этап 2): feed live amplitude 0..1 each audio frame.
+export function setLiveMouth(level) {
+  setSpeaking(true);
+  setMouthLevel(Math.max(0, Math.min(1, level)));
+}
+export function endSpeech() {
+  _speakEnd = 0;
+  setMouthLevel(0);
+  setSpeaking(false);
 }

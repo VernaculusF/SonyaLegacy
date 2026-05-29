@@ -296,7 +296,7 @@ textarea {
   object-fit: contain;
   object-position: bottom center;
   opacity: 0;
-  transition: opacity 70ms linear; /* fast mouth switching */
+  transition: opacity 55ms linear; /* snappy mouth switching */
   user-select: none;
   -webkit-user-drag: none;
 }
