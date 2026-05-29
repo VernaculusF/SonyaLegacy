@@ -130,3 +130,53 @@ def test_dispatch_inline_form_split_on_space(tmp_path: Path) -> None:
         assert (tmp_path / "workspace" / "inline.txt").read_text(encoding="utf-8") == "hello world"
     finally:
         sub.close()
+
+
+# --- knowledge-into-repo blocking (Sonya scattered facts into repo dirs) ---
+
+
+def test_write_blocks_knowledge_base_dash(fs: FilesystemTool, tmp_path: Path) -> None:
+    result = fs.write("knowledge-base/wp/notes.md", "# facts")
+    assert result.startswith("[ERROR]")
+    assert "knowledge.write" in result
+    assert not (tmp_path / "knowledge-base").exists()
+
+
+def test_write_blocks_knowledge_base_underscore(fs: FilesystemTool, tmp_path: Path) -> None:
+    result = fs.write("knowledge_base/pentest/x.md", "# facts")
+    assert result.startswith("[ERROR]")
+    assert "knowledge.write" in result
+
+
+def test_write_blocks_data_payloads(fs: FilesystemTool, tmp_path: Path) -> None:
+    """data/payloads/sqli.md was a real lost-knowledge location on the VPS."""
+    result = fs.write("data/payloads/sqli.md", "# SQL Injection cheatsheet")
+    assert result.startswith("[ERROR]")
+    assert "knowledge.write" in result
+    assert not (tmp_path / "data").exists()
+
+
+def test_write_blocks_stray_root_csv(fs: FilesystemTool, tmp_path: Path) -> None:
+    """A bad web.fetch once dumped a 404 page as 2022-07-30.csv at repo root."""
+    result = fs.write("2022-07-30.csv", "<html>404</html>")
+    assert result.startswith("[ERROR]")
+    assert not (tmp_path / "2022-07-30.csv").exists()
+
+
+def test_write_blocks_stray_root_md(fs: FilesystemTool, tmp_path: Path) -> None:
+    result = fs.write("random-notes.md", "# my notes")
+    assert result.startswith("[ERROR]")
+
+
+def test_write_allows_readme_at_root(fs: FilesystemTool, tmp_path: Path) -> None:
+    """README.md is a legit root file — must still be writable."""
+    result = fs.write("README.md", "# Sonya\n")
+    assert result.startswith("[OK]")
+    assert (tmp_path / "README.md").exists()
+
+
+def test_write_allows_md_in_normal_subdir(fs: FilesystemTool, tmp_path: Path) -> None:
+    """Docs and scratch under workspace/ are fine — only root + KB dirs blocked."""
+    result = fs.write("docs/atrium/PLAN.md", "# plan")
+    assert result.startswith("[OK]")
+    assert (tmp_path / "docs" / "atrium" / "PLAN.md").exists()

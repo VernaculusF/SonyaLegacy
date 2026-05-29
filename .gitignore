@@ -29,7 +29,17 @@ tmp_*.txt
 
 # Sonya knowledge base — markdown facts she creates / edits. Lives in
 # ~/.sonya/knowledge/ on every host (substrate-side). НЕ в repo —
-# исторически она дублировала в knowledge-base/ и knowledge_base/, что
-# создавало мусор. Файлы там теперь блокированы.
+# исторически она дублировала в knowledge-base/, knowledge_base/,
+# data/payloads/ и даже в корень репо, что создавало мусор.
+# Файлы там теперь блокированы (filesystem._check_writable) и
+# мигрируются в ~/.sonya/knowledge/ на старте.
 knowledge-base/
 knowledge_base/
+data/payloads/
+payloads/
+kb/
+# Stray doc/data dumps at repo root (bad fetches, scratch). Real facts →
+# knowledge.write. These globs catch the common accidents без блокировки
+# легитимных README.md / pyproject.toml.
+/*.csv
+/*.html

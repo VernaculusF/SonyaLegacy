@@ -43,6 +43,30 @@ FORBIDDEN_SUBPATHS: tuple[str, ...] = (
     ".git",
 )
 
+# Repo top-level dirs Sonya historically dumped knowledge into. Writes here
+# are blocked and steered to knowledge.write (facts → ~/.sonya/knowledge/).
+_KNOWLEDGE_REPO_DIRS: frozenset[str] = frozenset({
+    "knowledge-base",   # dash variant
+    "knowledge_base",   # underscore variant
+    "data",             # data/payloads/ PayloadsAllTheThings dumps
+    "payloads",
+    "kb",
+})
+
+# File suffixes that, when written to the repo ROOT (no subdir), are almost
+# always misplaced knowledge or scratch from a bad fetch.
+_KNOWLEDGE_FILE_SUFFIXES: frozenset[str] = frozenset({
+    ".md", ".txt", ".csv", ".json", ".html", ".htm",
+})
+
+# Legit doc-like files allowed at repo root.
+_ALLOWED_ROOT_FILES: frozenset[str] = frozenset({
+    "README.md",
+    "pyproject.toml",
+    ".gitignore",
+    ".env.example",
+})
+
 
 class FilesystemTool:
     """Read/write/list files within the project sandbox.
@@ -106,17 +130,34 @@ class FilesystemTool:
                     f"approval is required for personality / identity files."
                 )
         # Knowledge belongs in ~/.sonya/knowledge/ via the knowledge.* tools,
-        # NOT in repo dirs. Block re-creation of the legacy mess
-        # (knowledge-base/ with dash, knowledge_base/ with underscore) that
-        # Sonya used to scatter facts into. Steer her to knowledge.write.
+        # NOT in repo dirs. Block re-creation of the legacy mess that Sonya
+        # used to scatter facts into. Historically she wrote into:
+        #   - knowledge-base/  (dash)
+        #   - knowledge_base/  (underscore)
+        #   - data/payloads/   (PayloadsAllTheThings dumps)
+        #   - repo root         (e.g. stray 2022-07-30.csv from a bad fetch)
+        # Steer all of it to knowledge.write so facts live in
+        # ~/.sonya/knowledge/ (substrate-side, survives deploys, not in git).
         first_seg = rel.split("/", 1)[0]
-        if first_seg in ("knowledge-base", "knowledge_base"):
+        if first_seg in _KNOWLEDGE_REPO_DIRS:
             raise PermissionError(
                 f"Don't write knowledge into repo ({rel}). Use the "
                 f"knowledge.write tool — facts live in ~/.sonya/knowledge/, "
                 f"persistent across deploys, not in git. "
                 f"Example: [TOOL: knowledge.write pentest/sqli]\\n<content>"
             )
+        # Loose doc-like files dumped at repo root (no subdir) are almost
+        # always misplaced knowledge / scratch from a fetch. Repo root is for
+        # project files, not her notes. Block .md/.txt/.csv/.json at root.
+        if "/" not in rel and p.suffix.lower() in _KNOWLEDGE_FILE_SUFFIXES:
+            # Allow the handful of legit root files (README etc.).
+            if rel not in _ALLOWED_ROOT_FILES:
+                raise PermissionError(
+                    f"Don't dump notes/data at repo root ({rel}). If it's a "
+                    f"fact or reference, use knowledge.write (lives in "
+                    f"~/.sonya/knowledge/). If it's scratch, use code.exec / "
+                    f"a temp path under your home, not the repo."
+                )
 
     # --- public API ---
 

@@ -248,17 +248,27 @@ def migrate_legacy_knowledge_dirs(project_root: Path, knowledge_root: Path | Non
     knowledge_root.mkdir(parents=True, exist_ok=True)
     migrated = 0
 
-    # Part 1: legacy markdown dirs (knowledge-base/, knowledge_base/)
+    # Part 1: legacy markdown dirs (knowledge-base/, knowledge_base/, data/payloads/, kb/)
     legacy_dirs = [
         project_root / "knowledge-base",
         project_root / "knowledge_base",
+        project_root / "data" / "payloads",
+        project_root / "payloads",
+        project_root / "kb",
     ]
     for legacy in legacy_dirs:
         if not legacy.exists() or not legacy.is_dir():
             continue
+        # Namespace the destination by the legacy dir name so files from
+        # different sources don't collide (e.g. data/payloads/sqli.md vs
+        # an extracted pentest/sqli.md). payloads → pentest/ (her usage).
+        if legacy.name == "payloads":
+            dest_prefix = knowledge_root / "pentest"
+        else:
+            dest_prefix = knowledge_root
         for md_file in legacy.rglob("*.md"):
             rel = md_file.relative_to(legacy)
-            target = knowledge_root / rel
+            target = dest_prefix / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.exists():
                 target.write_bytes(md_file.read_bytes())

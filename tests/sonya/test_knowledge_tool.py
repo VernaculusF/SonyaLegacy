@@ -156,3 +156,28 @@ def test_migrate_python_const_kb(tmp_path: Path) -> None:
     assert "OSINT KB" in content
     assert "Google Dorks" in content
     assert "migrated from" in content
+
+
+def test_migrate_data_payloads_dir(tmp_path: Path) -> None:
+    """data/payloads/*.md (PayloadsAllTheThings dumps) → knowledge/pentest/."""
+    project = tmp_path / "project"
+    (project / "data" / "payloads").mkdir(parents=True)
+    (project / "data" / "payloads" / "sqli.md").write_text(
+        "# SQL Injection\nUNION SELECT", encoding="utf-8"
+    )
+    kroot = tmp_path / "knowledge"
+    migrated = migrate_legacy_knowledge_dirs(project, knowledge_root=kroot)
+    assert migrated == 1
+    assert (kroot / "pentest" / "sqli.md").exists()
+    assert "UNION SELECT" in (kroot / "pentest" / "sqli.md").read_text(encoding="utf-8")
+
+
+def test_migrate_payloads_dir_namespaced_to_pentest(tmp_path: Path) -> None:
+    """A top-level payloads/ dir lands under pentest/ to match her usage."""
+    project = tmp_path / "project"
+    (project / "payloads").mkdir(parents=True)
+    (project / "payloads" / "xss.md").write_text("# XSS", encoding="utf-8")
+    kroot = tmp_path / "knowledge"
+    migrated = migrate_legacy_knowledge_dirs(project, knowledge_root=kroot)
+    assert migrated == 1
+    assert (kroot / "pentest" / "xss.md").exists()
