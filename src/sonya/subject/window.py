@@ -149,6 +149,7 @@ async def run_window(
         memory=tools.get("memory"),
         env=tools.get("env"),
         skills=tools.get("skills"),
+        knowledge=tools.get("knowledge"),
         outbound=window.outbound,
         initial_thought=window.initial_thought,
         initial_user_message=window.initial_user_message,

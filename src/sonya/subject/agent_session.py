@@ -85,6 +85,12 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - skills.list — show registered skills and their status
 - skills.run [skill_id] [query] — execute a skill (e.g. `skills.run skill-memory-search что мы обсуждали вчера`)
 - skills.register_builtins — seed built-in skills (memory-search, identity-check, dialog-tone) into registry. Call once.
+
+- knowledge.list [topic?] — список тем или файлов в теме (твоя база знаний в ~/.sonya/knowledge/)
+- knowledge.read [topic/file] — прочитать факт-файл (напр. `knowledge.read pentest/sqli`)
+- knowledge.write [topic/file]\\n[markdown content] — создать/обновить факт-файл. ПЕРВАЯ строка = путь, дальше содержимое
+- knowledge.search [query] — full-text поиск по всей базе знаний
+- knowledge.delete [topic/file] — удалить факт-файл
 - goals.list — show active long-term goals
 - goals.create [title | description | priority] — create a goal (higher priority = more important)
 - goals.achieve [goal_id] — mark a goal as achieved
@@ -463,6 +469,7 @@ async def run_agent_session(
     memory: MemoryTool | None = None,
     env: EnvTool | None = None,
     skills: SkillsTool | None = None,
+    knowledge: Any | None = None,  # KnowledgeTool — knowledge.* family
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
@@ -585,6 +592,7 @@ async def run_agent_session(
             observation = _execute_tool(
                 tool_name, tool_arg, self_inspect, filesystem, stream,
                 selfmod, tasks, web, code, shell, outbound, memory, env, skills,
+                knowledge=knowledge,
                 outbound_sent=result.outbound_sent,
             )
 
@@ -735,6 +743,7 @@ class _ToolContext:
     skills: SkillsTool | None
     outbound: Any
     outbound_sent: list[str] | None
+    knowledge: Any | None = None  # KnowledgeTool — knowledge.* family (default None for BC)
 
 
 def _require(tool: Any, name: str) -> str | None:
@@ -900,6 +909,34 @@ def _h_skills_run(arg: str, ctx: _ToolContext) -> str:
 def _h_skills_register_builtins(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.skills, "skills")
     return err if err else ctx.skills.register_builtins()
+
+
+# knowledge.* — persistent markdown KB в ~/.sonya/knowledge/
+# См. src/sonya/tools/knowledge.py для деталей.
+
+def _h_knowledge_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.knowledge, "knowledge")
+    return err if err else ctx.knowledge.list(arg)
+
+
+def _h_knowledge_read(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.knowledge, "knowledge")
+    return err if err else ctx.knowledge.read(arg)
+
+
+def _h_knowledge_write(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.knowledge, "knowledge")
+    return err if err else ctx.knowledge.write(arg)
+
+
+def _h_knowledge_search(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.knowledge, "knowledge")
+    return err if err else ctx.knowledge.search(arg)
+
+
+def _h_knowledge_delete(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.knowledge, "knowledge")
+    return err if err else ctx.knowledge.delete(arg)
 
 
 # --- goals.* (no separate tool wrapper; goals live in tasks/goals.py) ---
@@ -1682,6 +1719,12 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "skills.list": _h_skills_list,
     "skills.run": _h_skills_run,
     "skills.register_builtins": _h_skills_register_builtins,
+    # knowledge.* — persistent markdown KB в ~/.sonya/knowledge/
+    "knowledge.list": _h_knowledge_list,
+    "knowledge.read": _h_knowledge_read,
+    "knowledge.write": _h_knowledge_write,
+    "knowledge.search": _h_knowledge_search,
+    "knowledge.delete": _h_knowledge_delete,
     # goals.*
     "goals.list": _h_goals_list,
     "goals.create": _h_goals_create,
@@ -1750,6 +1793,7 @@ def _execute_tool(
     memory: MemoryTool | None = None,
     env: EnvTool | None = None,
     skills: SkillsTool | None = None,
+    knowledge: Any | None = None,
     outbound_sent: list[str] | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string.
@@ -1772,6 +1816,7 @@ def _execute_tool(
         memory=memory,
         env=env,
         skills=skills,
+        knowledge=knowledge,
         outbound=outbound,
         outbound_sent=outbound_sent,
     )

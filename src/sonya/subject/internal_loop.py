@@ -749,6 +749,8 @@ class InternalProcess:
             env_tool = EnvTool(substrate)
             from sonya.tools.skills_tool import SkillsTool
             skills_tool = SkillsTool(substrate)
+            from sonya.tools.knowledge import KnowledgeTool
+            knowledge_tool = KnowledgeTool()
             import os as _os
             _yolo = _os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
@@ -1035,6 +1037,7 @@ class InternalProcess:
                     "memory": memory_tool,
                     "env": env_tool,
                     "skills": skills_tool,
+                    "knowledge": knowledge_tool,
                 },
                 initial_thought=initial_thought,
                 outbound=self._outbound,
@@ -1362,6 +1365,7 @@ class InternalProcess:
                         "memory": tools["memory"],
                         "env": tools["env"],
                         "skills": tools["skills"],
+                        "knowledge": tools.get("knowledge"),
                     },
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
                     outbound=tools["outbound"],

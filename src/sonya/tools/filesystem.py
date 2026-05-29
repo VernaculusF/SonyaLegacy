@@ -105,6 +105,18 @@ class FilesystemTool:
                     f"Use selfmod.governed to propose changes — Ivan's explicit "
                     f"approval is required for personality / identity files."
                 )
+        # Knowledge belongs in ~/.sonya/knowledge/ via the knowledge.* tools,
+        # NOT in repo dirs. Block re-creation of the legacy mess
+        # (knowledge-base/ with dash, knowledge_base/ with underscore) that
+        # Sonya used to scatter facts into. Steer her to knowledge.write.
+        first_seg = rel.split("/", 1)[0]
+        if first_seg in ("knowledge-base", "knowledge_base"):
+            raise PermissionError(
+                f"Don't write knowledge into repo ({rel}). Use the "
+                f"knowledge.write tool — facts live in ~/.sonya/knowledge/, "
+                f"persistent across deploys, not in git. "
+                f"Example: [TOOL: knowledge.write pentest/sqli]\\n<content>"
+            )
 
     # --- public API ---
 

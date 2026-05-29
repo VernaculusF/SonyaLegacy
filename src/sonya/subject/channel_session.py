@@ -280,6 +280,7 @@ def build_tools(
 ) -> dict:
     import os
     yolo = os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
+    from sonya.tools.knowledge import KnowledgeTool
     return {
         "self_inspect": SelfInspectTool(substrate),
         "filesystem": FilesystemTool(),
@@ -291,6 +292,7 @@ def build_tools(
         "memory": MemoryTool(substrate),
         "env": EnvTool(substrate),
         "skills": SkillsTool(substrate),
+        "knowledge": KnowledgeTool(),
         "outbound": outbound,
     }
 
@@ -354,6 +356,7 @@ async def run_tg_session(
             "memory": tools["memory"],
             "env": tools["env"],
             "skills": tools["skills"],
+            "knowledge": tools["knowledge"],
         },
         initial_thought=initial_thought,
         initial_user_message=initial_user_message,

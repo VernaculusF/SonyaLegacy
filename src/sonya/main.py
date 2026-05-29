@@ -1440,6 +1440,21 @@ async def _supervisor(config: AppConfig) -> int:
             except Exception as exc:
                 _log.warning("builtin_skills_registration_failed", extra={"error": str(exc)})
 
+            # One-shot migration: legacy `knowledge-base/` and `knowledge_base/`
+            # directories in repo → ~/.sonya/knowledge/. Idempotent (no-op
+            # after first successful run on a given host). Removes the
+            # historical мусор from repo и переводит её knowledge на единый
+            # path. См. src/sonya/tools/knowledge.py:migrate_legacy_knowledge_dirs.
+            try:
+                from sonya.tools.knowledge import migrate_legacy_knowledge_dirs
+                from pathlib import Path as _Path
+                project_root = _Path(__file__).resolve().parent.parent.parent
+                migrated = migrate_legacy_knowledge_dirs(project_root)
+                if migrated > 0:
+                    _log.info("knowledge_migrated", extra={"files": migrated})
+            except Exception as exc:
+                _log.warning("knowledge_migration_failed", extra={"error": str(exc)})
+
             _log.info(
                 "sonya_started",
                 extra={
