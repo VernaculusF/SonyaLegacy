@@ -164,17 +164,19 @@ Disaster recovery (сервер умер / substrate corrupt / TG session invali
 
 ### 5.1 Готово
 - **Substrate v20** (SQLite WAL). Identity record + 5 столпов. Principal binding (Иван → tg_id 5785127604). Episodic memory 10K+ с recall. Semantic facts 346+. Двойная stuck-loop защита.
-- **Tools:** filesystem, web.search (own SearXNG), web.fetch, code.exec, shell.run/pip (YOLO), memory.recall, self_inspect, tasks, goals, env, skills.run, chat.tell_ivan, **knowledge.* (новое)**, **Atrium channel family (chat.dialog/worker_log, mind.focus/thought, body.expression/outfit, mind.mood_tint, voice.speak)**.
+- **Tools:** filesystem, web.search (own SearXNG), web.fetch, code.exec, shell.run/pip (YOLO), memory.recall, self_inspect, tasks, goals, env, skills.run, chat.tell_ivan, **knowledge.* (новое)**, **Atrium channel family (chat.dialog/worker_log/emergency, mind.focus/thought, body.expression/outfit, mind.mood_tint, voice.speak)**.
 - **Selfmod pipeline:** 4-layer validation → auto-approve → apply → 24h watchdog → auto-revert. Git auto-commit+push на develop. Stage 3 закрыт.
 - **Channels:** Telegram (Telethon, packages/tg-userbot) — sticker resend, vision-as-eyes, anti-leak guards.
 - **Atrium Этап 0** (backend channels) — **done, deployed**. OutgoingMessage.channel, 8 tool handlers, WS feed `/atrium/feed`, nudge `/api/atrium/nudge`, TG bridge channel-filter (drop non-dialog), schema v20 (channel + private columns), right_to_inner_privacy (`[PRIVATE]` префикс). 16 тестов.
-- **Atrium Этап 1** (Solid.js + Tauri UI) — **done, committed `646e22a`**. `packages/atrium/` — Vite + Solid.js + Tauri 2. Компоненты: App, Header, AvatarPane (SVG silhouette + breathing + glow), DialogPane, MindPane, ReasonStream (filters + reply), Settings, Onboarding. WS reconnect + nudge. Build ~35KB gzipped.
+- **Atrium Этап 1** (Solid.js + Tauri UI) — **done.** `packages/atrium/` — Vite + Solid.js + Tauri 2. Компоненты: App, Header, AvatarPane, DialogPane (**рабочий composer** — `/api/atrium/dialog` → active session), MindPane, ReasonStream (filters + reply), Settings, Onboarding. WS reconnect + nudge + heartbeat. Build ~37KB gzipped.
+- **Atrium Этап 1.5** (TG emergency-only) — **backend done, выключен по умолчанию.** `SONYA_TG_EMERGENCY_MODE` + heartbeat (`atrium_last_seen` в environment_state) + `OutboundGate._suppress_tg_dialog` + `chat.emergency` для ЧС.
 - **Knowledge system** — **done, deployed `a3662a1`**, миграция подтверждена на VPS.
 
 ### 5.2 Не доделано / следующие шаги
-- **Atrium T1.4** (Dialog composer рабочий) и **T1.5** (TG-emergency-only mode) — задокументированы в PLAN.md, но composer пока **read-only placeholder**, emergency-mode не реализован. См. PLAN.md §4.5.
+- **Atrium T1.4** (Dialog composer) и **T1.5** (TG-emergency-only) — **done (2026-05-29)**. Composer рабочий (`POST /api/atrium/dialog` → active session → ответ). Emergency-mode реализован, выключен по умолчанию (`SONYA_TG_EMERGENCY_MODE=0`) — включить после 1-2 недель стабильной работы Atrium у Ивана. `chat.emergency` пробивает emergency-режим для ЧС.
 - **Atrium Этап 2** — Voice + Live2D + interrupt. Перед стартом Иван просил **research:** генерация 3D-модельки + voice cloning (есть 30 мин англ. аудио-референс).
 - Удалить фейковые скилы osint/sqli/wp_pentest (после подтверждения миграции, см. §4.1).
+- T1.5.4 — UI-тоггл "Force TG always" в Atrium settings (мелочь, backend готов).
 - Stage 5 closing: selfmod outcome tracking, visual memory cross-session, variable idle depth.
 - (отложено Иваном) почтовый ящик для Сони.
 

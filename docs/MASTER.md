@@ -228,7 +228,7 @@ Task worker — это **компромисс** между discrete cognition и
 - env (set/get наблюдений про окружение)
 - skills.run (3 builtin: memory-search, identity-check, dialog-tone)
 - **knowledge.* (list/read/write/search/delete)** — её факт-база в `~/.sonya/knowledge/` (markdown, substrate-side, переживает деплои). Заменила бардак из repo-папок `knowledge-base/`/`knowledge_base/` и Python-const "скилов". Миграция legacy на startup идемпотентна
-- **Atrium channel family** — `chat.dialog`/`chat.worker_log`, `mind.focus`/`mind.thought` (с `[PRIVATE]`), `body.expression`/`body.outfit`, `mind.mood_tint`, `voice.speak`. `chat.tell_ivan` = алиас на `chat.dialog`
+- **Atrium channel family** — `chat.dialog`/`chat.worker_log`/`chat.emergency`, `mind.focus`/`mind.thought` (с `[PRIVATE]`), `body.expression`/`body.outfit`, `mind.mood_tint`, `voice.speak`. `chat.tell_ivan` = алиас на `chat.dialog`. `chat.emergency` пробивает TG-emergency-режим
 - chat.tell_ivan (initiative gate, throttle 5/day, ≥90min quiet)
 - outbound через `[SEND_TO_IVAN: ...]` маркер
 
@@ -253,8 +253,9 @@ Task worker — это **компромисс** между discrete cognition и
 
 **Atrium (multichannel UI пакет):**
 - **Этап 0 (backend channels) — done, deployed.** `OutgoingMessage.channel`, 8 tool handlers (chat/mind/body/voice family), WS feed `/atrium/feed`, nudge `/api/atrium/nudge`, TG bridge channel-filter (drop non-dialog), schema v20 (channel + private columns), right_to_inner_privacy через `[PRIVATE]` префикс. 16 тестов.
-- **Этап 1 (Solid.js + Tauri UI) — done, committed.** `packages/atrium/` — Vite + Solid.js + Tauri 2 shell. Компоненты: App/Header/AvatarPane/DialogPane/MindPane/ReasonStream/Settings/Onboarding. WS reconnect + nudge. Build ~35KB gzipped.
-- **Остаток:** T1.4 (Dialog composer рабочий) + T1.5 (TG-emergency-only) задокументированы, composer пока read-only. Этап 2 (Voice + Live2D + interrupt) — следующий, нужен research 3D-модели + voice cloning. Детали — [atrium/PLAN.md](atrium/PLAN.md).
+- **Этап 1 (Solid.js + Tauri UI) — done.** `packages/atrium/` — Vite + Solid.js + Tauri 2 shell. Компоненты: App/Header/AvatarPane/DialogPane/MindPane/ReasonStream/Settings/Onboarding. **Dialog composer рабочий** (T1.4): Иван пишет → `POST /api/atrium/dialog` → active session → ответ. WS reconnect + nudge + heartbeat. Build ~37KB gzipped.
+- **Этап 1.5 (TG emergency-only) — backend done, выключен по умолчанию.** `SONYA_TG_EMERGENCY_MODE` (default 0) + `atrium_last_seen` heartbeat в environment_state + `OutboundGate._suppress_tg_dialog` (TG скипается пока Atrium live) + `chat.emergency` пробивает для ЧС. Включить после 1-2 недель стабильной работы у Ивана.
+- **Остаток:** Этап 2 (Voice + Live2D + interrupt) — следующий, нужен research 3D-модели + voice cloning. T1.5.4 (UI-тоггл) — мелочь. Детали — [atrium/PLAN.md](atrium/PLAN.md).
 
 **Infrastructure:**
 - GCP e2-custom 4vCPU/8GB, Debian 12, IP 34.38.255.149
@@ -366,8 +367,9 @@ Stage 5 ──┴──→ Stage 7 (Atrium) ──┐
 См. [atrium/PLAN.md §3](atrium/PLAN.md) и [atrium/CHANNELS.md](atrium/CHANNELS.md).
 
 **P0.5: Atrium Этап 1 остаток + Этап 2 research**
-- [ ] T1.4 — рабочий Dialog composer (сейчас read-only)
-- [ ] T1.5 — TG-emergency-only mode (env `SONYA_TG_EMERGENCY_MODE`)
+- [x] T1.4 — рабочий Dialog composer (`/api/atrium/dialog` → active session)
+- [x] T1.5 — TG-emergency-only mode (env `SONYA_TG_EMERGENCY_MODE`, backend done, выкл по умолчанию)
+- [ ] T1.5.4 — UI-тоггл "Force TG always" в Atrium settings (мелочь)
 - [ ] Этап 2 research: генерация 3D-модели + voice cloning (30 мин англ. референс)
 
 **P1: Stage 5 closing**
