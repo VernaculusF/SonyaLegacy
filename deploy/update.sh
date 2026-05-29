@@ -28,9 +28,22 @@ echo "=> Fetching latest code..."
 git fetch origin
 # Soft-reset semantics: if local develop has commits ahead of origin (Sonya
 # pushed selfmod here that hasn't been fetched on the dev box yet), we want
-# to keep them. Use merge --ff-only first; fall back to hard reset if
-# branches truly diverged.
+# to keep them. Use merge --ff-only first; on divergence — preserve local
+# commits to a backup branch BEFORE hard-resetting (to не терять её работу).
 if ! git merge --ff-only origin/develop 2>/dev/null; then
+    # Find local-only commits (ahead of origin/develop). If there are any,
+    # push them to a backup branch first — otherwise selfmod work that
+    # didn't successfully push during apply() would be silently destroyed
+    # by the hard reset below.
+    AHEAD_COUNT=$(git rev-list --count origin/develop..HEAD 2>/dev/null || echo 0)
+    if [ "$AHEAD_COUNT" -gt 0 ]; then
+        DIVERGENCE_BACKUP="sonya-selfmod/local-backup-$(date +%Y%m%d-%H%M%S)"
+        echo "!! local develop has $AHEAD_COUNT commit(s) ahead of origin/develop"
+        echo "   saving to backup branch: $DIVERGENCE_BACKUP"
+        # Branch should already exist as a copy of HEAD; force-push so origin gets it.
+        git branch "$DIVERGENCE_BACKUP" 2>/dev/null || true
+        git push origin "$DIVERGENCE_BACKUP" 2>&1 | grep -v "^$" || true
+    fi
     echo "!! local develop diverged from origin/develop — hard reset"
     git reset --hard origin/develop
 fi

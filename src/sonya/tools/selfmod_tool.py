@@ -884,8 +884,14 @@ class SelfModTool:
             result["commit_sha"] = sha
 
             # Push to current branch on origin. If upstream rejects (non-fast-
-            # forward), bail gracefully — change is committed locally and on
-            # disk; next deploy/manual sync will reconcile.
+            # forward), the most likely reason is что Иван (или другая Sonya-
+            # инстанция) запушил в origin/<branch> между нашим last fetch и
+            # этим push. Раньше мы сразу бросали — на VPS это значило что
+            # selfmod-коммиты Сони копились локально, deploy/update.sh
+            # потом бы их сносил `reset --hard`. Теперь делаем один honest
+            # rebase-and-retry перед тем как сдаваться. Если rebase падает
+            # на конфликте — abort и пушим в backup-ветку, чтобы изменение
+            # не потерялось при следующем deploy.
             push = subprocess.run(
                 ["git", "push", "origin", f"HEAD:{branch}"],
                 cwd=str(self._root),
@@ -896,17 +902,79 @@ class SelfModTool:
                 timeout=60,
             )
             if push.returncode != 0:
-                result["error"] = f"push failed: {push.stderr.strip()[:200]}"
-                self._stream.append(ContinuityEvent(
-                    kind="self_mod.git_push_failed",
-                    payload={
-                        "proposal_id": proposal.proposal_id,
-                        "branch": branch,
-                        "commit_sha": sha[:12],
-                        "error": result["error"],
-                    },
-                ))
-                return result
+                err_text = (push.stderr or "") + (push.stdout or "")
+                is_non_ff = (
+                    "non-fast-forward" in err_text.lower()
+                    or "fetch first" in err_text.lower()
+                    or "rejected" in err_text.lower()
+                )
+                rebase_ok = False
+                if is_non_ff:
+                    # Try fetch + rebase + push again (one attempt, no recursion).
+                    fetch = subprocess.run(
+                        ["git", "fetch", "origin", branch],
+                        cwd=str(self._root), env=env, check=False,
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    if fetch.returncode == 0:
+                        rebase = subprocess.run(
+                            ["git", "rebase", f"origin/{branch}"],
+                            cwd=str(self._root), env=env, check=False,
+                            capture_output=True, text=True, timeout=30,
+                        )
+                        if rebase.returncode == 0:
+                            sha = _run("rev-parse", "HEAD").stdout.strip()
+                            result["commit_sha"] = sha
+                            push2 = subprocess.run(
+                                ["git", "push", "origin", f"HEAD:{branch}"],
+                                cwd=str(self._root), env=env, check=False,
+                                capture_output=True, text=True, timeout=60,
+                            )
+                            if push2.returncode == 0:
+                                rebase_ok = True
+                            else:
+                                # Push still rejected after rebase — likely race
+                                # with concurrent push. Fall through to backup.
+                                err_text = (push2.stderr or "") + (push2.stdout or "")
+                        else:
+                            # Rebase conflict — abort to clean working tree.
+                            subprocess.run(
+                                ["git", "rebase", "--abort"],
+                                cwd=str(self._root), env=env, check=False,
+                                capture_output=True, text=True, timeout=15,
+                            )
+                            err_text = "rebase conflict on origin/" + branch + ": " + (
+                                rebase.stderr or rebase.stdout or ""
+                            )
+
+                if not rebase_ok:
+                    # Last resort — push to a unique backup branch so the
+                    # change is preserved on origin and can be merged manually.
+                    # This prevents `deploy/update.sh` from wiping it via
+                    # `reset --hard`.
+                    from datetime import datetime, timezone as _tz
+                    ts = datetime.now(_tz.utc).strftime("%Y%m%d-%H%M%S")
+                    backup_branch = f"sonya-selfmod/{proposal.proposal_id[:24]}-{ts}"
+                    push_backup = subprocess.run(
+                        ["git", "push", "origin", f"HEAD:{backup_branch}"],
+                        cwd=str(self._root), env=env, check=False,
+                        capture_output=True, text=True, timeout=60,
+                    )
+                    backup_pushed = push_backup.returncode == 0
+                    result["error"] = f"push failed: {err_text.strip()[:200]}"
+                    if backup_pushed:
+                        result["backup_branch"] = backup_branch
+                    self._stream.append(ContinuityEvent(
+                        kind="self_mod.git_push_failed",
+                        payload={
+                            "proposal_id": proposal.proposal_id,
+                            "branch": branch,
+                            "commit_sha": sha[:12],
+                            "error": result["error"],
+                            "backup_branch": backup_branch if backup_pushed else "",
+                        },
+                    ))
+                    return result
 
             result["ok"] = True
             self._stream.append(ContinuityEvent(
