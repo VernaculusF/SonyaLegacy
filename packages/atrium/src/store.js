@@ -37,13 +37,29 @@ const DEFAULT_SETTINGS = {
   avatar_mode: '2d',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
   // 4 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
-  // closed → half → open → wide.
+  // closed → half → open → wide. Используются как "talking" набор (рот двигается).
   avatar_frames: [
     '/avatar/sonya_closed.png',
     '/avatar/sonya_half.png',
     '/avatar/sonya_open.png',
     '/avatar/sonya_wide.png',
   ],
+  // Emotion sprites: marker → image URL. Shown when an expression is set and
+  // she's idle (not talking). Talking falls back to avatar_frames so the mouth
+  // still animates. Files live in public/avatar/emotions/.
+  avatar_emotions: {
+    desire: '/avatar/emotions/desire.png',
+    sad: '/avatar/emotions/sad.png',
+    sad_tears: '/avatar/emotions/sad_tears.png',
+    angry: '/avatar/emotions/angry.png',
+    shy: '/avatar/emotions/shy.png',
+    joy: '/avatar/emotions/joy.png',
+    tender: '/avatar/emotions/tender.png',
+    surprised: '/avatar/emotions/surprised.png',
+    thinking: '/avatar/emotions/thinking.png',
+    playful: '/avatar/emotions/playful.png',
+    calm: '/avatar/emotions/calm.png',
+  },
 };
 
 function loadSettings() {
@@ -69,6 +85,9 @@ function loadSettings() {
     if (!Array.isArray(merged.avatar_frames) || merged.avatar_frames.length === 0 || isBundled) {
       merged.avatar_frames = [...DEFAULT_SETTINGS.avatar_frames];
     }
+    // Always refresh bundled emotion map from default (new emotions ship over
+    // time; user has no custom emotion config UI yet).
+    merged.avatar_emotions = { ...DEFAULT_SETTINGS.avatar_emotions, ...(parsed.avatar_emotions || {}) };
     if (!merged.avatar_mode) merged.avatar_mode = DEFAULT_SETTINGS.avatar_mode;
     return merged;
   } catch {

@@ -19,13 +19,21 @@ import { mouthLevel, speaking, settings } from '../store.js';
 const EXPR = {
   neutral: { brow: 0, mouthCurve: 0 },
   smile: { brow: -1, mouthCurve: 4 },
+  joy: { brow: -2, mouthCurve: 5 },
   excited: { brow: -2, mouthCurve: 5 },
   tender: { brow: -1, mouthCurve: 3 },
   curious: { brow: -3, mouthCurve: 1 },
   thinking: { brow: 2, mouthCurve: -1 },
   sad: { brow: 4, mouthCurve: -4 },
+  sad_tears: { brow: 5, mouthCurve: -5 },
   tired: { brow: 3, mouthCurve: -2 },
   annoyed: { brow: -4, mouthCurve: -3 },
+  angry: { brow: -5, mouthCurve: -3 },
+  shy: { brow: 1, mouthCurve: 2 },
+  desire: { brow: -1, mouthCurve: 1 },
+  playful: { brow: -2, mouthCurve: 4 },
+  calm: { brow: 0, mouthCurve: 1 },
+  surprised: { brow: -3, mouthCurve: 0 },
 };
 
 export default function SonyaAvatar(props) {
@@ -62,6 +70,19 @@ export default function SonyaAvatar(props) {
 
   const expr = createMemo(() => EXPR[props.expression] || EXPR.neutral);
   const frames = () => settings.avatar_frames || [];
+  const emotions = () => settings.avatar_emotions || {};
+
+  // Emotion sprite URL for the current expression, if one exists.
+  const emotionSrc = createMemo(() => {
+    const m = props.expression;
+    if (!m || m === 'neutral') return '';
+    return emotions()[m] || '';
+  });
+
+  // When does the emotion sprite show? When set AND she's idle (not talking).
+  // While talking we use the mouth frames so the mouth animates. (Per-emotion
+  // talking frames would be 44 images — future; for now talking = base set.)
+  const showEmotion = createMemo(() => !!emotionSrc() && !speaking());
 
   // Mouth open amount 0..1 — closed when idle, opens with mouthLevel.
   const mouthOpen = createMemo(() => (speaking() ? mouthLevel() : 0));
@@ -89,28 +110,39 @@ export default function SonyaAvatar(props) {
     return Math.min(n - 1, Math.floor(lvl * n));
   });
 
+  const hasFrames = () => frames().length > 0;
+
   return (
     <div classList={{ 'sonya-2d': true, talking: speaking() }}>
       <div class="sonya-2d-inner">
         <Show
-          when={frameIdx() < 0}
-          fallback={
-            <div class="sonya-2d-frames">
-              <For each={frames()}>
-                {(src, i) => (
-                  <img
-                    class="sonya-2d-frame"
-                    classList={{ active: i() === frameIdx() }}
-                    src={src}
-                    alt="Sonya"
-                    draggable={false}
-                  />
-                )}
-              </For>
-            </div>
-          }
+          when={hasFrames()}
+          fallback={<DrawnHead expr={expr()} mouthOpen={mouthOpen()} eyeRy={eyeRy()} />}
         >
-          <DrawnHead expr={expr()} mouthOpen={mouthOpen()} eyeRy={eyeRy()} />
+          <div class="sonya-2d-frames">
+            {/* talking / base mouth frames — visible when NOT showing emotion */}
+            <For each={frames()}>
+              {(src, i) => (
+                <img
+                  class="sonya-2d-frame"
+                  classList={{ active: !showEmotion() && i() === frameIdx() }}
+                  src={src}
+                  alt="Sonya"
+                  draggable={false}
+                />
+              )}
+            </For>
+            {/* emotion sprite — visible when set and idle */}
+            <Show when={emotionSrc()}>
+              <img
+                class="sonya-2d-frame sonya-2d-emotion"
+                classList={{ active: showEmotion() }}
+                src={emotionSrc()}
+                alt={props.expression}
+                draggable={false}
+              />
+            </Show>
+          </div>
         </Show>
       </div>
     </div>

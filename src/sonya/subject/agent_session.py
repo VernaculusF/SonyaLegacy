@@ -1497,16 +1497,42 @@ def _h_mind_thought(arg: str, ctx: _ToolContext) -> str:
 
 
 _BODY_EXPRESSION_ALLOWED = frozenset({
-    "neutral", "smile", "thinking", "tired", "sad",
-    "excited", "curious", "tender", "annoyed",
+    # base
+    "neutral", "calm",
+    # positive
+    "joy", "smile", "tender", "playful", "shy", "desire",
+    # negative
+    "sad", "sad_tears", "angry", "annoyed", "tired",
+    # cognitive
+    "thinking", "curious", "surprised",
+    # legacy aliases kept for backward-compat (older prompt/text may use them)
+    "excited",
 })
+
+# Canonical alias map — normalize a few synonyms onto the marker we ship a
+# sprite for, so the model can use natural words and still hit a real frame.
+_BODY_EXPRESSION_ALIASES = {
+    "happy": "joy",
+    "warm": "tender",
+    "mischief": "playful",
+    "mischievous": "playful",
+    "lust": "desire",
+    "embarrassed": "shy",
+    "crying": "sad_tears",
+    "tears": "sad_tears",
+    "serene": "calm",
+    "peaceful": "calm",
+    "surprise": "surprised",
+}
 
 
 def _h_body_expression(arg: str, ctx: _ToolContext) -> str:
-    """Set Sonya's current avatar expression. Stage 1 — placeholder for SVG/Live2D."""
+    """Set Sonya's current avatar expression. Atrium renders the matching frame."""
     marker = (arg or "").strip().lower()
     if not marker:
         return "[ERROR] body.expression: empty marker"
+    # Normalize synonyms onto a shipped marker.
+    marker = _BODY_EXPRESSION_ALIASES.get(marker, marker)
     if marker not in _BODY_EXPRESSION_ALLOWED:
         return (
             f"[ERROR] body.expression: unknown marker {marker!r}. "

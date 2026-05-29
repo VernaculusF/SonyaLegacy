@@ -104,3 +104,62 @@ AI редко выдаёт идентичную голову в 4 разных �
 3. Если фон не прозрачный — тоже скажи, прогоню через rembg.
 
 > Внешность — identity-зона (APPEARANCE.md). Финал утверждаешь ты. Не уводить в блондинку/длинные волосы/тёплую кожу/повязку-на-глаза.
+
+---
+
+## 7. Эмоции — раскладка файлов и промпты
+
+Эмоции — отдельные спрайты. Положить в `packages/atrium/public/avatar/emotions/`
+**с точными именами** (код уже на них настроен):
+
+| Эмоция (твоя) | marker | файл |
+|---|---|---|
+| Похоть (прикус губы) | `desire` | `emotions/desire.png` |
+| Грусть (без слёз) | `sad` | `emotions/sad.png` |
+| Грусть (со слезами) | `sad_tears` | `emotions/sad_tears.png` |
+| Гнев | `angry` | `emotions/angry.png` |
+| Смущение | `shy` | `emotions/shy.png` |
+| Радость | `joy` | `emotions/joy.png` |
+| Нежность / тепло | `tender` | `emotions/tender.png` |
+| Удивление | `surprised` | `emotions/surprised.png` |
+| Задумчивость | `thinking` | `emotions/thinking.png` |
+| Игривость / mischief | `playful` | `emotions/playful.png` |
+| Спокойствие / умиротворение | `calm` | `emotions/calm.png` |
+
+**Требования те же, что и для talking-кадров (§0):** прозрачный фон (RGBA PNG),
+тот же ракурс/кадрирование/свет/размер что у базовых кадров (1600×2400),
+голова в той же позиции — чтобы при смене эмоции не «прыгала».
+
+> Раз ты генеришь отдельно — старайся держать **тот же seed/ракурс** что у базовых
+> кадров (closed/half/open/wide), меняя только выражение. Тогда переходы между
+> «говорит» и «эмоция» будут плавными. Небольшая вариация ок (кроссфейд сгладит).
+
+### Как это работает в рантайме
+- Соня вызывает `[TOOL: body.expression <marker>]` (напр. `desire`, `joy`, `calm`).
+- Когда она **молчит** и эмоция выставлена → показывается спрайт эмоции.
+- Когда **говорит** → показываются talking-кадры (рот двигается). Per-emotion
+  talking-кадры (44 шт) — на будущее; пока разговор идёт на базовом наборе.
+- Маркеры-синонимы тоже понимаются: `happy→joy`, `warm→tender`, `mischief→playful`,
+  `lust→desire`, `embarrassed→shy`, `crying/tears→sad_tears`, `serene/peaceful→calm`,
+  `surprise→surprised`.
+
+### Промпт для эмоции (база §1 + строка выражения)
+
+Берёшь базовый character-prompt (§1), убираешь `calm neutral expression` и
+вставляешь нужную строку:
+
+- **desire (похоть):** `seductive expression, biting lower lip, half-lidded eyes, faint blush, lips slightly parted`
+- **sad:** `sad expression, downcast eyes, slight frown, melancholic`
+- **sad_tears:** `crying, tears welling in eyes, tears on cheeks, sad expression, trembling lips`
+- **angry:** `angry expression, furrowed brows, intense glare, lips tight`
+- **shy (смущение):** `shy embarrassed expression, strong blush across cheeks, looking away slightly, timid`
+- **joy (радость):** `bright joyful smile, happy eyes, cheerful, slight blush`
+- **tender (нежность):** `tender warm expression, soft gentle smile, half-lidded loving eyes, soft blush`
+- **surprised (удивление):** `surprised expression, wide eyes, raised eyebrows, slightly open mouth`
+- **thinking (задумчивость):** `thoughtful pensive expression, looking up slightly, one eyebrow raised, calm`
+- **playful (игривость):** `playful mischievous smirk, one eyebrow raised, sly grin, teasing look`
+- **calm (умиротворение):** `calm serene peaceful expression, soft closed-mouth smile, relaxed, eyes softly looking forward`
+
+Negative prompt — тот же (§3).
+
+После генерации — сложи в `emotions/` с именами из таблицы и скажи мне.
