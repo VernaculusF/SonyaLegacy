@@ -1210,6 +1210,21 @@ class InternalProcess:
                             "blocker": stuck_reason[:300],
                         },
                     ))
+                    # Notify Ivan so a blocked task doesn't die silently.
+                    if task.created_by == "ivan" and task.notify_mode != "silent":
+                        try:
+                            if self._outbound is not None:
+                                msg = (
+                                    f"Задача «{task.title}» заблокирована — "
+                                    f"зациклилась на одном шаге.\n"
+                                    f"Причина: {stuck_reason[:150]}\n"
+                                    f"ID: {task.task_id}\n"
+                                    f"Разблокирую или попробую другой подход — "
+                                    f"скажи как.\n"
+                                )
+                                self._outbound.send_via_tool(msg)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
                 return  # don't burn another tick on the same dead-end
