@@ -91,23 +91,19 @@ export default function SonyaAvatar(props) {
   const eyeRy = createMemo(() => 0.6 + eyeOpen() * 5.4);
 
   // Pick a frame index for image-based mouth (if frames provided).
-  // Idle → always frame 0 (closed). Speaking → map amplitude to frames, but
-  // bias toward the middle frames so the "wide open" (last) only triggers on
-  // loud peaks (Ivan: the widest looks like too much for normal talk).
+  // Idle → frame 0 (closed). Speaking → map amplitude to frames. The mapping
+  // is gamma-biased so the widest frames only hit on loud peaks (Ivan: the
+  // widest looks like too much for normal talk). Works for any frame count.
   const frameIdx = createMemo(() => {
     const f = frames();
     if (!f.length) return -1;
     if (!speaking()) return 0;
     const n = f.length;
-    const lvl = mouthOpen();
-    if (n >= 4) {
-      // 0 closed, 1 half, 2 open, 3 wide — wide only above 0.85.
-      if (lvl < 0.18) return 0;
-      if (lvl < 0.5) return 1;
-      if (lvl < 0.85) return 2;
-      return 3;
-    }
-    return Math.min(n - 1, Math.floor(lvl * n));
+    const lvl = mouthOpen();              // 0..1
+    // gamma > 1 pushes most values toward lower (more closed/half) frames,
+    // reserving the top frames for genuine peaks.
+    const biased = Math.pow(Math.max(0, Math.min(1, lvl)), 1.7);
+    return Math.min(n - 1, Math.floor(biased * n));
   });
 
   const hasFrames = () => frames().length > 0;

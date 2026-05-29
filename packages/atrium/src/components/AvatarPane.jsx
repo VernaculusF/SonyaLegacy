@@ -3,8 +3,8 @@
  * (ходьба/тело). По умолчанию чистый 2D без рига.
  * Click → войти в комнату.
  */
-import { Show, createSignal, createEffect, onMount, onCleanup } from 'solid-js';
-import { feed, settings, avatarGlow, speaking, simulateSpeech } from '../store.js';
+import { Show, createSignal, createEffect, onMount, onCleanup, For } from 'solid-js';
+import { feed, setFeed, settings, avatarGlow, speaking, simulateSpeech } from '../store.js';
 import SonyaAvatar from './SonyaAvatar.jsx';
 import { VrmViewer } from '../vrmViewer.js';
 
@@ -14,11 +14,25 @@ const EXPRESSION_LABEL = {
   thinking: 'задумалась',
   tired: 'устала',
   sad: 'грустная',
+  sad_tears: 'плачет',
   excited: 'оживлена',
   curious: 'любопытно',
   tender: 'нежная',
   annoyed: 'раздражена',
+  angry: 'злится',
+  shy: 'смущена',
+  desire: 'желание',
+  playful: 'игривая',
+  calm: 'умиротворена',
+  surprised: 'удивлена',
+  joy: 'радуется',
 };
+
+// Markers Ivan can click to preview (dev affordance, hover to reveal).
+const PREVIEW_MARKERS = [
+  'neutral', 'calm', 'tender', 'playful', 'shy', 'desire',
+  'sad', 'sad_tears', 'angry', 'surprised', 'thinking',
+];
 
 export default function AvatarPane(props) {
   const [glowing, setGlowing] = createSignal(false);
@@ -74,6 +88,22 @@ export default function AvatarPane(props) {
           <span></span>
         </div>
       </Show>
+
+      {/* dev preview: hover the pane to reveal emotion chips (test all sprites). */}
+      <div class="emotion-preview">
+        <For each={PREVIEW_MARKERS}>
+          {(m) => (
+            <button
+              classList={{ chip: true, on: feed.current_expression === m }}
+              onClick={() => setFeed('current_expression', m)}
+              title={EXPRESSION_LABEL[m] || m}
+            >
+              {m}
+            </button>
+          )}
+        </For>
+        <button class="chip talk" onClick={() => simulateSpeech(2400)} title="проверить рот">▶ talk</button>
+      </div>
     </aside>
   );
 }

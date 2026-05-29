@@ -36,13 +36,14 @@ const DEFAULT_SETTINGS = {
   // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
   avatar_mode: '2d',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
-  // 4 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
-  // closed → half → open → wide. Используются как "talking" набор (рот двигается).
+  // 5 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
+  // closed → half → open → wide → wide2. Используются как "talking" набор (рот двигается).
   avatar_frames: [
     '/avatar/sonya_closed.png',
     '/avatar/sonya_half.png',
     '/avatar/sonya_open.png',
     '/avatar/sonya_wide.png',
+    '/avatar/sonya_wide2.png',
   ],
   // Emotion sprites: marker → image URL. Shown when an expression is set and
   // she's idle (not talking). Talking falls back to avatar_frames so the mouth
@@ -53,12 +54,13 @@ const DEFAULT_SETTINGS = {
     sad_tears: '/avatar/emotions/sad_tears.png',
     angry: '/avatar/emotions/angry.png',
     shy: '/avatar/emotions/shy.png',
-    joy: '/avatar/emotions/joy.png',
     tender: '/avatar/emotions/tender.png',
     surprised: '/avatar/emotions/surprised.png',
     thinking: '/avatar/emotions/thinking.png',
     playful: '/avatar/emotions/playful.png',
     calm: '/avatar/emotions/calm.png',
+    // joy: no dedicated sprite yet (no 'радость' source) → falls back to
+    // talking/base frames. Add '/avatar/emotions/joy.png' when generated.
   },
 };
 
