@@ -76,11 +76,25 @@ export async function attachMic() {
 }
 
 // Real TTS playback (Этап 2): pass the <audio> element that plays her voice.
+// Safe to call multiple times — each call replaces the previous source/analyser
+// without tearing down the AudioContext (re-creating it costs ~100ms and would
+// drop the very next chunk).
 export function attachAudioEl(el) {
   const c = ensureCtx();
   c.resume();
-  const node = c.createMediaElementSource(el);
-  _startAnalyser(node, true); // route to speakers so we hear it
+  // Disconnect previous audio source (don't kill mic-mode if active).
+  if (raf && srcNode && srcNode !== el) {
+    try { srcNode.disconnect(); } catch {}
+  }
+  let node;
+  try {
+    node = c.createMediaElementSource(el);
+  } catch (e) {
+    // Some browsers throw if the same element was already connected. Reuse.
+    console.warn('[mouthAudio] createMediaElementSource:', e.message);
+    return;
+  }
+  _startAnalyser(node, true);
 }
 
 export function stopMouthAudio() {

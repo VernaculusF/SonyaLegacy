@@ -1,0 +1,15 @@
+# Silero TTS server deps. Heavy (torch ~200MB) so kept in a separate venv
+# from main Sonya. Run: services\tts\setup.ps1 once, then start_tts.ps1.
+
+# CPU-friendly torch (will use CUDA if available; AMD GPUs need separate ROCm
+# build — skip for now, runs on CPU at ~real-time on i5+).
+torch>=2.0,<2.5
+torchaudio>=2.0,<2.5
+
+# Silero models live on hub; loaded via torch.hub.
+# Need omegaconf for snakers4/silero-models (registered torch.hub config).
+omegaconf>=2.3
+numpy>=1.24
+
+# HTTP server
+aiohttp>=3.9

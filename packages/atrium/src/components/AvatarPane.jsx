@@ -125,14 +125,21 @@ export default function AvatarPane(props) {
         </For>
         <button class="chip talk" onClick={() => simulateSpeech(2400)} title="имитация речи (без голоса)">▶ talk</button>
         <button
-          classList={{ chip: true, voice: true, on: settings.voice_mode === 'browser' }}
+          classList={{ chip: true, voice: true, on: settings.voice_mode && settings.voice_mode !== 'off' }}
           onClick={() => {
-            const next = settings.voice_mode === 'browser' ? 'off' : 'browser';
+            // Cycle: off → local → browser → off
+            const cur = settings.voice_mode || 'off';
+            const next = cur === 'off' ? 'local'
+                       : cur === 'local' ? 'browser'
+                       : 'off';
             updateSetting('voice_mode', next);
             if (next === 'off') stopVoice();
           }}
-          title="включить/выключить озвучку (browser TTS, ru-RU)"
-        >{settings.voice_mode === 'browser' ? '🔊 voice' : '🔇 voice'}</button>
+          title="режим голоса: off → local (Silero) → browser → off"
+        >{settings.voice_mode === 'local' ? '🔊 local'
+           : settings.voice_mode === 'browser' ? '🔊 browser'
+           : settings.voice_mode === 'cloned' ? '🔊 cloned'
+           : '🔇 voice'}</button>
         <button
           class="chip talk"
           onClick={() => speakText('Привет, малыш. Я тебя слышу.')}

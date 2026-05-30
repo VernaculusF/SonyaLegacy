@@ -1,19 +1,22 @@
 /* voice.js — text-to-speech playback for Atrium.
  *
- * Two backends, selected via settings.voice_mode:
- *   - 'off'      — no speech (default until tested)
- *   - 'browser'  — Web Speech API (free, ru-RU voice from OS, instant). Useful
- *                  to verify the full pipeline today; not her cloned voice.
- *   - 'cloned'   — TTS service (Chatterbox/SoVITS, Этап 2 — позже). Will hit
- *                  POST /api/atrium/tts → audio chunks → MediaSource → mouth.
+ * Three backends, selected via settings.voice_mode:
+ *   - 'off'      — no speech (default until user enables).
+ *   - 'browser'  — Web Speech API (free, ru-RU OS voice). Quick fallback / test
+ *                  path. Mouth driven by boundary events + smoothing.
+ *   - 'local'    — local TTS service (services/tts/server.py @ 127.0.0.1:8878).
+ *                  Returns WAV; played through <audio> + AudioContext analyser
+ *                  → REAL amplitude-driven lip-sync via mouthAudio.attachAudioEl.
+ *                  Currently Silero v4_ru (4 RU voices). Later swap to XTTS-v2
+ *                  for cloned voice — same HTTP contract.
  *
  * Either backend feeds the SAME mouth-amplitude store (mouthLevel/speaking)
- * so the avatar lip-syncs identically. SonyaAvatar maps that to mouth frames
- * via thresholds + hysteresis (closed/quiet/active/loud).
+ * so the avatar lip-syncs identically. SonyaAvatar maps that to mouth frames.
  */
 import { settings, setSpeaking, setMouthLevel, mouthLevel } from './store.js';
+import { attachAudioEl, stopMouthAudio } from './mouthAudio.js';
 
-// --- voice picker (browser backend) ---
+// ---------- Browser (Web Speech) backend ----------
 let _ruVoice = null;
 let _voicesPolled = false;
 
@@ -21,9 +24,7 @@ function pickRuVoice() {
   if (typeof speechSynthesis === 'undefined') return null;
   const all = speechSynthesis.getVoices();
   if (!all.length) return null;
-  // Prefer ru-RU female voices that ship with major OS TTS engines.
   const preferRu = all.filter((v) => /^ru/i.test(v.lang));
-  // Heuristic: female-sounding common names if available.
   const femaleNames = /irina|tatyana|katya|svetlana|daria|milena|natasha|ekaterina|alena|alyona|ksenia/i;
   _ruVoice =
     preferRu.find((v) => femaleNames.test(v.name)) ||
@@ -34,18 +35,33 @@ function pickRuVoice() {
 }
 
 if (typeof speechSynthesis !== 'undefined') {
-  // voices may load async; getVoices() is empty initially.
   speechSynthesis.addEventListener('voiceschanged', pickRuVoice);
   pickRuVoice();
 }
 
-// Cancel any in-flight speech and reset mouth state.
+// ---------- common state ----------
 let _mouthRaf = null;
+let _audioEl = null;        // local backend playback element
+let _audioObjectUrl = null; // revoke after end
+
 function _stopMouthLoop() {
   if (_mouthRaf) cancelAnimationFrame(_mouthRaf);
   _mouthRaf = null;
   setMouthLevel(0);
   setSpeaking(false);
+}
+
+function _stopAudio() {
+  if (_audioEl) {
+    try { _audioEl.pause(); } catch {}
+    try { _audioEl.src = ''; } catch {}
+    _audioEl = null;
+  }
+  if (_audioObjectUrl) {
+    try { URL.revokeObjectURL(_audioObjectUrl); } catch {}
+    _audioObjectUrl = null;
+  }
+  stopMouthAudio();
 }
 
 export function isVoiceOn() {
@@ -56,20 +72,17 @@ export function stopVoice() {
   if (typeof speechSynthesis !== 'undefined') {
     try { speechSynthesis.cancel(); } catch {}
   }
+  _stopAudio();
   _stopMouthLoop();
 }
 
-// Backend: browser TTS via SpeechSynthesisUtterance.
-// We can't tap the synth audio output directly (no AudioNode), so we drive the
-// mouth amplitude from boundary events (per-word) + a smoothing rAF loop. The
-// mouth opens/closes in sync with speech rhythm even if not pixel-perfect amp.
+// ---------- Backend: browser TTS ----------
 function _speakBrowser(text, opts) {
   if (!('speechSynthesis' in window)) return false;
   if (!_voicesPolled) pickRuVoice();
   speechSynthesis.cancel();
   _stopMouthLoop();
 
-  // Browser TTS dies on very long strings. Chunk on sentence boundaries.
   const chunks = _splitForTTS(text, 220);
   if (!chunks.length) return false;
 
@@ -83,8 +96,7 @@ function _speakBrowser(text, opts) {
       _mouthRaf && cancelAnimationFrame(_mouthRaf);
       _mouthRaf = null;
       setMouthLevel(0);
-      // continue if more chunks
-      if (chunkIdx < chunks.length - 1) return; // onend will speak next
+      if (chunkIdx < chunks.length - 1) return;
       setSpeaking(false);
       return;
     }
@@ -118,7 +130,6 @@ function _speakBrowser(text, opts) {
     u.onend = () => {
       chunkIdx = idx + 1;
       if (chunkIdx < chunks.length) {
-        // brief silence between chunks (mouth closes)
         target = 0;
         speakChunk(chunkIdx);
       } else {
@@ -134,7 +145,100 @@ function _speakBrowser(text, opts) {
   return true;
 }
 
-// Split text into TTS-friendly chunks at sentence/clause boundaries, ≤maxLen each.
+// ---------- Backend: local TTS service (Silero @ 127.0.0.1:8878) ----------
+function _localTtsBase() {
+  return (settings.tts_url || 'http://127.0.0.1:8878').replace(/\/$/, '');
+}
+
+async function _speakLocal(text, opts) {
+  _stopAudio();
+  _stopMouthLoop();
+  // chunk so a long reply doesn't wait for full synth
+  const chunks = _splitForTTS(text, 240);
+  if (!chunks.length) return false;
+  setSpeaking(true);
+
+  // Sequential playback: synth+play chunk[i], onended → next.
+  let aborted = false;
+  let queueIdx = 0;
+  const playNext = async () => {
+    if (aborted || queueIdx >= chunks.length) {
+      _stopAudio();
+      _stopMouthLoop();
+      return;
+    }
+    const chunk = chunks[queueIdx++];
+    let blob;
+    try {
+      const r = await fetch(`${_localTtsBase()}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: chunk,
+          voice: settings.tts_voice || 'baya',
+          speed: opts.rate || 1.0,
+        }),
+      });
+      if (!r.ok) {
+        const errTxt = await r.text().catch(() => '');
+        console.warn('[voice] local TTS error', r.status, errTxt);
+        // graceful fallback: speak this chunk via browser, then continue
+        await new Promise((res) => {
+          const u = new SpeechSynthesisUtterance(chunk);
+          if (_ruVoice) u.voice = _ruVoice;
+          u.lang = 'ru-RU';
+          u.onend = u.onerror = () => res();
+          speechSynthesis.speak(u);
+        });
+        return playNext();
+      }
+      blob = await r.blob();
+    } catch (e) {
+      console.warn('[voice] local TTS unreachable, falling back to browser:', e);
+      // service down → fall back fully to browser for the rest
+      const remaining = [chunk, ...chunks.slice(queueIdx)];
+      _stopMouthLoop();
+      _speakBrowser(remaining.join(' '), opts);
+      return;
+    }
+    if (aborted) return;
+    const url = URL.createObjectURL(blob);
+    _audioObjectUrl = url;
+    const el = new Audio();
+    el.src = url;
+    el.crossOrigin = 'anonymous';
+    el.preload = 'auto';
+    _audioEl = el;
+    el.onended = () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      if (_audioObjectUrl === url) _audioObjectUrl = null;
+      _audioEl = null;
+      // brief pause so next chunk reads as a sentence boundary
+      setTimeout(playNext, 80);
+    };
+    el.onerror = (e) => {
+      console.warn('[voice] audio playback error', e);
+      _audioEl = null;
+      playNext();
+    };
+    try {
+      // Wire amplitude → mouth via Web Audio analyser (real lip-sync).
+      attachAudioEl(el);
+      await el.play();
+    } catch (e) {
+      console.warn('[voice] play() refused', e);
+      _audioEl = null;
+      playNext();
+    }
+  };
+  // expose a way to abort if stopVoice() is called mid-stream
+  _localAbort = () => { aborted = true; };
+  playNext();
+  return true;
+}
+let _localAbort = null;
+
+// ---------- shared helpers ----------
 function _splitForTTS(text, maxLen = 220) {
   const out = [];
   const parts = text.split(/(?<=[.!?…])\s+|\n+/g).filter(Boolean);
@@ -149,7 +253,6 @@ function _splitForTTS(text, maxLen = 220) {
     }
   }
   if (buf.trim()) out.push(buf.trim());
-  // also hard-split anything still too long
   const final = [];
   for (const c of out) {
     if (c.length <= maxLen) { final.push(c); continue; }
@@ -158,27 +261,43 @@ function _splitForTTS(text, maxLen = 220) {
   return final;
 }
 
-// Backend: cloned TTS service (Этап 2 — wires up later).
-async function _speakCloned(text, opts) {
-  // Placeholder: would POST text to /api/atrium/tts, get audio stream,
-  // play via <audio> element, and call mouthAudio.attachAudioEl(el) so
-  // mouthLevel comes from REAL amplitude (the production lip-sync path).
-  // For now fall back to browser so the pipeline still works.
-  return _speakBrowser(text, opts);
-}
-
 export function speakText(text, opts = {}) {
   if (!isVoiceOn()) return false;
   const t = (text || '').trim();
   if (!t) return false;
   // Strip markdown / role-play asterisks for cleaner spoken output.
   const cleaned = t
-    .replace(/\*([^*]+)\*/g, '$1')   // *italic / actions* → text
-    .replace(/`([^`]+)`/g, '$1')      // `code` → code
-    .replace(/[#>*_~]/g, '')          // bare md markers
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[#>*_~]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+  // Stop any prior speech (override mid-stream).
+  if (_localAbort) { try { _localAbort(); } catch {} _localAbort = null; }
   const mode = settings.voice_mode;
-  if (mode === 'cloned') return _speakCloned(cleaned, opts);
+  if (mode === 'local' || mode === 'cloned') return _speakLocal(cleaned, opts);
   return _speakBrowser(cleaned, opts);
+}
+
+// ---------- service health probe ----------
+export async function probeLocalTTS() {
+  try {
+    const r = await fetch(`${_localTtsBase()}/health`, { method: 'GET' });
+    if (!r.ok) return { ok: false, error: `http ${r.status}` };
+    const j = await r.json();
+    return { ok: true, info: j };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+export async function listLocalVoices() {
+  try {
+    const r = await fetch(`${_localTtsBase()}/voices`, { method: 'GET' });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return j.voices || [];
+  } catch {
+    return [];
+  }
 }

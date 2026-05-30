@@ -1498,6 +1498,11 @@ textarea {
 }
 .ws-readonly-desc { color: var(--ink-3); font-size: 12px; max-width: 380px; }
 
+/* TTS health badge (Settings modal) */
+.tts-health-ok    { color: #6a9b6a; }
+.tts-health-err   { color: #b85a5a; }
+.tts-health-pending { color: var(--ink-3); font-style: italic; }
+
 /* Tree (packages kind) */
 .ws-tree-dir { display: block; }
 .ws-tree-dir-head {
