@@ -751,6 +751,7 @@ class _ToolContext:
     outbound: Any
     outbound_sent: list[str] | None
     knowledge: Any | None = None  # KnowledgeTool — knowledge.* family (default None for BC)
+    stream: Any | None = None  # ContinuityStream — body.*/mind.* handlers use this
 
 
 def _require(tool: Any, name: str) -> str | None:
@@ -1875,6 +1876,7 @@ def _execute_tool(
         knowledge=knowledge,
         outbound=outbound,
         outbound_sent=outbound_sent,
+        stream=stream,
     )
     try:
         return handler(arg, ctx)

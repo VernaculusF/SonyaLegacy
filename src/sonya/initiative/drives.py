@@ -24,7 +24,11 @@ class DriveCounters:
     boredom_rate: float = 0.01
     curiosity_rate: float = 0.005
     relational_rate: float = 0.003
-    pending_debt_rate: float = 0.02  # rate per active intention per tick
+    # pending_debt: small per-intention increment, capped so 5+ intentions
+    # don't pin it to 1.0 (the all-drives-maxed bug). Net climb is gentler
+    # than decay so it actually settles.
+    pending_debt_rate: float = 0.004
+    pending_debt_cap_rate: float = 0.012  # max accumulation per tick regardless of N intentions
 
     threshold: float = 0.7
     max_value: float = 1.0  # drives are bounded analogs, never exceed this
@@ -65,9 +69,9 @@ class DriveCounters:
 
         if active_intentions_count > 0:
             prev = self.pending_debt
-            self.pending_debt = min(
-                m, self.pending_debt + self.pending_debt_rate * active_intentions_count
-            )
+            inc = min(self.pending_debt_cap_rate,
+                      self.pending_debt_rate * active_intentions_count)
+            self.pending_debt = min(m, self.pending_debt + inc)
             if self.pending_debt >= self.threshold and prev < self.threshold:
                 crossed.append("pending_debt")
 

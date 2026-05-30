@@ -38,9 +38,16 @@ def test_drive_on_action_completed_decrements() -> None:
 
 
 def test_pending_debt_increments_with_intentions() -> None:
+    """3 intentions × 0.004 = 0.012 increment per tick. Decay only kicks in
+    when value > 0, so after 1 tick from 0 → 0.012. The cap at
+    pending_debt_cap_rate=0.012 prevents runaway when N is large."""
     d = DriveCounters(threshold=0.7)
     d.tick(active_intentions_count=3)
-    assert d.pending_debt == pytest.approx(0.06)
+    assert d.pending_debt == pytest.approx(0.012)
+    # With 10 intentions the cap kicks in (would be 0.04 without cap, capped at 0.012)
+    d2 = DriveCounters(threshold=0.7)
+    d2.tick(active_intentions_count=10)
+    assert d2.pending_debt == pytest.approx(0.012)
 
 
 def test_drives_clamp_to_max_on_tick() -> None:
