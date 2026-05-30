@@ -621,6 +621,14 @@ async def run_agent_session(
         # Plain user message — no planner prefix. TG session uses this so the
         # LLM doesn't get prompted with "What do you want to do?" which made
         # reasoning models echo back "The user is asking me what I want to do...".
+        # If there's also an initial_thought, prepend it as a SYSTEM-level
+        # nudge (not as a user-turn — that would confuse the conversation
+        # flow with prior_messages history).
+        if initial_thought:
+            messages.append({
+                "role": "system",
+                "content": "[INTERNAL_NUDGE]\n" + initial_thought,
+            })
         messages.append({"role": "user", "content": initial_user_text})
     elif initial_thought:
         messages.append({"role": "user", "content": f"Your current thought: {initial_thought}\nWhat do you want to do?"})

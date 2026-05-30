@@ -887,12 +887,19 @@ class InternalProcess:
                 # forces her to chat.dialog before [DONE].
                 msg_text = (pending_dialog.get("text") or "").strip()
                 initial_user_text = msg_text + att_note
+                # initial_thought is INTERNAL nudge to ensure she replies via
+                # chat.dialog before [DONE]. Important: phrase it as
+                # "продолжай разговор" — without it, the LLM saw "Иван
+                # написал тебе" as introduction to a NEW conversation and
+                # answered with "Привет, малыш. Я здесь" every time even
+                # though prior_messages had the actual context.
                 initial_thought = (
-                    "Иван написал тебе в Atrium. Ответь ему через "
+                    "Это продолжение разговора с Иваном — выше история. "
+                    "Ответь по сути на его последнее сообщение через "
                     "[TOOL: chat.dialog]<твой ответ>. Без [TOOL: chat.dialog] "
-                    "тебе НЕЛЬЗЯ ставить [DONE] — ты обязана сначала "
-                    "ответить. После ответа можешь продолжить с тасками "
-                    "или selfmod."
+                    "тебе НЕЛЬЗЯ ставить [DONE] — отвечай на тему, не "
+                    "приветствуй заново. После работы — ещё один chat.dialog "
+                    "с результатом перед [DONE]."
                 )
                 # Build prior dialog history so the LLM sees CONTINUITY,
                 # not a cold start. Без этого каждая active session
@@ -944,6 +951,22 @@ class InternalProcess:
                         prior_messages = collapsed[:-1] if collapsed else []
                 except Exception:
                     prior_messages = []
+                # Diagnostic event so we can verify in logs that history
+                # was actually attached to the session (not silently dropped).
+                try:
+                    self._stream.append(ContinuityEvent(
+                        kind="internal.active_session_history",
+                        payload={
+                            "pending_seq": pending_seq,
+                            "history_len": len(prior_messages),
+                            "preview": [
+                                {"role": m["role"], "text": m["content"][:60]}
+                                for m in (prior_messages or [])[:6]
+                            ],
+                        },
+                    ))
+                except Exception:
+                    pass
 
             try:
                 from sonya.tasks.service import TaskService

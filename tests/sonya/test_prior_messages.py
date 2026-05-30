@@ -78,6 +78,34 @@ async def test_prior_messages_threaded_into_llm_call(substrate: Substrate) -> No
     assert msgs[5] == {"role": "user", "content": "А как у тебя сейчас?"}
 
 
+async def test_initial_thought_with_user_text_uses_system_nudge(substrate: Substrate) -> None:
+    """When BOTH initial_thought и initial_user_text заданы, thought
+    приходит как extra system message (не как user-turn) перед user_text.
+    Это сохраняет conversation flow с prior_messages."""
+    stream = ContinuityStream(substrate)
+    provider = _CapturingProvider(["[DONE]"])
+    await run_agent_session(
+        provider=provider,
+        stream=stream,
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(),
+        system_prompt="primary",
+        initial_user_text="Привет",
+        initial_thought="это продолжение разговора, отвечай по сути",
+        max_steps=10,
+        max_seconds=5.0,
+        purpose="test",
+    )
+    msgs = provider.last_messages
+    # primary system, internal_nudge system, user
+    assert msgs[0]["role"] == "system"
+    assert "primary" in msgs[0]["content"]
+    assert msgs[1]["role"] == "system"
+    assert "INTERNAL_NUDGE" in msgs[1]["content"]
+    assert "продолжение разговора" in msgs[1]["content"]
+    assert msgs[2] == {"role": "user", "content": "Привет"}
+
+
 async def test_prior_messages_with_invalid_entries_filtered(substrate: Substrate) -> None:
     """Bad entries (wrong role, not a dict) are silently dropped instead
     of crashing the session."""
