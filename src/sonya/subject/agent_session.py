@@ -527,6 +527,7 @@ async def run_agent_session(
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
     initial_user_text: str | None = None,
+    require_dialog_reply: bool = False,
     max_steps: int = 30,
     max_seconds: float = 1200.0,
     purpose: str = "agent_session",
@@ -560,7 +561,13 @@ async def run_agent_session(
 
     start_time = time.time()
     budget_warning_sent = False
-    _unanswered_inbox = False  # set True when inbox_drain pulls a fresh message
+    # Inbox-priority gate: tracks whether Sonya owes Ivan a chat.dialog reply.
+    # Set True when:
+    #   - require_dialog_reply=True (caller knows this session opened on a
+    #     real Ivan message — TG bridge / atrium dialog trigger), OR
+    #   - inbox_drain pulls a fresh message mid-session.
+    # Cleared when she calls chat.dialog (she replied).
+    _unanswered_inbox = bool(require_dialog_reply)
     _recent_tools: list[tuple[str, str]] = []  # (tool, arg-prefix) — last 4
 
     for step in range(max_steps):
@@ -788,6 +795,31 @@ async def run_agent_session(
         # turn. Otherwise the model could close the session before any tool
         # actually ran.
         if "[DONE" in response or "[PAUSE" in response:
+            # Inbox-priority gate also applies to [DONE] — she cannot close
+            # the session while Ivan is waiting for a chat.dialog reply.
+            # Without this, the active-session-from-atrium path would let her
+            # do `body.expression calm` → [DONE] (the 30.05 silent-no-reply
+            # bug). She must call chat.dialog FIRST, then [DONE].
+            if _unanswered_inbox:
+                stream.append(ContinuityEvent(
+                    kind="internal.inbox_priority_gate",
+                    payload={
+                        "step": step,
+                        "blocked_tool": "[DONE]",
+                        "reason": "must_reply_to_ivan_first",
+                    },
+                ))
+                messages.append({"role": "assistant", "content": response})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "[INBOX GATE] [DONE] ЗАБЛОКИРОВАН — Иван написал и "
+                        "ждёт твой ответ. Сначала [TOOL: chat.dialog]<твой "
+                        "ответ>, потом можешь закрывать через [DONE]. "
+                        "НЕ ставь [DONE] раньше чем chat.dialog."
+                    ),
+                })
+                continue
             result.final_output = response
             result.thoughts.append(response)
             stream.append(ContinuityEvent(

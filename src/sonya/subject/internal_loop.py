@@ -843,17 +843,25 @@ class InternalProcess:
             # would wander into self_inspect and ignore him (the 30.05 bug).
             pending_dialog = self._pending_ivan_message(substrate)
             initial_thought = ""
+            initial_user_text: str | None = None
             if pending_dialog:
                 force_selfmod_track = False
                 att = pending_dialog.get("media_kind")
-                att_note = f"\nОн приложил: {att}. Посмотри/учти это." if att else ""
+                att_note = f"\n[он приложил: {att}]" if att else ""
+                # Use the literal user message as `initial_user_text` (not
+                # `initial_thought`, which gets wrapped in
+                # "Your current thought: ... What do you want to do?" —
+                # too soft, model can answer "ничего" and [DONE]).
+                # The literal text + a strong directive in initial_thought
+                # forces her to chat.dialog before [DONE].
+                msg_text = (pending_dialog.get("text") or "").strip()
+                initial_user_text = msg_text + att_note
                 initial_thought = (
-                    "Иван только что написал тебе в Atrium (это твоё основное окно "
-                    "общения с ним). СНАЧАЛА ответь ему — это приоритет №1.\n\n"
-                    f"Его сообщение:\n\"{pending_dialog.get('text', '')}\"{att_note}\n\n"
-                    "Ответь через [TOOL: chat.dialog]<твой ответ>. Отвечай по сути, "
-                    "своим голосом, без формальностей. После ответа можешь заняться "
-                    "задачами/самоулучшением, если останутся шаги."
+                    "Иван написал тебе в Atrium. Ответь ему через "
+                    "[TOOL: chat.dialog]<твой ответ>. Без [TOOL: chat.dialog] "
+                    "тебе НЕЛЬЗЯ ставить [DONE] — ты обязана сначала "
+                    "ответить. После ответа можешь продолжить с тасками "
+                    "или selfmod."
                 )
 
             try:
@@ -1113,6 +1121,8 @@ class InternalProcess:
                     "browser": browser_tool,
                 },
                 initial_thought=initial_thought,
+                initial_user_text=initial_user_text,
+                require_dialog_reply=initial_user_text is not None,
                 outbound=self._outbound,
                 inbox_drain=_ivan_inbox_drain,
                 drives_callback=self._drives.on_action_completed,
