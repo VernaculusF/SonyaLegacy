@@ -16,6 +16,62 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-30 — browser tool работает в live сессии + escalation playbook
+
+**Live verify прошлого хода показал:** Соня попыталась `browser.open` —
+получила ошибку. **НЕ сдалась**: попробовала через code.exec asyncio,
+shell.run playwright install, subprocess через sys.executable, и
+наконец web.fetch как fallback. Довела задачу до DONE с правильным
+заголовком. Это образцовое поведение — всё что было нужно — рабочий
+browser.
+
+**Корень бага:** `sync_playwright().start()` бросает SyncPlaywrightError
+если в текущем потоке есть running asyncio loop. Tool-handlers зовутся
+из `run_agent_session` который ВСЕГДА в async контексте (под aiohttp).
+Smoke-test ранее работал из standalone python потому что там нет loop.
+
+**Фикс:** `BrowserTool` теперь имеет `ThreadPoolExecutor(max_workers=1)`.
+Каждый публичный метод делегирует в `_*_impl` через `self._run(fn)`.
+Worker thread не имеет event loop — sync_playwright стартует штатно.
+Все вызовы сериализуются через одного worker'а.
+
+**Live verify после фикса (poke3 #2):**
+```
+seq 15943: browser.open https://example.com  → OK
+seq 15944: browser.text body                  → "Example Domain..."
+seq 15945: browser.close                      → OK
+seq 15946: DONE: "Браузер работает..."
+```
+6 шагов, точно то что просил Иван.
+
+**Дополнительно в этом ходе:**
+
+1. **body.expression instant render** — `ws.js` обновляет
+   `feed.current_expression` / `current_outfit` / `mood_tint` напрямую
+   при получении соответствующих `outgoing.body_*` событий, а не через
+   /atrium/meta poll каждые 5 сек.
+
+2. **Cloudflare / TLS blocker hints** — два новых паттерна в
+   `_BLOCKER_PATTERNS` с конкретными подсказками:
+   - cloudflare → попробуй browser.open или cloudscraper
+   - tls_handshake → requests verify=False через code.exec, или browser
+
+3. **Stuck-task self-detection** — когда `sessions_used >= 10` без
+   `tasks.complete`, initial_thought содержит "[STUCK-TASK ALERT]" с
+   тремя escalation-вариантами. task-225 mpbacademy сейчас на 22-й
+   сессии — этот alert даст ей сменить подход вместо повтора.
+
+4. **Escalation playbook** в `session_general.md`:
+   - "Что пробовать когда web.fetch упал" — конкретная цепочка
+     web.fetch → cloudscraper → browser.open → proxy
+   - "Когда нужного tool нет — пишешь его сам" — чёткое разделение
+     plugins.create / skills.register_runtime / selfmod
+
+5. **cloudscraper + httpx[socks]** добавлены в `update.sh` deps.
+
+**Тесты: 737 passed** (+4: browser_tool_threading), 6 skipped, 3
+deselected.
+
 ### 2026-05-30 — soft-block parser, providers crash, urgency budget, gate lift fix
 
 **Live audit после первого фикса вскрыл ещё несколько багов:**
