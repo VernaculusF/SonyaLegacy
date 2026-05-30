@@ -807,15 +807,45 @@ class InternalProcess:
                     principal_id=None,
                     drives=self._drives,
                 )
-                # Stack: identity prompt → full context block → unified session
-                # rules (anti-fail-fake / anti-sycophancy / anti-hallucination
-                # — same set of rules as TG channel sees, per
-                # cognition/COGNITION.md: one subject, many surfaces)
+                # Goals visibility — fetch active goals so each active session
+                # has them in the prompt header, not buried behind a `goals.list`
+                # call she'd have to remember to make. Without this, audit
+                # showed 0 goals.* invocations over 24h despite the goal
+                # hierarchy being a core part of SOUL.md.
+                goals_block = ""
+                try:
+                    from sonya.tasks.goals import GoalStore
+                    active_goals = GoalStore(substrate).list_active()
+                    if active_goals:
+                        goals_lines = [
+                            "\n## Активные долгосрочные цели (goals)",
+                            "Помни про L0-L3 hierarchy из SOUL.md. Активные goals в substrate:",
+                        ]
+                        for g in active_goals[:8]:
+                            line = f"- [{g.goal_id}] (prio={g.priority}) {g.title}"
+                            if g.description:
+                                line += f" — {g.description[:120]}"
+                            goals_lines.append(line)
+                        goals_lines.append(
+                            "\nЕсли видишь что какая-то цель достигнута → "
+                            "`goals.achieve <id>`. Если потеряла смысл → "
+                            "`goals.abandon <id>`. Каждая сессия проверяет "
+                            "движение по этим целям, а не только текущую задачу.\n"
+                        )
+                        goals_block = "\n".join(goals_lines)
+                except Exception:
+                    pass
+
+                # Stack: identity prompt → full context block → goals block
+                # → unified session rules (anti-fail-fake / anti-sycophancy /
+                # anti-hallucination — same set of rules as TG channel sees,
+                # per cognition/COGNITION.md: one subject, many surfaces)
                 # → TOOL_DESCRIPTIONS (appended by run_agent_session itself).
                 full_prompt = (
                     prompt
                     + "\n\n"
                     + ctx.system_prompt
+                    + goals_block
                     + "\n\n"
                     + load_session_suffix("internal_active")
                 )

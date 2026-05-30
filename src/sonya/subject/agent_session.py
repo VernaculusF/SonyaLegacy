@@ -1261,26 +1261,72 @@ def _h_plugins_list(arg: str, ctx: _ToolContext) -> str:
 
 
 def _h_plugins_create(arg: str, ctx: _ToolContext) -> str:
+    """Block form: первая строка = имя плагина, остальное = python source.
+
+    Inline fallback: `<name> <inline code>` (одна строка). Source
+    компилируется перед записью — раннее выявление SyntaxError.
+    """
     from sonya.tools.hot_loader import ensure_plugins_dir, load_plugin
-    parts = arg.split(" ", 1)
-    if len(parts) < 2:
-        return "[ERROR] plugins.create needs: name python_code"
-    plugin_name, plugin_code = parts[0], parts[1]
+    import re as _re
+
+    text = (arg or "").lstrip("\n")
+    if not text.strip():
+        return "[ERROR] plugins.create needs: <name>\\n<python_code> or <name> <inline_code>"
+
+    if "\n" in text:
+        first, rest = text.split("\n", 1)
+        plugin_name = first.strip()
+        plugin_code = rest
+    else:
+        # Inline form: first whitespace-token = name, rest = code.
+        parts = text.split(None, 1)
+        if len(parts) < 2:
+            return "[ERROR] plugins.create needs: <name>\\n<python_code>"
+        plugin_name, plugin_code = parts[0], parts[1]
+
+    if not _re.match(r"^[a-z_][a-z0-9_]{1,63}$", plugin_name, _re.IGNORECASE):
+        return (
+            f"[ERROR] plugins.create: invalid name {plugin_name!r}. "
+            "Use lowercase letters, digits, '_' (must start with letter/_)."
+        )
+
+    if not plugin_code.strip():
+        return "[ERROR] plugins.create: empty plugin source"
+
+    try:
+        compile(plugin_code, f"<plugin:{plugin_name}>", "exec")
+    except SyntaxError as exc:
+        return f"[ERROR] plugins.create: SyntaxError: {exc}"
+
     plugin_path = ensure_plugins_dir() / f"{plugin_name}.py"
     plugin_path.write_text(plugin_code, encoding="utf-8")
-    load_plugin(plugin_name)
-    return f"[OK] Plugin '{plugin_name}' created and loaded."
+    try:
+        load_plugin(plugin_name)
+    except Exception as exc:
+        return (
+            f"[OK] written {plugin_path} but load failed: "
+            f"{type(exc).__name__}: {exc}. Plugin will reload on next call."
+        )
+    return f"[OK] Plugin '{plugin_name}' created and loaded → {plugin_path}"
 
 
 def _h_plugins_call(arg: str, ctx: _ToolContext) -> str:
     from sonya.tools.hot_loader import get_plugin, load_plugin
-    parts = arg.split(" ", 1)
+    parts = (arg or "").strip().split(None, 1)
+    if not parts:
+        return "[ERROR] plugins.call needs: <name> [args]"
     plugin_name = parts[0]
     plugin_args = parts[1] if len(parts) > 1 else ""
-    module = get_plugin(plugin_name) or load_plugin(plugin_name)
-    if hasattr(module, "run"):
+    try:
+        module = get_plugin(plugin_name) or load_plugin(plugin_name)
+    except (ImportError, FileNotFoundError) as exc:
+        return f"[ERROR] plugins.call: {exc}"
+    if not hasattr(module, "run"):
+        return f"[ERROR] Plugin '{plugin_name}' has no run() function"
+    try:
         return str(module.run(plugin_args))
-    return f"[ERROR] Plugin '{plugin_name}' has no run() function"
+    except Exception as exc:
+        return f"[ERROR] plugin '{plugin_name}' crashed: {type(exc).__name__}: {exc}"
 
 
 # --- selfmod.* ---
@@ -1741,13 +1787,29 @@ def _h_mind_thought(arg: str, ctx: _ToolContext) -> str:
     when present, the thought is saved to substrate but excluded from
     /atrium/feed (right_to_inner_privacy, 5-й столп things_not_to_betray).
     """
-    if ctx.outbound is None:
-        return "[ERROR] outbound gate not configured"
     text = (arg or "").strip()
     if not text:
         return "[ERROR] mind.thought: empty"
-    from sonya.initiative.outbound import call_outbound_sync
-    return call_outbound_sync(ctx.outbound, text, channel="mind")
+    # Prefer the OutboundGate path (handles dedup, gating, rate caps).
+    if ctx.outbound is not None:
+        from sonya.initiative.outbound import call_outbound_sync
+        return call_outbound_sync(ctx.outbound, text, channel="mind")
+    # Fallback: write directly to continuity stream. Used when outbound
+    # gate isn't wired (e.g. early-init self-checks, pure smoke tests).
+    # Mind pane is internal-only — no Telegram dispatch needed.
+    if ctx.stream is None:
+        return "[ERROR] mind.thought: no continuity stream available"
+    import re as _re
+    is_private = bool(_re.match(r"^\s*\[PRIVATE\]\s*", text, _re.IGNORECASE))
+    body = _re.sub(r"^\s*\[PRIVATE\]\s*", "", text, count=1, flags=_re.IGNORECASE).strip()
+    ctx.stream.append(ContinuityEvent(
+        kind="outgoing.mind_thought",
+        channel="mind",
+        private=is_private,
+        payload={"text": body, "private": is_private, "via": "mind.thought"},
+    ))
+    privacy_note = " (private)" if is_private else ""
+    return f"[OK] mind.thought recorded{privacy_note}: {body[:80]}"
 
 
 _BODY_EXPRESSION_ALLOWED = frozenset({

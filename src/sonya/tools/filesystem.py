@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # Identity-critical files. Sonya CAN read them but MUST NOT write directly.
@@ -93,12 +94,33 @@ class FilesystemTool:
     # --- internal sandbox helpers ---
 
     def _resolve_under_project(self, path: str) -> Path:
-        """Resolve user-provided path against project root and check it stays inside."""
-        p = (self._project_root / path).resolve() if not Path(path).is_absolute() else Path(path).resolve()
+        """Resolve user-provided path against project root and check it stays inside.
+
+        Accepts ``~`` and ``$VAR`` expansions for ergonomics; the resolved
+        absolute path must still live under project_root. Anything outside
+        (e.g. ``~/.sonya``, ``/etc``) is rejected — Sonya uses code.exec /
+        shell.run for those.
+        """
+        # Strip leading whitespace (model often writes ` /path`).
+        path = (path or "").strip()
+        if not path:
+            raise PermissionError("empty path")
+        # Expand ~ / $VAR before resolution. Without this, literal `~` is
+        # treated as a relative path under project_root and resolves to
+        # `<root>/~` which doesn't exist.
+        expanded = os.path.expanduser(os.path.expandvars(path))
+        p = Path(expanded)
+        if not p.is_absolute():
+            p = self._project_root / p
+        p = p.resolve()
         try:
             p.relative_to(self._project_root)
         except ValueError as err:
-            raise PermissionError(f"Path {path} is outside project root") from err
+            raise PermissionError(
+                f"Path {path} is outside project root ({self._project_root}). "
+                f"Use shell.run / code.exec for paths outside the repo "
+                f"(e.g. ~/.sonya/, /etc/, /tmp/)."
+            ) from err
         return p
 
     def _check_forbidden(self, p: Path) -> None:
