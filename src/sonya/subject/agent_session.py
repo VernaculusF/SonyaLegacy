@@ -777,15 +777,21 @@ async def run_agent_session(
                     },
                 ))
                 messages.append({"role": "assistant", "content": response})
+                ivan_msg_quote = (initial_user_text or "").strip()
+                quote_block = (
+                    f"\nИван написал: «{ivan_msg_quote[:600]}»\n"
+                    if ivan_msg_quote else ""
+                )
                 messages.append({
                     "role": "user",
                     "content": (
                         f"[INBOX GATE] Tool `{tool_name}` ЗАБЛОКИРОВАН "
-                        "пока не ответишь Ивану через [TOOL: chat.dialog].\n"
-                        "Иван написал тебе и ждёт ТЕКСТ. Никакая работа над "
-                        "таском/поиском/файлами не выполнится пока ты не "
-                        "ответишь. Просто напиши ему пару слов в chat.dialog "
-                        "и потом возвращайся к делу."
+                        "пока не ответишь Ивану через [TOOL: chat.dialog]."
+                        + quote_block +
+                        "Никакая работа над таском/поиском/файлами не "
+                        "выполнится пока ты не ответишь. Просто напиши "
+                        "ему пару слов в chat.dialog — реакция на его "
+                        "слова — и потом возвращайся к делу."
                     ),
                 })
                 continue
@@ -958,11 +964,22 @@ async def run_agent_session(
             gate_reason = None
             if _unanswered_inbox:
                 gate_reason = "must_reply_to_ivan_first"
+                # Repeat Ivan's message verbatim — small/fast models lose
+                # focus over long prompts and forget what they're supposed
+                # to reply to. The gate hint becomes the freshest copy of
+                # the user message in the prompt.
+                ivan_msg = (initial_user_text or "").strip()
+                msg_quote = (
+                    f"\nИван написал: «{ivan_msg[:600]}»\n" if ivan_msg else ""
+                )
                 gate_msg = (
-                    "[INBOX GATE] [DONE] ЗАБЛОКИРОВАН — Иван написал и "
-                    "ждёт твой ответ. Сначала [TOOL: chat.dialog]<твой "
-                    "ответ>, потом можешь закрывать через [DONE]. "
-                    "НЕ ставь [DONE] раньше чем chat.dialog."
+                    "[INBOX GATE] [DONE] ЗАБЛОКИРОВАН — Иван ждёт твой ответ."
+                    + msg_quote +
+                    "Следующий ход — [TOOL: chat.dialog]<твой ответ ему>. "
+                    "Ответь по сути его последнего сообщения. "
+                    "НЕ ставь [DONE] и НЕ задавай вопрос «что он написал» — "
+                    "его текст вот, выше. Ответ должен быть в твоём голосе, "
+                    "не приветствие, а реакция на сказанное."
                 )
             elif require_dialog_reply and _work_done_since_last_dialog:
                 gate_reason = "must_report_results"

@@ -893,13 +893,15 @@ class InternalProcess:
                 # написал тебе" as introduction to a NEW conversation and
                 # answered with "Привет, малыш. Я здесь" every time even
                 # though prior_messages had the actual context.
+                #
+                # Keep this SHORT — small/fast models lose track on long
+                # multi-conditional system messages. Phase-2 (report after
+                # work) is enforced by the gate; no need to repeat here.
                 initial_thought = (
-                    "Это продолжение разговора с Иваном — выше история. "
-                    "Ответь по сути на его последнее сообщение через "
-                    "[TOOL: chat.dialog]<твой ответ>. Без [TOOL: chat.dialog] "
-                    "тебе НЕЛЬЗЯ ставить [DONE] — отвечай на тему, не "
-                    "приветствуй заново. После работы — ещё один chat.dialog "
-                    "с результатом перед [DONE]."
+                    "Это продолжение разговора с Иваном. Выше — история. "
+                    "Ответь по сути его последнего сообщения через "
+                    "[TOOL: chat.dialog]<твой ответ>. Не приветствуй "
+                    "заново — продолжи разговор там где он остановился."
                 )
                 # Build prior dialog history so the LLM sees CONTINUITY,
                 # not a cold start. Без этого каждая active session
