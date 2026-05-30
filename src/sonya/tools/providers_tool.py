@@ -21,6 +21,28 @@ from sonya.providers.keystore import KeyStatus, KeyStore, ProviderSettings
 from sonya.state.substrate import Substrate
 
 
+def _key_balance_amount(k) -> float | None:
+    """Extract a numeric balance amount from a ProviderKey snapshot.
+
+    Returns None if no snapshot was ever taken or the snapshot has no
+    money-shaped field. ProviderKey.balance() returns the decoded JSON
+    snapshot dict; common keys are 'balance' / 'usd' / 'remaining' /
+    'credits'. Anything that can be cast to float wins.
+    """
+    bal = k.balance() if callable(getattr(k, "balance", None)) else (k.balance or {})
+    if not isinstance(bal, dict) or not bal:
+        return None
+    for field in ("balance", "usd", "remaining", "credits"):
+        v = bal.get(field)
+        if v is None:
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _fmt_key(k) -> str:
     """One-line summary of a provider key."""
     bits = [
@@ -31,8 +53,9 @@ def _fmt_key(k) -> str:
         f"slot={k.slot or '-'}",
         f"req={k.request_count}/err={k.error_count}",
     ]
-    if k.balance is not None:
-        bits.append(f"balance=${k.balance:.2f}")
+    amount = _key_balance_amount(k)
+    if amount is not None:
+        bits.append(f"balance=${amount:.2f}")
     if k.cooldown_until:
         bits.append(f"cooldown_until={k.cooldown_until[:19]}")
     return " ".join(bits)
@@ -75,10 +98,11 @@ class ProvidersTool:
         by_provider: dict[str, list[float]] = {}
         keys_with_balance = 0
         for k in active:
-            if k.balance is None:
+            amount = _key_balance_amount(k)
+            if amount is None:
                 continue
             keys_with_balance += 1
-            by_provider.setdefault(k.provider, []).append(k.balance)
+            by_provider.setdefault(k.provider, []).append(amount)
         if not by_provider:
             return (
                 f"{len(active)} active keys, balance unknown for all "
@@ -117,7 +141,10 @@ class ProvidersTool:
                 "уведомить Ивана."
             )
 
-        balances = [k.balance for k in active if k.balance is not None]
+        balances = [
+            amount for amount in (_key_balance_amount(k) for k in active)
+            if amount is not None
+        ]
         if not balances:
             return (
                 f"[UNKNOWN] {len(active)} active keys, balance не известен "

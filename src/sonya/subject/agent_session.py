@@ -219,6 +219,25 @@ _TOOL_BLOCK_RE = re.compile(
     r"\[TOOL:\s*([^\s\]]+)\s*\]\s*\n```[a-zA-Z0-9_-]*\n(.*?)\n```",
     re.DOTALL,
 )
+# Soft block form (no code fence): [TOOL: name]\n<text>...
+# Args extend until the next [TOOL:, [DONE, [PAUSE, or end of response.
+# Handles the common LLM mistake of writing chat.dialog as:
+#     [TOOL: chat.dialog]
+#     текст ответа
+# instead of `[TOOL: chat.dialog текст ответа]` (inline) or with ``` fence.
+# Without this, arg is empty and the tool fires with no text.
+_TOOL_SOFT_BLOCK_RE = re.compile(
+    r"\[TOOL:\s*([^\s\]]+)\s*\]\s*\n([^\[]+?)(?=\[TOOL:|\[DONE|\[PAUSE|\Z)",
+    re.DOTALL,
+)
+# Tools that legitimately take plain text args without brackets / JSON.
+# Soft-block recovery only applies to these (avoids misparsing things
+# like `[TOOL: filesystem.list]\n/some/path` as having a multi-line arg).
+_SOFT_BLOCK_TEXT_TOOLS = frozenset({
+    "chat.dialog", "chat.tell_ivan", "chat.emergency", "chat.worker_log",
+    "mind.thought", "mind.focus",
+    "voice.speak",
+})
 # Locate the start of an inline TOOL marker so we can do bracket-balanced
 # parse after the name.
 _TOOL_INLINE_START_RE = re.compile(r"\[TOOL:\s*([^\s\]]+)\s*")
@@ -261,6 +280,7 @@ def _extract_tool_call(response: str) -> tuple[str, str] | None:
 
     Block form takes precedence so multi-line code/JSON args work.
     Inline form uses bracket-balanced parsing so JSON args with `]` work.
+    Soft-block (no fence) form is recovered for chat.*/mind.thought/etc.
     """
     m = _TOOL_BLOCK_RE.search(response)
     if m:
@@ -268,7 +288,18 @@ def _extract_tool_call(response: str) -> tuple[str, str] | None:
     # Try bracket-balanced inline parse first (handles JSON with nested ]).
     balanced = _find_balanced_inline_tool(response)
     if balanced is not None:
-        return balanced
+        tool_name, arg = balanced
+        # Empty inline arg + chat-like tool = likely the model wrote
+        # block form without a fence. Fall through to soft-block to
+        # recover the text on following lines.
+        if arg or tool_name not in _SOFT_BLOCK_TEXT_TOOLS:
+            return tool_name, arg
+    # Soft-block recovery: `[TOOL: name]\n<text>` for plain-text tools.
+    m = _TOOL_SOFT_BLOCK_RE.search(response)
+    if m and m.group(1) in _SOFT_BLOCK_TEXT_TOOLS:
+        arg = m.group(2).strip()
+        if arg:
+            return m.group(1), arg
     # Fallback to simple regex (shouldn't be reached after balanced parser
     # but kept for safety on edge cases).
     m = _TOOL_INLINE_RE.search(response)
@@ -640,8 +671,15 @@ async def run_agent_session(
             # work — but they don't satisfy the "answer Ivan" obligation.
             _DIALOG_TOOLS = {"chat.dialog", "chat.tell_ivan", "chat.emergency"}
             _SAFE_REACTION_TOOLS = {"body.expression", "mind.thought", "mind.focus", "body.outfit"}
+            # The gate only lifts when chat.dialog actually dispatches with
+            # non-empty text. Empty-arg or [BLOCKED] result keeps the gate
+            # active so she can't slip past with an empty marker. Lift is
+            # applied AFTER the tool runs (see observation handling below).
+            _gate_pending_lift = (
+                _unanswered_inbox and tool_name in _DIALOG_TOOLS
+            )
             if _unanswered_inbox and tool_name in _DIALOG_TOOLS:
-                _unanswered_inbox = False  # she replied, gate lifts
+                pass  # don't lift yet — wait for observation
             elif _unanswered_inbox and tool_name not in _SAFE_REACTION_TOOLS:
                 # Refuse the tool, force her to reply first.
                 stream.append(ContinuityEvent(
@@ -727,6 +765,15 @@ async def run_agent_session(
                         drives_callback()
                     except Exception:
                         pass
+
+            # Inbox-priority gate lift: chat.dialog must have actually
+            # dispatched (non-error result) for the gate to lift. Empty-arg
+            # or [BLOCKED] result keeps the gate active so the model can't
+            # slip past with `[TOOL: chat.dialog]` and no text.
+            if _gate_pending_lift and observation:
+                head = observation.lstrip()[:10].upper()
+                if not head.startswith("[ERROR]") and not head.startswith("[BLOCKED]"):
+                    _unanswered_inbox = False
 
             # Same-tool repeat detector: track last 4 tool calls; if the
             # current call repeats a recent one (same tool + similar arg),

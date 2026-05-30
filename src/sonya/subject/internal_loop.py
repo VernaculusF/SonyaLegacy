@@ -1471,6 +1471,25 @@ class InternalProcess:
                             texts.append(t)
                     return texts
 
+                # Urgency-aware budget per HANDOFF.md plan:
+                #   urgent     →  8 шагов /  90с (deadline-bound)
+                #   normal     → 20 шагов / 300с (regular Ivan tasks)
+                #   background → 30 шагов / 900с (slow self research)
+                # Default tuple is (8, 90.0) for urgent because the worker
+                # only fires when there's a urgent task in the queue today
+                # (effective_worker_interval drops to 3 min when urgent
+                # tasks exist). Non-urgent ticks shouldn't be burning
+                # tokens anyway.
+                _budget_by_urgency = {
+                    "urgent":     (8,  90.0),
+                    "normal":     (20, 300.0),
+                    "background": (30, 900.0),
+                }
+                w_steps, w_seconds = _budget_by_urgency.get(
+                    (task.urgency or "normal").lower(),
+                    (20, 300.0),
+                )
+
                 worker_window = Window(
                     kind=WINDOW_KIND_WORKER,
                     system_prompt=worker_prompt,
@@ -1490,6 +1509,8 @@ class InternalProcess:
                         "browser": tools.get("browser"),
                     },
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
+                    max_steps=w_steps,
+                    max_seconds=w_seconds,
                     outbound=tools["outbound"],
                     inbox_drain=_ivan_inbox_drain_worker,
                     drives_callback=self._drives.on_action_completed,
@@ -1935,10 +1956,14 @@ class InternalProcess:
             return
         try:
             from sonya.providers.keystore import KeyStatus, KeyStore
+            from sonya.tools.providers_tool import _key_balance_amount
             store = KeyStore(substrate)
             keys = store.list_keys()
             active = [k for k in keys if k.status == KeyStatus.ACTIVE]
-            balances = [k.balance for k in active if k.balance is not None]
+            balances = [
+                amt for amt in (_key_balance_amount(k) for k in active)
+                if amt is not None
+            ]
             total = sum(balances) if balances else None
 
             if not active:
