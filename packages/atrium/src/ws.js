@@ -23,12 +23,30 @@ function classifySrc(kind, payload) {
   // Server already infers src in event JSON. Fall back to client-side
   // classification if missing.
   if (payload && payload.src) return payload.src;
-  if (kind?.startsWith('outgoing.worker_log') || kind?.includes('task_worker')) return 'worker';
-  if (kind?.startsWith('internal.thought')) return 'idle';
-  if (kind?.startsWith('outgoing.dialog') || kind?.startsWith('outgoing.telegram') || kind?.startsWith('outgoing.response')) return 'active';
-  if (kind?.startsWith('outgoing.mind') || kind?.startsWith('outgoing.body') || kind?.startsWith('outgoing.voice')) return 'active';
-  if (kind?.startsWith('internal.scheduler') || kind?.startsWith('subject.lifecycle')) return 'system';
-  if (kind?.startsWith('skill.') || kind?.includes('capability_gap')) return 'skill';
+  if (!kind) return 'system';
+  // worker / task progress
+  if (kind.startsWith('outgoing.worker_log') || kind.includes('task_worker')
+      || kind.startsWith('task.')) return 'worker';
+  // idle reflection
+  if (kind.startsWith('internal.thought') || kind === 'internal.idle_thought') return 'idle';
+  // dialog / outbound
+  if (kind.startsWith('outgoing.dialog') || kind.startsWith('outgoing.telegram')
+      || kind.startsWith('outgoing.response')) return 'active';
+  if (kind.startsWith('outgoing.mind') || kind.startsWith('outgoing.body')
+      || kind.startsWith('outgoing.voice')) return 'active';
+  // active-session work: steps, session lifecycle, blockers, ticks, tool/shell
+  if (kind.startsWith('internal.agent_step') || kind.startsWith('internal.agent_session')
+      || kind.startsWith('internal.blocker') || kind.startsWith('internal.cognitive_tick')
+      || kind.startsWith('internal.inbox') || kind.startsWith('internal.auto_ack')
+      || kind.endsWith('_yolo') || kind.startsWith('shell.') || kind.startsWith('pip.')
+      || kind.startsWith('code.') || kind.startsWith('web.') || kind.startsWith('filesystem.')) {
+    return 'active';
+  }
+  // skills
+  if (kind.startsWith('skill.') || kind.includes('capability_gap')) return 'skill';
+  // selfmod
+  if (kind.startsWith('self_mod') || kind.startsWith('selfmod')) return 'skill';
+  // system: schedulers, lifecycle, initiative gating, nudges
   return 'system';
 }
 

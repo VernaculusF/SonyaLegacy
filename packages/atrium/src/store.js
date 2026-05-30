@@ -158,6 +158,28 @@ export function pushDialogMessage(msg) {
   setFeed('dialog_messages', (cur) => {
     // Dedup by seq — reconnects / overlapping catch-up must not double-post.
     if (msg.seq != null && cur.some((m) => m.seq === msg.seq)) return cur;
+    // Dedup optimistic echo vs WS echo: same sender + same text within 8s.
+    // (composer pushes a local- echo; the backend later emits the same text
+    // with a real seq — without this they'd both show.)
+    if (msg.text) {
+      const t = msg.ts ? new Date(msg.ts).getTime() : Date.now();
+      const dup = cur.some((m) =>
+        m.sender === msg.sender &&
+        (m.text || '').trim() === (msg.text || '').trim() &&
+        Math.abs((m.ts ? new Date(m.ts).getTime() : 0) - t) < 8000
+      );
+      if (dup) {
+        // Prefer the real-seq copy: if incoming has a numeric seq and the
+        // existing one was a local echo, replace it so reply/scroll keys are stable.
+        if (typeof msg.seq === 'number') {
+          return cur.map((m) =>
+            (m.sender === msg.sender && (m.text || '').trim() === (msg.text || '').trim()
+              && String(m.seq).startsWith('local-')) ? { ...msg } : m
+          );
+        }
+        return cur;
+      }
+    }
     const next = [...cur, msg];
     if (next.length > MAX_DIALOG) next.splice(0, next.length - MAX_DIALOG);
     return next;

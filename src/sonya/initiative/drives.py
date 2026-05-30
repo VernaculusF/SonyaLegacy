@@ -28,12 +28,22 @@ class DriveCounters:
 
     threshold: float = 0.7
     max_value: float = 1.0  # drives are bounded analogs, never exceed this
+    # Passive decay per tick — drives relax toward 0 over time (homeostasis),
+    # so they "breathe" instead of pinning at max. Applied before accumulation.
+    decay_rate: float = 0.004
 
     def tick(self, active_intentions_count: int = 0) -> list[str]:
-        """Increment counters (clamped to max_value). Returns drives that
-        crossed threshold this tick."""
+        """Increment counters (with passive decay, clamped to [0, max_value]).
+        Returns drives that crossed threshold this tick."""
         crossed: list[str] = []
         m = self.max_value
+        d = self.decay_rate
+
+        # passive relaxation toward 0
+        self.boredom_analog = max(0.0, self.boredom_analog - d)
+        self.curiosity_analog = max(0.0, self.curiosity_analog - d)
+        self.relational_focus = max(0.0, self.relational_focus - d)
+        self.pending_debt = max(0.0, self.pending_debt - d)
 
         prev = self.boredom_analog
         self.boredom_analog = min(m, self.boredom_analog + self.boredom_rate)
