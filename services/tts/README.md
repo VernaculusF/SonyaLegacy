@@ -3,13 +3,16 @@
 Runs a HTTP TTS server on `127.0.0.1:8878` that Atrium calls to synthesize
 Sonya's voice locally on Ivan's PC.
 
-## Phase B.1 — Silero (today)
+## Phase B.1.1 — Piper TTS (current)
 
-- **Model**: Silero v4_ru — 5 RU voices, ~50 MB, real-time on CPU.
-- **Voices**: `baya` (default, ж), `kseniya` (ж), `xenia` (ж), `aidar` (м), `eugene` (м).
-- **Latency**: ~200ms for one short sentence on a modern i5+ (CPU-only).
-- **GPU**: CUDA used automatically if available; AMD GPUs (RX 6600 XT) need
-  ROCm or DirectML to engage — not required for Silero (CPU is enough).
+- **Engine**: Piper (ONNX neural TTS, no torch needed at runtime).
+- **Model**: 60 MB per voice, real-time on CPU (~0.25s for one sentence on i5+).
+- **Voices** (Russian):
+  - `irina` — Female, primary (recommended for Sonya).
+  - `denis` — Male.
+  - `ruslan` — Male.
+- Quality: per the [alphacephei eval](https://alphacephei.com/nsh/2024/07/12/russian-tts.html)
+  Piper Irina is the strongest free open-source RU voice (MOS 4.0/5).
 
 ## Phase B.2 — XTTS v2 (later — её собственный голос)
 
@@ -23,9 +26,11 @@ When Ivan has 5–10 минут чистой записи Сониного го�
 One-time:
 
 ```powershell
-# Создаст services\tts\.venv и скачает модель (~150MB torch + 50MB silero).
 powershell -ExecutionPolicy Bypass -File services\tts\setup.ps1
 ```
+
+Это создаст `services\tts\.venv` (legkий, ~80 MB), скачает 3 голосовые модели
+(~180 MB) в `services\tts\.cache\piper\`.
 
 ## Run
 
@@ -33,36 +38,40 @@ powershell -ExecutionPolicy Bypass -File services\tts\setup.ps1
 powershell -ExecutionPolicy Bypass -File services\tts\start_tts.ps1
 ```
 
-Сервис слушает только `127.0.0.1:8878` — наружу не торчит.
+Сервис слушает только `127.0.0.1:8878` — наружу не торчит. Holds the loaded
+model in RAM (~150 MB).
 
 ## Use from Atrium
 
 1. Settings (⚙) → voice → `local`.
 2. tts service url: `http://127.0.0.1:8878` (default).
-3. Select voice → ▶ test voice.
-4. Когда Соня отвечает в Dialog pane — ты её слышишь, рот синхронизирован
+3. tts voice → выбрать `irina` (или denis / ruslan).
+4. ▶ test voice.
+5. Когда Соня отвечает в Dialog pane — ты её слышишь, рот синхронизирован
    через Web Audio AnalyserNode (реальная амплитуда WAV).
 
 ## Endpoints
 
-- `GET  /health`  → `{ok, model, warm, default_voice, sample_rate}`
-- `GET  /voices`  → `{voices: [...], default}`
-- `POST /tts`     → body `{text, voice?, speed?}` → WAV bytes
+- `GET  /health`  → `{ok, model, warm, default_voice, sample_rate, available_voices}`
+- `GET  /voices`  → `{voices: [...], default, labels}`
+- `POST /tts`     → body `{text, voice?, speed?}` → WAV bytes (audio/wav)
 
 ## Env overrides
 
 - `TTS_HOST` (default `127.0.0.1`)
 - `TTS_PORT` (default `8878`)
-- `TTS_VOICE` (default `baya`)
-- `TTS_SAMPLE_RATE` (default `48000`; Silero supports 8000/24000/48000)
+- `TTS_VOICE` (default `irina`)
+
+## Adding more voices
+
+Look up voices at https://huggingface.co/rhasspy/piper-voices/tree/main/ru/ru_RU,
+download `<voice>.onnx` + `<voice>.onnx.json` to `services\tts\.cache\piper\`,
+add an entry to `VOICE_REGISTRY` in `server.py`. Restart.
 
 ## Troubleshooting
 
-- **First request slow (~5–10 sec)** — модель догружается при старте; warmup
-  в `start_tts.ps1` это решает.
 - **Atrium показывает `✗ Failed to fetch`** — сервис не запущен. Проверь
   `services\tts\start_tts.ps1` в отдельной консоли.
-- **Голос мужской хотя выбран `baya`** — браузер закэшировал старый WAV.
-  Reload вкладки.
-- **AMD GPU не используется** — Silero не требует. Для XTTS v2 нужен
-  `torch-directml` или ROCm — отдельный setup.
+- **`no russian text` 400** — модель v4_ru понимает только кириллицу. Иван
+  пишет latin-only? Этот случай теперь возвращает чистый 400.
+- **первый запрос медленный (~2s)** — модель греется. Server prewarms на старте.

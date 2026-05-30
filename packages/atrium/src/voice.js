@@ -122,9 +122,9 @@ function _speakBrowser(text, opts) {
     u.onboundary = (ev) => {
       const r = Math.random();
       target =
-        r < 0.12 ? 0.85 + Math.random() * 0.15 :
-        r < 0.55 ? 0.4 + Math.random() * 0.3 :
-                   0.12 + Math.random() * 0.18;
+        r < 0.04 ? 0.92 + Math.random() * 0.08 :  // wide — very rare
+        r < 0.55 ? 0.4 + Math.random() * 0.3 :    // normal
+                   0.12 + Math.random() * 0.16;   // quiet
       if (ev && ev.name === 'word' && Math.random() < 0.15) target = 0.05;
     };
     u.onend = () => {

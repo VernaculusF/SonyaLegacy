@@ -271,11 +271,12 @@ export function simulateSpeech(ms = 2500) {
         sylLeft = 2 + Math.floor(Math.random() * 4); // next word: 2-5 syllables
         nextChangeAt = now + 130 + Math.random() * 170; // pause length
       } else {
-        // a syllable: mostly quiet/normal, occasional louder peak
+        // a syllable: mostly quiet/normal, RARE loud peak (frame 3 only on
+        // emphatic beats — Ivan asked frame 4 be ОЧЕНЬ редкое).
         const r = Math.random();
-        target = r < 0.15 ? 0.78 + Math.random() * 0.22   // loud (rare → frame 3)
-               : r < 0.6  ? 0.34 + Math.random() * 0.3    // normal (frame 2)
-               :            0.12 + Math.random() * 0.16;  // quiet (frame 1)
+        target = r < 0.04 ? 0.92 + Math.random() * 0.08    // wide (very rare)
+               : r < 0.55 ? 0.34 + Math.random() * 0.3     // normal (frame 2)
+               :            0.10 + Math.random() * 0.14;   // quiet (frame 1)
         sylLeft -= 1;
         nextChangeAt = now + 95 + Math.random() * 85;     // ~5-7 syll/sec
       }

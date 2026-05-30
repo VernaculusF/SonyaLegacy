@@ -3,113 +3,108 @@
 Runs on Ivan's PC at http://127.0.0.1:8878. Atrium fetches WAV bytes from
 POST /tts and plays them through a Web Audio AnalyserNode for lip-sync.
 
-Phase B.1 — Silero TTS:
-  - Free, ~50MB model, 4 Russian voices (3 female, 1 male).
-  - Real-time on CPU (i5+ ~200ms for one sentence).
-  - No GPU needed → works today on Ivan's RX 6600 XT box without ROCm setup.
+Phase B.1.1 — Piper TTS (current):
+  - Free, fast (~0.2s for short sentence on CPU), neural quality.
+  - Russian voices: ru_RU-irina-medium (female, recommended), ru_RU-ruslan-medium (male).
+  - Uses ONNX runtime — no torch needed at runtime, much smaller.
+  - Models cached in services/tts/.cache/piper/*.onnx (downloaded by setup.ps1).
 
-Phase B.2 — XTTS v2 (later, when Ivan wants HER voice):
+Phase B.2 — XTTS v2 (later, when Ivan has 5-10 min of cloned voice samples):
   - Replace _synthesize() with XTTS pipeline.
   - Same HTTP contract — Atrium doesn't change.
 
 Endpoints:
-  GET  /voices                 → {voices: [...], default: "baya"}
+  GET  /voices                 → {voices: [...], default}
   POST /tts                    → body {text, voice?, speed?} → WAV bytes (audio/wav)
-  GET  /health                 → {ok: true, model: "silero-v4-ru", warm: bool}
+  GET  /health                 → {ok, model, warm, default_voice, sample_rate}
 
-CORS open (only listens on 127.0.0.1; safe by virtue of no remote access).
+CORS open (only listens on 127.0.0.1; safe by no remote access).
 """
 from __future__ import annotations
 
 import io
 import logging
 import os
+import re
 import time
+import wave
 from pathlib import Path
-from typing import Any
 
-import torch
 from aiohttp import web
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("tts")
 
-# Silero v4 Russian model — 4 voices: aidar (m), baya (f), kseniya (f), xenia (f), eugene (m)
-SILERO_LANG = "ru"
-SILERO_MODEL_ID = "v4_ru"
-DEFAULT_VOICE = os.environ.get("TTS_VOICE", "baya")
-SAMPLE_RATE = int(os.environ.get("TTS_SAMPLE_RATE", "48000"))
-PUT_ACCENT = True
-PUT_YO = True
+_HERE = Path(__file__).parent
+_MODELS_DIR = _HERE / ".cache" / "piper"
 
-# Where Silero caches its weights — use a local cache dir to avoid re-download.
-_CACHE_DIR = Path(__file__).parent / ".cache"
-_CACHE_DIR.mkdir(exist_ok=True)
-torch.hub.set_dir(str(_CACHE_DIR))
+# Voice id → (model filename, label, gender). Models live under _MODELS_DIR.
+# More voices: download from https://huggingface.co/rhasspy/piper-voices/tree/main/ru/ru_RU
+VOICE_REGISTRY = {
+    "irina":  ("ru_RU-irina-medium.onnx",  "Irina (female)",  "female"),
+    "denis":  ("ru_RU-denis-medium.onnx",  "Denis (male)",    "male"),
+    "ruslan": ("ru_RU-ruslan-medium.onnx", "Ruslan (male)",   "male"),
+}
+DEFAULT_VOICE = os.environ.get("TTS_VOICE", "irina")
 
-_model = None  # lazy-loaded on first /tts
+_voices_cache = {}  # voice_id → PiperVoice instance
 
 
-def _load_model():
-    global _model
-    if _model is not None:
-        return _model
-    log.info("loading Silero %s/%s ...", SILERO_LANG, SILERO_MODEL_ID)
+def _available_voices() -> list[str]:
+    """Voice ids whose ONNX model is actually present on disk."""
+    out = []
+    for vid, (fname, _, _) in VOICE_REGISTRY.items():
+        if (_MODELS_DIR / fname).exists():
+            out.append(vid)
+    return out
+
+
+def _load_voice(voice_id: str):
+    if voice_id in _voices_cache:
+        return _voices_cache[voice_id]
+    if voice_id not in VOICE_REGISTRY:
+        raise ValueError(f"unknown voice {voice_id!r} (known: {list(VOICE_REGISTRY)})")
+    fname, label, _ = VOICE_REGISTRY[voice_id]
+    model_path = _MODELS_DIR / fname
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"voice model not found: {model_path}. "
+            f"Run services\\tts\\setup.ps1 to download."
+        )
+    log.info("loading Piper voice %s (%s) ...", voice_id, label)
     t0 = time.time()
-    model, _ = torch.hub.load(
-        repo_or_dir="snakers4/silero-models",
-        model="silero_tts",
-        language=SILERO_LANG,
-        speaker=SILERO_MODEL_ID,
-        trust_repo=True,
-    )
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    log.info("model loaded on %s in %.1fs (voices: %s)",
-             device, time.time() - t0, ", ".join(model.speakers))
-    _model = model
-    return model
+    from piper import PiperVoice
+    v = PiperVoice.load(str(model_path))
+    log.info("voice %s loaded in %.1fs (sample_rate=%d)",
+             voice_id, time.time() - t0, v.config.sample_rate)
+    _voices_cache[voice_id] = v
+    return v
 
 
-def _synthesize(text: str, voice: str, speed: float = 1.0) -> bytes:
-    """Run Silero TTS and return WAV bytes (PCM16 mono @ SAMPLE_RATE)."""
-    import wave
-    model = _load_model()
-    if voice not in model.speakers:
-        log.warning("voice %r not in %s — using default %r", voice, model.speakers, DEFAULT_VOICE)
-        voice = DEFAULT_VOICE
-    # Silero accepts plain text; it does its own G2P. Strip noise.
+def _synthesize(text: str, voice_id: str, speed: float = 1.0) -> bytes:
+    """Synthesize text → WAV bytes (PCM16 mono @ voice's native sample rate)."""
     text = (text or "").strip()
     if not text:
         raise ValueError("empty text")
-    # Silero v4_ru only accepts Russian letters + basic punct. If the input
-    # has no Russian content (English-only / numbers / mojibake), Silero's
-    # process_simple_text raises ValueError without a message. Pre-flight
-    # check so we return a clean 400.
-    import re
+    # Russian-only check (Piper can handle other text but ru models are tuned for ru).
     if not re.search(r"[а-яёА-ЯЁ]", text):
-        raise ValueError("no russian text (silero v4_ru is RU-only)")
-    audio = model.apply_tts(
-        text=text,
-        speaker=voice,
-        sample_rate=SAMPLE_RATE,
-        put_accent=PUT_ACCENT,
-        put_yo=PUT_YO,
-    )
-    # audio is a torch.float32 tensor on the model's device, range -1..1.
-    pcm = (audio.detach().cpu().clamp(-1.0, 1.0).numpy() * 32767).astype("int16")
-    if speed != 1.0 and 0.5 <= speed <= 2.0:
-        # crude resample for speed change — fine for small adjustments
-        import numpy as np
-        idx = (np.arange(int(len(pcm) / speed)) * speed).astype("int64")
-        idx = idx[idx < len(pcm)]
-        pcm = pcm[idx]
+        raise ValueError("no russian text")
+    v = _load_voice(voice_id)
     buf = io.BytesIO()
-    with wave.open(buf, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)  # 16-bit
-        wav.setframerate(SAMPLE_RATE)
-        wav.writeframes(pcm.tobytes())
+    # Piper writes a complete WAV (header + frames) using the wave module.
+    from piper import SynthesisConfig
+    cfg = None
+    if speed and speed > 0 and speed != 1.0:
+        # Piper length_scale: <1 faster, >1 slower (inverse of speed).
+        try:
+            cfg = SynthesisConfig(length_scale=1.0 / speed)
+        except Exception:
+            cfg = None
+    with wave.open(buf, "wb") as wf:
+        if cfg is not None:
+            v.synthesize_wav(text, wf, syn_config=cfg)
+        else:
+            v.synthesize_wav(text, wf)
     return buf.getvalue()
 
 
@@ -123,20 +118,26 @@ def _cors(resp: web.Response) -> web.Response:
 
 
 async def health(request: web.Request) -> web.Response:
+    available = _available_voices()
+    sr = None
+    if _voices_cache:
+        sr = next(iter(_voices_cache.values())).config.sample_rate
     return _cors(web.json_response({
         "ok": True,
-        "model": f"silero-{SILERO_MODEL_ID}",
-        "warm": _model is not None,
-        "default_voice": DEFAULT_VOICE,
-        "sample_rate": SAMPLE_RATE,
+        "model": "piper",
+        "warm": bool(_voices_cache),
+        "default_voice": DEFAULT_VOICE if DEFAULT_VOICE in available else (available[0] if available else None),
+        "sample_rate": sr,
+        "available_voices": available,
     }))
 
 
 async def voices(request: web.Request) -> web.Response:
-    model = _load_model()
+    available = _available_voices()
     return _cors(web.json_response({
-        "voices": list(model.speakers),
-        "default": DEFAULT_VOICE,
+        "voices": available,
+        "default": DEFAULT_VOICE if DEFAULT_VOICE in available else (available[0] if available else None),
+        "labels": {vid: VOICE_REGISTRY[vid][1] for vid in available},
     }))
 
 
@@ -153,15 +154,18 @@ async def tts(request: web.Request) -> web.Response:
         speed = 1.0
     if not text:
         return _cors(web.json_response({"error": "text required"}, status=400))
-    # Silero choke-points: very long input crashes. Hard cap at 1000 chars.
-    text = text[:1000]
+    text = text[:1500]
     t0 = time.time()
     try:
         wav_bytes = _synthesize(text, voice, speed=speed)
+    except FileNotFoundError as e:
+        return _cors(web.json_response({"error": str(e)}, status=404))
+    except ValueError as e:
+        return _cors(web.json_response({"error": str(e)}, status=400))
     except Exception as e:
         log.exception("synth failed")
         return _cors(web.json_response({"error": f"{type(e).__name__}: {e}"}, status=500))
-    log.info("tts %d chars / %s / %.1fs → %d bytes",
+    log.info("tts %d chars / %s / %.2fs → %d bytes",
              len(text), voice, time.time() - t0, len(wav_bytes))
     resp = web.Response(body=wav_bytes, content_type="audio/wav")
     resp.headers["X-TTS-Voice"] = voice
@@ -174,7 +178,7 @@ async def options_handler(request: web.Request) -> web.Response:
 
 
 def make_app() -> web.Application:
-    app = web.Application(client_max_size=1 << 20)  # 1 MB max body
+    app = web.Application(client_max_size=1 << 20)
     app.router.add_get("/health", health)
     app.router.add_get("/voices", voices)
     app.router.add_post("/tts", tts)
@@ -186,11 +190,17 @@ def make_app() -> web.Application:
 def main():
     host = os.environ.get("TTS_HOST", "127.0.0.1")
     port = int(os.environ.get("TTS_PORT", "8878"))
-    # warm the model on startup to avoid first-request stall
-    try:
-        _load_model()
-    except Exception:
-        log.exception("warmup failed; model will lazy-load on first request")
+    available = _available_voices()
+    if not available:
+        log.error("no voice models found in %s — run setup.ps1 to download.", _MODELS_DIR)
+    else:
+        log.info("available voices: %s", ", ".join(available))
+        # Warm the default voice so first request isn't slow.
+        try:
+            warm = DEFAULT_VOICE if DEFAULT_VOICE in available else available[0]
+            _load_voice(warm)
+        except Exception:
+            log.exception("warmup failed; voice will lazy-load on first request")
     log.info("starting TTS server on http://%s:%d", host, port)
     web.run_app(make_app(), host=host, port=port)
 

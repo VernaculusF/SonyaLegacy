@@ -42,9 +42,12 @@ function _loop() {
   const rms = Math.sqrt(sum / dataArr.length); // 0..~1
   // noise gate: ignore room hum / faint background
   const gated = rms < 0.012 ? 0 : rms;
-  // scale into 0..1 (×3.4 maps typical speech to a good range), soft clip
-  let level = Math.min(1, gated * 3.4);
-  level = Math.pow(level, 0.85); // mild expansion of the quiet end
+  // scale into 0..1. For TTS WAVs (peak-normalized to ~0.95), voiced RMS
+  // sits around 0.15-0.25 with rare 0.35+ peaks. We want most syllables to
+  // map to the "active" mouth frame and only emphatic peaks to "wide".
+  // Multiplier 2.4 + soft compression keeps frame 3 rare.
+  let level = Math.min(1, gated * 2.4);
+  level = Math.pow(level, 1.0); // linear; was 0.85 (too aggressive lifting)
   const k = level > smooth ? 0.55 : 0.16; // attack / release
   smooth += (level - smooth) * k;
   if (smooth < 0.01) smooth = 0;

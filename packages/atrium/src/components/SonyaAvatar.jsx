@@ -94,12 +94,13 @@ export default function SonyaAvatar(props) {
 
   // Amplitude → mouth frame with explicit thresholds + hysteresis.
   // Frame meaning (4-frame set): 0 closed (silence/between words),
-  // 1 quiet, 2 active/normal, 3 loud (rare). Hysteresis: it takes a higher
-  // level to step UP than to fall back DOWN, so boundaries don't flicker.
-  // Thresholds are level values 0..1 (level = smoothed RMS from real audio,
-  // or the simulated envelope as fallback).
-  const UP = [0.06, 0.30, 0.72];   // closed→1, 1→2, 2→3
-  const DOWN = [0.03, 0.20, 0.58]; // 1→closed, 2→1, 3→2
+  // 1 quiet, 2 active/normal, 3 loud (RARE — only loud peaks).
+  // Hysteresis: it takes a higher level to step UP than to fall back DOWN,
+  // so boundaries don't flicker. Thresholds are level values 0..1.
+  // Frame 3 (wide) is intentionally HARD to reach — Ivan's frame 4 should
+  // appear only on emphatic beats, not on every loud syllable.
+  const UP = [0.05, 0.32, 0.92];   // closed→1, 1→2, 2→3 (3 only at near-clip)
+  const DOWN = [0.02, 0.22, 0.78]; // 1→closed, 2→1, 3→2
   const [mouthFrame, setMouthFrame] = createSignal(0);
 
   createEffect(() => {
