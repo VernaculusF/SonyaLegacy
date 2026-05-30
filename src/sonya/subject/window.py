@@ -98,6 +98,10 @@ class Window:
     initial_thought: str = ""
     initial_user_text: str | None = None
     initial_user_message: list[dict[str, Any]] | None = None
+    # Conversation history — list of {role: 'user'|'assistant', content: str}.
+    # Goes between system prompt and initial_user_text so the LLM sees
+    # continuity, not a cold start. Built by caller from continuity_events.
+    prior_messages: list[dict[str, Any]] | None = None
     # Caller hint: this Window opened on an Ivan message that he is
     # actively waiting for a reply to. Forces the inbox-priority gate
     # in run_agent_session — chat.dialog must fire before [DONE]. Used
@@ -162,6 +166,7 @@ async def run_window(
         initial_thought=window.initial_thought,
         initial_user_message=window.initial_user_message,
         initial_user_text=window.initial_user_text,
+        prior_messages=window.prior_messages,
         require_dialog_reply=window.require_dialog_reply,
         max_steps=steps,
         max_seconds=seconds,

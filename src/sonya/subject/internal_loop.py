@@ -874,6 +874,7 @@ class InternalProcess:
             pending_dialog = self._pending_ivan_message(substrate)
             initial_thought = ""
             initial_user_text: str | None = None
+            prior_messages: list[dict] = []
             if pending_dialog:
                 force_selfmod_track = False
                 att = pending_dialog.get("media_kind")
@@ -893,6 +894,56 @@ class InternalProcess:
                     "ответить. После ответа можешь продолжить с тасками "
                     "или selfmod."
                 )
+                # Build prior dialog history so the LLM sees CONTINUITY,
+                # not a cold start. Без этого каждая active session
+                # открывалась "Привет, малыш. Я здесь" не помня что Иван
+                # говорил 5 минут назад. Pulls last 12 dialog turns
+                # (incoming + outgoing) before the pending message.
+                try:
+                    pending_seq = int(pending_dialog.get("seq", 0) or 0)
+                    rows = substrate.connection.execute(
+                        "SELECT seq, kind, payload_json FROM continuity_events "
+                        "WHERE seq < ? AND kind IN ("
+                        " 'incoming.atrium_dialog','incoming.telegram_message',"
+                        " 'outgoing.dialog','outgoing.telegram_response',"
+                        " 'outgoing.telegram_progress','outgoing.telegram_initiative',"
+                        " 'outgoing.response') "
+                        "ORDER BY seq DESC LIMIT 12",
+                        (pending_seq,),
+                    ).fetchall()
+                    import json as _json
+                    history = []
+                    for seq, kind, pj in reversed(rows):
+                        try:
+                            p = _json.loads(pj or "{}")
+                        except Exception:
+                            continue
+                        text = (p.get("text") or "").strip()
+                        if not text:
+                            continue
+                        if kind.startswith("incoming."):
+                            history.append({"role": "user", "content": text[:1500]})
+                        else:
+                            history.append({"role": "assistant", "content": text[:1500]})
+                    # Collapse consecutive same-role turns (LLM dislikes them).
+                    collapsed: list[dict] = []
+                    for m in history:
+                        if collapsed and collapsed[-1]["role"] == m["role"]:
+                            collapsed[-1]["content"] = (
+                                collapsed[-1]["content"] + "\n\n" + m["content"]
+                            )[:3000]
+                        else:
+                            collapsed.append(m)
+                    # Ensure we don't end on assistant (or LLM will reply
+                    # to itself instead of the new user_text).
+                    if collapsed and collapsed[-1]["role"] == "assistant":
+                        prior_messages = collapsed
+                    else:
+                        # If history ends on user (her last turn was unanswered)
+                        # — drop it; the new user_text is the canonical one.
+                        prior_messages = collapsed[:-1] if collapsed else []
+                except Exception:
+                    prior_messages = []
 
             try:
                 from sonya.tasks.service import TaskService
@@ -1179,6 +1230,7 @@ class InternalProcess:
                 },
                 initial_thought=initial_thought,
                 initial_user_text=initial_user_text,
+                prior_messages=prior_messages or None,
                 require_dialog_reply=initial_user_text is not None,
                 outbound=self._outbound,
                 inbox_drain=_ivan_inbox_drain,
@@ -1933,7 +1985,12 @@ class InternalProcess:
             last_out_seq = int(row2[0]) if row2 else 0
 
             if last_in_seq > last_out_seq:
-                return payload if isinstance(payload, dict) else None
+                if isinstance(payload, dict):
+                    # Add seq so callers can fetch prior history before
+                    # this message (build_full_context-style continuity).
+                    payload = dict(payload)
+                    payload["seq"] = last_in_seq
+                    return payload
             return None
         except Exception:
             return None

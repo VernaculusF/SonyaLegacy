@@ -580,6 +580,7 @@ async def run_agent_session(
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
     initial_user_text: str | None = None,
+    prior_messages: list[dict[str, Any]] | None = None,
     require_dialog_reply: bool = False,
     max_steps: int = 30,
     max_seconds: float = 1200.0,
@@ -597,6 +598,20 @@ async def run_agent_session(
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt + "\n\n" + TOOL_DESCRIPTIONS},
     ]
+
+    # Prior dialog history — turns from previous messages between Ivan and
+    # Sonya so the model sees CONTINUITY, not "I'm just waking up". Without
+    # this, every active-session-from-atrium opens with a fresh "Привет,
+    # малыш. Я здесь" because the LLM has no memory of the conversation
+    # that happened 5 minutes ago. Caller (channel_session for TG, internal
+    # _run_active_session for atrium) builds these from continuity_events.
+    if prior_messages:
+        for m in prior_messages:
+            if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
+                messages.append({
+                    "role": m["role"],
+                    "content": m.get("content", ""),
+                })
 
     if initial_user_message is not None:
         # Multimodal entry point — caller (e.g. tg_session with media attachment)
