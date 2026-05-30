@@ -39,7 +39,7 @@ _ADMIN_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _ADMIN_DIR.parent.parent.parent
 
 _SKILLS_ROOT = _REPO_ROOT / "src" / "sonya" / "skills" / "builtins"
-_TOOLS_ROOT = _REPO_ROOT / "src" / "sonya" / "tools" / "plugins"
+_TOOLS_ROOT = _REPO_ROOT / "src" / "sonya" / "tools"
 _PACKAGES_ROOT = _REPO_ROOT / "packages"
 
 # Ivan-owned file types that are safe to read/write inside packages/. Avoids
@@ -94,10 +94,21 @@ def _list_dir(kind: str) -> list[dict]:
         return []
     if kind in ("skills", "tools"):
         out: list[dict] = []
+        # Top-level *.py — for skills: builtins/*.py;
+        # for tools: registered core tools (read-only via workshop).
         for p in sorted(root.glob("*.py")):
             if p.name == "__init__.py":
                 continue
             out.append(_file_info(p, root))
+        # For tools, also include plugins/ subdir (hot-loadable plugins,
+        # writable). Marked with relative path "plugins/<name>.py".
+        if kind == "tools":
+            plugins_dir = root / "plugins"
+            if plugins_dir.exists():
+                for p in sorted(plugins_dir.glob("*.py")):
+                    if p.name == "__init__.py":
+                        continue
+                    out.append(_file_info(p, root))
         return out
     # packages: one node per top-level dir.
     out = []
@@ -232,8 +243,12 @@ async def workshop_read(request: web.Request) -> web.Response:
 
 
 async def workshop_write(request: web.Request) -> web.Response:
-    """Create or overwrite a file in skills/ or tools/. Refuses packages/
-    writes for now (Ivan's source surface — write via normal git flow)."""
+    """Create or overwrite a file in skills/builtins or tools/plugins.
+
+    For tools: only `plugins/<name>.py` paths are writable. Other tools
+    files (core tool modules at top of tools/) are read-only via workshop —
+    they're code-loaded at import time and edits should go through git.
+    """
     if (err := _check_auth(request)):
         return _cors(web.json_response({"error": err}, status=401))
     try:
@@ -250,6 +265,14 @@ async def workshop_write(request: web.Request) -> web.Response:
         return _cors(web.json_response({"error": "path + content required"}, status=400))
     if not path.endswith(".py"):
         return _cors(web.json_response({"error": "only .py files"}, status=400))
+    # tools writes must be inside plugins/.
+    if kind == "tools":
+        rel = path.replace("\\", "/").lstrip("/")
+        if not rel.startswith("plugins/"):
+            return _cors(web.json_response({
+                "error": "tools writes must target plugins/<name>.py "
+                         "(core tools are read-only via workshop)",
+            }, status=400))
     try:
         root = _root_for(kind)
         root.mkdir(parents=True, exist_ok=True)
