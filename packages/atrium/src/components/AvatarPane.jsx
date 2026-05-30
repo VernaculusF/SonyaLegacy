@@ -127,18 +127,19 @@ export default function AvatarPane(props) {
         <button
           classList={{ chip: true, voice: true, on: settings.voice_mode && settings.voice_mode !== 'off' }}
           onClick={() => {
-            // Cycle: off → local → browser → off
+            // Cycle: off → elevenlabs → local → browser → off
             const cur = settings.voice_mode || 'off';
-            const next = cur === 'off' ? 'local'
+            const next = cur === 'off' ? 'elevenlabs'
+                       : cur === 'elevenlabs' ? 'local'
                        : cur === 'local' ? 'browser'
                        : 'off';
             updateSetting('voice_mode', next);
             if (next === 'off') stopVoice();
           }}
-          title="режим голоса: off → local (Silero) → browser → off"
-        >{settings.voice_mode === 'local' ? '🔊 local'
+          title="режим голоса: off → elevenlabs → local → browser → off"
+        >{settings.voice_mode === 'elevenlabs' ? '🔊 11labs'
+           : settings.voice_mode === 'local' ? '🔊 local'
            : settings.voice_mode === 'browser' ? '🔊 browser'
-           : settings.voice_mode === 'cloned' ? '🔊 cloned'
            : '🔇 voice'}</button>
         <button
           class="chip talk"

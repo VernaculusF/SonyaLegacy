@@ -1,17 +1,16 @@
 /* voice.js — text-to-speech playback for Atrium.
  *
- * Three backends, selected via settings.voice_mode:
- *   - 'off'      — no speech (default until user enables).
- *   - 'browser'  — Web Speech API (free, ru-RU OS voice). Quick fallback / test
- *                  path. Mouth driven by boundary events + smoothing.
- *   - 'local'    — local TTS service (services/tts/server.py @ 127.0.0.1:8878).
- *                  Returns WAV; played through <audio> + AudioContext analyser
- *                  → REAL amplitude-driven lip-sync via mouthAudio.attachAudioEl.
- *                  Currently Silero v4_ru (4 RU voices). Later swap to XTTS-v2
- *                  for cloned voice — same HTTP contract.
+ * Backends, selected via settings.voice_mode:
+ *   - 'off'         — no speech.
+ *   - 'browser'     — Web Speech API (free OS TTS, mediocre RU). Fallback.
+ *   - 'local'       — local Piper TTS service (services/tts, 127.0.0.1:8878).
+ *                     Free, neural, real-time on CPU. Mid quality (Irina).
+ *   - 'elevenlabs'  — ElevenLabs proxy via VPS admin server. Best quality,
+ *                     любой voice из voice library, но платно (free tier 10K
+ *                     symbols/mo). API key хранится только на VPS.
  *
- * Either backend feeds the SAME mouth-amplitude store (mouthLevel/speaking)
- * so the avatar lip-syncs identically. SonyaAvatar maps that to mouth frames.
+ * All backends feed the same mouthLevel/speaking signals via Web Audio
+ * AnalyserNode (mouthAudio.attachAudioEl) so lip-sync is identical.
  */
 import { settings, setSpeaking, setMouthLevel, mouthLevel } from './store.js';
 import { attachAudioEl, stopMouthAudio } from './mouthAudio.js';
@@ -145,20 +144,61 @@ function _speakBrowser(text, opts) {
   return true;
 }
 
-// ---------- Backend: local TTS service (Silero @ 127.0.0.1:8878) ----------
+// ---------- Backend: local TTS service (Piper @ 127.0.0.1:8878) ----------
 function _localTtsBase() {
   return (settings.tts_url || 'http://127.0.0.1:8878').replace(/\/$/, '');
 }
 
-async function _speakLocal(text, opts) {
+// Build the fetch request for one chunk. Returns Promise<Blob> or throws.
+async function _fetchTTSChunk(mode, chunk, opts) {
+  if (mode === 'elevenlabs') {
+    const url = `http://${settings.vps_host}/api/atrium/tts`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Atrium-Token': settings.atrium_token || '',
+      },
+      body: JSON.stringify({
+        text: chunk,
+        voice_id: settings.tts_voice_id || '0ArNnoIAWKlT4WweaVMY',
+        model_id: settings.tts_model_id || 'eleven_multilingual_v2',
+      }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      throw new Error(`elevenlabs proxy ${r.status}: ${t.slice(0, 200)}`);
+    }
+    return r.blob();
+  }
+  // local Piper
+  const r = await fetch(`${_localTtsBase()}/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: chunk,
+      voice: settings.tts_voice || 'irina',
+      speed: opts.rate || 1.0,
+    }),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(`local ${r.status}: ${t.slice(0, 200)}`);
+  }
+  return r.blob();
+}
+
+// Sequential fetch + play loop shared by local and elevenlabs backends.
+async function _speakRemote(mode, text, opts) {
   _stopAudio();
   _stopMouthLoop();
-  // chunk so a long reply doesn't wait for full synth
-  const chunks = _splitForTTS(text, 240);
+  // ElevenLabs handles long text natively but we still chunk to start
+  // playback fast (first audio bytes on screen → user feedback).
+  const maxLen = mode === 'elevenlabs' ? 320 : 240;
+  const chunks = _splitForTTS(text, maxLen);
   if (!chunks.length) return false;
   setSpeaking(true);
 
-  // Sequential playback: synth+play chunk[i], onended → next.
   let aborted = false;
   let queueIdx = 0;
   const playNext = async () => {
@@ -170,32 +210,10 @@ async function _speakLocal(text, opts) {
     const chunk = chunks[queueIdx++];
     let blob;
     try {
-      const r = await fetch(`${_localTtsBase()}/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: chunk,
-          voice: settings.tts_voice || 'baya',
-          speed: opts.rate || 1.0,
-        }),
-      });
-      if (!r.ok) {
-        const errTxt = await r.text().catch(() => '');
-        console.warn('[voice] local TTS error', r.status, errTxt);
-        // graceful fallback: speak this chunk via browser, then continue
-        await new Promise((res) => {
-          const u = new SpeechSynthesisUtterance(chunk);
-          if (_ruVoice) u.voice = _ruVoice;
-          u.lang = 'ru-RU';
-          u.onend = u.onerror = () => res();
-          speechSynthesis.speak(u);
-        });
-        return playNext();
-      }
-      blob = await r.blob();
+      blob = await _fetchTTSChunk(mode, chunk, opts);
     } catch (e) {
-      console.warn('[voice] local TTS unreachable, falling back to browser:', e);
-      // service down → fall back fully to browser for the rest
+      console.warn(`[voice] ${mode} TTS error:`, e.message);
+      // Fallback for the rest of the text → browser
       const remaining = [chunk, ...chunks.slice(queueIdx)];
       _stopMouthLoop();
       _speakBrowser(remaining.join(' '), opts);
@@ -213,7 +231,6 @@ async function _speakLocal(text, opts) {
       try { URL.revokeObjectURL(url); } catch {}
       if (_audioObjectUrl === url) _audioObjectUrl = null;
       _audioEl = null;
-      // brief pause so next chunk reads as a sentence boundary
       setTimeout(playNext, 80);
     };
     el.onerror = (e) => {
@@ -222,7 +239,6 @@ async function _speakLocal(text, opts) {
       playNext();
     };
     try {
-      // Wire amplitude → mouth via Web Audio analyser (real lip-sync).
       attachAudioEl(el);
       await el.play();
     } catch (e) {
@@ -231,7 +247,6 @@ async function _speakLocal(text, opts) {
       playNext();
     }
   };
-  // expose a way to abort if stopVoice() is called mid-stream
   _localAbort = () => { aborted = true; };
   playNext();
   return true;
@@ -275,8 +290,24 @@ export function speakText(text, opts = {}) {
   // Stop any prior speech (override mid-stream).
   if (_localAbort) { try { _localAbort(); } catch {} _localAbort = null; }
   const mode = settings.voice_mode;
-  if (mode === 'local' || mode === 'cloned') return _speakLocal(cleaned, opts);
+  if (mode === 'elevenlabs') return _speakRemote('elevenlabs', cleaned, opts);
+  if (mode === 'local' || mode === 'cloned') return _speakRemote('local', cleaned, opts);
   return _speakBrowser(cleaned, opts);
+}
+
+// ---------- ElevenLabs probe ----------
+export async function probeElevenLabs() {
+  try {
+    const url = `http://${settings.vps_host}/api/atrium/tts/health`;
+    const r = await fetch(url, {
+      headers: { 'X-Atrium-Token': settings.atrium_token || '' },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: j.error || `http ${r.status}` };
+    return { ok: !!j.ok, info: j, error: j.error };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 // ---------- service health probe ----------

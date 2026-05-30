@@ -2160,6 +2160,10 @@ def create_app() -> web.Application:
     # Workshop — Skills / Tools-plugins / Packages browser+editor for Atrium UI.
     from sonya.admin.workshop import register_routes as _register_workshop
     _register_workshop(app)
+    # ElevenLabs TTS proxy — Atrium gets MP3 audio via this server (key never
+    # touches the browser). Voice selection is per-request.
+    from sonya.admin.tts import register_routes as _register_tts
+    _register_tts(app)
     return app
 
 

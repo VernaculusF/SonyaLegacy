@@ -2,7 +2,7 @@
 import { createSignal, createEffect, For, Show } from 'solid-js';
 import { settings, updateSetting } from '../store.js';
 import { connectWS, disconnectWS } from '../ws.js';
-import { probeLocalTTS, listLocalVoices, speakText, stopVoice } from '../voice.js';
+import { probeLocalTTS, listLocalVoices, probeElevenLabs, speakText, stopVoice } from '../voice.js';
 
 export default function Settings(props) {
   const [host, setHost] = createSignal(settings.vps_host || '');
@@ -11,15 +11,16 @@ export default function Settings(props) {
   const [roomUrl, setRoomUrl] = createSignal(settings.room_model_url || '');
   const [voiceMode, setVoiceMode] = createSignal(settings.voice_mode || 'off');
   const [ttsUrl, setTtsUrl] = createSignal(settings.tts_url || 'http://127.0.0.1:8878');
-  const [ttsVoice, setTtsVoice] = createSignal(settings.tts_voice || 'baya');
+  const [ttsVoice, setTtsVoice] = createSignal(settings.tts_voice || 'irina');
+  const [ttsVoiceId, setTtsVoiceId] = createSignal(settings.tts_voice_id || '0ArNnoIAWKlT4WweaVMY');
+  const [ttsModelId, setTtsModelId] = createSignal(settings.tts_model_id || 'eleven_multilingual_v2');
   const [ttsHealth, setTtsHealth] = createSignal('');
   const [ttsVoices, setTtsVoices] = createSignal([]);
 
-  // Probe the local TTS service automatically when local/cloned is selected.
+  // Probe whichever TTS path is selected.
   createEffect(async () => {
     const m = voiceMode();
-    if (m === 'local' || m === 'cloned') {
-      // Persist tts_url first so probeLocalTTS reads the latest.
+    if (m === 'local') {
       const prev = settings.tts_url;
       if (prev !== ttsUrl().trim()) updateSetting('tts_url', ttsUrl().trim());
       setTtsHealth('проверяю…');
@@ -31,6 +32,17 @@ export default function Settings(props) {
       } else {
         setTtsHealth(`✗ ${h.error}. Запусти services\\tts\\start_tts.ps1`);
         setTtsVoices([]);
+      }
+    } else if (m === 'elevenlabs') {
+      setTtsHealth('проверяю…');
+      const h = await probeElevenLabs();
+      if (h.ok && h.info) {
+        const used = h.info.char_count ?? '?';
+        const lim = h.info.char_limit ?? '?';
+        const tier = h.info.tier ? `${h.info.tier} · ` : '';
+        setTtsHealth(`✓ elevenlabs · ${tier}${used}/${lim} chars used`);
+      } else {
+        setTtsHealth(`✗ ${h.error || 'недоступно'}`);
       }
     } else {
       setTtsHealth('');
@@ -46,6 +58,8 @@ export default function Settings(props) {
     updateSetting('voice_mode', voiceMode());
     updateSetting('tts_url', ttsUrl().trim());
     updateSetting('tts_voice', ttsVoice());
+    updateSetting('tts_voice_id', ttsVoiceId().trim());
+    updateSetting('tts_model_id', ttsModelId().trim());
     if (changed) {
       updateSetting('vps_host', newHost);
       updateSetting('atrium_token', newToken);
@@ -56,10 +70,11 @@ export default function Settings(props) {
   }
 
   async function testVoice() {
-    // Persist current selections so speakText reads them.
     updateSetting('voice_mode', voiceMode());
     updateSetting('tts_url', ttsUrl().trim());
     updateSetting('tts_voice', ttsVoice());
+    updateSetting('tts_voice_id', ttsVoiceId().trim());
+    updateSetting('tts_model_id', ttsModelId().trim());
     stopVoice();
     speakText('Привет. Это проверка голоса. Меня слышно?');
   }
@@ -121,16 +136,51 @@ export default function Settings(props) {
             style="padding: 8px; background: var(--bg-elev); border: 1px solid var(--hairline); color: var(--ink-1); border-radius: 4px;"
           >
             <option value="off">off (молча)</option>
-            <option value="browser">browser (бесплатный TTS ОС, ru-RU — для теста)</option>
-            <option value="local">local (Silero v4_ru, локальный сервис — рекомендую)</option>
-            <option value="cloned" disabled>cloned (XTTS-v2 её голос — позже)</option>
+            <option value="browser">browser (системный TTS — для теста)</option>
+            <option value="local">local (Piper Irina, бесплатно — посредственно)</option>
+            <option value="elevenlabs">elevenlabs (топ качество — твой voice id)</option>
           </select>
           <span style="display:block; margin-top:6px; color: var(--ink-3); font-size: 12px;">
-            browser → ритм по boundary events. local/cloned → реальная амплитуда WAV.
+            elevenlabs идёт через VPS-прокси (ключ только на сервере). free tier 10K симв/мес.
           </span>
         </div>
 
-        <Show when={voiceMode() === 'local' || voiceMode() === 'cloned'}>
+        <Show when={voiceMode() === 'elevenlabs'}>
+          <div class="modal-section">
+            <label>elevenlabs voice id</label>
+            <input
+              type="text"
+              value={ttsVoiceId()}
+              placeholder="0ArNnoIAWKlT4WweaVMY"
+              onInput={(e) => setTtsVoiceId(e.currentTarget.value)}
+            />
+            <span style="display:block; margin-top:6px; color: var(--ink-3); font-size: 12px;">
+              из <code>elevenlabs.io/app/voice-library</code> — copy voice id
+            </span>
+          </div>
+          <div class="modal-section">
+            <label>elevenlabs model</label>
+            <select
+              value={ttsModelId()}
+              onChange={(e) => setTtsModelId(e.currentTarget.value)}
+              style="padding: 8px; background: var(--bg-elev); border: 1px solid var(--hairline); color: var(--ink-1); border-radius: 4px;"
+            >
+              <option value="eleven_multilingual_v2">multilingual v2 (best, RU)</option>
+              <option value="eleven_turbo_v2_5">turbo v2.5 (faster, slightly less natural)</option>
+              <option value="eleven_flash_v2_5">flash v2.5 (~75ms latency)</option>
+            </select>
+            <span style="display:block; margin-top:4px; font-size: 12px;"
+                  classList={{
+                    'tts-health-ok': ttsHealth().startsWith('✓'),
+                    'tts-health-err': ttsHealth().startsWith('✗'),
+                    'tts-health-pending': ttsHealth() === 'проверяю…',
+                  }}>
+              {ttsHealth() || ' '}
+            </span>
+          </div>
+        </Show>
+
+        <Show when={voiceMode() === 'local'}>
           <div class="modal-section">
             <label>tts service url</label>
             <input
@@ -165,7 +215,7 @@ export default function Settings(props) {
                 </For>
               </select>
               <span style="display:block; margin-top:6px; color: var(--ink-3); font-size: 12px;">
-                Silero RU: baya/kseniya/xenia (ж), aidar/eugene (м).
+                Piper RU: irina (ж), denis/ruslan (м).
               </span>
             </div>
           </Show>
