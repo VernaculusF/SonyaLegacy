@@ -359,6 +359,9 @@ textarea {
 .emotion-preview .chip:hover { color: var(--ink-1); border-color: var(--acc-her-eyes); }
 .emotion-preview .chip.on { color: var(--acc-her); border-color: var(--acc-her); }
 .emotion-preview .chip.talk { color: var(--acc-her-eyes); }
+.emotion-preview .chip.mic { color: var(--acc-him); }
+.emotion-preview .chip.mic.on { color: #fff; border-color: var(--acc-warn); background: rgba(200,120,100,0.12); }
+.emotion-preview .mic-err { font-size: 9px; color: var(--acc-warn); align-self: center; }
 .avatar-canvas {
   position: absolute;
   inset: 0;

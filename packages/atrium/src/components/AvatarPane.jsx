@@ -7,6 +7,7 @@ import { Show, createSignal, createEffect, onMount, onCleanup, For } from 'solid
 import { feed, setFeed, settings, avatarGlow, speaking, simulateSpeech } from '../store.js';
 import SonyaAvatar from './SonyaAvatar.jsx';
 import { VrmViewer } from '../vrmViewer.js';
+import { attachMic, stopMouthAudio, isMouthAudioActive } from '../mouthAudio.js';
 
 const EXPRESSION_LABEL = {
   neutral: 'спокойна',
@@ -36,7 +37,26 @@ const PREVIEW_MARKERS = [
 
 export default function AvatarPane(props) {
   const [glowing, setGlowing] = createSignal(false);
+  const [micOn, setMicOn] = createSignal(false);
+  const [micErr, setMicErr] = createSignal('');
   const use3d = () => settings.avatar_mode === '3d';
+
+  async function toggleMic() {
+    if (micOn()) {
+      stopMouthAudio();
+      setMicOn(false);
+      return;
+    }
+    try {
+      await attachMic();
+      setMicOn(true);
+      setMicErr('');
+    } catch (e) {
+      setMicErr('нет доступа к микрофону');
+      setMicOn(false);
+    }
+  }
+  onCleanup(() => { if (isMouthAudioActive()) stopMouthAudio(); });
 
   // Flash glow + simulate a short talk animation whenever she sends dialog.
   createEffect((prev) => {
@@ -102,7 +122,13 @@ export default function AvatarPane(props) {
             </button>
           )}
         </For>
-        <button class="chip talk" onClick={() => simulateSpeech(2400)} title="проверить рот">▶ talk</button>
+        <button class="chip talk" onClick={() => simulateSpeech(2400)} title="имитация речи">▶ talk</button>
+        <button
+          classList={{ chip: true, mic: true, on: micOn() }}
+          onClick={toggleMic}
+          title="говори в микрофон — её рот двигается по громкости (тест lip-sync)"
+        >{micOn() ? '■ mic' : '🎙 mic'}</button>
+        <Show when={micErr()}><span class="mic-err">{micErr()}</span></Show>
       </div>
     </aside>
   );

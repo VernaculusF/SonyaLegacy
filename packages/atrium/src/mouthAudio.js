@@ -1,0 +1,103 @@
+/* mouthAudio.js — drive the avatar mouth from REAL audio amplitude.
+ *
+ * Web Audio AnalyserNode → smoothed RMS → store.mouthLevel (0..1). The view
+ * (SonyaAvatar) buckets that level into mouth frames (closed/quiet/open/wide).
+ *
+ * Two sources:
+ *   - attachMic()        → microphone (test now: Ivan speaks → her mouth moves)
+ *   - attachAudioEl(el)  → an <audio>/<video> element (real TTS playback, Этап 2)
+ *
+ * This is the production lip-sync path. The fake simulateSpeech() in store.js
+ * is only a fallback when there's no audio.
+ */
+import { setSpeaking, setMouthLevel } from './store.js';
+
+let ctx = null;
+let analyser = null;
+let raf = null;
+let srcNode = null;
+let micStream = null;
+let dataArr = null;
+let smooth = 0;
+
+function ensureCtx() {
+  if (!ctx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    ctx = new AC();
+  }
+  return ctx;
+}
+
+// RMS → perceptual mouth level. Speech RMS sits ~0.02-0.30; we scale and
+// soft-knee it so quiet speech still opens the mouth a bit and loud peaks
+// reach the top. Attack fast (mouth snaps open), release slower (natural close).
+function _loop() {
+  raf = requestAnimationFrame(_loop);
+  analyser.getByteTimeDomainData(dataArr);
+  let sum = 0;
+  for (let i = 0; i < dataArr.length; i++) {
+    const v = (dataArr[i] - 128) / 128; // -1..1
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / dataArr.length); // 0..~1
+  // noise gate: ignore room hum / faint background
+  const gated = rms < 0.012 ? 0 : rms;
+  // scale into 0..1 (×3.4 maps typical speech to a good range), soft clip
+  let level = Math.min(1, gated * 3.4);
+  level = Math.pow(level, 0.85); // mild expansion of the quiet end
+  const k = level > smooth ? 0.55 : 0.16; // attack / release
+  smooth += (level - smooth) * k;
+  if (smooth < 0.01) smooth = 0;
+  setMouthLevel(smooth);
+}
+
+function _startAnalyser(node, connectToOutput) {
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.5;
+  dataArr = new Uint8Array(analyser.fftSize);
+  node.connect(analyser);
+  if (connectToOutput) analyser.connect(ctx.destination);
+  srcNode = node;
+  setSpeaking(true);
+  if (!raf) _loop();
+}
+
+// Microphone — test the pipeline now (Ivan's voice drives her mouth).
+export async function attachMic() {
+  const c = ensureCtx();
+  await c.resume();
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true },
+  });
+  const node = c.createMediaStreamSource(micStream);
+  // do NOT route mic to output (no echo)
+  _startAnalyser(node, false);
+}
+
+// Real TTS playback (Этап 2): pass the <audio> element that plays her voice.
+export function attachAudioEl(el) {
+  const c = ensureCtx();
+  c.resume();
+  const node = c.createMediaElementSource(el);
+  _startAnalyser(node, true); // route to speakers so we hear it
+}
+
+export function stopMouthAudio() {
+  if (raf) cancelAnimationFrame(raf);
+  raf = null;
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+  }
+  try { if (srcNode) srcNode.disconnect(); } catch {}
+  srcNode = null;
+  analyser = null;
+  smooth = 0;
+  setMouthLevel(0);
+  setSpeaking(false);
+}
+
+export function isMouthAudioActive() {
+  return !!raf;
+}

@@ -13,7 +13,7 @@
  *
  * props.expression — маркер из body.expression (neutral/smile/sad/...).
  */
-import { createSignal, onMount, onCleanup, createMemo, Show, For } from 'solid-js';
+import { createSignal, onMount, onCleanup, createMemo, createEffect, Show, For } from 'solid-js';
 import { mouthLevel, speaking, settings } from '../store.js';
 
 const EXPR = {
@@ -92,19 +92,31 @@ export default function SonyaAvatar(props) {
   // Eye height — scales with blink.
   const eyeRy = createMemo(() => 0.6 + eyeOpen() * 5.4);
 
-  // Frame index for image-based mouth. Idle → 0 (closed). Speaking → amplitude
-  // → frame, gamma-biased HARD so the widest (last) frame is VERY rare —
-  // only on genuine loud peaks. Works for any frame count.
-  const frameIdx = createMemo(() => {
+  // Amplitude → mouth frame with explicit thresholds + hysteresis.
+  // Frame meaning (4-frame set): 0 closed (silence/between words),
+  // 1 quiet, 2 active/normal, 3 loud (rare). Hysteresis: it takes a higher
+  // level to step UP than to fall back DOWN, so boundaries don't flicker.
+  // Thresholds are level values 0..1 (level = smoothed RMS from real audio,
+  // or the simulated envelope as fallback).
+  const UP = [0.06, 0.30, 0.72];   // closed→1, 1→2, 2→3
+  const DOWN = [0.03, 0.20, 0.58]; // 1→closed, 2→1, 3→2
+  const [mouthFrame, setMouthFrame] = createSignal(0);
+
+  createEffect(() => {
     const f = frames();
-    if (!f.length) return -1;
-    if (!speaking()) return 0;
-    const n = f.length;
+    if (!f.length) { setMouthFrame(0); return; }
+    if (!speaking()) { setMouthFrame(0); return; }
     const lvl = Math.max(0, Math.min(1, mouthOpen()));
-    // gamma 2.6 pushes most syllables to frames 1-2; frame 3 (wide) needs ~>0.9.
-    const biased = Math.pow(lvl, 2.6);
-    return Math.min(n - 1, Math.floor(biased * n));
+    const maxIdx = Math.min(3, f.length - 1);
+    let cur = mouthFrame();
+    // step up if above UP threshold for the next frame
+    while (cur < maxIdx && lvl >= UP[cur]) cur += 1;
+    // step down if below DOWN threshold for the current frame
+    while (cur > 0 && lvl < DOWN[cur - 1]) cur -= 1;
+    setMouthFrame(cur);
   });
+
+  const frameIdx = createMemo(() => (frames().length ? mouthFrame() : -1));
 
   const hasFrames = () => frames().length > 0;
 

@@ -217,15 +217,15 @@ export function simulateSpeech(ms = 2500) {
   _speakEnd = performance.now() + ms;
   if (_speakRaf) return; // loop already running; just extended _speakEnd
 
-  // syllable envelope state
+  // Word/syllable envelope: words are bursts of 2-5 syllables, with clear
+  // silences (mouth fully closed) BETWEEN words — that's what reads as speech.
   let target = 0;
-  let nextSyllableAt = 0;
-  let pausing = false;
+  let nextChangeAt = 0;
+  let sylLeft = 0;       // syllables remaining in the current word
   let lastEmit = 0;
 
   const loop = (now) => {
     if (now >= _speakEnd) {
-      // settle mouth closed, stop
       setMouthLevel(0);
       setSpeaking(false);
       cancelAnimationFrame(_speakRaf);
@@ -234,26 +234,28 @@ export function simulateSpeech(ms = 2500) {
     }
     _speakRaf = requestAnimationFrame(loop);
 
-    if (now >= nextSyllableAt) {
-      // ~10% chance of a short between-word pause (mouth near-closed)
-      pausing = Math.random() < 0.10;
-      if (pausing) {
-        target = 0.04;
-        nextSyllableAt = now + 120 + Math.random() * 180;
+    if (now >= nextChangeAt) {
+      if (sylLeft <= 0) {
+        // between-word silence — mouth closes fully
+        target = 0;
+        sylLeft = 2 + Math.floor(Math.random() * 4); // next word: 2-5 syllables
+        nextChangeAt = now + 130 + Math.random() * 170; // pause length
       } else {
-        // new syllable: random openness; gamma in the view keeps wide rare
-        target = 0.3 + Math.random() * 0.65;
-        nextSyllableAt = now + 110 + Math.random() * 110; // ~4-6 syll/sec
+        // a syllable: mostly quiet/normal, occasional louder peak
+        const r = Math.random();
+        target = r < 0.15 ? 0.78 + Math.random() * 0.22   // loud (rare → frame 3)
+               : r < 0.6  ? 0.34 + Math.random() * 0.3    // normal (frame 2)
+               :            0.12 + Math.random() * 0.16;  // quiet (frame 1)
+        sylLeft -= 1;
+        nextChangeAt = now + 95 + Math.random() * 85;     // ~5-7 syll/sec
       }
     }
-    // ease current mouthLevel toward target (snappy open, softer close)
     const cur = mouthLevel();
-    const k = target > cur ? 0.45 : 0.25;
+    const k = target > cur ? 0.5 : 0.3; // snappy open, softer close
     const next = cur + (target - cur) * k;
-    // throttle reactive writes to ~30fps — enough for the mouth, less churn
-    if (now - lastEmit >= 33) {
+    if (now - lastEmit >= 33) { // ~30fps reactive writes
       lastEmit = now;
-      setMouthLevel(next);
+      setMouthLevel(next < 0.01 ? 0 : next);
     }
   };
   _speakRaf = requestAnimationFrame(loop);
