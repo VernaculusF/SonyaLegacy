@@ -358,6 +358,24 @@ _EMPTY_OK_TOOLS = frozenset({
     "selfmod.apply", "selfmod.validate", "selfmod.propose", "selfmod.propose_edit",
 })
 
+# Local-data tools whose output may legitimately contain the words "403",
+# "forbidden", "error", "rate limit" etc. as part of stored content (task
+# descriptions, knowledge base, memory recall). These NEVER make external
+# calls so HTTP/auth blocker detection on their output is always a FP.
+_LOCAL_DATA_TOOLS = frozenset({
+    "tasks.get", "tasks.list", "tasks.plan", "tasks.step",
+    "memory.recall", "memory.index_status",
+    "knowledge.list", "knowledge.read", "knowledge.search",
+    "self_inspect.identity", "self_inspect.state", "self_inspect.thoughts",
+    "self_inspect.memories", "self_inspect.intentions", "self_inspect.code",
+    "self_inspect.modules", "self_inspect.drift",
+    "filesystem.list", "filesystem.read", "filesystem.tree",
+    "env.list", "env.get",
+    "skills.list",
+    "selfmod.list", "selfmod.get", "selfmod.check_governed",
+    "goals.list",
+})
+
 
 def _detect_blocker(tool_name: str, observation: str) -> tuple[str, str] | None:
     """Return (kind, hint) if observation looks like a blocker.
@@ -370,6 +388,12 @@ def _detect_blocker(tool_name: str, observation: str) -> tuple[str, str] | None:
     See `_BLOCKER_PATTERNS`.
     """
     if not observation:
+        return None
+    # Local-data tools never produce HTTP/auth failures — their bodies often
+    # contain the words '403' / 'forbidden' / etc. as task descriptions or
+    # notes (the FP we saw in the wild where every tasks.get fired auth_403
+    # because the task title was about web reconnaissance).
+    if tool_name in _LOCAL_DATA_TOOLS:
         return None
     obs = observation[:6000]  # cap scan length
     # Success-shape gate: if the response clearly STARTS with a successful
@@ -507,6 +531,7 @@ async def run_agent_session(
     start_time = time.time()
     budget_warning_sent = False
     _unanswered_inbox = False  # set True when inbox_drain pulls a fresh message
+    _recent_tools: list[tuple[str, str]] = []  # (tool, arg-prefix) — last 4
 
     for step in range(max_steps):
         elapsed = time.time() - start_time
@@ -651,6 +676,36 @@ async def run_agent_session(
             # Feed observation back
             messages.append({"role": "assistant", "content": response})
             messages.append({"role": "user", "content": f"[Observation from {tool_name}]:\n{observation[:3000]}"})
+
+            # Same-tool repeat detector: track last 4 tool calls; if the
+            # current call repeats a recent one (same tool + similar arg),
+            # inject a one-line nudge to switch approach. Without this the
+            # model burns 3-4 steps re-running knowledge.write or web.fetch
+            # on the same target after the first one already stored the data.
+            arg_key = (tool_arg or "")[:80].strip().lower()
+            _recent_tools.append((tool_name, arg_key))
+            if len(_recent_tools) > 4:
+                _recent_tools.pop(0)
+            same_calls = sum(
+                1 for (t, a) in _recent_tools
+                if t == tool_name and a == arg_key
+            )
+            if same_calls >= 3:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"INTERNAL_REMINDER [repeat-loop]: ты вызвала "
+                        f"`{tool_name}` с тем же аргументом {same_calls} раз "
+                        "подряд. Если первый раз отработал — переходи к "
+                        "следующему шагу плана. Если падает — попробуй "
+                        "другой подход / другой tool / другой аргумент. "
+                        "Не повторяй одно и то же."
+                    ),
+                })
+                stream.append(ContinuityEvent(
+                    kind="internal.repeat_loop_warning",
+                    payload={"step": step, "tool": tool_name, "count": same_calls},
+                ))
 
             # Blocker reflex: scan the tool result for clear failure signals
             # (HTTP 4xx/5xx, "credits exhausted", "rate limit", explicit
