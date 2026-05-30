@@ -1521,6 +1521,13 @@ textarea {
   background: rgba(14,15,18,0.4);
 }
 .ws-editor-head .ws-path { color: var(--ink-1); }
+.ws-editor-head .ws-dirty {
+  color: var(--acc-warn);
+  margin-left: 8px;
+  font-size: 14px;
+  line-height: 1;
+  vertical-align: middle;
+}
 .ws-editor-head .ws-lang { color: var(--ink-3); font-size: 10px; }
 .ws-editor-head .spacer { flex: 1; }
 .ws-textarea {

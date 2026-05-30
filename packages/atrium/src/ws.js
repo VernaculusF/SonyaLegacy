@@ -73,6 +73,20 @@ function relativeAge(ts) {
   }
 }
 
+// Strip technical tags ("[workshop reply: …]", "[NEW MESSAGE]" etc.) and a
+// trailing meta-line, so they don't leak into the chat bubble or TTS.
+function cleanDialogText(t) {
+  if (!t) return '';
+  let s = String(t);
+  // Drop leading bracket-tag lines: [workshop reply: ...]\n, [NEW MESSAGE], etc.
+  s = s.replace(/^(?:\s*\[[^\]\n]{1,80}\][^\n]*\n)+/, '');
+  // Drop standalone bracketed markers anywhere on their own line.
+  s = s.replace(/^\s*\[[^\]\n]{1,80}\]\s*$/gm, '');
+  // Collapse 3+ newlines.
+  s = s.replace(/\n{3,}/g, '\n\n');
+  return s.trim();
+}
+
 function handleEvent(msg) {
   const seq = msg.seq;
   const ts = msg.ts;
@@ -89,19 +103,23 @@ function handleEvent(msg) {
   // Dialog messages (her replies in TG/Atrium)
   if (kind === 'outgoing.dialog' || kind === 'outgoing.telegram_initiative' || kind === 'outgoing.telegram_progress' || kind === 'outgoing.telegram_response' || kind === 'outgoing.response') {
     if (text) {
-      pushDialogMessage({ seq, ts, sender: 'her', text });
-      // Only flash/notify for live events, not during the initial backlog
-      // replay (otherwise a cold start spams the avatar + notifications).
-      if (feed.synced) {
-        flashAvatar();
-        // Speak her reply if voice is enabled — drives mouth amplitude too.
-        speakText(text);
+      const cleaned = cleanDialogText(text);
+      if (cleaned) {
+        pushDialogMessage({ seq, ts, sender: 'her', text: cleaned });
+        // Only flash/notify for live events, not during the initial backlog
+        // replay (otherwise a cold start spams the avatar + notifications).
+        if (feed.synced) {
+          flashAvatar();
+          // Speak her reply if voice is enabled — drives mouth amplitude too.
+          speakText(cleaned);
+        }
       }
     }
   }
   // Incoming from Ivan
   if (isHisIncoming(kind) && text) {
-    pushDialogMessage({ seq, ts, sender: 'him', text });
+    const cleaned = cleanDialogText(text);
+    if (cleaned) pushDialogMessage({ seq, ts, sender: 'him', text: cleaned });
   }
 
   // Inner thought stream (mind.thought events)

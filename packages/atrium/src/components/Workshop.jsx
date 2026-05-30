@@ -40,10 +40,12 @@ export default function Workshop(props) {
   const [items, setItems] = createSignal([]);
   const [active, setActive] = createSignal(null);
   const [content, setContent] = createSignal('');
+  const [savedContent, setSavedContent] = createSignal('');
   const [busy, setBusy] = createSignal(false);
   const [status, setStatus] = createSignal('');
   const [test, setTest] = createSignal({ input: '', output: '' });
   const [replyMsg, setReplyMsg] = createSignal('');
+  const dirty = () => content() !== savedContent();
 
   async function loadList() {
     setBusy(true);
@@ -59,12 +61,14 @@ export default function Workshop(props) {
   }
 
   async function openFile(it) {
+    if (dirty() && !confirm('есть несохранённые изменения. сбросить?')) return;
     setBusy(true);
     setStatus('');
     try {
       const r = await api(`/api/atrium/workshop/read?kind=${kind()}&path=${encodeURIComponent(it.path)}`);
       setActive({ ...it, lang: r.lang });
       setContent(r.content || '');
+      setSavedContent(r.content || '');
     } catch (e) {
       setStatus('read failed: ' + e.message);
     } finally {
@@ -85,7 +89,10 @@ export default function Workshop(props) {
         method: 'POST',
         body: { kind: kind(), path: active().path, content: content() },
       });
+      setSavedContent(content());
       setStatus(`saved → ${active().path}`);
+      // Refresh list (size may have changed; new files appear).
+      loadList();
     } catch (e) {
       setStatus('save failed: ' + e.message);
     } finally {
@@ -95,6 +102,7 @@ export default function Workshop(props) {
 
   async function newFile() {
     if (kind() === 'packages') return;
+    if (dirty() && !confirm('есть несохранённые изменения. сбросить?')) return;
     const name = prompt('имя файла (например: my_helper.py):');
     if (!name || !/^[a-z0-9_]+\.py$/i.test(name)) {
       setStatus('only .py with [a-z0-9_]');
@@ -105,7 +113,8 @@ export default function Workshop(props) {
       : `"""${name} — skill module."""\n\ndef run(ctx) -> str:\n    return "TODO"\n`;
     setActive({ path: name, name, lang: 'python', size: stub.length });
     setContent(stub);
-    setStatus('new (unsaved)');
+    setSavedContent('');  // new file — anything counts as dirty until saved
+    setStatus('new (unsaved) — Ctrl+S чтобы сохранить');
   }
 
   async function runTest() {
@@ -138,7 +147,7 @@ export default function Workshop(props) {
           message: replyMsg().trim(),
         },
       });
-      setStatus('отправлено Соне (см. диалог через 30с)');
+      setStatus('отправлено Соне → она ответит в чате (Dialog pane), ~30с');
       setReplyMsg('');
     } catch (e) {
       setStatus('reply failed: ' + e.message);
@@ -147,9 +156,29 @@ export default function Workshop(props) {
     }
   }
 
+  function tryClose() {
+    if (dirty() && !confirm('есть несохранённые изменения. закрыть всё равно?')) return;
+    props.onClose?.();
+  }
+
   onMount(() => {
     loadList();
-    const onKey = (e) => { if (e.key === 'Escape') props.onClose?.(); };
+    const onKey = (e) => {
+      // Ctrl/Cmd+S → save (only when an active file + editable kind)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        if (active() && kind() !== 'packages') {
+          e.preventDefault();
+          save();
+        }
+        return;
+      }
+      // Esc — only close when focus is NOT in a text field, otherwise let it
+      // act normally (so Esc inside the textarea doesn't kill the editor).
+      if (e.key === 'Escape') {
+        const tag = (e.target && e.target.tagName) || '';
+        if (!/^(TEXTAREA|INPUT|SELECT)$/i.test(tag)) tryClose();
+      }
+    };
     window.addEventListener('keydown', onKey);
     onCleanup(() => window.removeEventListener('keydown', onKey));
   });
@@ -172,7 +201,7 @@ export default function Workshop(props) {
           </div>
           <span class="spacer"></span>
           <span class="status">{status()}</span>
-          <span class="exit" onClick={() => props.onClose?.()} title="закрыть (Esc)">⏏</span>
+          <span class="exit" onClick={tryClose} title="закрыть (Esc)">⏏</span>
         </div>
 
         <div class="workshop-body">
@@ -205,11 +234,15 @@ export default function Workshop(props) {
               fallback={<div class="ws-placeholder">выбери файл слева</div>}
             >
               <div class="ws-editor-head">
-                <span class="ws-path">{active().path}</span>
+                <span class="ws-path">
+                  {active().path}
+                  <Show when={dirty()}><span class="ws-dirty" title="несохранённые изменения">●</span></Show>
+                </span>
                 <span class="ws-lang">{active().lang}</span>
                 <span class="spacer"></span>
                 <Show when={kind() !== 'packages'}>
-                  <button class="mini-btn primary" disabled={busy()} onClick={save}>save</button>
+                  <button class="mini-btn primary" disabled={busy() || !dirty()} onClick={save}
+                    title="Ctrl+S">save</button>
                 </Show>
               </div>
               <textarea

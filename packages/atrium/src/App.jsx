@@ -2,8 +2,9 @@
  * См. UX_SKETCH.md §5 для desktop layout.
  */
 import { Show, createSignal, onMount, onCleanup } from 'solid-js';
-import { settings, feed, updateSetting, simulateSpeech } from './store.js';
+import { settings, feed, updateSetting } from './store.js';
 import { connectWS, disconnectWS, startHeartbeat, stopHeartbeat } from './ws.js';
+import { stopVoice } from './voice.js';
 import Onboarding from './components/Onboarding.jsx';
 import Header from './components/Header.jsx';
 import AvatarPane from './components/AvatarPane.jsx';
@@ -27,8 +28,6 @@ export default function App() {
     if (isConfigured()) {
       connectWS();
       startHeartbeat();
-      // One-time "she's here" cue so the talk animation is visible right away.
-      setTimeout(() => simulateSpeech(1800), 1200);
     }
     // Keyboard: Ctrl+J / Cmd+J → toggle reason-stream collapse
     const onKey = (e) => {
@@ -38,8 +37,14 @@ export default function App() {
       }
     };
     window.addEventListener('keydown', onKey);
+    // Stop her voice when the tab goes to background (so she doesn't keep
+    // talking when Ivan switched away).
+    const onVis = () => { if (document.hidden) stopVoice(); };
+    document.addEventListener('visibilitychange', onVis);
     onCleanup(() => {
       window.removeEventListener('keydown', onKey);
+      document.removeEventListener('visibilitychange', onVis);
+      stopVoice();
       disconnectWS();
       stopHeartbeat();
     });

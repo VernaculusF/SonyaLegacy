@@ -6,6 +6,7 @@
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { feed, pushDialogMessage } from '../store.js';
 import { sendDialog } from '../ws.js';
+import { stopVoice } from '../voice.js';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -54,6 +55,8 @@ export default function DialogPane(props) {
   async function send() {
     const text = draft().trim();
     if (!text || sending()) return;
+    // Cut any in-flight speech so she doesn't keep talking over Ivan's new turn.
+    stopVoice();
     setSendError('');
     setSending(true);
     // Optimistic echo so Ivan sees his message immediately. The backend

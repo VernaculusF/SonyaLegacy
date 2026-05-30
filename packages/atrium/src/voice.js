@@ -69,24 +69,23 @@ function _speakBrowser(text, opts) {
   speechSynthesis.cancel();
   _stopMouthLoop();
 
-  const u = new SpeechSynthesisUtterance(text);
-  if (_ruVoice) u.voice = _ruVoice;
-  u.lang = 'ru-RU';
-  u.rate = opts.rate ?? 1.05;
-  u.pitch = opts.pitch ?? 1.0;
-  u.volume = opts.volume ?? 0.9;
+  // Browser TTS dies on very long strings. Chunk on sentence boundaries.
+  const chunks = _splitForTTS(text, 220);
+  if (!chunks.length) return false;
 
-  // Mouth envelope state, driven by boundary events.
+  let chunkIdx = 0;
   let target = 0;
   let endAt = 0;
 
   const tick = (now) => {
     _mouthRaf = requestAnimationFrame(tick);
     if (now > endAt) {
-      setMouthLevel(0);
-      setSpeaking(false);
-      cancelAnimationFrame(_mouthRaf);
+      _mouthRaf && cancelAnimationFrame(_mouthRaf);
       _mouthRaf = null;
+      setMouthLevel(0);
+      // continue if more chunks
+      if (chunkIdx < chunks.length - 1) return; // onend will speak next
+      setSpeaking(false);
       return;
     }
     const cur = mouthLevel();
@@ -94,37 +93,69 @@ function _speakBrowser(text, opts) {
     setMouthLevel(cur + (target - cur) * k);
   };
 
-  u.onstart = () => {
-    setSpeaking(true);
-    // Generous safety end: 110ms per char + 1.5s buffer (covers slow voices).
-    endAt = performance.now() + 1500 + text.length * 110;
-    _mouthRaf = requestAnimationFrame(tick);
-    target = 0.45;
-  };
-  u.onboundary = (ev) => {
-    // Per-word: pick a new openness; loud peaks rare.
-    const r = Math.random();
-    target =
-      r < 0.12 ? 0.85 + Math.random() * 0.15 :  // loud (rare → wide frame)
-      r < 0.55 ? 0.4 + Math.random() * 0.3 :    // normal (active frame)
-                 0.12 + Math.random() * 0.18;   // quiet (1 frame)
-    // brief between-word relaxation
-    if (ev && ev.name === 'word' && Math.random() < 0.15) target = 0.05;
-  };
-  u.onend = () => {
-    _stopMouthLoop();
-  };
-  u.onerror = () => {
-    _stopMouthLoop();
+  const speakChunk = (idx) => {
+    const chunk = chunks[idx];
+    const u = new SpeechSynthesisUtterance(chunk);
+    if (_ruVoice) u.voice = _ruVoice;
+    u.lang = 'ru-RU';
+    u.rate = opts.rate ?? 1.05;
+    u.pitch = opts.pitch ?? 1.0;
+    u.volume = opts.volume ?? 0.9;
+    u.onstart = () => {
+      setSpeaking(true);
+      endAt = performance.now() + 1500 + chunk.length * 110;
+      if (!_mouthRaf) _mouthRaf = requestAnimationFrame(tick);
+      target = 0.45;
+    };
+    u.onboundary = (ev) => {
+      const r = Math.random();
+      target =
+        r < 0.12 ? 0.85 + Math.random() * 0.15 :
+        r < 0.55 ? 0.4 + Math.random() * 0.3 :
+                   0.12 + Math.random() * 0.18;
+      if (ev && ev.name === 'word' && Math.random() < 0.15) target = 0.05;
+    };
+    u.onend = () => {
+      chunkIdx = idx + 1;
+      if (chunkIdx < chunks.length) {
+        // brief silence between chunks (mouth closes)
+        target = 0;
+        speakChunk(chunkIdx);
+      } else {
+        _stopMouthLoop();
+      }
+    };
+    u.onerror = () => { _stopMouthLoop(); };
+    try { speechSynthesis.speak(u); }
+    catch { _stopMouthLoop(); }
   };
 
-  try {
-    speechSynthesis.speak(u);
-    return true;
-  } catch {
-    _stopMouthLoop();
-    return false;
+  speakChunk(0);
+  return true;
+}
+
+// Split text into TTS-friendly chunks at sentence/clause boundaries, ≤maxLen each.
+function _splitForTTS(text, maxLen = 220) {
+  const out = [];
+  const parts = text.split(/(?<=[.!?…])\s+|\n+/g).filter(Boolean);
+  let buf = '';
+  for (const p of parts) {
+    if (!p) continue;
+    if ((buf + ' ' + p).length > maxLen && buf) {
+      out.push(buf.trim());
+      buf = p;
+    } else {
+      buf = buf ? buf + ' ' + p : p;
+    }
   }
+  if (buf.trim()) out.push(buf.trim());
+  // also hard-split anything still too long
+  const final = [];
+  for (const c of out) {
+    if (c.length <= maxLen) { final.push(c); continue; }
+    for (let i = 0; i < c.length; i += maxLen) final.push(c.slice(i, i + maxLen));
+  }
+  return final;
 }
 
 // Backend: cloned TTS service (Этап 2 — wires up later).
