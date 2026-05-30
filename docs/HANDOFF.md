@@ -16,6 +16,56 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-30 — soft-block parser, providers crash, urgency budget, gate lift fix
+
+**Live audit после первого фикса вскрыл ещё несколько багов:**
+
+1. **chat.dialog с пустым arg** — модель писала
+   `[TOOL: chat.dialog]\n<текст>` (без code-fence), парсер видел
+   только `[TOOL: chat.dialog]` без аргумента → tool с пустой строкой
+   → `[ERROR] empty message`. Соня в seq 15840-15842 трижды промахнулась
+   пока не попала в inline-форму.
+   - Новый `_TOOL_SOFT_BLOCK_RE` принимает `[TOOL: name]\n<text>` для
+     plain-text тулов (chat.*, mind.thought/focus, voice.speak,
+     body.expression). Для остальных поведение не меняется.
+   - 6 новых тестов в `test_soft_block_tool_parse.py`.
+
+2. **Inbox-gate снимался до tool exec** — гейт открывался даже если
+   chat.dialog возвращал [ERROR] empty. [DONE] на следующем шаге
+   проходил.
+   - Гейт теперь ставится в pending state, реально снимается только
+     если observation НЕ начинается с `[ERROR]` / `[BLOCKED]`.
+
+3. **`providers.list_keys()` crashed на TypeError** — `ProviderKey.balance`
+   это **метод**, возвращающий dict; старый код делал
+   `f"balance=${k.balance:.2f}"`. Каждый вызов в live валился.
+   - Helper `_key_balance_amount(k)` — поддерживает все варианты
+     (`balance` / `usd` / `remaining` / `credits`), defensive cast на
+     float, None при невозможности парсинга.
+   - Та же логика в `providers.balance()`, `health_report()`,
+     `_check_provider_health` watchdog.
+   - Live verify на VPS: 23 ключа списываются корректно.
+   - 9 новых тестов в `test_providers_tool.py`.
+
+4. **Worker urgency-aware budget** — раньше fixed 5 шагов / 60с,
+   `budget_exceeded: true` в каждом втором outcome.
+   - Теперь urgent → 8/90с, normal → 20/300с, background → 30/900с
+     per HANDOFF.md plan.
+
+5. **Browser tool live-verified на VPS** — open + text + close
+   прошли без ошибок. Playwright + chromium работают через
+   persistent profile в `~/.sonya/browser-profile/`.
+
+**Live verify после deploy (poke #2):**
+```
+seq 15871: body.expression calm
+seq 15873: chat.dialog "Парсер готов? Или ещё что-то чинишь?"
+seq 15874: outgoing.dialog [тот же текст]
+```
+Один body + один dialog → done. Соня даже встречный вопрос задала.
+
+**Тесты: 733 passed** (+15 от прошлого), 6 skipped, 3 deselected.
+
 ### 2026-05-30 — silent-no-reply fix (inbox-priority gate) + audit fixes
 **Симптом:** при atrium-trigger active session Соня делала
 `body.expression calm` и сразу `[DONE]`. Иван видел тишину.
