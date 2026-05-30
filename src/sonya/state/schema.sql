@@ -336,7 +336,10 @@ CREATE TABLE IF NOT EXISTS provider_keys (
     -- v11 additions: provider account discovery + balance snapshot
     account_id TEXT NOT NULL DEFAULT '',
     balance_json TEXT NOT NULL DEFAULT '{}',
-    balance_checked_at TEXT NOT NULL DEFAULT ''
+    balance_checked_at TEXT NOT NULL DEFAULT '',
+    -- v17 addition: slot routing (text-fast, text-deep, code, vision, voice, video, image_gen).
+    -- Comma-separated. KeyStore.acquire_strict matches against this list.
+    slot TEXT NOT NULL DEFAULT 'text'
 );
 
 CREATE INDEX IF NOT EXISTS idx_provider_keys_provider ON provider_keys(provider);

@@ -11,7 +11,7 @@ User=jester-sonya
 Group=jester-sonya
 WorkingDirectory=/home/jester-sonya/Sonya
 EnvironmentFile=/home/jester-sonya/Sonya/.env
-Environment="PYTHONPATH=/home/jester-sonya/Sonya/src:/home/jester-sonya/Sonya/packages/tg-userbot/src"
+Environment="PYTHONPATH=/home/jester-sonya/Sonya/src:/home/jester-sonya/Sonya/packages/tg-userbot/src:/home/jester-sonya/Sonya/packages/tg-bridge/src"
 ExecStart=/home/jester-sonya/Sonya/.venv/bin/python -m sonya
 Restart=always
 RestartSec=5

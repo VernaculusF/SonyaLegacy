@@ -306,6 +306,36 @@ class KeyStore:
             self._sub.connection.commit()
             return self.get_key(chosen.key_id)
 
+    async def acquire_strict(self, provider: str, slot: str) -> ProviderKey | None:
+        """Like acquire() but DOES NOT fall back to non-matching slots.
+
+        Used by the LLM provider to enforce slot routing — for example when
+        ``active_session`` requests ``text-fast`` we'd rather try a
+        different provider that has a fast key than burn a deep key on a
+        latency-sensitive turn.
+        """
+        async with self._lock:
+            all_keys = [k for k in self.list_keys(provider) if k.is_eligible()]
+            slot_keys = [k for k in all_keys if slot in k.slot.split(",")]
+            if not slot_keys:
+                return None
+            slot_keys.sort(key=lambda k: (-k.priority, k.last_used_at or ""))
+            chosen = slot_keys[0]
+            now = _utc_now_iso()
+            self._sub.connection.execute(
+                "UPDATE provider_keys SET last_used_at = ?, request_count = request_count + 1, "
+                "updated_at = ? "
+                "WHERE key_id = ?",
+                (now, now, chosen.key_id),
+            )
+            if chosen.status is KeyStatus.COOLDOWN:
+                self._sub.connection.execute(
+                    "UPDATE provider_keys SET status = 'active', cooldown_until = '' WHERE key_id = ?",
+                    (chosen.key_id,),
+                )
+            self._sub.connection.commit()
+            return self.get_key(chosen.key_id)
+
     async def acquire_by_slot(self, slot: str) -> ProviderKey | None:
         """Pick the best eligible key with the given slot, across ALL providers.
 

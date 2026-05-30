@@ -122,16 +122,19 @@ def _utc_now_iso() -> str:
 # her preferred slot is empty.
 
 _PURPOSE_SLOT_MAP: dict[str, str] = {
-    # Fast (cheap, lower latency, smaller context). Includes active_session —
-    # the bulk of an active turn is chat reply + simple tool dispatch, not
+    # Fast (cheap, lower latency, smaller context) — interactive surfaces
+    # where the bulk of work is chat reply + simple tool dispatch, not
     # deep reasoning. Codegen branches go through selfmod_* purposes which
     # explicitly route to 'code'.
     "tg_session": "text-fast",
-    "task_worker": "text-fast",
     "idle_thinking": "text-fast",
     "pre_done_critique": "text-fast",
     "active_session": "text-fast",
-    # Deep (better quality, more steps, longer context) — explicit opt-in
+    # Deep (better quality, more steps, longer context) — task work and
+    # research where we'd rather spend tokens on better reasoning than on
+    # snappy latency. Per Ivan 30.05: "flash для диалогов, pro для тасков
+    # и воркеров".
+    "task_worker": "text-deep",
     "active_session_deep": "text-deep",
     "research": "text-deep",
     # Codegen — Sonnet-class preferred
@@ -234,12 +237,20 @@ class LLMProvider:
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
         purpose = kwargs.get("purpose", "unknown")
 
-        # Per-purpose slot routing. The slot is a soft preference — if no
-        # key has the preferred slot, acquire() in keystore falls back to
-        # any 'text' key automatically. Mapping reflects: deep work needs
-        # bigger context + better quality; idle/worker/TG can run on a
-        # cheaper fast model; selfmod codegen benefits from Sonnet-class
-        # code reasoning.
+        # Per-purpose slot routing.
+        #
+        # The slot was a SOFT preference until 2026-05-30 — keystore.acquire
+        # would silently fall back to ANY eligible key for the active provider
+        # if no slot match. That defeated the routing: an `active_session`
+        # turn (text-fast → haiku 4.5) would happily land on a fireworks
+        # text-deep key and run on deepseek-v4-pro. Latency 90s for "Привет".
+        #
+        # New policy:
+        #   1. Try `acquire_strict` (slot must match) on the active provider.
+        #   2. If miss, try `acquire_strict` on each fallback provider.
+        #   3. ONLY if every provider has no slot match, fall back to the
+        #      old relaxed `acquire` chain so we never raise NoKeysAvailable
+        #      just because the preferred slot is empty.
         if "_purpose_slot" in kwargs:
             preferred_slot = str(kwargs["_purpose_slot"])
         else:
@@ -261,16 +272,28 @@ class LLMProvider:
         for attempt in range(max_attempts):
             key = None
             picked_provider = provider
+            # Phase 1: strict slot match across all providers.
             for prov in fallback_chain:
-                key = await self._store.acquire(prov, slot=preferred_slot)
+                key = await self._store.acquire_strict(prov, slot=preferred_slot)
                 if key is not None:
                     picked_provider = prov
                     if prov != provider and attempt == 0:
                         _log.info(
                             "provider_fallback_acquired",
-                            extra={"primary": provider, "fallback": prov, "purpose": purpose, "slot": preferred_slot},
+                            extra={"primary": provider, "fallback": prov, "purpose": purpose, "slot": preferred_slot, "match": "strict"},
                         )
                     break
+            # Phase 2: relaxed — accept any eligible key (slot ignored).
+            if key is None:
+                for prov in fallback_chain:
+                    key = await self._store.acquire(prov, slot=preferred_slot)
+                    if key is not None:
+                        picked_provider = prov
+                        _log.info(
+                            "provider_slot_relaxed_fallback",
+                            extra={"primary": provider, "picked": prov, "purpose": purpose, "slot": preferred_slot},
+                        )
+                        break
             if key is None:
                 if attempt == 0:
                     raise NoKeysAvailable(

@@ -96,6 +96,22 @@ if [ ! -d "$HOME/.cache/ms-playwright" ]; then
 fi
 
 echo "=> Restarting services..."
+# Sync systemd unit files from repo if they've changed (e.g. EnvironmentFile
+# directive added). Without this, a unit lacking EnvironmentFile would
+# silently miss .env vars (the SONYA_TG_EMERGENCY_MODE silent-drop bug).
+if [ -d "$PROJECT_DIR/deploy/systemd" ] && command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+    for unit in sonya.service sonya-admin.service; do
+        src="$PROJECT_DIR/deploy/systemd/$unit"
+        dst="/etc/systemd/system/$unit"
+        if [ -f "$src" ]; then
+            if [ ! -f "$dst" ] || ! cmp -s "$src" "$dst"; then
+                echo "   syncing unit: $unit"
+                sudo install -m 0644 "$src" "$dst"
+                sudo systemctl daemon-reload
+            fi
+        fi
+    done
+fi
 # Helper: verify Sonya core + admin are alive (or absent if expected) and
 # port 8877 is bound by the new admin process. Returns 0 if healthy.
 verify_sonya_running() {

@@ -127,9 +127,13 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
     "created_by": "ivan" | "self",        // default depends on context
     "scheduled_for": "2026-05-17T15:00:00Z",  // optional ISO timestamp; empty = run now
     "notify_mode": "progress" | "final" | "silent",  // default "progress"
-    "max_sessions": 3                     // optional; 0 = unlimited. After this many active sessions / worker runs, task auto-fails if not done.
+    "max_sessions": 3,                    // optional; 0 = unlimited. After this many active sessions / worker runs, task auto-fails if not done.
+    "urgency": "urgent" | "normal" | "background"   // optional; ivan-tasks default 'normal', self-tasks default 'background'
   }
-  - created_by="ivan": worker runs every ~2 min (continuous)
+  - urgency=urgent: 8 шагов / 90с window, fast worker pickup (3 min). Use when deadline ≤6h or Ivan said "сейчас же".
+  - urgency=normal: 20 шагов / 5 мин window, regular worker (~30 min). Default for most Ivan-tasks.
+  - urgency=background: 30 шагов / 15 мин window, picked up only when active session has nothing else. Default for self-tasks (your own ideas).
+  - created_by="ivan": worker runs every ~2 min (continuous) when urgent.
   - created_by="self": picked up by active session every 2 hours (her own ideas)
   - scheduled_for=future: scheduler holds it until the time
   - notify_mode=progress: chat.tell_ivan after each step. final: only on done. silent: never.

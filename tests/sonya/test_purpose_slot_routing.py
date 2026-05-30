@@ -19,7 +19,6 @@ from sonya.providers.llm_provider import _slot_for_purpose
 # Fast slot
 @pytest.mark.parametrize("purpose", [
     "tg_session",
-    "task_worker",
     "idle_thinking",
     "pre_done_critique",
 ])
@@ -27,9 +26,14 @@ def test_fast_purposes(purpose: str) -> None:
     assert _slot_for_purpose(purpose) == "text-fast"
 
 
-# Deep slot — explicit opt-in only.
-def test_active_session_deep_uses_deep() -> None:
-    assert _slot_for_purpose("active_session_deep") == "text-deep"
+# Deep slot — explicit opt-in + task work (Ivan: "flash для диалогов, pro для тасков")
+@pytest.mark.parametrize("purpose", [
+    "active_session_deep",
+    "research",
+    "task_worker",
+])
+def test_deep_purposes(purpose: str) -> None:
+    assert _slot_for_purpose(purpose) == "text-deep"
 
 
 def test_active_session_default_is_fast() -> None:

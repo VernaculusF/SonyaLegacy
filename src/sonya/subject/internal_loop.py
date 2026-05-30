@@ -504,6 +504,14 @@ class InternalProcess:
             # `_check_provider_health` for thresholds.
             self._check_provider_health()
 
+            # Stale-intention cleanup: capability_gap intentions older than
+            # 30 days are cancelled so they stop holding pending_debt
+            # high. The gap_detector will re-fire if the underlying issue
+            # is still present. Without this, intention table grows
+            # indefinitely (15 stale rows from May 17 observed in audit).
+            if self._tick_count % 120 == 0:  # ~once per hour
+                self._cleanup_stale_intentions()
+
     def _check_deadlines(self) -> list[str]:
         """Check active intentions for deadline expiry. Mark overdue."""
         overdue: list[str] = []
@@ -1418,6 +1426,41 @@ class InternalProcess:
                     WINDOW_KIND_WORKER,
                     run_window,
                 )
+
+                # Mid-session interrupt: pull fresh dialog turns into the
+                # worker too. Without this, while the worker runs Ivan's
+                # message would sit unread until the next active session
+                # picks it up — for a 5-min task that's a 5-min lag on
+                # "погладь меня". The drain returns each event exactly
+                # once thanks to the `last_seq` cursor in session_state.
+                worker_session_state = {"last_seq": substrate.connection.execute(
+                    "SELECT COALESCE(MAX(seq), 0) FROM continuity_events"
+                ).fetchone()[0]}
+
+                def _ivan_inbox_drain_worker() -> list[str]:
+                    try:
+                        rows = substrate.connection.execute(
+                            "SELECT seq, payload_json FROM continuity_events "
+                            "WHERE seq > ? AND kind IN "
+                            "  ('incoming.atrium_dialog','incoming.telegram_message') "
+                            "ORDER BY seq ASC",
+                            (worker_session_state["last_seq"],),
+                        ).fetchall()
+                    except Exception:
+                        return []
+                    texts: list[str] = []
+                    import json as _json
+                    for seq, pj in rows:
+                        worker_session_state["last_seq"] = int(seq)
+                        try:
+                            p = _json.loads(pj or "{}")
+                        except Exception:
+                            p = {}
+                        t = (p.get("text") or "").strip()
+                        if t:
+                            texts.append(t)
+                    return texts
+
                 worker_window = Window(
                     kind=WINDOW_KIND_WORKER,
                     system_prompt=worker_prompt,
@@ -1438,6 +1481,7 @@ class InternalProcess:
                     },
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
                     outbound=tools["outbound"],
+                    inbox_drain=_ivan_inbox_drain_worker,
                     drives_callback=self._drives.on_action_completed,
                     purpose="task_worker",
                 )
@@ -1805,6 +1849,58 @@ class InternalProcess:
             return None
         except Exception:
             return None
+
+    def _cleanup_stale_intentions(self) -> None:
+        """Cancel pending intentions that have outlived their usefulness.
+
+        Two cohorts age out:
+          - any intention older than 30 days (catch-all),
+          - ``capability_gap:`` intentions older than 7 days (these are
+            cheaply re-fired by the gap detector when the underlying
+            issue is still observable, so we'd rather drop the bookkeeping
+            and let new gaps surface with fresh context).
+
+        Active intentions feed `pending_debt` accumulation in
+        DriveCounters.tick — the cap rate prevents a 5-digit explosion,
+        but a long active list still ratchets the drive higher than it
+        should be. Audit on 2026-05-30 found 15 capability_gap rows from
+        May 17-26 still active and pushing pending_debt up.
+        """
+        try:
+            from datetime import datetime, timedelta, timezone
+            now = datetime.now(timezone.utc)
+            cutoff_30 = (now - timedelta(days=30)).isoformat()
+            cutoff_7 = (now - timedelta(days=7)).isoformat()
+            conn = self._intentions._sub.connection
+            rows = conn.execute(
+                "SELECT intention_id, description, created_at "
+                "FROM pending_intentions WHERE status = 'active'"
+            ).fetchall()
+            cancelled = 0
+            for iid, desc, created in rows:
+                desc = desc or ""
+                # Hard 30-day expiry catches anything stuck.
+                if created < cutoff_30:
+                    pass  # always cancel
+                elif desc.startswith("capability_gap:") and created < cutoff_7:
+                    pass  # cheap to re-fire — cancel
+                else:
+                    continue
+                try:
+                    self._intentions.cancel(iid)
+                    cancelled += 1
+                except Exception:
+                    pass
+            if cancelled:
+                try:
+                    self._stream.append(ContinuityEvent(
+                        kind="internal.stale_intentions_cancelled",
+                        payload={"count": cancelled},
+                    ))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _check_provider_health(self) -> None:
         """Hourly watchdog: notify Ivan via chat.dialog when LLM balance
