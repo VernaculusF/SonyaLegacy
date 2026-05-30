@@ -13,7 +13,6 @@ import {
   pushDialogMessage, pushStreamEvent, pushInnerThought,
   applyMeta, flashAvatar,
 } from './store.js';
-import { speakText } from './voice.js';
 
 let ws = null;
 let reconnectTimer = null;
@@ -105,21 +104,31 @@ function handleEvent(msg) {
     if (text) {
       const cleaned = cleanDialogText(text);
       if (cleaned) {
-        pushDialogMessage({ seq, ts, sender: 'her', text: cleaned });
+        const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
+        pushDialogMessage({ seq, ts, sender: 'her', text: cleaned, attachments: atts });
         // Only flash/notify for live events, not during the initial backlog
         // replay (otherwise a cold start spams the avatar + notifications).
         if (feed.synced) {
           flashAvatar();
-          // Speak her reply if voice is enabled — drives mouth amplitude too.
-          speakText(cleaned);
         }
       }
     }
   }
   // Incoming from Ivan
-  if (isHisIncoming(kind) && text) {
+  if (isHisIncoming(kind) && (text || (payload.attachments && payload.attachments.length) || payload.media_kind)) {
     const cleaned = cleanDialogText(text);
-    if (cleaned) pushDialogMessage({ seq, ts, sender: 'him', text: cleaned });
+    const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
+    if (!atts.length && payload.media_kind) {
+      atts.push({
+        media_kind: payload.media_kind,
+        media_mime: payload.media_mime,
+        media_path: payload.media_path,
+        name: payload.media_path ? String(payload.media_path).replace(/\\/g, '/').split('/').pop() : '',
+      });
+    }
+    if (cleaned || atts.length) {
+      pushDialogMessage({ seq, ts, sender: 'him', text: cleaned, attachments: atts });
+    }
   }
 
   // Inner thought stream (mind.thought events)
@@ -299,7 +308,8 @@ export async function sendNudge({ session_id, text, ref_seq }) {
 
 // HTTP dialog endpoint (T1.4) — Ivan types in the composer. Records an
 // incoming dialog turn + triggers an active session so she replies.
-export async function sendDialog(text) {
+// `attachments` is an optional array of upload refs from uploadAtriumFile().
+export async function sendDialog(text, attachments = []) {
   if (!settings.vps_host || !settings.atrium_token) {
     throw new Error('connection settings missing');
   }
@@ -310,13 +320,52 @@ export async function sendDialog(text) {
       'Content-Type': 'application/json',
       'X-Atrium-Token': settings.atrium_token,
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, attachments }),
   });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(`HTTP ${resp.status}: ${txt}`);
   }
   return resp.json();
+}
+
+// Upload a file attachment to the Atrium media store. Returns the upload ref
+// {name, media_path, media_mime, media_kind, url, size} to pass into sendDialog.
+export async function uploadAtriumFile(file, onProgress) {
+  if (!settings.vps_host || !settings.atrium_token) {
+    throw new Error('connection settings missing');
+  }
+  const url = `http://${settings.vps_host}/api/atrium/upload`;
+  const form = new FormData();
+  form.append('file', file, file.name);
+  // Use XMLHttpRequest for upload progress events.
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('X-Atrium-Token', settings.atrium_token);
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+    }
+    xhr.onload = () => {
+      let json;
+      try { json = JSON.parse(xhr.responseText); } catch { json = { error: xhr.responseText }; }
+      if (xhr.status >= 200 && xhr.status < 300 && json.ok) resolve(json);
+      else reject(new Error(json.error || `HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('upload failed (network)'));
+    xhr.send(form);
+  });
+}
+
+// Absolute URL for a media file served by the admin server.
+export function mediaUrl(nameOrPath) {
+  if (!nameOrPath) return '';
+  // Accept either a bare name or a full server path — extract the basename.
+  const name = String(nameOrPath).replace(/\\/g, '/').split('/').pop();
+  const tok = encodeURIComponent(settings.atrium_token || '');
+  return `http://${settings.vps_host}/api/atrium/media/${encodeURIComponent(name)}?token=${tok}`;
 }
 
 // HTTP heartbeat (T1.5) — keep-alive so the backend knows Atrium is the live

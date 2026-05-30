@@ -35,19 +35,6 @@ const DEFAULT_SETTINGS = {
   room_model_url: '',
   // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
   avatar_mode: '2d',
-  // Voice playback: 'off' (default until user enables) | 'browser' (free OS
-  // TTS, ru-RU) | 'local' (local Piper, services/tts/server.py) |
-  // 'elevenlabs' (ElevenLabs proxy through VPS — best quality, paid).
-  voice_mode: 'off',
-  // Local TTS service URL (used when voice_mode='local').
-  tts_url: 'http://127.0.0.1:8878',
-  // Voice id for local Piper. Available: irina (ж), denis (м), ruslan (м).
-  tts_voice: 'irina',
-  // ElevenLabs voice id. Default = Lily (default voice, free-tier accessible).
-  // Voice library voices need paid plan; на free доступны только default voices.
-  tts_voice_id: 'pFZP5JQG7iQjIQuC4Bku',
-  // ElevenLabs model — multilingual_v2 supports Russian, best quality.
-  tts_model_id: 'eleven_multilingual_v2',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
   // 4 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
   // closed → half → open → wide. wide (последний) — ОЧЕНЬ редкий (только пики).

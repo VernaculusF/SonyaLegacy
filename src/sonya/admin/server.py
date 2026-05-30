@@ -2023,8 +2023,14 @@ async def atrium_dialog(request: web.Request) -> web.Response:
     except Exception:
         data = {}
     text = str(data.get("text") or "").strip()
-    if not text:
-        return _atrium_cors(web.json_response({"error": "text required"}, status=400))
+    # Optional attachment metadata (uploaded separately via /api/atrium/upload,
+    # which returns {name, media_path, media_mime, media_kind}). The composer
+    # passes these back here so the incoming event carries the reference.
+    attachments = data.get("attachments")
+    if not isinstance(attachments, list):
+        attachments = []
+    if not text and not attachments:
+        return _atrium_cors(web.json_response({"error": "text or attachment required"}, status=400))
 
     sub = _get_substrate_writable(config)
     try:
@@ -2032,18 +2038,29 @@ async def atrium_dialog(request: web.Request) -> web.Response:
 
         stream = ContinuityStream(sub)
         primary_id = config.primary_user_tg_id or "5785127604"
+        # First attachment (if any) is wired into media_path/media_mime so the
+        # active session's vision path (channel_session._build_initial_user_message)
+        # can attach it for image/video-capable models.
+        first = attachments[0] if attachments else {}
+        payload = {
+            "channel": "dialog",
+            "chat_id": primary_id,
+            "sender_id": primary_id,
+            "text": text,
+            "source": "atrium/composer",
+            "is_private": True,
+        }
+        if first:
+            payload["media_path"] = first.get("media_path")
+            payload["media_mime"] = first.get("media_mime")
+            payload["media_kind"] = first.get("media_kind")
+        if attachments:
+            payload["attachments"] = attachments
         ev = stream.append(ContinuityEvent(
             kind="incoming.atrium_dialog",
             channel="dialog",
             principal_id="ivan",
-            payload={
-                "channel": "dialog",
-                "chat_id": primary_id,
-                "sender_id": primary_id,
-                "text": text,
-                "source": "atrium/composer",
-                "is_private": True,
-            },
+            payload=payload,
         ))
         # Wake the core: request an active session so she replies promptly.
         stream.append(ContinuityEvent(
@@ -2054,10 +2071,142 @@ async def atrium_dialog(request: web.Request) -> web.Response:
             "status": "queued",
             "event_seq": ev.seq,
             "text": text,
+            "attachments": len(attachments),
             "note": "active session triggered; reply within ~30s",
         }))
     finally:
         sub.close()
+
+
+async def atrium_upload(request: web.Request) -> web.Response:
+    """Accept a file attachment from the Atrium composer (multipart/form-data).
+
+    Saves the bytes into config.media_dir and returns a reference the composer
+    posts back to /api/atrium/dialog as `attachments`. Files are served back
+    via /api/atrium/media/{name}.
+
+    Field: `file` (the binary). Optional `kind` (human label like "видео").
+    """
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
+    if admin_password and token != admin_password:
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
+
+    import os
+    import uuid
+    import mimetypes
+    from pathlib import Path
+
+    media_dir = Path(config.media_dir)
+    media_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        reader = await request.multipart()
+    except Exception as e:
+        return _atrium_cors(web.json_response({"error": f"multipart required: {e}"}, status=400))
+
+    filename = None
+    content_type = None
+    kind_label = None
+    saved_path = None
+    total = 0
+    MAX_BYTES = 60 * 1024 * 1024  # 60 MB per file
+
+    async for part in reader:
+        if part.name == "kind":
+            kind_label = (await part.text()).strip() or None
+            continue
+        if part.name == "file":
+            filename = part.filename or "upload.bin"
+            content_type = part.headers.get("Content-Type") or mimetypes.guess_type(filename)[0]
+            ext = os.path.splitext(filename)[1].lower() or ""
+            # Sanitize extension (alnum + dot only).
+            if not ext or len(ext) > 8 or not ext[1:].isalnum():
+                guessed = mimetypes.guess_extension(content_type or "") or ".bin"
+                ext = guessed
+            safe_name = f"atrium_{uuid.uuid4().hex}{ext}"
+            saved_path = media_dir / safe_name
+            with open(saved_path, "wb") as f:
+                while True:
+                    chunk = await part.read_chunk()
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_BYTES:
+                        f.close()
+                        try:
+                            saved_path.unlink()
+                        except Exception:
+                            pass
+                        return _atrium_cors(web.json_response(
+                            {"error": f"file too large (>{MAX_BYTES // (1024*1024)} MB)"},
+                            status=413))
+                    f.write(chunk)
+            break
+
+    if not saved_path or total == 0:
+        return _atrium_cors(web.json_response({"error": "no file field"}, status=400))
+
+    if not content_type:
+        content_type = "application/octet-stream"
+    # Derive a human kind label from mime if not given.
+    if not kind_label:
+        if content_type.startswith("image/gif"):
+            kind_label = "гифка"
+        elif content_type.startswith("image/"):
+            kind_label = "картинка"
+        elif content_type.startswith("video/"):
+            kind_label = "видео"
+        elif content_type.startswith("audio/"):
+            kind_label = "аудио"
+        elif content_type.startswith("text/") or content_type in ("application/json",):
+            kind_label = "текст"
+        else:
+            kind_label = "файл"
+
+    return _atrium_cors(web.json_response({
+        "ok": True,
+        "name": saved_path.name,
+        "orig_name": filename,
+        "media_path": str(saved_path),
+        "media_mime": content_type,
+        "media_kind": kind_label,
+        "size": total,
+        "url": f"/api/atrium/media/{saved_path.name}",
+    }))
+
+
+async def atrium_media_get(request: web.Request) -> web.Response:
+    """Serve a media file from config.media_dir by name. Used by the Atrium UI
+    to render her attachments and Ivan's uploads (images/video/gif inline)."""
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
+    if admin_password and token != admin_password:
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
+
+    import mimetypes
+    from pathlib import Path
+
+    name = request.match_info.get("name", "")
+    # No path traversal: only a bare filename is allowed.
+    if not name or "/" in name or "\\" in name or ".." in name:
+        return _atrium_cors(web.json_response({"error": "bad name"}, status=400))
+    media_dir = Path(config.media_dir).resolve()
+    p = (media_dir / name).resolve()
+    try:
+        p.relative_to(media_dir)
+    except ValueError:
+        return _atrium_cors(web.json_response({"error": "path escape"}, status=400))
+    if not p.exists() or not p.is_file():
+        return _atrium_cors(web.json_response({"error": "not found"}, status=404))
+    ctype = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
+    resp = web.FileResponse(p)
+    resp.headers["Content-Type"] = ctype
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 async def atrium_heartbeat(request: web.Request) -> web.Response:
@@ -2104,7 +2253,11 @@ def create_app() -> web.Application:
     config = load_config()
     import os
     admin_password = os.environ.get("SONYA_ADMIN_PASSWORD", "")
-    app = web.Application(middlewares=[auth_middleware])
+    # client_max_size: default aiohttp limit is 1 MB, which blocks file
+    # attachments (video / gif / large code dumps) from the Atrium composer.
+    # Raise to 64 MB so Ivan can attach reasonably large media. The dialog
+    # endpoint enforces a per-file cap of its own.
+    app = web.Application(middlewares=[auth_middleware], client_max_size=64 * 1024 * 1024)
     app["config"] = config
     app["admin_password"] = admin_password
     app.router.add_get("/", handle_index)
@@ -2157,13 +2310,13 @@ def create_app() -> web.Application:
     app.router.add_options("/api/atrium/dialog", atrium_options)
     app.router.add_post("/api/atrium/heartbeat", atrium_heartbeat)
     app.router.add_options("/api/atrium/heartbeat", atrium_options)
+    # Atrium media: upload (attachments from composer) + serve (her media / Ivan's).
+    app.router.add_post("/api/atrium/upload", atrium_upload)
+    app.router.add_options("/api/atrium/upload", atrium_options)
+    app.router.add_get("/api/atrium/media/{name}", atrium_media_get)
     # Workshop — Skills / Tools-plugins / Packages browser+editor for Atrium UI.
     from sonya.admin.workshop import register_routes as _register_workshop
     _register_workshop(app)
-    # ElevenLabs TTS proxy — Atrium gets MP3 audio via this server (key never
-    # touches the browser). Voice selection is per-request.
-    from sonya.admin.tts import register_routes as _register_tts
-    _register_tts(app)
     return app
 
 

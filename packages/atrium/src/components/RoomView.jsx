@@ -23,7 +23,7 @@ export default function RoomView(props) {
         <div class="room-header">
           <span class="logo">◐ ATRIUM</span>
           <span class="room-label">
-            <span class="live-dot">●</span> в комнате · она у окна
+            <span class="live-dot">●</span> в комнате
           </span>
           <span class="spacer"></span>
           <span class="exit" onClick={() => props.onClose?.()} title="выйти (Esc)">
@@ -32,13 +32,8 @@ export default function RoomView(props) {
         </div>
 
         <div class="room-scene">
-          {/* atmospheric scene layers (CSS) */}
+          {/* plain dark background — no window (Ivan asked to remove it) */}
           <div class="room-bg"></div>
-          <div class="room-window">
-            <div class="room-moon"></div>
-            <div class="room-window-cross"></div>
-          </div>
-          <div class="room-floor"></div>
 
           <div classList={{ 'room-avatar': true, speaking: speaking() }}>
             <Show when={use3d()} fallback={<SonyaAvatar expression={feed.current_expression} />}>
@@ -47,30 +42,9 @@ export default function RoomView(props) {
           </div>
         </div>
 
-        {/* Voice-mode scaffold — Этап 2 (нужен GPU для TTS/ASR) */}
-        <div class="room-voice">
-          <div class="room-voice-badge">
-            voice mode · Этап 2 (VAD + ASR + TTS — ждёт GPU)
-          </div>
-          <div class="room-voice-row">
-            <div classList={{ 'vm-speaker': true, her: true, idle: !speaking() }}>
-              <span class="vm-label">соня</span>
-              <div class="vm-wave">
-                {Array.from({ length: 28 }).map(() => <span class="vm-bar"></span>)}
-              </div>
-            </div>
-            <div class="vm-speaker him idle">
-              <span class="vm-label">иван</span>
-              <div class="vm-wave">
-                {Array.from({ length: 28 }).map(() => <span class="vm-bar"></span>)}
-              </div>
-            </div>
-          </div>
-          <div class="room-hints">
-            <span><kbd>Esc</kbd> выйти</span>
-            <span><kbd>tap</kbd> прервать (Этап 2)</span>
-            <span style={{ 'margin-left': 'auto' }}>auto-leave через 5 мин тишины (Этап 2)</span>
-          </div>
+        <div class="room-hints room-hints-bottom">
+          <span><kbd>Esc</kbd> выйти</span>
+          <span style={{ 'margin-left': 'auto' }}>комната для взаимодействия с её телом — в разработке</span>
         </div>
       </div>
     </div>

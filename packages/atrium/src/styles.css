@@ -160,7 +160,7 @@ textarea {
 /* Main grid (3 columns) */
 .main {
   display: grid;
-  grid-template-columns: 280px 1fr 320px;
+  grid-template-columns: 360px 1fr 320px;
   overflow: hidden;
 }
 
@@ -184,10 +184,15 @@ textarea {
 }
 
 /* Avatar pane */
+.avatar-pane {
+  display: flex;
+  flex-direction: column;
+}
 .avatar-frame {
-  width: 200px;
-  height: 240px;
-  margin: 8px auto 12px;
+  width: 100%;
+  flex: 1;
+  min-height: 420px;
+  margin: 8px 0 0;
   border-radius: 12px;
   background: linear-gradient(180deg, #1a1c20 0%, #0e0f12 100%);
   position: relative;
@@ -330,40 +335,7 @@ textarea {
   75%  { transform: translateX(-3px) rotate(0.12deg); }
   100% { transform: translateX(0)    rotate(0deg); }
 }
-/* dev emotion preview chips — hidden until the avatar pane is hovered */
-.emotion-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 14px;
-  opacity: 0;
-  max-height: 0;
-  overflow: hidden;
-  transition: opacity 200ms, max-height 200ms;
-}
-.avatar-pane:hover .emotion-preview {
-  opacity: 1;
-  max-height: 160px;
-}
-.emotion-preview .chip {
-  font-size: 9px;
-  font-family: var(--font-mono);
-  color: var(--ink-3);
-  background: var(--bg-elev);
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  padding: 2px 6px;
-  cursor: pointer;
-  transition: all 150ms;
-}
-.emotion-preview .chip:hover { color: var(--ink-1); border-color: var(--acc-her-eyes); }
-.emotion-preview .chip.on { color: var(--acc-her); border-color: var(--acc-her); }
-.emotion-preview .chip.talk { color: var(--acc-her-eyes); }
-.emotion-preview .chip.mic { color: var(--acc-him); }
-.emotion-preview .chip.mic.on { color: #fff; border-color: var(--acc-warn); background: rgba(200,120,100,0.12); }
-.emotion-preview .chip.voice { color: var(--acc-her); }
-.emotion-preview .chip.voice.on { color: #fff; border-color: var(--acc-her); background: rgba(201,205,212,0.10); }
-.emotion-preview .mic-err { font-size: 9px; color: var(--acc-warn); align-self: center; }
+/* dev emotion preview chips — removed (emotions chosen only by Sonya now) */
 .avatar-canvas {
   position: absolute;
   inset: 0;
@@ -472,8 +444,52 @@ textarea {
   font-size: 15px;
   line-height: 1.5;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   animation: appear 250ms ease-out;
 }
+.bubble-text { white-space: pre-wrap; }
+/* code blocks inside a bubble */
+.bubble-code {
+  white-space: pre;
+  overflow-x: auto;
+  background: #0c0d10;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #cdd2da;
+  max-width: 100%;
+}
+/* attachments inside a bubble */
+.bubble-atts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.att-img, .att-video {
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  display: block;
+}
+.att-audio { width: 100%; }
+.att-file {
+  display: inline-block;
+  color: var(--acc-her-eyes);
+  font-size: 13px;
+  text-decoration: none;
+  padding: 6px 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+.att-file:hover { border-color: var(--acc-her-eyes); color: var(--acc-her); }
 @keyframes appear {
   from {
     opacity: 0;
@@ -624,10 +640,71 @@ textarea {
   margin: 0 2px;
 }
 
+/* Composer attachments (staged before send) */
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.pending-att {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--ink-2);
+  max-width: 220px;
+}
+.pending-att.uploading { color: var(--acc-her-eyes); font-style: italic; }
+.pending-kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--acc-her-eyes);
+}
+.pending-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending-x {
+  background: none;
+  border: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.pending-x:hover { color: var(--acc-warn); }
+.attach-btn {
+  width: 44px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 200ms;
+}
+.attach-btn:hover {
+  color: var(--acc-her);
+  border-color: var(--acc-her-eyes);
+  background: rgba(138, 163, 184, 0.05);
+}
+.dialog-pane.drag-over {
+  outline: 2px dashed var(--acc-her-eyes);
+  outline-offset: -6px;
+  background: rgba(138, 163, 184, 0.04);
+}
+
 /* Mind pane */
 .mind-section {
   margin-bottom: 22px;
 }
+.presence-lines { display: flex; flex-direction: column; gap: 8px; }
 .mind-focus {
   font-size: 15px;
   color: var(--ink-1);
@@ -1240,40 +1317,13 @@ textarea {
     linear-gradient(180deg, #0a0c10 0%, #111419 55%, #16181c 100%);
 }
 .room-window {
-  position: absolute;
-  top: 8%;
-  right: 12%;
-  width: 200px;
-  height: 280px;
-  background: linear-gradient(180deg, #1a2030 0%, #0a0c14 100%);
-  border: 1px solid var(--hairline);
-  box-shadow: 0 0 120px rgba(138,163,184,0.06), inset 0 0 60px rgba(138,163,184,0.05);
+  display: none; /* removed per Ivan — plain black background */
 }
 .room-window-cross::before, .room-window-cross::after {
-  content: "";
-  position: absolute;
-  background: rgba(42,45,51,0.6);
+  content: none;
 }
-.room-window-cross::before { left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); }
-.room-window-cross::after { top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%); }
-.room-moon {
-  position: absolute;
-  top: 36px;
-  left: 40px;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #eef0f3, #a8acb3);
-  box-shadow: 0 0 50px rgba(232,234,237,0.3);
-}
-.room-floor {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 32%;
-  background: linear-gradient(180deg, transparent, rgba(5,6,8,0.7));
-}
+.room-moon { display: none; }
+.room-floor { display: none; }
 .room-avatar {
   position: absolute;
   bottom: 0;
@@ -1299,64 +1349,9 @@ textarea {
   text-transform: uppercase;
   pointer-events: none;
 }
-.room-voice {
+.room-hints-bottom {
   background: rgba(14, 15, 18, 0.85);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid var(--hairline);
-  padding: 14px 32px 12px;
-}
-.room-voice-badge {
-  font-size: 10px;
-  color: var(--ink-3);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  text-align: center;
-  margin-bottom: 12px;
-}
-.room-voice-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  margin-bottom: 12px;
-}
-.vm-speaker {
-  display: grid;
-  grid-template-columns: 60px 1fr;
-  gap: 12px;
-  align-items: center;
-}
-.vm-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  text-align: right;
-}
-.vm-speaker.her .vm-label { color: var(--acc-her); }
-.vm-speaker.him .vm-label { color: var(--acc-him); }
-.vm-wave {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-  height: 28px;
-}
-.vm-bar {
-  flex: 1;
-  height: 4px;
-  border-radius: 1px;
-  background: var(--ink-3);
-  opacity: 0.3;
-  transform: skewX(-8deg);
-}
-.vm-speaker.her:not(.idle) .vm-bar {
-  background: var(--acc-her);
-  opacity: 1;
-  animation: vm-pulse 0.7s ease-in-out infinite;
-}
-.vm-speaker.her:not(.idle) .vm-bar:nth-child(odd) { animation-delay: 0.15s; }
-.vm-speaker.her:not(.idle) .vm-bar:nth-child(3n) { animation-delay: 0.3s; }
-@keyframes vm-pulse {
-  0%, 100% { height: 4px; }
-  50% { height: 22px; }
+  padding: 12px 32px;
 }
 .room-hints {
   display: flex;
@@ -1384,14 +1379,14 @@ textarea {
   position: fixed;
   inset: 0;
   z-index: 250;
-  background: var(--bg);
+  background: var(--bg-deep);
   animation: room-fade 200ms ease-out;
 }
 .workshop {
   display: grid;
   grid-template-rows: 50px 1fr;
   height: 100vh;
-  background: var(--bg);
+  background: var(--bg-deep);
   color: var(--ink-1);
 }
 .workshop-header {
@@ -1442,6 +1437,23 @@ textarea {
   display: grid;
   grid-template-columns: 280px 1fr;
   overflow: hidden;
+}
+.workshop-body.single {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+.ws-list.wide {
+  width: 100%;
+  max-width: 720px;
+  border-right: none;
+}
+.ws-list-head .ws-readonly-tag {
+  font-size: 9px;
+  color: var(--ink-3);
+  letter-spacing: 0.12em;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 1px 6px;
 }
 .ws-list {
   border-right: 1px solid var(--hairline);
@@ -1576,7 +1588,7 @@ textarea {
 .ws-textarea {
   width: 100%;
   height: 100%;
-  background: var(--bg);
+  background: var(--bg-deep);
   border: none;
   color: var(--ink-1);
   padding: 12px 16px;

@@ -364,12 +364,25 @@ def build_full_context(
         }
         recent_dialog = [e for e in recent_continuity if e.kind in dialog_kinds][-12:]
         if recent_dialog:
+            # The last incoming message from Ivan is what she's replying to —
+            # it must NOT be truncated (Atrium supports arbitrary-size messages
+            # and code/text dumps). Older history stays clamped for prompt size.
+            last_incoming_seq = None
+            for e in reversed(recent_dialog):
+                if e.kind in ("incoming.telegram_message", "incoming.atrium_dialog"):
+                    last_incoming_seq = e.seq
+                    break
             stream_block = "\n\n## Недавний диалог:\n"
             for e in recent_dialog:
                 rel_ts = _relative_time(e.created_at, now_utc)
                 if e.kind in ("incoming.telegram_message", "incoming.atrium_dialog"):
-                    text = (e.payload.get("text") or "")[:600]
-                    stream_block += f"- [{rel_ts}] [Иван написал] {text}\n"
+                    raw = e.payload.get("text") or ""
+                    # Full text for the message she's answering; clamp history.
+                    text = raw if e.seq == last_incoming_seq else raw[:600]
+                    # Note any attachment so she knows to look at it.
+                    mk = e.payload.get("media_kind")
+                    suffix = f" [вложение: {mk}]" if mk else ""
+                    stream_block += f"- [{rel_ts}] [Иван написал] {text}{suffix}\n"
                 elif e.kind in ("outgoing.response", "outgoing.telegram_response", "outgoing.dialog"):
                     text = (e.payload.get("text") or "")[:600]
                     stream_block += f"- [{rel_ts}] [я ответила] {text}\n"

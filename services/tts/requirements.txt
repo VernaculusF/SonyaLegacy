@@ -1,6 +1,0 @@
-# Piper TTS service deps. Lightweight (~20 MB total: piper + onnxruntime),
-# CPU-real-time, neural quality.
-
-piper-tts>=1.4
-onnxruntime>=1.17
-aiohttp>=3.9

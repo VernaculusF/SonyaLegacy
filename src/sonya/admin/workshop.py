@@ -221,72 +221,23 @@ async def workshop_list(request: web.Request) -> web.Response:
 
 
 async def workshop_read(request: web.Request) -> web.Response:
+    # Workshop is list-only now (Ivan's decision). Reading file contents via
+    # the Atrium UI is disabled for ALL kinds — code is inspected/edited via
+    # git, not through the web surface.
     if (err := _check_auth(request)):
         return _cors(web.json_response({"error": err}, status=401))
-    kind = request.query.get("kind", "")
-    path = request.query.get("path", "")
-    # Чтение разрешено только для skills. tools и packages — только список.
-    if kind != "skills":
-        return _cors(web.json_response({
-            "error": f"read disabled for kind={kind!r} (skills only — "
-                     f"tools/packages are list-only via workshop)",
-        }, status=403))
-    try:
-        root = _root_for(kind)
-        p = _safe_resolve(root, path)
-    except (ValueError, PermissionError) as e:
-        return _cors(web.json_response({"error": str(e)}, status=400))
-    if not p.exists() or not p.is_file():
-        return _cors(web.json_response({"error": "not found"}, status=404))
-    try:
-        content = p.read_text(encoding="utf-8")
-    except Exception as e:
-        return _cors(web.json_response({"error": f"read failed: {e}"}, status=500))
     return _cors(web.json_response({
-        "kind": kind, "path": path, "content": content,
-        "size": len(content), "lang": _lang_for(p.suffix),
-    }))
+        "error": "workshop is list-only — file read disabled (use git)",
+    }, status=403))
 
 
 async def workshop_write(request: web.Request) -> web.Response:
-    """Create or overwrite a file in skills/builtins or tools/plugins.
-
-    For tools: only `plugins/<name>.py` paths are writable. Other tools
-    files (core tool modules at top of tools/) are read-only via workshop —
-    they're code-loaded at import time and edits should go through git.
-    """
+    """Disabled — workshop is list-only. Code changes go through git."""
     if (err := _check_auth(request)):
         return _cors(web.json_response({"error": err}, status=401))
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-    kind = str(data.get("kind") or "").strip()
-    path = str(data.get("path") or "").strip()
-    content = data.get("content")
-    if kind != "skills":
-        return _cors(web.json_response(
-            {"error": f"write only allowed for kind='skills' (got {kind!r})"},
-            status=403))
-    if not path or not isinstance(content, str):
-        return _cors(web.json_response({"error": "path + content required"}, status=400))
-    if not path.endswith(".py"):
-        return _cors(web.json_response({"error": "only .py files"}, status=400))
-    try:
-        root = _root_for(kind)
-        root.mkdir(parents=True, exist_ok=True)
-        p = _safe_resolve(root, path)
-    except (ValueError, PermissionError) as e:
-        return _cors(web.json_response({"error": str(e)}, status=400))
-    p.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        p.write_text(content, encoding="utf-8")
-    except Exception as e:
-        return _cors(web.json_response({"error": f"write failed: {e}"}, status=500))
     return _cors(web.json_response({
-        "ok": True, "kind": kind, "path": path,
-        "size": p.stat().st_size,
-    }))
+        "error": "workshop is list-only — write disabled (use git)",
+    }, status=403))
 
 
 async def workshop_test(request: web.Request) -> web.Response:

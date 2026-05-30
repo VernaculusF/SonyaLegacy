@@ -1,12 +1,14 @@
 /* Dialog pane — chat bubbles + composer.
- * Этап 1: composer write disabled; we read-only show messages from feed.
- * Sending dialog/voice from Atrium pending Этап 2 (need TG-bridge integration
- * or admin inject endpoint).
+ *
+ * Full primary I/O surface:
+ *   - send text of any size (backend has no truncation on the message she answers)
+ *   - attach files (image / gif / video / text / code) via 📎 or drag-drop / paste
+ *   - render her replies + Ivan's messages with media inline, code blocks, and
+ *     large text scrollable.
  */
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { feed, pushDialogMessage } from '../store.js';
-import { sendDialog } from '../ws.js';
-import { stopVoice } from '../voice.js';
+import { sendDialog, uploadAtriumFile, mediaUrl } from '../ws.js';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -31,20 +33,82 @@ function dayMarker(messages) {
   }
 }
 
+// Split a message into plain-text and ```code``` segments for rendering.
+function segmentText(text) {
+  const out = [];
+  const re = /```(\w*)\n?([\s\S]*?)```/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push({ type: 'text', value: text.slice(last, m.index) });
+    out.push({ type: 'code', lang: m[1] || '', value: m[2] });
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.push({ type: 'text', value: text.slice(last) });
+  return out.length ? out : [{ type: 'text', value: text }];
+}
+
+function MessageBody(props) {
+  const segs = () => segmentText(props.text || '');
+  return (
+    <For each={segs()}>
+      {(s) =>
+        s.type === 'code' ? (
+          <pre class="bubble-code"><code>{s.value}</code></pre>
+        ) : (
+          <span class="bubble-text">{s.value}</span>
+        )
+      }
+    </For>
+  );
+}
+
+function Attachment(props) {
+  const a = props.att;
+  const mime = (a.media_mime || '').toLowerCase();
+  const name = a.name || (a.media_path ? String(a.media_path).replace(/\\/g, '/').split('/').pop() : 'file');
+  // Resolve URL: prefer explicit name/url, fall back to media_path basename.
+  const url = mediaUrl(a.name || a.url || a.media_path);
+  const isImg = mime.startsWith('image/') && !mime.includes('gif');
+  const isGif = mime.includes('gif');
+  const isVideo = mime.startsWith('video/');
+  const isAudio = mime.startsWith('audio/');
+
+  return (
+    <div class="att">
+      <Show when={isImg || isGif}>
+        <img class="att-img" src={url} alt={name} loading="lazy" />
+      </Show>
+      <Show when={isVideo}>
+        <video class="att-video" src={url} controls preload="metadata"></video>
+      </Show>
+      <Show when={isAudio}>
+        <audio class="att-audio" src={url} controls preload="none"></audio>
+      </Show>
+      <Show when={!isImg && !isGif && !isVideo && !isAudio}>
+        <a class="att-file" href={url} target="_blank" rel="noopener">
+          📎 {name}{a.media_kind ? ` · ${a.media_kind}` : ''}
+        </a>
+      </Show>
+    </div>
+  );
+}
+
 export default function DialogPane(props) {
   let scrollEl;
   let textareaEl;
+  let fileInputEl;
   const [draft, setDraft] = createSignal('');
   const [sending, setSending] = createSignal(false);
   const [sendError, setSendError] = createSignal('');
+  const [pending, setPending] = createSignal([]); // staged attachments (upload refs)
+  const [uploading, setUploading] = createSignal(false);
+  const [dragOver, setDragOver] = createSignal(false);
 
-  // Auto-scroll to bottom on new messages
   createEffect(() => {
-    feed.dialog_messages.length; // dependency
+    feed.dialog_messages.length;
     queueMicrotask(() => {
-      if (scrollEl) {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-      }
+      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     });
   });
 
@@ -52,27 +116,70 @@ export default function DialogPane(props) {
     if (props.onEnterRoom) props.onEnterRoom();
   }
 
+  async function uploadFiles(files) {
+    if (!files || !files.length) return;
+    setUploading(true);
+    setSendError('');
+    for (const f of files) {
+      try {
+        const ref = await uploadAtriumFile(f);
+        setPending((cur) => [...cur, ref]);
+      } catch (e) {
+        setSendError('upload: ' + (e.message || e));
+      }
+    }
+    setUploading(false);
+  }
+
+  function onPickFiles(e) {
+    uploadFiles(Array.from(e.target.files || []));
+    e.target.value = '';
+  }
+
+  function onPaste(e) {
+    const items = e.clipboardData?.items || [];
+    const files = [];
+    for (const it of items) {
+      if (it.kind === 'file') {
+        const f = it.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      uploadFiles(files);
+    }
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length) uploadFiles(files);
+  }
+
+  function removePending(idx) {
+    setPending((cur) => cur.filter((_, i) => i !== idx));
+  }
+
   async function send() {
     const text = draft().trim();
-    if (!text || sending()) return;
-    // Cut any in-flight speech so she doesn't keep talking over Ivan's new turn.
-    stopVoice();
+    const atts = pending();
+    if ((!text && !atts.length) || sending()) return;
     setSendError('');
     setSending(true);
-    // Optimistic echo so Ivan sees his message immediately. The backend
-    // records incoming.atrium_dialog; the WS feed won't echo it back as a
-    // dialog bubble (only her replies + telegram incoming render), so the
-    // optimistic push is the canonical local copy.
     pushDialogMessage({
       seq: `local-${Date.now()}`,
       ts: new Date().toISOString(),
       sender: 'him',
       text,
+      attachments: atts,
     });
     setDraft('');
+    setPending([]);
     if (textareaEl) textareaEl.style.height = 'auto';
     try {
-      await sendDialog(text);
+      await sendDialog(text, atts);
     } catch (err) {
       setSendError(String(err.message || err));
     } finally {
@@ -81,7 +188,6 @@ export default function DialogPane(props) {
   }
 
   function onKeyDown(e) {
-    // Enter sends; Shift+Enter newline
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -91,11 +197,16 @@ export default function DialogPane(props) {
   function autoGrow(e) {
     setDraft(e.target.value);
     e.target.style.height = 'auto';
-    e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+    e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
   }
 
   return (
-    <main class="dialog-pane">
+    <main
+      classList={{ 'dialog-pane': true, 'drag-over': dragOver() }}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+    >
       <div class="dialog-scroll" ref={scrollEl}>
         <Show
           when={feed.dialog_messages.length > 0}
@@ -112,7 +223,18 @@ export default function DialogPane(props) {
                 <div classList={{ ts: true, 'her-ts': m.sender === 'her', 'him-ts': m.sender === 'him' }}>
                   {formatTime(m.ts)}
                 </div>
-                <div classList={{ bubble: true, [m.sender]: true }}>{m.text}</div>
+                <div classList={{ bubble: true, [m.sender]: true }}>
+                  <Show when={m.text}>
+                    <MessageBody text={m.text} />
+                  </Show>
+                  <Show when={m.attachments && m.attachments.length}>
+                    <div class="bubble-atts">
+                      <For each={m.attachments}>
+                        {(a) => <Attachment att={a} />}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
               </>
             )}
           </For>
@@ -123,20 +245,56 @@ export default function DialogPane(props) {
         <Show when={sendError()}>
           <div class="composer-error">{sendError()}</div>
         </Show>
+
+        <Show when={pending().length || uploading()}>
+          <div class="composer-attachments">
+            <For each={pending()}>
+              {(a, i) => (
+                <div class="pending-att" title={a.orig_name || a.name}>
+                  <span class="pending-kind">{a.media_kind || 'файл'}</span>
+                  <span class="pending-name">{a.orig_name || a.name}</span>
+                  <button class="pending-x" onClick={() => removePending(i())} title="убрать">×</button>
+                </div>
+              )}
+            </For>
+            <Show when={uploading()}>
+              <div class="pending-att uploading">загрузка…</div>
+            </Show>
+          </div>
+        </Show>
+
         <div class="composer-row">
+          <button
+            class="attach-btn"
+            title="прикрепить файл"
+            onClick={() => fileInputEl?.click()}
+          >
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+              <path d="M21 11.5l-8.5 8.5a5 5 0 01-7-7l8.5-8.5a3.5 3.5 0 015 5l-8.5 8.5a2 2 0 01-3-3l8-8"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <input
+            ref={fileInputEl}
+            type="file"
+            multiple
+            style="display:none"
+            onChange={onPickFiles}
+          />
           <textarea
             ref={textareaEl}
-            placeholder="напиши ей..."
+            placeholder="напиши ей... (можно вставить/перетащить файл)"
             value={draft()}
             disabled={sending()}
             onInput={autoGrow}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             rows="1"
           ></textarea>
           <button
             class="send-btn"
             title="отправить (Enter)"
-            disabled={sending() || !draft().trim()}
+            disabled={sending() || (!draft().trim() && !pending().length)}
             onClick={send}
           >
             <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
@@ -150,32 +308,20 @@ export default function DialogPane(props) {
           </button>
           <button
             class="mic-btn"
-            title="войти в комнату (Этап 2)"
+            title="войти в комнату"
             onClick={openRoom}
           >
             <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-              <rect
-                x="9"
-                y="3"
-                width="6"
-                height="11"
-                rx="3"
-                stroke="currentColor"
-                stroke-width="1.5"
-              />
-              <path
-                d="M5 11a7 7 0 0014 0M12 18v3"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
+              <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.5" />
+              <path d="M5 11a7 7 0 0014 0M12 18v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
             </svg>
           </button>
         </div>
         <div class="composer-hint">
           <span class="hint-key">Enter</span> отправить ·
           <span class="hint-key">Shift+Enter</span> перенос ·
-          <span class="hint-key">click 🎙</span> комната (Этап 2)
+          <span class="hint-key">📎</span> файл ·
+          <span class="hint-key">drag/paste</span> вставить
         </div>
       </div>
     </main>

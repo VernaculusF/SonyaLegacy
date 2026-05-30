@@ -1,8 +1,28 @@
-/* Mind pane: focus + drives + env + inner stream + private aggregate.
+/* Mind pane: presence + focus + drives + env + inner stream + private aggregate.
  * Updates via meta-messages every 60s + immediate on mind.* events.
  */
 import { For, Show } from 'solid-js';
-import { feed, settings } from '../store.js';
+import { feed, settings, speaking } from '../store.js';
+
+const EXPRESSION_LABEL = {
+  neutral: 'спокойна',
+  smile: 'улыбается',
+  thinking: 'задумалась',
+  tired: 'устала',
+  sad: 'грустная',
+  sad_tears: 'плачет',
+  excited: 'оживлена',
+  curious: 'любопытно',
+  tender: 'нежная',
+  annoyed: 'раздражена',
+  angry: 'злится',
+  shy: 'смущена',
+  desire: 'желание',
+  playful: 'игривая',
+  calm: 'умиротворена',
+  surprised: 'удивлена',
+  joy: 'радуется',
+};
 
 const DRIVE_ORDER = ['curiosity', 'relational_focus', 'pending_debt', 'boredom'];
 
@@ -40,6 +60,31 @@ function DriveBar(props) {
 export default function MindPane() {
   return (
     <aside class="pane right">
+      <div class="mind-section">
+        <h2>PRESENCE</h2>
+        <div class="presence-lines">
+          <div class="status-line">
+            <span class="label">смотрит</span>
+            ивана
+          </div>
+          <div class="status-line">
+            <span class="label">воспринимает</span>
+            {feed.her_typing ? 'печатает' : speaking() ? 'говорит' : 'тишина'}
+          </div>
+          <div class="status-line">
+            <span class="label">чувствует</span>
+            {EXPRESSION_LABEL[feed.current_expression] || feed.current_expression}
+          </div>
+          <Show when={feed.her_typing}>
+            <div class="typing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </Show>
+        </div>
+      </div>
+
       <div class="mind-section">
         <h2>FOCUS</h2>
         <div classList={{ 'mind-focus': true, empty: !feed.current_focus }}>

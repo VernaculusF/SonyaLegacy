@@ -236,3 +236,114 @@ def test_catchup_backlog_zero_means_no_history():
     """backlog=0 on cold start → only live events (start at latest)."""
     from sonya.admin.server import _atrium_catchup_since
     assert _atrium_catchup_since(0, 14000, 0) == 0
+
+
+# ---------------------------------------------------------------------------
+# Atrium media attachments (uploads + dialog refs + serve) + workshop lockdown
+# ---------------------------------------------------------------------------
+
+
+def test_atrium_media_routes_registered(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_ADMIN_PASSWORD", "test")
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
+    from sonya.admin.server import create_app
+
+    app = create_app()
+    routes = {r.resource.canonical for r in app.router.routes()}
+    assert "/api/atrium/upload" in routes
+    assert "/api/atrium/media/{name}" in routes
+
+
+def test_app_client_max_size_raised(tmp_path: Path, monkeypatch) -> None:
+    """Body limit must be well above the 1 MB default so attachments fit."""
+    monkeypatch.setenv("SONYA_ADMIN_PASSWORD", "test")
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
+    from sonya.admin.server import create_app
+
+    app = create_app()
+    assert app._client_max_size >= 16 * 1024 * 1024
+
+
+def test_dialog_accepts_attachments(tmp_path: Path, monkeypatch) -> None:
+    """atrium_dialog records media_path/media_mime into the incoming event."""
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
+    from aiohttp.test_utils import make_mocked_request
+    from sonya.admin.server import atrium_dialog
+    from sonya.config import load_config
+
+    cfg = load_config()
+
+    class _Req:
+        def __init__(self, app, body):
+            self.app = app
+            self._body = body
+            self.headers = {}
+            self.query = {}
+
+        async def json(self):
+            return self._body
+
+    app = {"config": cfg, "admin_password": ""}
+    body = {
+        "text": "посмотри это видео",
+        "attachments": [{
+            "name": "atrium_abc.mp4",
+            "media_path": str(tmp_path / "atrium_abc.mp4"),
+            "media_mime": "video/mp4",
+            "media_kind": "видео",
+        }],
+    }
+    resp = asyncio.run(atrium_dialog(_Req(app, body)))
+    assert resp.status == 200
+
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        events = list(ContinuityStream(sub).read_since(0))
+        inc = [e for e in events if e.kind == "incoming.atrium_dialog"]
+        assert len(inc) == 1
+        p = inc[0].payload
+        assert p["text"] == "посмотри это видео"
+        assert p["media_mime"] == "video/mp4"
+        assert p["media_kind"] == "видео"
+        assert len(p["attachments"]) == 1
+    finally:
+        sub.close()
+
+
+def test_dialog_rejects_empty_no_attachment(tmp_path: Path) -> None:
+    from sonya.admin.server import atrium_dialog
+    from sonya.config import load_config
+
+    cfg = load_config()
+
+    class _Req:
+        def __init__(self, app):
+            self.app = app
+            self.headers = {}
+            self.query = {}
+
+        async def json(self):
+            return {}
+
+    app = {"config": cfg, "admin_password": ""}
+    resp = asyncio.run(atrium_dialog(_Req(app)))
+    assert resp.status == 400
+
+
+def test_workshop_read_write_disabled(tmp_path: Path) -> None:
+    """Workshop is list-only — read and write return 403 for all kinds."""
+    from sonya.admin.workshop import workshop_read, workshop_write
+
+    class _Req:
+        def __init__(self):
+            self.app = {"admin_password": ""}
+            self.headers = {}
+            self.query = {"kind": "skills", "path": "x.py"}
+
+        async def json(self):
+            return {"kind": "skills", "path": "x.py", "content": "x = 1"}
+
+    r1 = asyncio.run(workshop_read(_Req()))
+    assert r1.status == 403
+    r2 = asyncio.run(workshop_write(_Req()))
+    assert r2.status == 403

@@ -57,7 +57,3 @@ packages/atrium/public/avatar/
 
 # Isolated venv for image tooling (rembg etc) — not part of core.
 .venv-imgtools/
-
-# Local TTS service — own venv (heavy: torch + silero), model cache.
-services/tts/.venv/
-services/tts/.cache/
