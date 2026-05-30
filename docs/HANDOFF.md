@@ -16,7 +16,85 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-30 — silent-no-reply fix (inbox-priority gate) + audit fixes
+**Симптом:** при atrium-trigger active session Соня делала
+`body.expression calm` и сразу `[DONE]`. Иван видел тишину.
+
+**Корень:** в `run_agent_session` гейт `_unanswered_inbox` срабатывал
+только при `inbox_drain` (mid-session). Когда session открывался на
+сообщении Ивана, гейт был выключен — Соня могла молча закрыться.
+
+**Фикс:**
+- `run_agent_session(require_dialog_reply: bool = False)` — новый явный
+  параметр. Когда True, `_unanswered_inbox=True` с самого старта,
+  блокирует и tool calls (кроме reaction-set), и [DONE]/[PAUSE].
+- `Window.require_dialog_reply` пробрасывает в run_agent_session.
+- Active session при pending_dialog от Ивана теперь:
+  - сообщение идёт через `initial_user_text` (литерал, без обёртки
+    "Your current thought:")
+  - `require_dialog_reply=True`
+  - короткая директива в initial_thought
+- Тесты: новый `test_agent_session_inbox_gate.py` (2 кейса).
+- Live verify: повторный poke после deploy → Соня сделала
+  body.expression tender + chat.dialog "Привет, малыш. Я здесь.",
+  гейт заблокировал env.set до chat.dialog.
+
+### 2026-05-30 — большой ход после live audit VPS
+
+**Аудит вскрыл несколько серьёзных расхождений с предыдущим HANDOFF:**
+
+1. **`SONYA_TG_EMERGENCY_MODE=1` не доходило до процесса** — systemd
+   unit на VPS не имел `EnvironmentFile=`, а `update.sh` не
+   синхронизировал unit-файлы из репо. Процесс видел `<unset>` для
+   всех `.env` переменных (TG emergency, SEARXNG, INITIATIVE кэпы).
+   - Repo unit файлы были корректны. Расширил `update.sh` —
+     теперь sync `deploy/systemd/*.service → /etc/systemd/system/*`
+     при расхождении + `daemon-reload`.
+   - На VPS установил unit файлы вручную, перезапустил, проверил
+     `/proc/$PID/environ` — теперь содержит SONYA_TG_EMERGENCY_MODE=1.
+
+2. **Routing был дырявый — flash для диалогов не работал**
+   - `task_worker` purpose был `text-fast`. Иван явно просил
+     `pro для тасков и воркеров`. Перевёл на `text-deep`.
+   - КРИТИЧНО: `KeyStore.acquire(slot=...)` имел soft fallback —
+     если slot пустой, возвращал ЛЮБОЙ eligible ключ. Поэтому
+     `active_session` (text-fast) на fireworks (где нет text-fast
+     ключей) тихо падал на text-deep ключ → deepseek-v4-pro вместо
+     haiku 4.5 → 90с латентность на "Привет".
+   - Новый `KeyStore.acquire_strict` — slot обязан совпасть.
+   - `LLMProvider.complete_text` теперь работает в две фазы:
+     - Phase 1: `acquire_strict` на каждом провайдере fallback chain
+     - Phase 2 (только при полном промахе): relaxed acquire (старое
+       поведение, чтобы не падать в NoKeysAvailable)
+   - Live verify в логах:
+     `provider_fallback_acquired primary=fireworks fallback=kr
+      purpose=active_session slot=text-fast match=strict`
+     — кнопка работает.
+
+3. **`slot` колонка не в schema.sql** — тесты на свежем substrate
+   падали с "no such column: slot". Колонка добавлялась только
+   через миграцию v17 ALTER TABLE. Дописал её в DDL `provider_keys`.
+
+4. **15 stale capability_gap intentions с 17-26 мая** держали
+   `pending_debt` отличным от нуля. Никто не закрывал их.
+   - Новый watchdog `_cleanup_stale_intentions` (раз/час): >30 дней
+     любая active intention → cancel; capability_gap >7 дней →
+     cancel (gap detector re-fires если сигнал жив).
+   - На VPS ручной heal: 14/15 cancelled.
+
+5. **Worker не имел inbox_drain** — пока worker крутился (5-15 мин),
+   сообщения Ивана сидели нечитанные до следующей active session.
+   Добавил `_ivan_inbox_drain_worker` и пробросил в Window.
+
+6. **`tasks.create` urgency не задокументирован** в prompt-doc
+   `agent_session.py`. Расписал: urgent/normal/background, бюджеты,
+   defaults для ivan/self.
+
 ### 2026-05-30 — runtime skills registry (substrate v22)
+**Симптом:** `_BUILTIN_SKILLS` хардкоднутый dict — Соня не могла
+зарегистрировать новый skill без правки executor.py.
+
+**Фикс:**
 - `docs/STATE.md` §6 — отметил Skills hardcoded blocker как ✅ FIXED.
 - `src/sonya/skills/skill.py` — добавлено поле `module_path: str = ""`.
 - `src/sonya/state/migrations.py` — bump `CURRENT_VERSION` 21→22, новая
@@ -53,6 +131,8 @@
   rejected, missing run() rejected, register_builtins backfill on legacy
   row, runtime_skills_dir created.
 - Тесты: 710 passed (было 701), 6 skipped, 3 deselected.
+
+После всего сегодняшнего залпа: **718 passed**, 6 skipped, 3 deselected.
 
 ### Предыдущая сессия (см. ниже)
 
