@@ -71,18 +71,20 @@ export default function SonyaAvatar(props) {
   const expr = createMemo(() => EXPR[props.expression] || EXPR.neutral);
   const frames = () => settings.avatar_frames || [];
   const emotions = () => settings.avatar_emotions || {};
+  // Stable list of [marker, url] so all emotion sprites can be preloaded and
+  // stacked (crossfade via opacity, not src-swap which is instant).
+  const emotionList = createMemo(() => Object.entries(emotions()));
 
-  // Emotion sprite URL for the current expression, if one exists.
-  const emotionSrc = createMemo(() => {
+  // Current emotion marker that actually has a sprite.
+  const activeEmotion = createMemo(() => {
     const m = props.expression;
     if (!m || m === 'neutral') return '';
-    return emotions()[m] || '';
+    return emotions()[m] ? m : '';
   });
 
-  // When does the emotion sprite show? When set AND she's idle (not talking).
-  // While talking we use the mouth frames so the mouth animates. (Per-emotion
-  // talking frames would be 44 images — future; for now talking = base set.)
-  const showEmotion = createMemo(() => !!emotionSrc() && !speaking());
+  // When does an emotion sprite show? When set AND she's idle (not talking).
+  // While talking we use the mouth frames so the mouth animates.
+  const showEmotion = createMemo(() => !!activeEmotion() && !speaking());
 
   // Mouth open amount 0..1 — closed when idle, opens with mouthLevel.
   const mouthOpen = createMemo(() => (speaking() ? mouthLevel() : 0));
@@ -132,16 +134,20 @@ export default function SonyaAvatar(props) {
                 </Show>
               )}
             </For>
-            {/* emotion sprite — visible when set and idle */}
-            <Show when={emotionSrc()}>
-              <img
-                class="sonya-2d-frame sonya-2d-emotion"
-                classList={{ active: showEmotion() }}
-                src={emotionSrc()}
-                alt={props.expression}
-                draggable={false}
-              />
-            </Show>
+            {/* emotion sprites — ALL preloaded + stacked, only the active one
+                is opaque. Crossfade via opacity (slow) so idle→emotion and
+                emotion→emotion transitions are smooth, not an instant swap. */}
+            <For each={emotionList()}>
+              {([marker, src]) => (
+                <img
+                  class="sonya-2d-frame sonya-2d-emotion"
+                  classList={{ active: showEmotion() && activeEmotion() === marker }}
+                  src={src}
+                  alt={marker}
+                  draggable={false}
+                />
+              )}
+            </For>
           </div>
         </Show>
       </div>

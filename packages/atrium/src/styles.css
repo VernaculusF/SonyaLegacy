@@ -258,8 +258,8 @@ textarea {
   align-items: flex-end;
   justify-content: center;
   overflow: hidden;
-  /* outer layer: slow horizontal drift + occasional lean (transform, GPU) */
-  animation: s2d-drift 17s ease-in-out infinite;
+  /* outer layer: very slow horizontal drift + occasional lean */
+  animation: s2d-drift 28s ease-in-out infinite;
   will-change: transform;
 }
 .sonya-2d-inner {
@@ -269,12 +269,13 @@ textarea {
   align-items: flex-end;
   justify-content: center;
   transform-origin: 50% 100%;
-  /* inner layer: breathing (Y + micro-scale) + sway (rotate), composed */
-  animation: s2d-breathe 5s ease-in-out infinite;
+  /* inner layer: slow calm breathing (Y + micro-scale) + gentle sway */
+  animation: s2d-breathe 8.5s ease-in-out infinite;
   will-change: transform;
 }
 .sonya-2d.talking .sonya-2d-inner {
-  animation: s2d-breathe 3.2s ease-in-out infinite;
+  /* a touch livelier while speaking, still calm */
+  animation: s2d-breathe 6s ease-in-out infinite;
 }
 .sonya-2d-svg {
   width: 100%;
@@ -305,27 +306,28 @@ textarea {
 .sonya-2d-frame.active {
   opacity: 1;
 }
-/* emotion sprite fades slower than the mouth — feels like settling into a mood */
+/* emotion sprite crossfade — slow & soft so idle→emotion and emotion→emotion
+   feel like she's settling into a mood, not snapping. */
 .sonya-2d-emotion {
-  transition: opacity 280ms ease-in-out;
+  transition: opacity 450ms ease-in-out;
 }
-/* Inner: breathing (Y + micro-scale) + sway (rotate) — many keyframe steps so
-   it reads organic, not a metronome. */
+/* Inner: gentle slow breathing (Y + micro-scale) + soft sway (rotate). Small
+   amplitudes so it reads as calm presence, not bobbing. */
 @keyframes s2d-breathe {
-  0%   { transform: translateY(0)     scale(1)     rotate(-0.8deg); }
-  15%  { transform: translateY(-0.8px) scale(1.003) rotate(-0.3deg); }
-  32%  { transform: translateY(-1.8px) scale(1.007) rotate(0.4deg); }
-  50%  { transform: translateY(-2.2px) scale(1.009) rotate(0.9deg); }
-  68%  { transform: translateY(-1.6px) scale(1.006) rotate(0.3deg); }
-  84%  { transform: translateY(-0.6px) scale(1.002) rotate(-0.4deg); }
-  100% { transform: translateY(0)     scale(1)     rotate(-0.8deg); }
+  0%   { transform: translateY(0)      scale(1)     rotate(-0.5deg); }
+  20%  { transform: translateY(-0.5px) scale(1.002) rotate(-0.2deg); }
+  40%  { transform: translateY(-1.2px) scale(1.005) rotate(0.3deg); }
+  50%  { transform: translateY(-1.4px) scale(1.006) rotate(0.5deg); }
+  60%  { transform: translateY(-1.2px) scale(1.005) rotate(0.3deg); }
+  80%  { transform: translateY(-0.5px) scale(1.002) rotate(-0.2deg); }
+  100% { transform: translateY(0)      scale(1)     rotate(-0.5deg); }
 }
-/* Outer: slow drift sideways + subtle lean — GPU transform, no reflow. */
+/* Outer: barely-there slow drift + lean — GPU transform, no reflow. */
 @keyframes s2d-drift {
   0%   { transform: translateX(0)    rotate(0deg); }
-  25%  { transform: translateX(5px)  rotate(0.3deg); }
-  50%  { transform: translateX(2px)  rotate(-0.2deg); }
-  75%  { transform: translateX(-5px) rotate(0.25deg); }
+  25%  { transform: translateX(3px)  rotate(0.15deg); }
+  50%  { transform: translateX(1px)  rotate(-0.1deg); }
+  75%  { transform: translateX(-3px) rotate(0.12deg); }
   100% { transform: translateX(0)    rotate(0deg); }
 }
 /* dev emotion preview chips — hidden until the avatar pane is hovered */
