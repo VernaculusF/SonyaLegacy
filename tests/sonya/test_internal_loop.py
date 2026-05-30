@@ -155,3 +155,49 @@ async def test_tick_count_increments(substrate: Substrate) -> None:
     await proc.stop()
 
     assert proc.tick_count >= 2
+
+
+def test_pending_ivan_message_detects_unanswered(substrate: Substrate) -> None:
+    """An incoming atrium dialog with no later reply is 'pending'."""
+    from sonya.state import ContinuityEvent
+    stream = ContinuityStream(substrate)
+    store = PendingIntentionStore(substrate)
+    proc = InternalProcess(stream, store)
+
+    stream.append(ContinuityEvent(
+        kind="incoming.atrium_dialog",
+        channel="dialog",
+        principal_id="ivan",
+        payload={"text": "привет, ты тут?", "media_kind": None},
+    ))
+    pending = proc._pending_ivan_message(substrate)
+    assert pending is not None
+    assert pending["text"] == "привет, ты тут?"
+
+
+def test_pending_ivan_message_none_after_reply(substrate: Substrate) -> None:
+    """Once she replies (outgoing event with higher seq), nothing pending."""
+    from sonya.state import ContinuityEvent
+    stream = ContinuityStream(substrate)
+    store = PendingIntentionStore(substrate)
+    proc = InternalProcess(stream, store)
+
+    stream.append(ContinuityEvent(
+        kind="incoming.atrium_dialog",
+        channel="dialog",
+        principal_id="ivan",
+        payload={"text": "привет"},
+    ))
+    stream.append(ContinuityEvent(
+        kind="outgoing.dialog",
+        channel="dialog",
+        payload={"text": "привет, малыш"},
+    ))
+    assert proc._pending_ivan_message(substrate) is None
+
+
+def test_pending_ivan_message_empty_stream(substrate: Substrate) -> None:
+    stream = ContinuityStream(substrate)
+    store = PendingIntentionStore(substrate)
+    proc = InternalProcess(stream, store)
+    assert proc._pending_ivan_message(substrate) is None

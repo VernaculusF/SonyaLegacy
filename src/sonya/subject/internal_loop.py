@@ -819,12 +819,31 @@ class InternalProcess:
             # something to do on the selfmod side.
             force_selfmod_track = self._should_force_selfmod_track(substrate)
 
+            # ---- HIGHEST PRIORITY: unanswered message from Ivan ----------
+            # Atrium is the primary I/O surface. If Ivan sent a dialog message
+            # (atrium or TG) that she hasn't answered yet, THIS session must
+            # reply to it first — not run selfmod / tasks. Without this she
+            # would wander into self_inspect and ignore him (the 30.05 bug).
+            pending_dialog = self._pending_ivan_message(substrate)
             initial_thought = ""
+            if pending_dialog:
+                force_selfmod_track = False
+                att = pending_dialog.get("media_kind")
+                att_note = f"\nОн приложил: {att}. Посмотри/учти это." if att else ""
+                initial_thought = (
+                    "Иван только что написал тебе в Atrium (это твоё основное окно "
+                    "общения с ним). СНАЧАЛА ответь ему — это приоритет №1.\n\n"
+                    f"Его сообщение:\n\"{pending_dialog.get('text', '')}\"{att_note}\n\n"
+                    "Ответь через [TOOL: chat.dialog]<твой ответ>. Отвечай по сути, "
+                    "своим голосом, без формальностей. После ответа можешь заняться "
+                    "задачами/самоулучшением, если останутся шаги."
+                )
+
             try:
                 from sonya.tasks.service import TaskService
                 from sonya.tasks.store import TaskStore
                 svc = TaskService(TaskStore(substrate), stream=self._stream)
-                next_task = svc.pick_next() if not force_selfmod_track else None
+                next_task = svc.pick_next() if (not force_selfmod_track and not initial_thought) else None
                 if next_task is not None:
                     # Auto-resume in_progress; pending tasks remain pending until she
                     # decides to pick (so she can choose, not be forced).
@@ -1683,6 +1702,58 @@ class InternalProcess:
             return int(n) >= 8
         except Exception:
             return False
+
+    def _pending_ivan_message(self, substrate: object) -> dict | None:
+        """Return the latest unanswered dialog message from Ivan, or None.
+
+        "Unanswered" = the most recent incoming dialog event
+        (incoming.atrium_dialog / incoming.telegram_message) has a higher seq
+        than the most recent outgoing reply she sent
+        (outgoing.dialog / outgoing.telegram_response / outgoing.response).
+
+        Returns the incoming payload dict (text, media_kind, ...) so the
+        active session can be seeded to reply. This makes Atrium a real
+        primary I/O surface: a message from Ivan is always answered first.
+        """
+        if substrate is None:
+            return None
+        try:
+            import json as _json
+            incoming_kinds = (
+                "incoming.atrium_dialog",
+                "incoming.telegram_message",
+            )
+            outgoing_kinds = (
+                "outgoing.dialog",
+                "outgoing.telegram_response",
+                "outgoing.telegram_initiative",
+                "outgoing.telegram_progress",
+                "outgoing.response",
+            )
+            in_ph = ",".join("?" for _ in incoming_kinds)
+            row = substrate.connection.execute(
+                f"SELECT seq, payload_json FROM continuity_events "
+                f"WHERE kind IN ({in_ph}) ORDER BY seq DESC LIMIT 1",
+                incoming_kinds,
+            ).fetchone()
+            if row is None:
+                return None
+            last_in_seq = int(row[0])
+            payload = _json.loads(row[1] or "{}")
+
+            out_ph = ",".join("?" for _ in outgoing_kinds)
+            row2 = substrate.connection.execute(
+                f"SELECT seq FROM continuity_events "
+                f"WHERE kind IN ({out_ph}) ORDER BY seq DESC LIMIT 1",
+                outgoing_kinds,
+            ).fetchone()
+            last_out_seq = int(row2[0]) if row2 else 0
+
+            if last_in_seq > last_out_seq:
+                return payload if isinstance(payload, dict) else None
+            return None
+        except Exception:
+            return None
 
     def _count_recent_no_progress(self, task_id: str) -> int:
         """Count consecutive recent handoffs marked '(...no progress)' for

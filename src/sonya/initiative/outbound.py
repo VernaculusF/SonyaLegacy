@@ -635,7 +635,7 @@ class OutboundGate:
             payload={
                 "reason": reason,
                 "target": self._target,
-                "text": text[:1000],
+                "text": text[:20000],
                 "sent_today": self._sent_today,
                 "daily_cap": self._max_per_day,
                 "progress_today": self._progress_today,
