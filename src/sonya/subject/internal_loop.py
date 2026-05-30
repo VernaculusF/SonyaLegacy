@@ -1538,7 +1538,7 @@ class InternalProcess:
                         )[:1500]
                         # Heuristic next_step: if final_output mentions specific
                         # action verbs, use them; otherwise fall back to original plan
-                        auto_next_step = next_step  # use the previous next_step as continuation
+                        auto_next_step = f"[APPROACH FAILED — CHANGE STRATEGY] Previous step ({next_step[:120]}) produced no progress after {retry_count + 1} attempts. DO NOT retry the same tool/URL/approach. Propose a DIFFERENT tool, DIFFERENT parameters, or tasks.block if out of ideas."
                         if final_text:
                             # If she said something specific in her last output, use it
                             for line in final_text.splitlines():
