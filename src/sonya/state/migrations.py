@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 21
+CURRENT_VERSION = 22
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -351,6 +351,37 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 21
+
+    if version == 21:
+        # v21 → v22: skills.module_path column for runtime skill registration.
+        # Lets Sonya register a new skill (write code → register row →
+        # executor imports & runs) without us hardcoding the module dotted
+        # path in `skills/executor.py::_BUILTIN_SKILLS`. Legacy rows keep
+        # working because the executor falls back to the hardcoded dict
+        # when module_path is empty.
+        _add_column_if_missing(conn, "skills", "module_path", "TEXT NOT NULL DEFAULT ''")
+        # Backfill module_path for the 3 legacy builtin skills so freshly
+        # migrated substrates don't need a re-register call.
+        for sid, mpath in (
+            ("skill-memory-search", "sonya.skills.builtins.memory_search"),
+            ("skill-identity-check", "sonya.skills.builtins.identity_check"),
+            ("skill-dialog-tone", "sonya.skills.builtins.dialog_tone"),
+        ):
+            try:
+                conn.execute(
+                    "UPDATE skills SET module_path = ? "
+                    "WHERE skill_id = ? AND (module_path IS NULL OR module_path = '')",
+                    (mpath, sid),
+                )
+            except sqlite3.OperationalError:
+                pass
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (22, now),
+        )
+        conn.commit()
+        version = 22
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

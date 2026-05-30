@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS skills (
     metrics_json TEXT NOT NULL DEFAULT '{}',
     trace_tags_json TEXT NOT NULL DEFAULT '[]',
     history_json TEXT NOT NULL DEFAULT '[]',
+    module_path TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 

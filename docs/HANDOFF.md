@@ -16,6 +16,46 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-30 — runtime skills registry (substrate v22)
+- `docs/STATE.md` §6 — отметил Skills hardcoded blocker как ✅ FIXED.
+- `src/sonya/skills/skill.py` — добавлено поле `module_path: str = ""`.
+- `src/sonya/state/migrations.py` — bump `CURRENT_VERSION` 21→22, новая
+  миграция: `ALTER TABLE skills ADD COLUMN module_path` + backfill для
+  3 legacy builtin рядов (если уже зарегистрированы).
+- `src/sonya/state/schema.sql` — `module_path TEXT NOT NULL DEFAULT ''`
+  в DDL для `skills`.
+- `src/sonya/state/substrate.py` — `WRITABLE_VERSION = 22`,
+  `READABLE_VERSIONS` расширен.
+- `src/sonya/skills/registry.py` — `register/_row_to_skill` пишут/читают
+  module_path; добавлены `list_all()` и `update_module_path()`.
+- `src/sonya/skills/executor.py` — заменил резолюцию: сначала
+  `Skill.module_path` из registry (поддерживаются и dotted-paths, и
+  filesystem-paths через `importlib.util.spec_from_file_location`),
+  fallback на legacy `_BUILTIN_SKILLS` dict. Новая хелпер-функция
+  `runtime_skills_dir() -> Path = ~/.sonya/runtime_skills`. Метод
+  `list_available()` теперь перечисляет всё что есть в registry, а не
+  только хардкод-словарь.
+- `src/sonya/tools/skills_tool.py` — `register_builtins` теперь
+  устанавливает module_path и backfill'ит legacy ряды без него. Новый
+  метод `register_runtime(arg)`: блочный формат
+  `skill_id|name|purpose|trust_level\n<python source>`. Source
+  компилируется (раннее выявление SyntaxError), пишется в
+  `~/.sonya/runtime_skills/<id>.py`, registry получает row с
+  module_path указанным на этот файл. Re-register с тем же id —
+  overwrite-in-place.
+- `src/sonya/subject/agent_session.py` — добавлен handler
+  `_h_skills_register_runtime` + `skills.register_runtime` в
+  `_TOOL_HANDLERS` и `_EMPTY_OK_TOOLS`. Удалён дублирующийся
+  `skills.register_builtins` ключ. Обновлён prompt-doc раздел.
+- `tests/sonya/test_skill_runtime.py` — 9 новых тестов:
+  module_path persists, executor uses module_path, register_runtime
+  writes file & runs, overwrite-in-place, bad id rejected, syntax error
+  rejected, missing run() rejected, register_builtins backfill on legacy
+  row, runtime_skills_dir created.
+- Тесты: 710 passed (было 701), 6 skipped, 3 deselected.
+
+### Предыдущая сессия (см. ниже)
+
 ### Документация
 - `docs/STATE.md` — общая картина: что есть, цели L0-L3, блокеры, where-to-look
 - `docs/HANDOFF.md` — этот файл; точка прерывания
@@ -85,14 +125,16 @@
 ## Что ОСТАЛОСЬ (для следующей сессии)
 
 ### Высокий приоритет
-1. **Skills registry runtime registration.** Сейчас `_BUILTIN_SKILLS` в
-   `executor.py` хардкоднутый dict. Соня не может зарегистрировать новый
-   skill через selfmod без правки executor.py. Решение: построить registry
-   из substrate + dynamic import path lookup.
-2. **Plugins.create + skills.register выровнять API.** plugins.* пишут в
-   `tools/plugins/`, skills_register должен делать то же для
-   `skills/builtins/` плюс автоматически прописывать в `_BUILTIN_SKILLS`
-   через runtime mutation (в substrate, не в код).
+1. ~~**Skills registry runtime registration.**~~ ✅ DONE 2026-05-30.
+   Substrate v22 + `skills.register_runtime` тул.
+2. **Plugins.create + skills.register выровнять API.**  Сейчас:
+   - `plugins.create` пишет в `~/.sonya/plugins/<name>.py` через
+     `tools/hot_loader.py::ensure_plugins_dir()`.
+   - `skills.register_runtime` пишет в `~/.sonya/runtime_skills/<id>.py`
+     через `skills/executor.py::runtime_skills_dir()`.
+   API почти параллельный (отличается только директорией и тем что у
+   skill есть metadata-line). Можно унифицировать сигнатуры в общий
+   helper, но это чисто косметика — оставить как low-priority.
 3. **Проверить что body.expression реально меняет картинку.** Был
    фикс `_ToolContext.stream`, должен работать. Сделать e2e тест:
    POST /api/atrium/dialog → ждём `outgoing.body_expression` →

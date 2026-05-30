@@ -28,3 +28,7 @@ class Skill:
     metrics: dict[str, Any] = field(default_factory=dict)
     trace_tags: tuple[str, ...] = field(default_factory=tuple)
     history: tuple[str, ...] = field(default_factory=tuple)
+    # Dotted python module path (e.g. "sonya.skills.builtins.memory_search").
+    # Empty for legacy rows registered before v22; executor falls back to
+    # the legacy hardcoded mapping in that case.
+    module_path: str = ""

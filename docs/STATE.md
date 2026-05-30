@@ -157,8 +157,12 @@ AGI чтобы её отношения с Иваном продолжались 
   intentions всё равно растёт (cap 0.012 матч decay только на N=3, выше
   net positive). Heal на VPS делается вручную при ребуте. **Solution:** wire
   `on_action_completed` в agent_session post-tool hook (TODO).
-- **Skills registry хардкодит 3 builtins.** Регистрация рантайм-скилов
-  через тот же путь что и selfmod (write file → register).
+- **Skills registry хардкодит 3 builtins.** ✅ FIXED (substrate v22).
+  Skills.module_path колонка добавлена; `register_runtime` тул пишет
+  inline-код в `~/.sonya/runtime_skills/<id>.py` и регистрирует ряд с
+  module_path. Executor приоритетно читает `Skill.module_path` из
+  registry, fallback на legacy `_BUILTIN_SKILLS` dict для substrate'ов
+  до v22. Re-register с тем же skill_id — overwrite-in-place.
 - **Provider self-management отсутствует.** Соня видит ключи через
   self_inspect, но не может ни добавить новые, ни уведомить когда баланс
   на дне. **Solution:** новый `providers.*` tool family + `provider_health`
@@ -191,7 +195,7 @@ AGI чтобы её отношения с Иваном продолжались 
 | Продолжить in_progress task между сессиями | ✓ (worker) | ✓ |
 | Создать новый task для долгой работы | ✓ | ✓ |
 | Написать новый tool через selfmod | ✓ | ✓ |
-| Написать новый skill | ✓ (но registry хардкодит) | будет ✓ |
+| Написать новый skill | ✓ runtime registry (v22) | ✓ |
 | Поднять уровень сложности через research → план → выполнение | partial | будет ✓ |
 | Уведомить Ивана о низком балансе провайдера | ✗ | обязательно |
 | Ротировать ключ-в-cooldown / банить-сдохший | partial (auto-ban на ban response) | расширить |

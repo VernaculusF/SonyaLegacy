@@ -41,8 +41,8 @@ class SkillRegistry:
             "(skill_id, name, purpose, version, status, trust_level, "
             "activation_rules_json, dependencies_json, allowed_tools_json, "
             "forbidden_zones_json, tests_json, metrics_json, trace_tags_json, "
-            "history_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "history_json, module_path, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 skill.skill_id,
                 skill.name,
@@ -58,6 +58,7 @@ class SkillRegistry:
                 json.dumps(skill.metrics, ensure_ascii=False),
                 json.dumps(list(skill.trace_tags), ensure_ascii=False),
                 json.dumps(list(skill.history), ensure_ascii=False),
+                skill.module_path or "",
                 now,
             ),
         )
@@ -75,7 +76,17 @@ class SkillRegistry:
             "SELECT skill_id, name, purpose, version, status, trust_level, "
             "activation_rules_json, dependencies_json, allowed_tools_json, "
             "forbidden_zones_json, tests_json, metrics_json, trace_tags_json, "
-            "history_json FROM skills WHERE status = 'active' ORDER BY name"
+            "history_json, module_path FROM skills WHERE status = 'active' ORDER BY name"
+        )
+        return [_row_to_skill(row) for row in cursor.fetchall()]
+
+    def list_all(self) -> list[Skill]:
+        """Return every skill row regardless of status."""
+        cursor = self._sub.connection.execute(
+            "SELECT skill_id, name, purpose, version, status, trust_level, "
+            "activation_rules_json, dependencies_json, allowed_tools_json, "
+            "forbidden_zones_json, tests_json, metrics_json, trace_tags_json, "
+            "history_json, module_path FROM skills ORDER BY name"
         )
         return [_row_to_skill(row) for row in cursor.fetchall()]
 
@@ -87,12 +98,25 @@ class SkillRegistry:
         self._sub.connection.commit()
         return self.get(skill_id)
 
+    def update_module_path(self, skill_id: str, module_path: str) -> Skill:
+        """Update an existing skill row's module_path.
+
+        Useful when an Ivan-edit / selfmod relocates a skill module without
+        re-creating its registry record.
+        """
+        self._sub.connection.execute(
+            "UPDATE skills SET module_path = ? WHERE skill_id = ?",
+            (module_path, skill_id),
+        )
+        self._sub.connection.commit()
+        return self.get(skill_id)
+
     def _get_row(self, skill_id: str):
         return self._sub.connection.execute(
             "SELECT skill_id, name, purpose, version, status, trust_level, "
             "activation_rules_json, dependencies_json, allowed_tools_json, "
             "forbidden_zones_json, tests_json, metrics_json, trace_tags_json, "
-            "history_json FROM skills WHERE skill_id = ?",
+            "history_json, module_path FROM skills WHERE skill_id = ?",
             (skill_id,),
         ).fetchone()
 
@@ -113,4 +137,5 @@ def _row_to_skill(row) -> Skill:
         metrics=json.loads(row[11] or "{}"),
         trace_tags=tuple(json.loads(row[12] or "[]")),
         history=tuple(json.loads(row[13] or "[]")),
+        module_path=(row[14] if len(row) > 14 and row[14] is not None else ""),
     )

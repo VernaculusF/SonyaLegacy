@@ -85,6 +85,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - skills.list — show registered skills and their status
 - skills.run [skill_id] [query] — execute a skill (e.g. `skills.run skill-memory-search что мы обсуждали вчера`)
 - skills.register_builtins — seed built-in skills (memory-search, identity-check, dialog-tone) into registry. Call once.
+- skills.register_runtime — block form, register a NEW skill from inline code. First line: `skill_id|name|purpose|trust_level`. Following lines: python source defining `def run(ctx) -> str`. Source goes to `~/.sonya/runtime_skills/<id>.py`, executor imports immediately. Re-running with same skill_id overwrites the file.
 
 - knowledge.list [topic?] — список тем или файлов в теме (твоя база знаний в ~/.sonya/knowledge/)
 - knowledge.read [topic/file] — прочитать факт-файл (напр. `knowledge.read pentest/sqli`)
@@ -375,7 +376,8 @@ _EMPTY_OK_TOOLS = frozenset({
     "tasks.complete", "tasks.fail", "tasks.block", "tasks.unblock",
     "tasks.handoff", "tasks.pause", "tasks.create", "tasks.pick",
     "env.set", "env.clear", "goals.create", "goals.achieve",
-    "goals.abandon", "skills.register_builtins", "memory.index_status",
+    "goals.abandon", "skills.register_builtins", "skills.register_runtime",
+    "memory.index_status",
     "selfmod.apply", "selfmod.validate", "selfmod.propose", "selfmod.propose_edit",
 })
 
@@ -1051,6 +1053,11 @@ def _h_skills_run(arg: str, ctx: _ToolContext) -> str:
 def _h_skills_register_builtins(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.skills, "skills")
     return err if err else ctx.skills.register_builtins()
+
+
+def _h_skills_register_runtime(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.skills, "skills")
+    return err if err else ctx.skills.register_runtime(arg)
 
 
 # knowledge.* — persistent markdown KB в ~/.sonya/knowledge/
@@ -1996,6 +2003,7 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "skills.list": _h_skills_list,
     "skills.run": _h_skills_run,
     "skills.register_builtins": _h_skills_register_builtins,
+    "skills.register_runtime": _h_skills_register_runtime,
     # knowledge.* — persistent markdown KB в ~/.sonya/knowledge/
     "knowledge.list": _h_knowledge_list,
     "knowledge.read": _h_knowledge_read,
