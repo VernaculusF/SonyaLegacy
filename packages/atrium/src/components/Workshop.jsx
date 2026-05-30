@@ -11,6 +11,55 @@
 import { createSignal, onMount, onCleanup, For, Show } from 'solid-js';
 import { settings } from '../store.js';
 
+/**
+ * TreeNode — рекурсивный узел дерева для kind='packages'.
+ *
+ * node.type === 'dir':  раскрывающаяся папка (свой createSignal collapsed).
+ * node.type === 'file': кликабельный файл (открывает в редакторе).
+ *
+ * skills/tools остаются плоским списком и рендерятся отдельно.
+ */
+function TreeNode(props) {
+  const { node, depth = 0, isActive, onPick } = props;
+  const [open, setOpen] = createSignal(depth === 0);  // top-level packages раскрыты по умолчанию
+
+  if (node.type === 'file') {
+    return (
+      <button
+        classList={{ 'ws-item': true, 'ws-tree-file': true, on: isActive(node) }}
+        style={{ 'padding-left': `${10 + depth * 12}px` }}
+        onClick={() => onPick(node)}
+        title={`${node.path} · ${node.size}b`}
+      >
+        <span class="ws-item-name">{node.name}</span>
+        <span class="ws-item-size">{Math.round(node.size / 102.4) / 10}k</span>
+      </button>
+    );
+  }
+  // dir
+  return (
+    <div class="ws-tree-dir">
+      <button
+        class="ws-tree-dir-head"
+        style={{ 'padding-left': `${10 + depth * 12}px` }}
+        onClick={() => setOpen(!open())}
+        title={node.path}
+      >
+        <span class="ws-tree-chev">{open() ? '▾' : '▸'}</span>
+        <span class="ws-tree-dir-name">{node.name}</span>
+        <span class="ws-tree-dir-count">{(node.children || []).length}</span>
+      </button>
+      <Show when={open()}>
+        <div class="ws-tree-children">
+          <For each={node.children || []}>
+            {(child) => <TreeNode node={child} depth={depth + 1} isActive={isActive} onPick={onPick} />}
+          </For>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 const KINDS = [
   { id: 'skills', label: 'skills', desc: 'Python поведение (skills.run)' },
   { id: 'tools', label: 'tools', desc: 'hot-loadable плагины тулов' },
@@ -46,6 +95,24 @@ export default function Workshop(props) {
   const [test, setTest] = createSignal({ input: '', output: '' });
   const [replyMsg, setReplyMsg] = createSignal('');
   const dirty = () => content() !== savedContent();
+
+  // Recursive file count for tree (packages); flat length otherwise.
+  function _countFiles(nodes) {
+    let n = 0;
+    for (const it of nodes || []) {
+      if (it && it.type === 'dir') n += _countFiles(it.children);
+      else n += 1;
+    }
+    return n;
+  }
+  const listCount = () => {
+    if (kind() === 'packages') {
+      const pkgs = items().length;
+      const files = _countFiles(items());
+      return `${pkgs} pkg · ${files} files`;
+    }
+    return items().length;
+  };
 
   async function loadList() {
     setBusy(true);
@@ -207,24 +274,42 @@ export default function Workshop(props) {
         <div class="workshop-body">
           <aside class="ws-list">
             <div class="ws-list-head">
-              <span>{kind()} ({items().length})</span>
+              <span>{kind()} ({listCount()})</span>
               <Show when={kind() !== 'packages'}>
                 <button class="mini-btn" onClick={newFile} title="новый файл">+ new</button>
               </Show>
             </div>
             <div class="ws-list-scroll">
-              <For each={items()} fallback={<div class="ws-empty">пусто</div>}>
-                {(it) => (
-                  <button
-                    classList={{ 'ws-item': true, on: active()?.path === it.path }}
-                    onClick={() => openFile(it)}
-                    title={`${it.path} · ${it.size}b`}
-                  >
-                    <span class="ws-item-name">{it.path}</span>
-                    <span class="ws-item-size">{Math.round(it.size / 102.4) / 10}k</span>
-                  </button>
-                )}
-              </For>
+              <Show when={items().length > 0} fallback={<div class="ws-empty">пусто</div>}>
+                <Show
+                  when={kind() === 'packages'}
+                  fallback={
+                    <For each={items()}>
+                      {(it) => (
+                        <button
+                          classList={{ 'ws-item': true, on: active()?.path === it.path }}
+                          onClick={() => openFile(it)}
+                          title={`${it.path} · ${it.size}b`}
+                        >
+                          <span class="ws-item-name">{it.path}</span>
+                          <span class="ws-item-size">{Math.round(it.size / 102.4) / 10}k</span>
+                        </button>
+                      )}
+                    </For>
+                  }
+                >
+                  <For each={items()}>
+                    {(node) => (
+                      <TreeNode
+                        node={node}
+                        depth={0}
+                        isActive={(n) => active()?.path === n.path}
+                        onPick={(n) => openFile(n)}
+                      />
+                    )}
+                  </For>
+                </Show>
+              </Show>
             </div>
           </aside>
 

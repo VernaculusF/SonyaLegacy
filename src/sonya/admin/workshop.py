@@ -78,30 +78,66 @@ def _safe_resolve(root: Path, rel_path: str) -> Path:
 
 
 def _list_dir(kind: str) -> list[dict]:
-    """Return a flat list of files (with size, path, language hint) under
-    the kind's root. For packages, walks into source-only subtree."""
+    """Return browsing structure for the kind.
+
+    - skills | tools: flat list of files (with size, path, lang).
+    - packages: list of package nodes — each package is one entry with a
+      nested `tree` (folders + files), so the UI shows 2 packages, not all
+      33 files at the top level. Tree nodes:
+        {type:'dir', name, path, children: []}
+        {type:'file', name, path, size, lang}
+    """
     root = _root_for(kind)
     if not root.exists():
         return []
-    out: list[dict] = []
     if kind in ("skills", "tools"):
-        # Flat: all .py files at root level.
+        out: list[dict] = []
         for p in sorted(root.glob("*.py")):
             if p.name == "__init__.py":
                 continue
             out.append(_file_info(p, root))
-    else:  # packages
-        for pkg in sorted(root.iterdir()):
-            if not pkg.is_dir() or pkg.name.startswith("."):
-                continue
-            for p in _walk_package(pkg):
-                out.append(_file_info(p, root))
+        return out
+    # packages: one node per top-level dir.
+    out = []
+    for pkg in sorted(root.iterdir()):
+        if not pkg.is_dir() or pkg.name.startswith("."):
+            continue
+        out.append(_build_tree(pkg, root))
     return out
 
 
+def _build_tree(node_path: Path, root: Path) -> dict:
+    """Build a directory tree rooted at node_path. Children sorted dirs-first,
+    then files. Skips _PACKAGE_SKIP_DIRS and only includes source extensions."""
+    rel = node_path.relative_to(root).as_posix()
+    children = []
+    try:
+        entries = sorted(node_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    except (PermissionError, OSError):
+        entries = []
+    for child in entries:
+        if child.name.startswith(".") or child.name in _PACKAGE_SKIP_DIRS:
+            continue
+        if child.is_dir():
+            sub = _build_tree(child, root)
+            # only include directory if it has any source content downstream
+            if sub.get("children"):
+                children.append(sub)
+        else:
+            ext = child.suffix.lower()
+            if ext in _PACKAGE_SOURCE_EXT:
+                children.append(_file_info(child, root))
+    return {
+        "type": "dir",
+        "name": node_path.name,
+        "path": rel,
+        "children": children,
+    }
+
+
 def _walk_package(pkg_root: Path):
+    """Legacy helper — kept for any callers that still want a flat walk."""
     for dirpath, dirnames, filenames in os.walk(pkg_root):
-        # prune skip-dirs in place so os.walk doesn't descend
         dirnames[:] = [d for d in dirnames if d not in _PACKAGE_SKIP_DIRS]
         for fn in filenames:
             ext = os.path.splitext(fn)[1].lower()
@@ -112,6 +148,7 @@ def _walk_package(pkg_root: Path):
 def _file_info(p: Path, root: Path) -> dict:
     rel = p.relative_to(root).as_posix()
     return {
+        "type": "file",
         "path": rel,
         "name": p.name,
         "size": p.stat().st_size,
