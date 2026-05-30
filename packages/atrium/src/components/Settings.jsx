@@ -12,7 +12,7 @@ export default function Settings(props) {
   const [voiceMode, setVoiceMode] = createSignal(settings.voice_mode || 'off');
   const [ttsUrl, setTtsUrl] = createSignal(settings.tts_url || 'http://127.0.0.1:8878');
   const [ttsVoice, setTtsVoice] = createSignal(settings.tts_voice || 'irina');
-  const [ttsVoiceId, setTtsVoiceId] = createSignal(settings.tts_voice_id || '0ArNnoIAWKlT4WweaVMY');
+  const [ttsVoiceId, setTtsVoiceId] = createSignal(settings.tts_voice_id || 'pFZP5JQG7iQjIQuC4Bku');
   const [ttsModelId, setTtsModelId] = createSignal(settings.tts_model_id || 'eleven_multilingual_v2');
   const [ttsHealth, setTtsHealth] = createSignal('');
   const [ttsVoices, setTtsVoices] = createSignal([]);
@@ -147,17 +147,42 @@ export default function Settings(props) {
 
         <Show when={voiceMode() === 'elevenlabs'}>
           <div class="modal-section">
-            <label>elevenlabs voice id</label>
-            <input
-              type="text"
+            <label>elevenlabs voice</label>
+            <select
               value={ttsVoiceId()}
-              placeholder="0ArNnoIAWKlT4WweaVMY"
-              onInput={(e) => setTtsVoiceId(e.currentTarget.value)}
-            />
+              onChange={(e) => setTtsVoiceId(e.currentTarget.value)}
+              style="padding: 8px; background: var(--bg-elev); border: 1px solid var(--hairline); color: var(--ink-1); border-radius: 4px;"
+            >
+              <optgroup label="default voices (free tier ok)">
+                <option value="pFZP5JQG7iQjIQuC4Bku">Lily — warm female (рекомендую)</option>
+                <option value="EXAVITQu4vr4xnSDxMaL">Sarah — soft female</option>
+                <option value="XrExE9yKIg1WjnnlVkGX">Matilda — friendly young</option>
+                <option value="cgSgspJ2msm6clMCkdW9">Jessica — conversational female</option>
+                <option value="FGY2WhTYpPnrIDTdsKH5">Laura — sunny young</option>
+                <option value="Xb7hH8MSUJpSbSDYk0k2">Alice — confident british</option>
+                <option value="SAz9YHcvj6GT2YYXdXww">River — calm female</option>
+                <option value="JBFqnCBsd6RMkjVDRZzb">George — male</option>
+                <option value="onwK4e9ZLuTAKqWW03F9">Daniel — narrative male</option>
+                <option value="iP95p4xoKVk53GoZ742B">Chris — casual male</option>
+              </optgroup>
+              <optgroup label="custom (paid plan для voice library)">
+                <option value="custom">— ввести свой voice id —</option>
+              </optgroup>
+            </select>
             <span style="display:block; margin-top:6px; color: var(--ink-3); font-size: 12px;">
-              из <code>elevenlabs.io/app/voice-library</code> — copy voice id
+              Free tier API даёт только default voices. Для voice library нужна подписка $5+/мес.
             </span>
           </div>
+          <Show when={ttsVoiceId() === 'custom'}>
+            <div class="modal-section">
+              <label>custom voice id</label>
+              <input
+                type="text"
+                placeholder="0ArNnoIAWKlT4WweaVMY"
+                onInput={(e) => setTtsVoiceId(e.currentTarget.value)}
+              />
+            </div>
+          </Show>
           <div class="modal-section">
             <label>elevenlabs model</label>
             <select

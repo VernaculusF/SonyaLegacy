@@ -43,8 +43,9 @@ const DEFAULT_SETTINGS = {
   tts_url: 'http://127.0.0.1:8878',
   // Voice id for local Piper. Available: irina (ж), denis (м), ruslan (м).
   tts_voice: 'irina',
-  // ElevenLabs voice id. Default = Ivan's pick (RU female).
-  tts_voice_id: '0ArNnoIAWKlT4WweaVMY',
+  // ElevenLabs voice id. Default = Lily (default voice, free-tier accessible).
+  // Voice library voices need paid plan; на free доступны только default voices.
+  tts_voice_id: 'pFZP5JQG7iQjIQuC4Bku',
   // ElevenLabs model — multilingual_v2 supports Russian, best quality.
   tts_model_id: 'eleven_multilingual_v2',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.

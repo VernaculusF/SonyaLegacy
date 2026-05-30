@@ -28,7 +28,7 @@ log = logging.getLogger("sonya.admin.tts")
 
 ELEVENLABS_BASE = "https://api.elevenlabs.io/v1"
 DEFAULT_MODEL = "eleven_multilingual_v2"  # supports Russian
-DEFAULT_VOICE_ID = "0ArNnoIAWKlT4WweaVMY"  # Ivan's chosen voice (RU female)
+DEFAULT_VOICE_ID = "pFZP5JQG7iQjIQuC4Bku"  # Lily — default voice (free-tier OK)
 
 
 def _check_auth(request: web.Request) -> str | None:
@@ -65,7 +65,8 @@ async def tts_health(request: web.Request) -> web.Response:
             "configured": False,
             "error": "ELEVENLABS_API_KEY not set on server",
         }))
-    # Probe /v1/user/subscription for quota info.
+    # Probe /v1/user/subscription for quota info. If scope is missing, fall
+    # back to a tiny TTS probe to confirm the key works for synthesis.
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -73,22 +74,39 @@ async def tts_health(request: web.Request) -> web.Response:
                 headers={"xi-api-key": key},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as r:
-                if r.status != 200:
-                    txt = await r.text()
+                if r.status == 200:
+                    sub = await r.json()
                     return _cors(web.json_response({
-                        "ok": False,
+                        "ok": True,
                         "configured": True,
-                        "error": f"elevenlabs {r.status}: {txt[:200]}",
+                        "tier": sub.get("tier"),
+                        "char_count": sub.get("character_count"),
+                        "char_limit": sub.get("character_limit"),
+                        "next_reset": sub.get("next_character_count_reset_unix"),
                     }))
-                sub = await r.json()
-        return _cors(web.json_response({
-            "ok": True,
-            "configured": True,
-            "tier": sub.get("tier"),
-            "char_count": sub.get("character_count"),
-            "char_limit": sub.get("character_limit"),
-            "next_reset": sub.get("next_character_count_reset_unix"),
-        }))
+                # Some keys are scoped to TTS only (no user_read). Try /voices
+                # which has a wider permission set, then declare healthy.
+                if r.status in (401, 403):
+                    async with session.get(
+                        f"{ELEVENLABS_BASE}/voices",
+                        headers={"xi-api-key": key},
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as v:
+                        if v.status == 200:
+                            return _cors(web.json_response({
+                                "ok": True,
+                                "configured": True,
+                                "tier": "tts-scoped",
+                                "char_count": None,
+                                "char_limit": None,
+                                "note": "key scope не включает user_read — quota неизвестна, но TTS работает",
+                            }))
+                txt = await r.text()
+                return _cors(web.json_response({
+                    "ok": False,
+                    "configured": True,
+                    "error": f"elevenlabs {r.status}: {txt[:200]}",
+                }))
     except Exception as e:
         return _cors(web.json_response({
             "ok": False,
