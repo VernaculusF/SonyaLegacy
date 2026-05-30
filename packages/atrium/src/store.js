@@ -197,6 +197,17 @@ export function pushStreamEvent(ev) {
   });
 }
 
+// Prepend older dialog messages (history pagination). Dedupes by seq.
+export function prependDialogMessages(msgs) {
+  if (!Array.isArray(msgs) || !msgs.length) return;
+  setFeed('dialog_messages', (cur) => {
+    const seen = new Set(cur.map((m) => m.seq));
+    const fresh = msgs.filter((m) => !seen.has(m.seq));
+    if (!fresh.length) return cur;
+    return [...fresh, ...cur];
+  });
+}
+
 export function pushInnerThought(t) {
   setFeed('inner_thoughts', (cur) => {
     if (t.seq != null && cur.some((x) => x.seq === t.seq)) return cur;

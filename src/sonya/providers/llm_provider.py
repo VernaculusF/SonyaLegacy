@@ -122,13 +122,18 @@ def _utc_now_iso() -> str:
 # her preferred slot is empty.
 
 _PURPOSE_SLOT_MAP: dict[str, str] = {
-    # Fast (cheap, lower latency, smaller context)
+    # Fast (cheap, lower latency, smaller context). Includes active_session —
+    # the bulk of an active turn is chat reply + simple tool dispatch, not
+    # deep reasoning. Codegen branches go through selfmod_* purposes which
+    # explicitly route to 'code'.
     "tg_session": "text-fast",
     "task_worker": "text-fast",
     "idle_thinking": "text-fast",
     "pre_done_critique": "text-fast",
-    # Deep (better quality, more steps, longer context)
-    "active_session": "text-deep",
+    "active_session": "text-fast",
+    # Deep (better quality, more steps, longer context) — explicit opt-in
+    "active_session_deep": "text-deep",
+    "research": "text-deep",
     # Codegen — Sonnet-class preferred
     "selfmod_codegen": "code",
     "selfmod_propose": "code",

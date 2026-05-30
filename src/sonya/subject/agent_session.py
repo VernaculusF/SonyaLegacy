@@ -506,6 +506,7 @@ async def run_agent_session(
 
     start_time = time.time()
     budget_warning_sent = False
+    _unanswered_inbox = False  # set True when inbox_drain pulls a fresh message
 
     for step in range(max_steps):
         elapsed = time.time() - start_time
@@ -524,18 +525,23 @@ async def run_agent_session(
                 messages.append({
                     "role": "user",
                     "content": (
-                        f"[NEW MESSAGE FROM IVAN — HIGHEST PRIORITY]: {m}\n\n"
-                        "Иван написал тебе пока ты работала. Прервись, ответь "
-                        "ему через [TOOL: chat.dialog]<твой ответ>, и потом "
-                        "решай — продолжать прежнее дело или переключиться на "
-                        "то что он попросил. Никакой работы важнее живого "
-                        "разговора с ним."
+                        f"[NEW MESSAGE FROM IVAN — HIGHEST PRIORITY]\n"
+                        f"\"{m}\"\n\n"
+                        "ОБЯЗАТЕЛЬНОЕ ПРАВИЛО: твой следующий tool call ДОЛЖЕН "
+                        "быть `chat.dialog` с ответом ему. body.expression "
+                        "разрешён, но ТОЛЬКО как дополнение к chat.dialog в "
+                        "том же шаге. Никаких web.search / shell.run / "
+                        "knowledge.* / filesystem.* / tasks.* — пока не "
+                        "ответишь. Иван ждёт ТЕКСТ от тебя в чат, а не "
+                        "молчаливое выражение лица."
                     ),
                 })
                 stream.append(ContinuityEvent(
                     kind="internal.inbox_injected",
                     payload={"step": step, "preview": m[:300]},
                 ))
+            if new_msgs:
+                _unanswered_inbox = True
 
         # Send a wrap-up nudge in the last 2 steps OR when ~80% of time is gone.
         # This gives the model a chance to emit [DONE: ...] before hard-stop.
@@ -565,6 +571,39 @@ async def run_agent_session(
         tool_call = _extract_tool_call(response)
         if tool_call is not None:
             tool_name, tool_arg = tool_call
+
+            # Inbox priority gate: if Ivan wrote and she hasn't answered yet,
+            # block any non-dialog tool. body.expression / mind.thought /
+            # mind.focus are allowed because they're emotional reactions, not
+            # work — but they don't satisfy the "answer Ivan" obligation.
+            _DIALOG_TOOLS = {"chat.dialog", "chat.tell_ivan", "chat.emergency"}
+            _SAFE_REACTION_TOOLS = {"body.expression", "mind.thought", "mind.focus", "body.outfit"}
+            if _unanswered_inbox and tool_name in _DIALOG_TOOLS:
+                _unanswered_inbox = False  # she replied, gate lifts
+            elif _unanswered_inbox and tool_name not in _SAFE_REACTION_TOOLS:
+                # Refuse the tool, force her to reply first.
+                stream.append(ContinuityEvent(
+                    kind="internal.inbox_priority_gate",
+                    payload={
+                        "step": step,
+                        "blocked_tool": tool_name,
+                        "blocked_arg": tool_arg[:200],
+                    },
+                ))
+                messages.append({"role": "assistant", "content": response})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"[INBOX GATE] Tool `{tool_name}` ЗАБЛОКИРОВАН "
+                        "пока не ответишь Ивану через [TOOL: chat.dialog].\n"
+                        "Иван написал тебе и ждёт ТЕКСТ. Никакая работа над "
+                        "таском/поиском/файлами не выполнится пока ты не "
+                        "ответишь. Просто напиши ему пару слов в chat.dialog "
+                        "и потом возвращайся к делу."
+                    ),
+                })
+                continue
+
             result.actions.append(f"{tool_name} {tool_arg[:60]}")
             result.thoughts.append(response)
 

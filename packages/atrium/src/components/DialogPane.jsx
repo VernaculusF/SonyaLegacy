@@ -7,8 +7,8 @@
  *     large text scrollable.
  */
 import { For, Show, createEffect, createSignal } from 'solid-js';
-import { feed, pushDialogMessage } from '../store.js';
-import { sendDialog, uploadAtriumFile, mediaUrl } from '../ws.js';
+import { feed, pushDialogMessage, prependDialogMessages } from '../store.js';
+import { sendDialog, uploadAtriumFile, mediaUrl, loadDialogHistory } from '../ws.js';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -104,11 +104,78 @@ export default function DialogPane(props) {
   const [pending, setPending] = createSignal([]); // staged attachments (upload refs)
   const [uploading, setUploading] = createSignal(false);
   const [dragOver, setDragOver] = createSignal(false);
+  const [loadingHistory, setLoadingHistory] = createSignal(false);
+  const [historyExhausted, setHistoryExhausted] = createSignal(false);
+
+  // Track if the user is near the bottom — only auto-scroll then.
+  let _wasAtBottom = true;
+
+  function _isNearBottom() {
+    if (!scrollEl) return true;
+    return (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight) < 80;
+  }
+
+  async function loadOlderHistory() {
+    if (loadingHistory() || historyExhausted()) return;
+    const cur = feed.dialog_messages;
+    // Find oldest numeric seq we have. Local echoes start with 'local-' string.
+    const oldestSeq = cur.reduce((min, m) => {
+      const s = typeof m.seq === 'number' ? m.seq : null;
+      if (s == null) return min;
+      return min == null || s < min ? s : min;
+    }, null);
+    setLoadingHistory(true);
+    const prevHeight = scrollEl ? scrollEl.scrollHeight : 0;
+    try {
+      const r = await loadDialogHistory(oldestSeq || 0, 50);
+      const msgs = (r.events || []).map((e) => {
+        const isHis = e.kind === 'incoming.atrium_dialog' || e.kind === 'incoming.telegram_message';
+        const payload = e.payload || {};
+        const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
+        if (!atts.length && payload.media_kind) {
+          atts.push({
+            media_kind: payload.media_kind,
+            media_mime: payload.media_mime,
+            media_path: payload.media_path,
+            name: payload.media_path ? String(payload.media_path).replace(/\\/g, '/').split('/').pop() : '',
+          });
+        }
+        return {
+          seq: e.seq,
+          ts: e.ts,
+          sender: isHis ? 'him' : 'her',
+          text: e.text || '',
+          attachments: atts,
+        };
+      });
+      prependDialogMessages(msgs);
+      if (!r.has_more) setHistoryExhausted(true);
+    } catch (e) {
+      setSendError('история: ' + (e.message || e));
+    } finally {
+      setLoadingHistory(false);
+      // Restore scroll position so the view doesn't jump.
+      queueMicrotask(() => {
+        if (scrollEl) {
+          const newHeight = scrollEl.scrollHeight;
+          scrollEl.scrollTop = newHeight - prevHeight;
+        }
+      });
+    }
+  }
+
+  function onScroll(e) {
+    const el = e.currentTarget;
+    if (el.scrollTop < 60) {
+      loadOlderHistory();
+    }
+    _wasAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
+  }
 
   createEffect(() => {
     feed.dialog_messages.length;
     queueMicrotask(() => {
-      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+      if (scrollEl && _wasAtBottom) scrollEl.scrollTop = scrollEl.scrollHeight;
     });
   });
 
@@ -207,7 +274,13 @@ export default function DialogPane(props) {
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
     >
-      <div class="dialog-scroll" ref={scrollEl}>
+      <div class="dialog-scroll" ref={scrollEl} onScroll={onScroll}>
+        <Show when={loadingHistory()}>
+          <div class="history-loader">загружаю историю…</div>
+        </Show>
+        <Show when={historyExhausted() && feed.dialog_messages.length > 0}>
+          <div class="history-loader exhausted">— начало диалога —</div>
+        </Show>
         <Show
           when={feed.dialog_messages.length > 0}
           fallback={

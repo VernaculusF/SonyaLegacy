@@ -2137,6 +2137,76 @@ async def atrium_dialog(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def atrium_history(request: web.Request) -> web.Response:
+    """Paginated dialog history for the Atrium scroll-up loader.
+
+    Query: before_seq=N (load messages strictly before this seq), limit=50 (max 100).
+    Returns oldest→newest tuples so the client can prepend in order.
+    Body shape mirrors what /atrium/feed sends for dialog kinds.
+    """
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
+    if admin_password and token != admin_password:
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
+    try:
+        before_seq = int(request.query.get("before_seq", "0"))
+    except ValueError:
+        before_seq = 0
+    try:
+        limit = max(1, min(100, int(request.query.get("limit", "50"))))
+    except ValueError:
+        limit = 50
+    sub = _get_substrate(config)
+    try:
+        # Dialog-relevant kinds (mirrors ws.js handleEvent).
+        kinds = (
+            "incoming.atrium_dialog",
+            "incoming.telegram_message",
+            "outgoing.dialog",
+            "outgoing.telegram_response",
+            "outgoing.telegram_initiative",
+            "outgoing.telegram_progress",
+            "outgoing.response",
+        )
+        ph = ",".join("?" for _ in kinds)
+        params: list[object] = list(kinds)
+        where_extra = ""
+        if before_seq > 0:
+            where_extra = "AND seq < ? "
+            params.append(before_seq)
+        rows = sub.connection.execute(
+            f"SELECT seq, kind, channel, principal_id, payload_json, created_at "
+            f"FROM continuity_events "
+            f"WHERE kind IN ({ph}) AND private = 0 "
+            f"{where_extra}"
+            f"ORDER BY seq DESC LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        events = []
+        for r in reversed(rows):
+            try:
+                payload = json.loads(r[4] or "{}")
+            except Exception:
+                payload = {}
+            events.append({
+                "seq": r[0],
+                "kind": r[1],
+                "channel": r[2] or "",
+                "principal_id": r[3],
+                "ts": r[5],
+                "text": payload.get("text", "") if isinstance(payload, dict) else "",
+                "payload": payload,
+            })
+        return _atrium_cors(web.json_response({
+            "events": events,
+            "has_more": len(rows) == limit,
+            "before_seq": before_seq,
+        }))
+    finally:
+        sub.close()
+
+
 async def atrium_upload(request: web.Request) -> web.Response:
     """Accept a file attachment from the Atrium composer (multipart/form-data).
 
@@ -2373,6 +2443,9 @@ def create_app() -> web.Application:
     app.router.add_post("/api/atrium/upload", atrium_upload)
     app.router.add_options("/api/atrium/upload", atrium_options)
     app.router.add_get("/api/atrium/media/{name}", atrium_media_get)
+    # Atrium dialog history pagination — load older messages on scroll-up.
+    app.router.add_get("/api/atrium/history", atrium_history)
+    app.router.add_options("/api/atrium/history", atrium_options)
     # Workshop — Skills / Tools-plugins / Packages browser+editor for Atrium UI.
     from sonya.admin.workshop import register_routes as _register_workshop
     _register_workshop(app)

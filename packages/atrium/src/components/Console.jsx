@@ -69,21 +69,41 @@ function OperatorPanel(props) {
   let sinceSeq = 0;
   let initialized = false;
   let timer;
+  let logEl;
+
+  // Persist sinceSeq across Console open/close so we don't restart from scratch.
+  const _SINCE_KEY = 'atrium.console.operator.since';
 
   async function refresh() {
     try {
       const s = await api.getSnapshot();
       setSnap(s);
-      // First call: anchor sinceSeq to the latest, so we only stream NEW events
-      // (otherwise we replay startup/system events from the beginning).
+      // First call: anchor to recent tail (last 30 events) unless we have a
+      // saved sinceSeq from a prior session.
       if (!initialized) {
-        sinceSeq = (s && s.latest_seq) ? Math.max(0, s.latest_seq - 30) : 0;
+        const saved = parseInt(sessionStorage.getItem(_SINCE_KEY) || '0', 10);
+        if (saved > 0 && s && s.latest_seq && saved < s.latest_seq + 100) {
+          sinceSeq = saved;
+        } else {
+          sinceSeq = (s && s.latest_seq) ? Math.max(0, s.latest_seq - 30) : 0;
+        }
         initialized = true;
       }
       const live = await api.getLiveSteps(sinceSeq, 80);
       if (live.events && live.events.length) {
         sinceSeq = live.events[live.events.length - 1].seq;
-        setSteps((cur) => [...cur, ...live.events].slice(-200));
+        sessionStorage.setItem(_SINCE_KEY, String(sinceSeq));
+        // Detect "user is near bottom" so we only auto-scroll then.
+        let nearBottom = true;
+        if (logEl) {
+          nearBottom = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 80;
+        }
+        setSteps((cur) => [...cur, ...live.events].slice(-300));
+        if (nearBottom) {
+          queueMicrotask(() => {
+            if (logEl) logEl.scrollTop = logEl.scrollHeight;
+          });
+        }
       }
     } catch (e) { props.onErr('operator: ' + e.message); }
   }
@@ -123,8 +143,8 @@ function OperatorPanel(props) {
         }}>inject</button>
       </div>
 
-      <div class="live-steps">
-        <For each={steps().slice().reverse()} fallback={<div class="muted small">ждём событий…</div>}>
+      <div class="live-steps" ref={(el) => (logEl = el)}>
+        <For each={steps()} fallback={<div class="muted small">ждём событий…</div>}>
           {(ev) => {
             const k = (ev.kind || '').replace('internal.', '').replace('outgoing.', '→ ').replace('incoming.', '← ').replace('self_mod.', 'selfmod.');
             const d = ev.data || {};
@@ -313,11 +333,31 @@ function ApprovalsPanel(props) {
 function ProvidersPanel(props) {
   const [keys, setKeys] = createSignal([]);
   const [settings_, setSettings] = createSignal({});
+  const [editing, setEditing] = createSignal(false);
+  const [draft, setDraft] = createSignal({});
   async function refresh() {
-    try { const r = await api.getProviders(); setKeys(r.keys || []); setSettings(r.settings || {}); }
+    try {
+      const r = await api.getProviders();
+      setKeys(r.keys || []);
+      setSettings(r.settings || {});
+      setDraft({
+        active_provider: r.settings?.active_provider || '',
+        default_model: r.settings?.default_model || '',
+        default_base_url: r.settings?.default_base_url || '',
+      });
+    }
     catch (e) { props.onErr('providers: ' + e.message); }
   }
   onMount(refresh);
+
+  async function saveSettings() {
+    try {
+      await api.setProviderSettings(draft());
+      setEditing(false);
+      await refresh();
+    } catch (e) { props.onErr(e.message); }
+  }
+
   return (
     <div class="panel">
       <div class="panel-head"><h3>PROVIDERS ({keys().length})</h3>
@@ -326,7 +366,44 @@ function ProvidersPanel(props) {
           <button class="btn ghost" onClick={refresh}>обновить</button>
         </div>
       </div>
-      <div class="muted small">active: {settings_().active_provider} · {settings_().default_model}</div>
+
+      <div class="card">
+        <div class="card-top">
+          <span class="card-title">defaults</span>
+          <span class="spacer"></span>
+          <Show when={!editing()}>
+            <button class="chip-btn" onClick={() => setEditing(true)}>edit</button>
+          </Show>
+          <Show when={editing()}>
+            <button class="chip-btn ok" onClick={saveSettings}>save</button>
+            <button class="chip-btn" onClick={() => { setEditing(false); refresh(); }}>cancel</button>
+          </Show>
+        </div>
+        <Show when={!editing()}>
+          <div class="kv-grid">
+            <div><span class="kv-k">active</span><span class="kv-v mono">{settings_().active_provider || '—'}</span></div>
+            <div><span class="kv-k">model</span><span class="kv-v mono">{settings_().default_model || '—'}</span></div>
+            <div><span class="kv-k">base url</span><span class="kv-v mono small">{settings_().default_base_url || '—'}</span></div>
+          </div>
+        </Show>
+        <Show when={editing()}>
+          <div class="form-grid">
+            <label>active provider
+              <input type="text" value={draft().active_provider}
+                onInput={(e) => setDraft({ ...draft(), active_provider: e.currentTarget.value })} />
+            </label>
+            <label>default model
+              <input type="text" value={draft().default_model}
+                onInput={(e) => setDraft({ ...draft(), default_model: e.currentTarget.value })} />
+            </label>
+            <label>default base url
+              <input type="text" value={draft().default_base_url}
+                onInput={(e) => setDraft({ ...draft(), default_base_url: e.currentTarget.value })} />
+            </label>
+          </div>
+        </Show>
+      </div>
+
       <div class="card-list">
         <For each={keys()} fallback={<div class="muted">нет ключей</div>}>
           {(k) => (
@@ -334,10 +411,14 @@ function ProvidersPanel(props) {
               <div class="card-top">
                 <span classList={{ badge: true, [k.status]: true }}>{k.status}</span>
                 <span class="card-title">{k.name}</span>
+                <span class="muted small">slot: {k.slot || '—'}</span>
                 <span class="spacer"></span>
                 <span class="muted small mono">{k.provider}</span>
               </div>
               <div class="card-desc mono small">{k.key_masked} · req {k.request_count} · err {k.error_count}{k.balance != null ? ` · $${k.balance}` : ''}</div>
+              <Show when={k.model}>
+                <div class="muted small mono">model: {k.model}</div>
+              </Show>
               <div class="card-actions">
                 <button class="chip-btn" onClick={() => api.testProviderKey(k.key_id).then((r)=>props.onErr(r.ok?`✓ ${k.name} ok`:`✗ ${r.error}`)).catch((e)=>props.onErr(e.message))}>test</button>
                 <button class="chip-btn" onClick={() => api.setProviderKeyStatus(k.key_id, k.status === 'active' ? 'disabled' : 'active').then(refresh).catch((e)=>props.onErr(e.message))}>{k.status === 'active' ? 'disable' : 'enable'}</button>
