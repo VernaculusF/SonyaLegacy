@@ -2157,6 +2157,9 @@ def create_app() -> web.Application:
     app.router.add_options("/api/atrium/dialog", atrium_options)
     app.router.add_post("/api/atrium/heartbeat", atrium_heartbeat)
     app.router.add_options("/api/atrium/heartbeat", atrium_options)
+    # Workshop — Skills / Tools-plugins / Packages browser+editor for Atrium UI.
+    from sonya.admin.workshop import register_routes as _register_workshop
+    _register_workshop(app)
     return app
 
 

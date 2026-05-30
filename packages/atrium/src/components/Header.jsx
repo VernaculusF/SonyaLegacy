@@ -18,6 +18,9 @@ export default function Header(props) {
           ? 'reconnecting...'
           : feed.last_error || 'disconnected'}
       </span>
+      <button class="menu-btn" title="workshop (skills/tools/packages)" onClick={props.onOpenWorkshop}>
+        ⚙
+      </button>
       <button class="menu-btn" title="settings" onClick={props.onOpenSettings}>
         ⋮
       </button>

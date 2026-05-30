@@ -12,10 +12,12 @@ import MindPane from './components/MindPane.jsx';
 import ReasonStream from './components/ReasonStream.jsx';
 import Settings from './components/Settings.jsx';
 import RoomView from './components/RoomView.jsx';
+import Workshop from './components/Workshop.jsx';
 
 export default function App() {
   const [showSettings, setShowSettings] = createSignal(false);
   const [showRoom, setShowRoom] = createSignal(false);
+  const [showWorkshop, setShowWorkshop] = createSignal(false);
 
   // Onboarding done if both fields are set
   const isConfigured = () => Boolean(settings.vps_host && settings.atrium_token);
@@ -61,7 +63,7 @@ export default function App() {
           'streams-collapsed': settings.streams_collapsed,
         }}
       >
-        <Header onOpenSettings={() => setShowSettings(true)} />
+        <Header onOpenSettings={() => setShowSettings(true)} onOpenWorkshop={() => setShowWorkshop(true)} />
 
         <div class="main">
           <AvatarPane onEnterRoom={() => setShowRoom(true)} />
@@ -77,6 +79,10 @@ export default function App() {
 
         <Show when={showRoom()}>
           <RoomView onClose={() => setShowRoom(false)} />
+        </Show>
+
+        <Show when={showWorkshop()}>
+          <Workshop onClose={() => setShowWorkshop(false)} />
         </Show>
       </div>
     </Show>
