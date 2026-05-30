@@ -29,8 +29,11 @@ class DriveCounters:
     threshold: float = 0.7
     max_value: float = 1.0  # drives are bounded analogs, never exceed this
     # Passive decay per tick — drives relax toward 0 over time (homeostasis),
-    # so they "breathe" instead of pinning at max. Applied before accumulation.
-    decay_rate: float = 0.004
+    # so they "breathe" instead of pinning at max. Must be >= accumulation
+    # rate for boredom/curiosity/relational so an idle Sonya doesn't pin every
+    # drive at 1.0 (the "all drives maxed" bug). Net effect: drives rise toward
+    # threshold then oscillate, and fully relax when nothing is accumulating.
+    decay_rate: float = 0.012
 
     def tick(self, active_intentions_count: int = 0) -> list[str]:
         """Increment counters (with passive decay, clamped to [0, max_value]).

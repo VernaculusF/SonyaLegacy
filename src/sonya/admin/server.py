@@ -41,6 +41,18 @@ async def auth_middleware(request: web.Request, handler):
     # См. docs/atrium/CHANNELS.md §3.2.
     if request.path == "/atrium/feed" or request.path.startswith("/api/atrium/"):
         return await handler(request)
+    # Atrium Console: the desktop app mirrors the admin panel and authenticates
+    # with the X-Atrium-Token header (== admin_password), not the browser
+    # cookie. Allow any /api/* call that presents a valid token so the Console
+    # can reach operator/tasks/selfmod/providers/core/substrate endpoints
+    # without the cookie/login flow. CORS preflight (OPTIONS) is always let
+    # through so the browser can probe.
+    if request.method == "OPTIONS":
+        return await handler(request)
+    if request.path.startswith("/api/"):
+        token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
+        if token == password:
+            return await handler(request)
     # Check cookie
     if request.cookies.get("sonya_auth") == password:
         return await handler(request)
@@ -49,6 +61,31 @@ async def auth_middleware(request: web.Request, handler):
         return await handler(request)
     # Redirect to login
     return web.HTTPFound("/login")
+
+
+@middleware
+async def cors_middleware(request: web.Request, handler):
+    """Add permissive CORS headers to all /api/ responses so the Atrium
+    Console (served from a different origin in dev: localhost:1420) can call
+    the admin endpoints with the X-Atrium-Token header. Handles OPTIONS
+    preflight for any /api/ route up-front."""
+    if request.path.startswith("/api/") and request.method == "OPTIONS":
+        resp = web.Response(status=204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Atrium-Token"
+        return resp
+    try:
+        resp = await handler(request)
+    except web.HTTPException as exc:
+        if request.path.startswith("/api/"):
+            exc.headers["Access-Control-Allow-Origin"] = "*"
+            exc.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Atrium-Token"
+        raise
+    if request.path.startswith("/api/"):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Atrium-Token"
+    return resp
 
 
 def _get_substrate(config: AppConfig) -> Substrate:
@@ -2257,7 +2294,7 @@ def create_app() -> web.Application:
     # attachments (video / gif / large code dumps) from the Atrium composer.
     # Raise to 64 MB so Ivan can attach reasonably large media. The dialog
     # endpoint enforces a per-file cap of its own.
-    app = web.Application(middlewares=[auth_middleware], client_max_size=64 * 1024 * 1024)
+    app = web.Application(middlewares=[cors_middleware, auth_middleware], client_max_size=64 * 1024 * 1024)
     app["config"] = config
     app["admin_password"] = admin_password
     app.router.add_get("/", handle_index)
@@ -2317,6 +2354,9 @@ def create_app() -> web.Application:
     # Workshop — Skills / Tools-plugins / Packages browser+editor for Atrium UI.
     from sonya.admin.workshop import register_routes as _register_workshop
     _register_workshop(app)
+    # Repo control — git status/commit/push/revert for the Atrium Console.
+    from sonya.admin.repo import register_routes as _register_repo
+    _register_repo(app)
     return app
 
 

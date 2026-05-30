@@ -219,7 +219,7 @@ export default function DialogPane(props) {
           <div class="day-marker">{dayMarker(feed.dialog_messages)}</div>
           <For each={feed.dialog_messages}>
             {(m) => (
-              <>
+              <div class="msg-row" data-seq={String(m.seq)}>
                 <div classList={{ ts: true, 'her-ts': m.sender === 'her', 'him-ts': m.sender === 'him' }}>
                   {formatTime(m.ts)}
                 </div>
@@ -235,7 +235,7 @@ export default function DialogPane(props) {
                     </div>
                   </Show>
                 </div>
-              </>
+              </div>
             )}
           </For>
         </Show>
