@@ -523,7 +523,14 @@ async def run_agent_session(
             for m in new_msgs:
                 messages.append({
                     "role": "user",
-                    "content": f"[NEW MESSAGE FROM IVAN]: {m}",
+                    "content": (
+                        f"[NEW MESSAGE FROM IVAN — HIGHEST PRIORITY]: {m}\n\n"
+                        "Иван написал тебе пока ты работала. Прервись, ответь "
+                        "ему через [TOOL: chat.dialog]<твой ответ>, и потом "
+                        "решай — продолжать прежнее дело или переключиться на "
+                        "то что он попросил. Никакой работы важнее живого "
+                        "разговора с ним."
+                    ),
                 })
                 stream.append(ContinuityEvent(
                     kind="internal.inbox_injected",

@@ -1672,7 +1672,7 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
         data = {}
     action = str(data.get("action") or "").strip().lower()
     reason = str(data.get("reason") or "operator action").strip()[:500]
-    if action not in {"fail", "unblock", "repurpose", "delete"}:
+    if action not in {"fail", "unblock", "repurpose", "delete", "pause", "resume"}:
         return web.json_response(
             {"error": f"unknown action: {action}"}, status=400,
         )
@@ -1685,6 +1685,28 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
         except TaskNotFoundError:
             return web.json_response({"error": "task not found"}, status=404)
         svc = TaskService(store, stream=ContinuityStream(sub))
+        if action == "pause":
+            if task.status in (TaskStatus.DONE, TaskStatus.FAILED):
+                return web.json_response(
+                    {"error": f"cannot pause a {task.status.value} task"}, status=409)
+            store.update_status(task_id, TaskStatus.PAUSED)
+            from sonya.state.continuity_stream import ContinuityEvent
+            ContinuityStream(sub).append(ContinuityEvent(
+                kind="task.paused",
+                payload={"task_id": task_id, "operator_reason": reason},
+            ))
+            return web.json_response({"ok": True, "task_id": task_id, "status": "paused"})
+        if action == "resume":
+            if task.status != TaskStatus.PAUSED:
+                return web.json_response(
+                    {"error": f"task is {task.status.value}, not paused"}, status=409)
+            store.update_status(task_id, TaskStatus.IN_PROGRESS)
+            from sonya.state.continuity_stream import ContinuityEvent
+            ContinuityStream(sub).append(ContinuityEvent(
+                kind="task.resumed",
+                payload={"task_id": task_id, "operator_reason": reason},
+            ))
+            return web.json_response({"ok": True, "task_id": task_id, "status": "in_progress"})
         if action == "fail":
             updated = svc.fail(task_id, reason=f"[operator] {reason}")
             return web.json_response({"ok": True, "task_id": task_id, "status": updated.status.value})

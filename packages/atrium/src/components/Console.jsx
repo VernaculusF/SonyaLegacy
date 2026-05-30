@@ -67,16 +67,23 @@ function OperatorPanel(props) {
   const [steps, setSteps] = createSignal([]);
   const [inject, setInject] = createSignal('');
   let sinceSeq = 0;
+  let initialized = false;
   let timer;
 
   async function refresh() {
     try {
       const s = await api.getSnapshot();
       setSnap(s);
-      const live = await api.getLiveSteps(sinceSeq, 40);
+      // First call: anchor sinceSeq to the latest, so we only stream NEW events
+      // (otherwise we replay startup/system events from the beginning).
+      if (!initialized) {
+        sinceSeq = (s && s.latest_seq) ? Math.max(0, s.latest_seq - 30) : 0;
+        initialized = true;
+      }
+      const live = await api.getLiveSteps(sinceSeq, 80);
       if (live.events && live.events.length) {
         sinceSeq = live.events[live.events.length - 1].seq;
-        setSteps((cur) => [...cur, ...live.events].slice(-120));
+        setSteps((cur) => [...cur, ...live.events].slice(-200));
       }
     } catch (e) { props.onErr('operator: ' + e.message); }
   }
@@ -117,14 +124,26 @@ function OperatorPanel(props) {
       </div>
 
       <div class="live-steps">
-        <For each={steps().slice().reverse()}>
-          {(ev) => (
-            <div class="step-row">
-              <span class="step-seq">{ev.seq}</span>
-              <span class="step-kind">{ev.kind?.replace('internal.', '')}</span>
-              <span class="step-data">{ev.data?.tool ? `${ev.data.tool} ${(ev.data.arg || '').slice(0, 80)}` : (ev.data?.chosen_kind || ev.data?.thought || JSON.stringify(ev.data || {}).slice(0, 90))}</span>
-            </div>
-          )}
+        <For each={steps().slice().reverse()} fallback={<div class="muted small">ждём событий…</div>}>
+          {(ev) => {
+            const k = (ev.kind || '').replace('internal.', '').replace('outgoing.', '→ ').replace('incoming.', '← ').replace('self_mod.', 'selfmod.');
+            const d = ev.data || {};
+            let body = '';
+            if (d.tool) body = `${d.tool}${d.arg ? ' · ' + d.arg : ''}`;
+            else if (d.chosen_kind) body = `${d.chosen_kind}/${d.chosen_reason}`;
+            else if (d.text) body = d.text;
+            else if (d.task_id) body = `${d.task_id}${d.status ? ' · ' + d.status : ''}`;
+            else if (d.preview) body = d.preview;
+            else if (d.thought) body = d.thought;
+            else body = '';
+            return (
+              <div classList={{ 'step-row': true, 'kind-step': ev.kind === 'internal.agent_step', 'kind-blocker': ev.kind === 'internal.blocker_detected' }}>
+                <span class="step-seq">{ev.seq}</span>
+                <span class="step-kind">{k}</span>
+                <span class="step-data">{body}</span>
+              </div>
+            );
+          }}
         </For>
       </div>
     </div>
@@ -139,29 +158,56 @@ function TasksPanel(props) {
     catch (e) { props.onErr('tasks: ' + e.message); }
   }
   onMount(refresh);
+
+  function _act(taskId, action, confirmMsg) {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    api.taskAction(taskId, action).then(refresh).catch((e)=>props.onErr(e.message));
+  }
+
   return (
     <div class="panel">
       <div class="panel-head"><h3>TASKS ({tasks().length})</h3>
         <button class="btn ghost" onClick={refresh}>обновить</button></div>
       <div class="card-list">
         <For each={tasks()} fallback={<div class="muted">нет задач</div>}>
-          {(t) => (
-            <div class="card">
-              <div class="card-top">
-                <span classList={{ badge: true, [t.status]: true }}>{t.status}</span>
-                <span class="card-title">{t.title}</span>
-                <span class="spacer"></span>
-                <span class="muted">{t.completed_count}/{t.total_steps}</span>
+          {(t) => {
+            const isOpen = ['pending', 'in_progress', 'blocked', 'paused'].includes(t.status);
+            const canPause = t.status === 'in_progress' || t.status === 'pending';
+            const canResume = t.status === 'paused';
+            const canUnblock = t.status === 'blocked';
+            const canFail = isOpen;
+            const canRepurpose = t.status === 'failed' || t.status === 'done';
+            return (
+              <div class="card">
+                <div class="card-top">
+                  <span classList={{ badge: true, [t.status]: true }}>{t.status}</span>
+                  <span class="card-title">{t.title}</span>
+                  <span class="spacer"></span>
+                  <span class="muted">{t.completed_count}/{t.total_steps}</span>
+                </div>
+                <Show when={t.description}><div class="card-desc">{t.description}</div></Show>
+                <Show when={t.next_step_hint}><div class="card-hint">→ {t.next_step_hint}</div></Show>
+                <div class="card-actions">
+                  <Show when={canPause}>
+                    <button class="chip-btn" onClick={() => _act(t.task_id, 'pause')}>pause</button>
+                  </Show>
+                  <Show when={canResume}>
+                    <button class="chip-btn ok" onClick={() => _act(t.task_id, 'resume')}>resume</button>
+                  </Show>
+                  <Show when={canUnblock}>
+                    <button class="chip-btn" onClick={() => _act(t.task_id, 'unblock')}>unblock</button>
+                  </Show>
+                  <Show when={canFail}>
+                    <button class="chip-btn danger" onClick={() => _act(t.task_id, 'fail', 'отметить как failed?')}>fail</button>
+                  </Show>
+                  <Show when={canRepurpose}>
+                    <button class="chip-btn" onClick={() => _act(t.task_id, 'repurpose', 'сбросить и начать заново?')}>repurpose</button>
+                  </Show>
+                  <button class="chip-btn danger" onClick={() => confirm('удалить задачу?') && api.deleteTask(t.task_id).then(refresh).catch((e)=>props.onErr(e.message))}>delete</button>
+                </div>
               </div>
-              <Show when={t.description}><div class="card-desc">{t.description}</div></Show>
-              <Show when={t.next_step_hint}><div class="card-hint">→ {t.next_step_hint}</div></Show>
-              <div class="card-actions">
-                <button class="chip-btn" onClick={() => api.taskAction(t.task_id, 'unblock').then(refresh).catch((e)=>props.onErr(e.message))}>unblock</button>
-                <button class="chip-btn" onClick={() => api.taskAction(t.task_id, 'fail').then(refresh).catch((e)=>props.onErr(e.message))}>fail</button>
-                <button class="chip-btn danger" onClick={() => confirm('удалить задачу?') && api.deleteTask(t.task_id).then(refresh).catch((e)=>props.onErr(e.message))}>delete</button>
-              </div>
-            </div>
-          )}
+            );
+          }}
         </For>
       </div>
     </div>
@@ -169,32 +215,59 @@ function TasksPanel(props) {
 }
 
 // ---------------- Selfmod ----------------
+// Action visibility:
+//   - PROPOSED / VALIDATING / PASSED_LAYER_*: she's still validating it. Approve/deny don't apply.
+//   - REQUIRES_GOVERNED_CHANGE: this is what needs Ivan's decision. show approve/deny.
+//   - GOVERNED_APPROVED / APPROVED: already accepted, waiting for apply. read-only.
+//   - REJECTED / APPLIED / REVERTED: terminal. read-only.
+const SELFMOD_NEEDS_DECISION = new Set(['requires_governed_change']);
+
 function SelfmodPanel(props) {
-  const [props_, setProps] = createSignal([]);
+  const [items, setItems] = createSignal([]);
+  const [filter, setFilter] = createSignal('needs_decision'); // needs_decision | all
+
   async function refresh() {
-    try { const r = await api.getSelfmodList(); setProps(r.proposals || []); }
+    try { const r = await api.getSelfmodList(); setItems(r.proposals || []); }
     catch (e) { props.onErr('selfmod: ' + e.message); }
   }
   onMount(refresh);
+
+  const visible = () => {
+    const all = items();
+    if (filter() === 'all') return all;
+    return all.filter((p) => SELFMOD_NEEDS_DECISION.has(p.status));
+  };
+
   return (
     <div class="panel">
-      <div class="panel-head"><h3>SELFMOD ({props_().length})</h3>
-        <button class="btn ghost" onClick={refresh}>обновить</button></div>
+      <div class="panel-head">
+        <h3>SELFMOD ({visible().length}{filter() === 'needs_decision' && items().length > visible().length ? ` / ${items().length}` : ''})</h3>
+        <div class="panel-actions">
+          <button classList={{ 'chip-btn': true, on: filter() === 'needs_decision' }} onClick={() => setFilter('needs_decision')}>требуют решения</button>
+          <button classList={{ 'chip-btn': true, on: filter() === 'all' }} onClick={() => setFilter('all')}>все</button>
+          <button class="btn ghost" onClick={refresh}>обновить</button>
+        </div>
+      </div>
       <div class="card-list">
-        <For each={props_()} fallback={<div class="muted">нет предложений</div>}>
-          {(p) => (
-            <div class="card">
-              <div class="card-top">
-                <span classList={{ badge: true, [p.status]: true }}>{p.status}</span>
-                <span class="card-title mono">{p.target_module}</span>
+        <For each={visible()} fallback={<div class="muted">{filter() === 'needs_decision' ? 'нет предложений ждущих твоего решения. для governed-changes Соня сама проходит pipeline; здесь появляются только critical-path proposals (требующие одобрения primary anchor).' : 'нет предложений'}</div>}>
+          {(p) => {
+            const needsDecision = SELFMOD_NEEDS_DECISION.has(p.status);
+            return (
+              <div class="card">
+                <div class="card-top">
+                  <span classList={{ badge: true, [p.status]: true }}>{p.status.replace(/_/g, ' ')}</span>
+                  <span class="card-title mono">{p.target_module}</span>
+                </div>
+                <div class="card-desc">{p.summary}</div>
+                <Show when={needsDecision}>
+                  <div class="card-actions">
+                    <button class="chip-btn ok" onClick={() => api.approveSelfmod(p.proposal_id).then(refresh).catch((e)=>props.onErr(e.message))}>approve</button>
+                    <button class="chip-btn danger" onClick={() => api.denySelfmod(p.proposal_id).then(refresh).catch((e)=>props.onErr(e.message))}>deny</button>
+                  </div>
+                </Show>
               </div>
-              <div class="card-desc">{p.summary}</div>
-              <div class="card-actions">
-                <button class="chip-btn ok" onClick={() => api.approveSelfmod(p.proposal_id).then(refresh).catch((e)=>props.onErr(e.message))}>approve</button>
-                <button class="chip-btn danger" onClick={() => api.denySelfmod(p.proposal_id).then(refresh).catch((e)=>props.onErr(e.message))}>deny</button>
-              </div>
-            </div>
-          )}
+            );
+          }}
         </For>
       </div>
     </div>

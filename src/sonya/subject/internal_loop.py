@@ -1037,6 +1037,41 @@ class InternalProcess:
                     "результат. Тебе доверено."
                 )
 
+            # Mid-session interrupt: if Ivan writes during the session, drain
+            # those messages into the agent so it can break and reply. Polled
+            # by run_agent_session between steps via inbox_drain. Tracks the
+            # last-seen seq across calls so each message is delivered once.
+            substrate_for_drain = substrate
+            session_state = {"last_seq": substrate.connection.execute(
+                "SELECT COALESCE(MAX(seq), 0) FROM continuity_events"
+            ).fetchone()[0]}
+
+            def _ivan_inbox_drain() -> list[str]:
+                if substrate_for_drain is None:
+                    return []
+                try:
+                    rows = substrate_for_drain.connection.execute(
+                        "SELECT seq, payload_json FROM continuity_events "
+                        "WHERE seq > ? AND kind IN "
+                        "  ('incoming.atrium_dialog','incoming.telegram_message') "
+                        "ORDER BY seq ASC",
+                        (session_state["last_seq"],),
+                    ).fetchall()
+                except Exception:
+                    return []
+                texts: list[str] = []
+                import json as _json
+                for seq, pj in rows:
+                    session_state["last_seq"] = int(seq)
+                    try:
+                        p = _json.loads(pj or "{}")
+                    except Exception:
+                        p = {}
+                    t = (p.get("text") or "").strip()
+                    if t:
+                        texts.append(t)
+                return texts
+
             from sonya.subject.window import (
                 Window,
                 WINDOW_KIND_ACTIVE,
@@ -1060,6 +1095,7 @@ class InternalProcess:
                 },
                 initial_thought=initial_thought,
                 outbound=self._outbound,
+                inbox_drain=_ivan_inbox_drain,
                 purpose="active_session",
             )
             result = await run_window(

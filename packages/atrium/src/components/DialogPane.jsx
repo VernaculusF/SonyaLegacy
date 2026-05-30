@@ -221,7 +221,8 @@ export default function DialogPane(props) {
             {(m) => (
               <div class="msg-row" data-seq={String(m.seq)}>
                 <div classList={{ ts: true, 'her-ts': m.sender === 'her', 'him-ts': m.sender === 'him' }}>
-                  {formatTime(m.ts)}
+                  <span class="msg-name">{m.sender === 'her' ? 'соня' : 'иван'}</span>
+                  <span class="msg-time">{formatTime(m.ts)}</span>
                 </div>
                 <div classList={{ bubble: true, [m.sender]: true }}>
                   <Show when={m.text}>
@@ -238,6 +239,16 @@ export default function DialogPane(props) {
               </div>
             )}
           </For>
+        </Show>
+        <Show when={feed.her_typing}>
+          <div class="typing-row">
+            <span class="typing-name">соня</span>
+            <span class="typing-bubble">
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+            </span>
+          </div>
         </Show>
       </div>
 
