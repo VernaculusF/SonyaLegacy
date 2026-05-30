@@ -8,6 +8,7 @@ export default function Settings(props) {
   const [token, setToken] = createSignal(settings.atrium_token || '');
   const [avatarUrl, setAvatarUrl] = createSignal(settings.avatar_model_url || '');
   const [roomUrl, setRoomUrl] = createSignal(settings.room_model_url || '');
+  const [voiceMode, setVoiceMode] = createSignal(settings.voice_mode || 'off');
 
   function save() {
     const newHost = host().trim();
@@ -16,6 +17,7 @@ export default function Settings(props) {
     // Avatar / room model URLs (applied on next mount).
     updateSetting('avatar_model_url', avatarUrl().trim());
     updateSetting('room_model_url', roomUrl().trim());
+    updateSetting('voice_mode', voiceMode());
     if (changed) {
       updateSetting('vps_host', newHost);
       updateSetting('atrium_token', newToken);
@@ -72,6 +74,22 @@ export default function Settings(props) {
           />
           <span style="margin-left: 0; color: var(--ink-3); font-size: 12px;">
             свой 3D-room .glb/.gltf (если есть) — иначе встроенная сцена
+          </span>
+        </div>
+
+        <div class="modal-section">
+          <label>voice (озвучка её ответов)</label>
+          <select
+            value={voiceMode()}
+            onChange={(e) => setVoiceMode(e.currentTarget.value)}
+            style="padding: 8px; background: var(--bg-elev); border: 1px solid var(--hairline); color: var(--ink-1); border-radius: 4px;"
+          >
+            <option value="off">off (молча)</option>
+            <option value="browser">browser (бесплатный TTS ОС, ru-RU — для теста)</option>
+            <option value="cloned" disabled>cloned (Chatterbox, её клон — Этап 2, скоро)</option>
+          </select>
+          <span style="display:block; margin-top:6px; color: var(--ink-3); font-size: 12px;">
+            при `browser` рот двигается под ритм речи (boundary events). При `cloned` — под реальную амплитуду аудио.
           </span>
         </div>
 

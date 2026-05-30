@@ -35,6 +35,9 @@ const DEFAULT_SETTINGS = {
   room_model_url: '',
   // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
   avatar_mode: '2d',
+  // Voice playback: 'off' (default until user enables) | 'browser' (free OS
+  // TTS, ru-RU) | 'cloned' (Chatterbox/SoVITS service, Этап 2 — when ready).
+  voice_mode: 'off',
   // Optional 2D mouth frames (image URLs) ordered closed → open. Empty → drawn SVG head.
   // 4 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
   // closed → half → open → wide. wide (последний) — ОЧЕНЬ редкий (только пики).

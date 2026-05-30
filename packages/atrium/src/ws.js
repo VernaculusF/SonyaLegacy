@@ -13,6 +13,7 @@ import {
   pushDialogMessage, pushStreamEvent, pushInnerThought,
   applyMeta, flashAvatar,
 } from './store.js';
+import { speakText } from './voice.js';
 
 let ws = null;
 let reconnectTimer = null;
@@ -91,7 +92,11 @@ function handleEvent(msg) {
       pushDialogMessage({ seq, ts, sender: 'her', text });
       // Only flash/notify for live events, not during the initial backlog
       // replay (otherwise a cold start spams the avatar + notifications).
-      if (feed.synced) flashAvatar();
+      if (feed.synced) {
+        flashAvatar();
+        // Speak her reply if voice is enabled — drives mouth amplitude too.
+        speakText(text);
+      }
     }
   }
   // Incoming from Ivan

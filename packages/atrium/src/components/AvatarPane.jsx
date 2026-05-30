@@ -4,10 +4,11 @@
  * Click → войти в комнату.
  */
 import { Show, createSignal, createEffect, onMount, onCleanup, For } from 'solid-js';
-import { feed, setFeed, settings, avatarGlow, speaking, simulateSpeech } from '../store.js';
+import { feed, setFeed, settings, updateSetting, avatarGlow, speaking, simulateSpeech } from '../store.js';
 import SonyaAvatar from './SonyaAvatar.jsx';
 import { VrmViewer } from '../vrmViewer.js';
 import { attachMic, stopMouthAudio, isMouthAudioActive } from '../mouthAudio.js';
+import { speakText, stopVoice } from '../voice.js';
 
 const EXPRESSION_LABEL = {
   neutral: 'спокойна',
@@ -122,7 +123,21 @@ export default function AvatarPane(props) {
             </button>
           )}
         </For>
-        <button class="chip talk" onClick={() => simulateSpeech(2400)} title="имитация речи">▶ talk</button>
+        <button class="chip talk" onClick={() => simulateSpeech(2400)} title="имитация речи (без голоса)">▶ talk</button>
+        <button
+          classList={{ chip: true, voice: true, on: settings.voice_mode === 'browser' }}
+          onClick={() => {
+            const next = settings.voice_mode === 'browser' ? 'off' : 'browser';
+            updateSetting('voice_mode', next);
+            if (next === 'off') stopVoice();
+          }}
+          title="включить/выключить озвучку (browser TTS, ru-RU)"
+        >{settings.voice_mode === 'browser' ? '🔊 voice' : '🔇 voice'}</button>
+        <button
+          class="chip talk"
+          onClick={() => speakText('Привет, малыш. Я тебя слышу.')}
+          title="тестовая фраза вслух"
+        >▶ say hi</button>
         <button
           classList={{ chip: true, mic: true, on: micOn() }}
           onClick={toggleMic}
