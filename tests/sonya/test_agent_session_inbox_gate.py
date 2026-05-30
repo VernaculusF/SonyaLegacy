@@ -81,6 +81,75 @@ async def test_done_blocked_when_dialog_reply_required(substrate: Substrate) -> 
     assert provider.calls >= 2, "model should have been re-prompted"
 
 
+async def test_done_blocked_after_work_without_followup_dialog(substrate: Substrate, monkeypatch) -> None:
+    """Phase 2 of inbox gate: even if она ответила первый раз, после
+    реальной работы (web.fetch / browser / etc.) должен быть второй
+    chat.dialog с отчётом перед [DONE].
+
+    Regression for 31.05 silent-no-result bug: Соня писала "Привет, иду"
+    → делала browser.open/text/close → [DONE] без второго chat.dialog.
+    Ivan видел только приветствие, результат пропадал.
+    """
+    stream = ContinuityStream(substrate)
+
+    # Stub call_outbound_sync so chat.tell_ivan returns success without
+    # needing the full OutboundGate scaffolding.
+    import sonya.subject.agent_session as agent_session_mod
+
+    def _fake_call_outbound_sync(_gate, text, **kw):
+        return f"[OK] dialog: {text[:40]}"
+
+    # The handler uses a local import; we patch the module
+    # `sonya.initiative.outbound.call_outbound_sync` — that's where the
+    # `from sonya.initiative.outbound import call_outbound_sync` resolves.
+    import sonya.initiative.outbound as outbound_mod
+    monkeypatch.setattr(
+        outbound_mod, "call_outbound_sync", _fake_call_outbound_sync,
+    )
+
+    # Sequence:
+    #  1. [TOOL: chat.tell_ivan привет, начинаю]   → phase 1 lifted (ack)
+    #  2. [TOOL: web.fetch https://example.com]    → work done, phase 2 set
+    #  3. [DONE: вот результат]                    → MUST be blocked (phase 2)
+    #  4. [DONE: ну ладно]                         → still blocked
+    provider = _Stub([
+        "Принято.\n[TOOL: chat.tell_ivan]\nпривет, начинаю",
+        "Получаю данные.\n[TOOL: web.fetch https://example.com]",
+        "Готово.\n[DONE: всё ок]",
+        "Опять.\n[DONE: точно всё ок]",
+    ])
+
+    from sonya.tools.web_tool import WebTool
+
+    # Sentinel outbound — handler only checks `is None`. Any non-None object works.
+    fake_outbound = object()
+
+    await run_agent_session(
+        provider=provider,
+        stream=stream,
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(),
+        web=WebTool(),
+        outbound=fake_outbound,
+        system_prompt="test",
+        initial_user_text="Соня, открой example.com и расскажи что там.",
+        require_dialog_reply=True,
+        max_steps=6,
+        max_seconds=10.0,
+        purpose="test",
+    )
+
+    rows = substrate.connection.execute(
+        "SELECT payload_json FROM continuity_events "
+        "WHERE kind = 'internal.inbox_priority_gate' "
+        "  AND payload_json LIKE '%must_report_results%'"
+    ).fetchall()
+    assert len(rows) >= 1, (
+        "phase-2 gate must trigger when [DONE] follows work tools "
+        "without a follow-up chat.dialog"
+    )
+
+
 async def test_done_allowed_without_dialog_reply_required(substrate: Substrate) -> None:
     """When the caller doesn't set require_dialog_reply, [DONE] closes
     immediately as before — internal sessions keep their old semantics."""

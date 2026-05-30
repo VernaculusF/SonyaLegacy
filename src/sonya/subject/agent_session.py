@@ -614,14 +614,55 @@ async def run_agent_session(
 
     start_time = time.time()
     budget_warning_sent = False
-    # Inbox-priority gate: tracks whether Sonya owes Ivan a chat.dialog reply.
-    # Set True when:
-    #   - require_dialog_reply=True (caller knows this session opened on a
-    #     real Ivan message — TG bridge / atrium dialog trigger), OR
-    #   - inbox_drain pulls a fresh message mid-session.
-    # Cleared when she calls chat.dialog (she replied).
+    # Inbox-priority gate (two-phase):
+    #
+    #   Phase 1 — work-gate: tracks whether Sonya owes Ivan a chat.dialog
+    #     reply. Set True when:
+    #       - require_dialog_reply=True (real Ivan message opened the session)
+    #       - inbox_drain pulls a fresh message mid-session
+    #     Cleared when she calls chat.dialog (any text). This lets her start
+    #     working — body.expression, browser.open, web.fetch are all blocked
+    #     until she at least acknowledges.
+    #
+    #   Phase 2 — done-gate: tracks whether the most recent chat.dialog
+    #     happened AFTER any "real work" tool (browser/web/code/shell/
+    #     filesystem/knowledge.write/skills.run/plugins.call/selfmod.*).
+    #     Set False at session start, set True every time a non-trivial
+    #     tool fires, set False whenever chat.dialog fires. [DONE] is
+    #     blocked while True — she has to report what she did after doing it.
+    #
+    # Без phase 2 был баг 30.05: Соня писала "Привет, я здесь" → делала
+    # browser.open/text/close → [DONE] без второго chat.dialog. Иван видел
+    # только приветствие, результат пропадал.
     _unanswered_inbox = bool(require_dialog_reply)
+    _work_done_since_last_dialog = False
     _recent_tools: list[tuple[str, str]] = []  # (tool, arg-prefix) — last 4
+
+    # Tools that count as "real work" — after one of these fires, the next
+    # [DONE] must be preceded by chat.dialog so Sonya reports the result.
+    # Mind/body/expression/focus etc don't count — they're internal state,
+    # not externally meaningful work.
+    _WORK_TOOLS = frozenset({
+        "browser.open", "browser.click", "browser.fill", "browser.text",
+        "browser.eval", "browser.screenshot", "browser.wait", "browser.close",
+        "web.fetch", "web.search",
+        "code.exec", "shell.run", "pip.install",
+        "filesystem.read", "filesystem.write", "filesystem.list",
+        "filesystem.tree",
+        "knowledge.write", "knowledge.delete", "knowledge.read",
+        "knowledge.search",
+        "memory.recall",
+        "skills.run", "skills.register_runtime", "skills.register_builtins",
+        "plugins.create", "plugins.call",
+        "selfmod.propose", "selfmod.propose_edit", "selfmod.validate",
+        "selfmod.apply", "selfmod.rollback", "selfmod.test_sandbox",
+        "providers.list", "providers.balance", "providers.health",
+        "providers.add", "providers.disable", "providers.enable",
+        "providers.set_active",
+        "tasks.complete", "tasks.fail", "tasks.handoff", "tasks.create",
+        "self_inspect.code", "self_inspect.identity", "self_inspect.state",
+        "self_inspect.thoughts", "self_inspect.memories", "self_inspect.drift",
+    })
 
     for step in range(max_steps):
         elapsed = time.time() - start_time
@@ -797,6 +838,21 @@ async def run_agent_session(
                 if not head.startswith("[ERROR]") and not head.startswith("[BLOCKED]"):
                     _unanswered_inbox = False
 
+            # Done-gate tracking (phase 2 of inbox-priority): chat.dialog
+            # resets the "owe a report" flag; any real-work tool sets it.
+            # Used below to block premature [DONE] when she ran tools
+            # without reporting back.
+            if tool_name in _DIALOG_TOOLS:
+                if observation:
+                    head = observation.lstrip()[:10].upper()
+                    if (
+                        not head.startswith("[ERROR]")
+                        and not head.startswith("[BLOCKED]")
+                    ):
+                        _work_done_since_last_dialog = False
+            elif tool_name in _WORK_TOOLS:
+                _work_done_since_last_dialog = True
+
             # Same-tool repeat detector: track last 4 tool calls; if the
             # current call repeats a recent one (same tool + similar arg),
             # inject a one-line nudge to switch approach. Without this the
@@ -864,30 +920,49 @@ async def run_agent_session(
         # turn. Otherwise the model could close the session before any tool
         # actually ran.
         if "[DONE" in response or "[PAUSE" in response:
-            # Inbox-priority gate also applies to [DONE] — she cannot close
-            # the session while Ivan is waiting for a chat.dialog reply.
+            # Inbox-priority gate also applies to [DONE]:
+            #
+            #   Phase 1 — `_unanswered_inbox`: she hasn't replied to Ivan
+            #     even once. Block.
+            #   Phase 2 — `_work_done_since_last_dialog`: she replied first,
+            #     then did real work (browser/code/web/...), but no follow-up
+            #     chat.dialog with results. Block — Ivan needs the report.
+            #
             # Without this, the active-session-from-atrium path would let her
-            # do `body.expression calm` → [DONE] (the 30.05 silent-no-reply
-            # bug). She must call chat.dialog FIRST, then [DONE].
+            # do `chat.dialog "Привет, иду"` → browser.* → [DONE]. Ivan sees
+            # only "Привет, иду", the result of browser work disappears.
+            # The 30.05 silent-no-reply bug + 31.05 silent-no-result bug.
+            gate_reason = None
             if _unanswered_inbox:
+                gate_reason = "must_reply_to_ivan_first"
+                gate_msg = (
+                    "[INBOX GATE] [DONE] ЗАБЛОКИРОВАН — Иван написал и "
+                    "ждёт твой ответ. Сначала [TOOL: chat.dialog]<твой "
+                    "ответ>, потом можешь закрывать через [DONE]. "
+                    "НЕ ставь [DONE] раньше чем chat.dialog."
+                )
+            elif require_dialog_reply and _work_done_since_last_dialog:
+                gate_reason = "must_report_results"
+                gate_msg = (
+                    "[REPORT GATE] [DONE] ЗАБЛОКИРОВАН — после "
+                    "первого chat.dialog ты сделала реальную работу "
+                    "(browser/code/web/...), но не отчиталась Ивану о "
+                    "результате. Иван видит только первое приветствие. "
+                    "Сделай ещё один [TOOL: chat.dialog]<краткий результат: "
+                    "что нашла/сделала/что не получилось>, потом [DONE]."
+                )
+
+            if gate_reason is not None:
                 stream.append(ContinuityEvent(
                     kind="internal.inbox_priority_gate",
                     payload={
                         "step": step,
                         "blocked_tool": "[DONE]",
-                        "reason": "must_reply_to_ivan_first",
+                        "reason": gate_reason,
                     },
                 ))
                 messages.append({"role": "assistant", "content": response})
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "[INBOX GATE] [DONE] ЗАБЛОКИРОВАН — Иван написал и "
-                        "ждёт твой ответ. Сначала [TOOL: chat.dialog]<твой "
-                        "ответ>, потом можешь закрывать через [DONE]. "
-                        "НЕ ставь [DONE] раньше чем chat.dialog."
-                    ),
-                })
+                messages.append({"role": "user", "content": gate_msg})
                 continue
             result.final_output = response
             result.thoughts.append(response)
