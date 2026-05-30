@@ -27,9 +27,16 @@ def test_fast_purposes(purpose: str) -> None:
     assert _slot_for_purpose(purpose) == "text-fast"
 
 
-# Deep slot
-def test_active_session_uses_deep() -> None:
-    assert _slot_for_purpose("active_session") == "text-deep"
+# Deep slot — explicit opt-in only.
+def test_active_session_deep_uses_deep() -> None:
+    assert _slot_for_purpose("active_session_deep") == "text-deep"
+
+
+def test_active_session_default_is_fast() -> None:
+    """v23: active_session moved to text-fast (was text-deep). Bulk of an
+    active turn is dialog reply + simple tool calls; deep work routes via
+    explicit `active_session_deep` purpose now."""
+    assert _slot_for_purpose("active_session") == "text-fast"
 
 
 # Code slot — explicit + heuristic
@@ -71,4 +78,5 @@ def test_caller_can_override_via_kwarg() -> None:
     path doesn't break anything."""
     # Pure-function test of helper. Override path is integration-tested
     # implicitly by code review / runtime behavior.
-    assert _slot_for_purpose("active_session") == "text-deep"
+    assert _slot_for_purpose("active_session") == "text-fast"
+    assert _slot_for_purpose("active_session_deep") == "text-deep"

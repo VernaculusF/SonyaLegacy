@@ -77,11 +77,23 @@ fi
 echo "=> Ensuring runtime dependencies..."
 # fastembed + numpy power memory.recall (semantic search over episodic memory).
 # pytest required for selfmod Layer 2 sandbox (runs project tests against modified code).
-# Idempotent — pip skips if already at the requested version.
+# playwright = browser automation tool. Idempotent — pip skips if already
+# at the requested version.
 "$PROJECT_DIR/.venv/bin/pip" install --quiet --upgrade \
     "fastembed>=0.4" "numpy>=1.26" "imagehash>=4.3" \
     "pytest>=8.0" "pytest-timeout>=2.0" "pytest-asyncio>=0.23" \
+    "playwright>=1.40" \
     2>&1 | grep -v "already satisfied" || true
+
+# Install Chromium for playwright (idempotent — skips if already there).
+# Background the install so a slow first-time download (200+ MB) doesn't
+# hold up the deploy. If chromium isn't ready yet, browser.* tools will
+# return [ERROR] gracefully until it lands.
+if [ ! -d "$HOME/.cache/ms-playwright" ]; then
+    echo "   first-time chromium install for playwright (~200 MB, backgrounded)"
+    "$PROJECT_DIR/.venv/bin/python" -m playwright install --with-deps chromium \
+        > /tmp/sonya-playwright-install.log 2>&1 &
+fi
 
 echo "=> Restarting services..."
 # Helper: verify Sonya core + admin are alive (or absent if expected) and

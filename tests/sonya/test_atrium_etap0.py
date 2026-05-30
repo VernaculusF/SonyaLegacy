@@ -57,7 +57,7 @@ def test_v19_substrate_migrates_to_v20(tmp_path: Path) -> None:
 
     sub = Substrate.open(db)
     try:
-        assert sub.schema_version == 20
+        assert sub.schema_version >= 20
         # New columns on continuity_events
         cols = {r[1] for r in sub.connection.execute("PRAGMA table_info(continuity_events)")}
         assert "channel" in cols
@@ -101,13 +101,13 @@ def test_v20_migration_idempotent(tmp_path: Path) -> None:
     # Second open: should be no-op (already at 20)
     sub = Substrate.open(db)
     try:
-        assert sub.schema_version == 20
+        assert sub.schema_version >= 20
     finally:
         sub.close()
 
 
 def test_substrate_writable_version_is_20() -> None:
-    assert Substrate.WRITABLE_VERSION == 20
+    assert Substrate.WRITABLE_VERSION >= 20
     assert 20 in Substrate.READABLE_VERSIONS
 
 

@@ -153,6 +153,27 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 - shell.run [command] — approval-gated
 - pip.install [package] — approval-gated
 
+- providers.list — твой LLM-pool: имя, статус, баланс, slot, счётчики
+- providers.balance — суммарный баланс по провайдерам
+- providers.health — синтез: OK / WARNING / CRITICAL. Используй когда видишь LLM errors или хочешь понять надо ли регать новый ключ
+- providers.disable [key_id] / providers.enable [key_id]
+- providers.add — JSON: {"provider","name","api_key","base_url?","model?","priority?","slot?"}
+- providers.set_active [provider_name]
+- providers.settings — текущие active_provider / default_model / default_base_url
+
+- browser.open [url] — Playwright headless, persistent profile в ~/.sonya/browser-profile/
+- browser.click [css selector]
+- browser.fill <css selector>|<value>
+- browser.text [css selector] — innerText
+- browser.eval [js] — выполнить JS
+- browser.screenshot [path?]
+- browser.wait [css selector] — до 15с
+- browser.close
+  Используй для JS-render, форм, login, captcha (через 2captcha-style), скриншотов, выполнения JS.
+  Куки сохраняются между сессиями — логинись один раз.
+
+
+
 - chat.tell_ivan [message] — send a message to Ivan in TG (throttled, max 5/day). Use during long tasks for progress updates.
 
 ## How to finish
@@ -495,6 +516,8 @@ async def run_agent_session(
     skills: SkillsTool | None = None,
     knowledge: Any | None = None,  # KnowledgeTool — knowledge.* family
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
+    providers: Any | None = None,  # ProvidersTool — providers.* family
+    browser: Any | None = None,  # BrowserTool — browser.* family
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
     initial_user_text: str | None = None,
@@ -502,6 +525,7 @@ async def run_agent_session(
     max_seconds: float = 1200.0,
     purpose: str = "agent_session",
     inbox_drain = None,  # Optional callable () -> list[str] of new messages from user
+    drives_callback = None,  # Optional callable () -> None, fired after each successful (non-error) tool step
 ) -> SessionResult:
     """Run a ReAct agent session within the single stream.
 
@@ -665,6 +689,8 @@ async def run_agent_session(
                 selfmod, tasks, web, code, shell, outbound, memory, env, skills,
                 knowledge=knowledge,
                 outbound_sent=result.outbound_sent,
+                providers=providers,
+                browser=browser,
             )
 
             # Record in continuity
@@ -676,6 +702,18 @@ async def run_agent_session(
             # Feed observation back
             messages.append({"role": "assistant", "content": response})
             messages.append({"role": "user", "content": f"[Observation from {tool_name}]:\n{observation[:3000]}"})
+
+            # Drives feedback: fire on_action_completed after a non-error
+            # tool step. This is the missing wire from drives.py — без него
+            # pending_debt только растёт, никогда не падает. Heuristic:
+            # observation starting with "[ERROR]" or "[BLOCKED]" is failure.
+            if drives_callback is not None and observation:
+                head = observation.lstrip()[:10].upper()
+                if not head.startswith("[ERROR]") and not head.startswith("[BLOCKED]"):
+                    try:
+                        drives_callback()
+                    except Exception:
+                        pass
 
             # Same-tool repeat detector: track last 4 tool calls; if the
             # current call repeats a recent one (same tool + similar arg),
@@ -846,6 +884,8 @@ class _ToolContext:
     outbound_sent: list[str] | None
     knowledge: Any | None = None  # KnowledgeTool — knowledge.* family (default None for BC)
     stream: Any | None = None  # ContinuityStream — body.*/mind.* handlers use this
+    providers: Any | None = None  # ProvidersTool — providers.* family
+    browser: Any | None = None  # BrowserTool — browser.* family
 
 
 def _require(tool: Any, name: str) -> str | None:
@@ -1842,6 +1882,93 @@ _DEDUP_STOPWORDS = frozenset({
 # Registry: tool name → handler. Keep alphabetised within each family to
 # make adding new tools mechanical. New tool = one function above + one
 # entry here.
+# Registry: tool name → handler. Keep alphabetised within each family to
+# make adding new tools mechanical. New tool = one function above + one
+# entry here.
+
+
+# providers.* — она управляет своим LLM-pool сама. См. tools/providers_tool.py
+def _h_providers_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.list_keys(arg)
+
+
+def _h_providers_settings(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.settings(arg)
+
+
+def _h_providers_balance(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.balance(arg)
+
+
+def _h_providers_health(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.health_report(arg)
+
+
+def _h_providers_disable(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.disable_key(arg)
+
+
+def _h_providers_enable(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.enable_key(arg)
+
+
+def _h_providers_add(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.add_key(arg)
+
+
+def _h_providers_set_active(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.set_active(arg)
+
+
+# browser.* — Playwright wrapper. См. tools/browser_tool.py
+def _h_browser_open(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.open(arg)
+
+
+def _h_browser_click(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.click(arg)
+
+
+def _h_browser_fill(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.fill(arg)
+
+
+def _h_browser_text(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.text(arg)
+
+
+def _h_browser_eval(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.eval_js(arg)
+
+
+def _h_browser_screenshot(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.screenshot(arg)
+
+
+def _h_browser_wait(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.wait_for(arg)
+
+
+def _h_browser_close(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.browser, "browser")
+    return err if err else ctx.browser.close(arg)
+
+
 _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     # self_inspect.*
     "self_inspect.identity": _h_si_identity,
@@ -1926,6 +2053,24 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "body.expression": _h_body_expression,
     "body.outfit":     _h_body_outfit,
     "voice.speak":     _h_voice_speak,
+    # providers.* — manage own LLM key pool. См. tools/providers_tool.py
+    "providers.list":     _h_providers_list,
+    "providers.settings": _h_providers_settings,
+    "providers.balance":  _h_providers_balance,
+    "providers.health":   _h_providers_health,
+    "providers.disable":  _h_providers_disable,
+    "providers.enable":   _h_providers_enable,
+    "providers.add":      _h_providers_add,
+    "providers.set_active": _h_providers_set_active,
+    # browser.* — Playwright. См. tools/browser_tool.py
+    "browser.open":       _h_browser_open,
+    "browser.click":      _h_browser_click,
+    "browser.fill":       _h_browser_fill,
+    "browser.text":       _h_browser_text,
+    "browser.eval":       _h_browser_eval,
+    "browser.screenshot": _h_browser_screenshot,
+    "browser.wait":       _h_browser_wait,
+    "browser.close":      _h_browser_close,
 }
 
 
@@ -1946,6 +2091,8 @@ def _execute_tool(
     skills: SkillsTool | None = None,
     knowledge: Any | None = None,
     outbound_sent: list[str] | None = None,
+    providers: Any | None = None,
+    browser: Any | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string.
 
@@ -1971,6 +2118,8 @@ def _execute_tool(
         outbound=outbound,
         outbound_sent=outbound_sent,
         stream=stream,
+        providers=providers,
+        browser=browser,
     )
     try:
         return handler(arg, ctx)

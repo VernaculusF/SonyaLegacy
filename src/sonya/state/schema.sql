@@ -296,7 +296,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     sessions_used INTEGER NOT NULL DEFAULT 0,          -- counter; auto-fail when reaches max_sessions
     last_session_notes TEXT NOT NULL DEFAULT '',       -- model writes summary at end of each session
     next_step_hint TEXT NOT NULL DEFAULT '',           -- one-line "where to start next time"
-    stuck_loop_count INTEGER NOT NULL DEFAULT 0        -- incremented when handoff next_step repeats; reset on change
+    -- v18 addition: stuck_loop_count
+    stuck_loop_count INTEGER NOT NULL DEFAULT 0,        -- incremented when handoff next_step repeats; reset on change
+    -- v21 addition: explicit urgency. urgent / normal / background.
+    urgency TEXT NOT NULL DEFAULT 'normal'
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);

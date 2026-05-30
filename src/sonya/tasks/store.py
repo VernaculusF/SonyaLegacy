@@ -1,4 +1,4 @@
-"""TaskStore: persistent CRUD for Task objects."""
+﻿"""TaskStore: persistent CRUD for Task objects."""
 from __future__ import annotations
 
 import json
@@ -15,7 +15,7 @@ def _utc_now_iso() -> str:
 
 
 class TaskStore:
-    """SQLite-backed CRUD for tasks. No business logic — that lives in TaskService."""
+    """SQLite-backed CRUD for tasks. No business logic вЂ” that lives in TaskService."""
 
     def __init__(self, substrate: Substrate) -> None:
         self._sub = substrate
@@ -36,6 +36,7 @@ class TaskStore:
         recurring_spec: str = "",
         notify_mode: str = "progress",
         max_sessions: int = 0,
+        urgency: str = "normal",
     ) -> Task:
         task_id = f"task-{uuid4().hex[:12]}"
         now = _utc_now_iso()
@@ -45,14 +46,14 @@ class TaskStore:
             "parent_task_id, deadline, plan_steps_json, completed_steps_json, "
             "blocker, result, created_at, updated_at, "
             "created_by, scheduled_for, recurring_spec, notify_mode, "
-            "max_sessions, sessions_used, last_session_notes, next_step_hint) "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency) "
             "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, '[]', '', '', ?, ?, "
-            "?, ?, ?, ?, ?, 0, '', '')",
+            "?, ?, ?, ?, ?, 0, '', '', ?)",
             (
                 task_id, title, description, principal_id, parent_task_id,
                 deadline, steps_json, now, now,
                 created_by, scheduled_for, recurring_spec, notify_mode,
-                int(max_sessions or 0),
+                int(max_sessions or 0), urgency,
             ),
         )
         self._sub.connection.commit()
@@ -63,7 +64,7 @@ class TaskStore:
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
             "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-            "max_sessions, sessions_used, last_session_notes, next_step_hint "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
             "FROM tasks WHERE task_id = ?",
             (task_id,),
         ).fetchone()
@@ -77,7 +78,7 @@ class TaskStore:
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
                 "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-                "max_sessions, sessions_used, last_session_notes, next_step_hint "
+                "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
                 "FROM tasks WHERE status = ? ORDER BY updated_at DESC LIMIT ?",
                 (status, limit),
             )
@@ -86,7 +87,7 @@ class TaskStore:
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
                 "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-                "max_sessions, sessions_used, last_session_notes, next_step_hint "
+                "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
                 "FROM tasks ORDER BY updated_at DESC LIMIT ?",
                 (limit,),
             )
@@ -98,7 +99,7 @@ class TaskStore:
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
             "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-            "max_sessions, sessions_used, last_session_notes, next_step_hint "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
             "FROM tasks "
             "WHERE status IN ('pending','in_progress','blocked') ORDER BY updated_at DESC"
         )
@@ -109,8 +110,8 @@ class TaskStore:
 
         Used by context_builder so idle thinking sees recently-failed Ivan
         tasks instead of forgetting they existed. Without this, Sonya's
-        idle thoughts say things like "жду возможности проверить" when
-        the task is in fact dead — there's no worker that will pick it up.
+        idle thoughts say things like "Р¶РґСѓ РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё РїСЂРѕРІРµСЂРёС‚СЊ" when
+        the task is in fact dead вЂ” there's no worker that will pick it up.
         She needs to see the failure to decide whether to retry / repurpose.
         """
         from datetime import datetime, timedelta, timezone
@@ -119,7 +120,7 @@ class TaskStore:
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
             "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-            "max_sessions, sessions_used, last_session_notes, next_step_hint "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
             "FROM tasks "
             "WHERE status = 'failed' AND updated_at > ? "
             "ORDER BY updated_at DESC LIMIT ?",
@@ -276,4 +277,5 @@ def _row_to_task(row) -> Task:
         sessions_used=int(row[18]) if len(row) > 18 and row[18] is not None else 0,
         last_session_notes=row[19] if len(row) > 19 else "",
         next_step_hint=row[20] if len(row) > 20 else "",
+        urgency=row[21] if len(row) > 21 and row[21] else "normal",
     )

@@ -35,6 +35,7 @@ class TaskService:
         recurring_spec: str = "",
         notify_mode: str = "progress",
         max_sessions: int = 0,
+        urgency: str | None = None,
     ) -> Task:
         if not title.strip():
             raise ValueError("title cannot be empty")
@@ -45,15 +46,16 @@ class TaskService:
         if max_sessions < 0:
             raise ValueError("max_sessions cannot be negative (0 = unlimited)")
         # Sane default for ivan-tasks: cap unlimited budgets at 20 sessions.
-        # Without this, a task that loops forever (worker can't make progress
-        # but isn't stuck enough to trip the loop detector) burns hundreds
-        # of sessions and tokens. Historical examples: 83 sessions on a
-        # WordPress recon task, 50+ on sweetcow. 20 is enough room for real
-        # multi-step work; if Sonya genuinely needs more she can pass it
-        # explicitly via the JSON arg. Self-tasks keep 0 (unlimited) since
-        # they're picked sparingly by active session every 2h.
         if max_sessions == 0 and created_by == "ivan":
             max_sessions = 20
+        # Resolve urgency. Ivan-tasks default to 'normal'; self-tasks default
+        # to 'background' (slow burn — picked up by active session, not by the
+        # 3-min worker that would burn tokens on her own recreational ideas).
+        # Explicit urgency arg wins.
+        if urgency is None:
+            urgency = "normal" if created_by == "ivan" else "background"
+        if urgency not in ("urgent", "normal", "background"):
+            raise ValueError(f"urgency must be urgent|normal|background, got {urgency!r}")
         task = self._store.create(
             title=title,
             description=description,
@@ -66,6 +68,7 @@ class TaskService:
             recurring_spec=recurring_spec,
             notify_mode=notify_mode,
             max_sessions=max_sessions,
+            urgency=urgency,
         )
         self._emit("task.created", task, extra={
             "title": task.title,
@@ -73,6 +76,7 @@ class TaskService:
             "scheduled_for": scheduled_for,
             "notify_mode": notify_mode,
             "max_sessions": max_sessions,
+            "urgency": urgency,
         })
         return task
 
@@ -161,12 +165,28 @@ class TaskService:
         return updated
 
     def pause(self, task_id: str) -> Task:
-        """Move from in_progress back to pending (e.g. session ended without completion)."""
+        """Move task → PAUSED. Resumable via unblock/resume.
+
+        v23: previously routed to PENDING (legacy); now uses the dedicated
+        PAUSED status so paused tasks are visible separately and pick_next
+        skips them (only pending/in_progress get auto-resumed).
+        """
         task = self._store.get(task_id)
-        if task.status is not TaskStatus.IN_PROGRESS:
+        if task.status in (TaskStatus.DONE, TaskStatus.FAILED):
+            return task  # idempotent on terminal
+        if task.status is TaskStatus.PAUSED:
             return task
-        updated = self._store.update_status(task_id, TaskStatus.PENDING)
+        updated = self._store.update_status(task_id, TaskStatus.PAUSED)
         self._emit("task.paused", updated)
+        return updated
+
+    def resume(self, task_id: str) -> Task:
+        """Move PAUSED task back to IN_PROGRESS."""
+        task = self._store.get(task_id)
+        if task.status is not TaskStatus.PAUSED:
+            return task
+        updated = self._store.update_status(task_id, TaskStatus.IN_PROGRESS)
+        self._emit("task.resumed", updated)
         return updated
 
     # ---------- planning ----------

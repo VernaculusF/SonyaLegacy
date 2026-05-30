@@ -14,6 +14,24 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
 
 
+class TaskUrgency(str, Enum):
+    """How fast the system reacts to this task between sessions.
+
+    URGENT     — wake up every 3 min, 8 ReAct steps / 90 s budget per tick.
+                 Use for deadline-bound or "Ivan is watching" work.
+    NORMAL     — picked up by active session every 2h, 20 steps / 5 min.
+                 Default for typical Ivan tasks.
+    BACKGROUND — picked up only when active session has nothing else, 30 steps
+                 / 15 min. Long-running research / ideas Sonya generated herself.
+
+    Urgency is a soft signal — Task.is_urgent() (legacy) still computes it
+    heuristically when the field is missing on old tasks.
+    """
+    URGENT = "urgent"
+    NORMAL = "normal"
+    BACKGROUND = "background"
+
+
 class TaskNotFoundError(KeyError):
     """Raised when a task_id is not found in the store."""
 
@@ -48,9 +66,12 @@ class Task:
     last_session_notes: str = ""       # model writes summary at end of each session
     next_step_hint: str = ""           # one-line "where to start next time"
     stuck_loop_count: int = 0          # incremented when next_step repeats; reset on change
+    # v23 (2026-05-30): explicit urgency typed field. Heuristic legacy
+    # is_urgent() still works when column not populated. Stored as string.
+    urgency: str = "normal"            # 'urgent' | 'normal' | 'background'
 
     def is_open(self) -> bool:
-        return self.status in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED}
+        return self.status in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED, TaskStatus.PAUSED}
 
     def is_resolved(self) -> bool:
         return self.status in {TaskStatus.DONE, TaskStatus.FAILED}
@@ -76,15 +97,15 @@ class Task:
     def is_urgent(self) -> bool:
         """Should the task_worker process this task between active sessions?
 
-        True if any of:
-        - deadline within next 6 hours
-        - description/title contains explicit urgency markers
-        - notify_mode == 'progress' AND it's an Ivan-task (he wants live updates)
-
-        For non-urgent self-tasks: active session every 2h handles them.
-        Saves tokens — no need to wake worker every 2 minutes for slow background work.
+        v23: explicit `urgency` field takes precedence. Heuristic fallback
+        kept so old rows (no field) still classify reasonably.
         """
-        # 1. Tight deadline
+        # 1. Explicit field (new tasks set this; old rows default to 'normal')
+        if self.urgency == TaskUrgency.URGENT.value:
+            return True
+        if self.urgency == TaskUrgency.BACKGROUND.value:
+            return False
+        # 2. Legacy heuristic — old rows without urgency
         if self.deadline:
             try:
                 from datetime import datetime, timezone, timedelta
@@ -93,15 +114,17 @@ class Task:
                     return True
             except Exception:
                 pass
-        # 2. Explicit urgency in title/description
         haystack = f"{self.title} {self.description}".lower()
         urgent_markers = ("срочно", "urgent", "asap", "немедленно", "быстро")
         if any(m in haystack for m in urgent_markers):
             return True
-        # 3. Ivan-task with notify_mode=progress — he's watching
         if self.is_ivan_task() and self.notify_mode == "progress":
             return True
         return False
+
+    def is_background(self) -> bool:
+        """True for slow self-tasks that should only run when nothing else is queued."""
+        return self.urgency == TaskUrgency.BACKGROUND.value
 
     def session_budget_exhausted(self) -> bool:
         """True if max_sessions > 0 and we've burned them all."""

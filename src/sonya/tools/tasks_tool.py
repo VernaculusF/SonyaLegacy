@@ -109,6 +109,9 @@ class TasksTool:
                 notify_mode = str(data.get("notify_mode", "progress")).strip().lower() or "progress"
                 recurring_spec = str(data.get("recurring_spec", "")).strip()
                 max_sessions = int(data.get("max_sessions", 0) or 0)
+                urgency = data.get("urgency")
+                if urgency is not None:
+                    urgency = str(urgency).strip().lower() or None
             except (json.JSONDecodeError, TypeError, ValueError) as err:
                 return f"[ERROR] tasks.create: invalid JSON ({err})"
         else:
@@ -119,6 +122,7 @@ class TasksTool:
             plan_steps = (
                 [s.strip() for s in steps_raw.split(";") if s.strip()] if steps_raw else None
             )
+            urgency = None
         if not title:
             return "[ERROR] tasks.create: title is required"
         try:
@@ -132,6 +136,7 @@ class TasksTool:
                 recurring_spec=recurring_spec,
                 notify_mode=notify_mode,
                 max_sessions=max_sessions,
+                urgency=urgency,
             )
         except ValueError as err:
             return f"[ERROR] {err}"

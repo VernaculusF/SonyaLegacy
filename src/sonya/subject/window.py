@@ -102,6 +102,7 @@ class Window:
     max_seconds: float = 0.0  # 0 = use per-kind default
     outbound: Any = None
     inbox_drain: Callable[[], list[str]] | None = None
+    drives_callback: Callable[[], None] | None = None
     purpose: str = ""
 
 
@@ -150,6 +151,8 @@ async def run_window(
         env=tools.get("env"),
         skills=tools.get("skills"),
         knowledge=tools.get("knowledge"),
+        providers=tools.get("providers"),
+        browser=tools.get("browser"),
         outbound=window.outbound,
         initial_thought=window.initial_thought,
         initial_user_message=window.initial_user_message,
@@ -158,6 +161,7 @@ async def run_window(
         max_seconds=seconds,
         purpose=purpose,
         inbox_drain=window.inbox_drain,
+        drives_callback=window.drives_callback,
     )
 
 

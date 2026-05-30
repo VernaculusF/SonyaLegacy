@@ -281,6 +281,8 @@ def build_tools(
     import os
     yolo = os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
     from sonya.tools.knowledge import KnowledgeTool
+    from sonya.tools.providers_tool import ProvidersTool
+    from sonya.tools.browser_tool import BrowserTool
     return {
         "self_inspect": SelfInspectTool(substrate),
         "filesystem": FilesystemTool(),
@@ -293,6 +295,8 @@ def build_tools(
         "env": EnvTool(substrate),
         "skills": SkillsTool(substrate),
         "knowledge": KnowledgeTool(),
+        "providers": ProvidersTool(substrate),
+        "browser": BrowserTool(),
         "outbound": outbound,
     }
 

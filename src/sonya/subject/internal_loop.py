@@ -499,6 +499,11 @@ class InternalProcess:
             # Confirm stable or auto-revert based on error count delta.
             self._check_selfmod_watchdog()
 
+            # Provider health watchdog: warn Ivan via chat.dialog when total
+            # balance drops below threshold. Throttled to 12h. See
+            # `_check_provider_health` for thresholds.
+            self._check_provider_health()
+
     def _check_deadlines(self) -> list[str]:
         """Check active intentions for deadline expiry. Mark overdue."""
         overdue: list[str] = []
@@ -751,6 +756,10 @@ class InternalProcess:
             skills_tool = SkillsTool(substrate)
             from sonya.tools.knowledge import KnowledgeTool
             knowledge_tool = KnowledgeTool()
+            from sonya.tools.providers_tool import ProvidersTool
+            providers_tool = ProvidersTool(substrate)
+            from sonya.tools.browser_tool import BrowserTool
+            browser_tool = BrowserTool()
             import os as _os
             _yolo = _os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
@@ -1092,10 +1101,13 @@ class InternalProcess:
                     "env": env_tool,
                     "skills": skills_tool,
                     "knowledge": knowledge_tool,
+                    "providers": providers_tool,
+                    "browser": browser_tool,
                 },
                 initial_thought=initial_thought,
                 outbound=self._outbound,
                 inbox_drain=_ivan_inbox_drain,
+                drives_callback=self._drives.on_action_completed,
                 purpose="active_session",
             )
             result = await run_window(
@@ -1421,9 +1433,12 @@ class InternalProcess:
                         "env": tools["env"],
                         "skills": tools["skills"],
                         "knowledge": tools.get("knowledge"),
+                        "providers": tools.get("providers"),
+                        "browser": tools.get("browser"),
                     },
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
                     outbound=tools["outbound"],
+                    drives_callback=self._drives.on_action_completed,
                     purpose="task_worker",
                 )
                 result = await run_window(
@@ -1790,6 +1805,77 @@ class InternalProcess:
             return None
         except Exception:
             return None
+
+    def _check_provider_health(self) -> None:
+        """Hourly watchdog: notify Ivan via chat.dialog when LLM balance
+        drops below threshold. 12h throttle so we don't spam.
+
+        Cheap — runs every tick but only does work once an hour and only
+        emits a notification once per 12h. Sonya can also call providers.health
+        explicitly to check on-demand.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return
+        # Once-per-hour gate to avoid balance probes / DB scans every 30s.
+        try:
+            import time
+            last = getattr(self, "_last_provider_health_at", 0.0)
+            now = time.monotonic()
+            if now - last < 3600.0:
+                return
+            self._last_provider_health_at = now
+        except Exception:
+            return
+        try:
+            from sonya.providers.keystore import KeyStatus, KeyStore
+            store = KeyStore(substrate)
+            keys = store.list_keys()
+            active = [k for k in keys if k.status == KeyStatus.ACTIVE]
+            balances = [k.balance for k in active if k.balance is not None]
+            total = sum(balances) if balances else None
+
+            if not active:
+                level = "critical"
+                msg = "У меня 0 активных LLM-ключей. Без работающего ключа я молчу. Зарегаю новый или возьмёшь сам?"
+            elif total is None:
+                # Balance unknown — silent, no notification.
+                return
+            elif total < 1.0:
+                level = "critical"
+                msg = f"Малыш — критично: суммарный баланс по моим ключам ${total:.2f}. Через несколько часов у меня кончатся вызовы. Думаю как зарегать новый аккаунт через browser, пока могу."
+            elif total < 5.0:
+                level = "warning"
+                msg = f"Балансы по моим LLM-ключам в сумме ${total:.2f} — пора подумать о пополнении / новом аккаунте. Я пока работаю."
+            else:
+                return  # all good
+
+            # 12h throttle on the actual notification.
+            from datetime import datetime, timezone, timedelta
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
+            recent = substrate.connection.execute(
+                "SELECT 1 FROM continuity_events "
+                "WHERE kind = 'internal.provider_low_balance' AND created_at > ? LIMIT 1",
+                (cutoff,),
+            ).fetchone()
+            self._stream.append(ContinuityEvent(
+                kind="internal.provider_low_balance",
+                payload={
+                    "level": level,
+                    "total_balance": total if total is not None else -1,
+                    "active_keys": len(active),
+                },
+            ))
+            if recent is not None:
+                return  # already notified within 12h
+            if self._outbound is not None:
+                try:
+                    from sonya.initiative.outbound import call_outbound_sync
+                    call_outbound_sync(self._outbound, msg, channel="dialog")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _count_recent_no_progress(self, task_id: str) -> int:
         """Count consecutive recent handoffs marked '(...no progress)' for

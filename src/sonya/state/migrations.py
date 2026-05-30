@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 20
+CURRENT_VERSION = 21
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -334,6 +334,24 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         conn.commit()
         version = 20
 
+    if version == 20:
+        # v20 → v21: explicit task urgency column. Replaces is_urgent()
+        # heuristic-only with a stored field that survives schema bumps and
+        # can be set by Sonya / Ivan directly. Default 'normal' so existing
+        # rows behave the same as before until classified.
+        _add_column_if_missing(conn, "tasks", "urgency", "TEXT NOT NULL DEFAULT 'normal'")
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_urgency ON tasks(urgency)")
+        except sqlite3.OperationalError:
+            pass  # tasks table not present in this substrate
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (21, now),
+        )
+        conn.commit()
+        version = 21
+
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
 
@@ -343,9 +361,16 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
 def _add_column_if_missing(
     conn: sqlite3.Connection, table: str, column: str, col_type: str
 ) -> None:
-    """Add a column to a table if it doesn't already exist."""
-    cursor = conn.execute(f"PRAGMA table_info({table})")
-    existing = {row[1] for row in cursor.fetchall()}
+    """Add a column to a table if it doesn't already exist. No-op if table missing
+    (e.g. minimal test substrates that don't carry every table)."""
+    try:
+        cursor = conn.execute(f"PRAGMA table_info({table})")
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        return
+    if not rows:
+        return
+    existing = {row[1] for row in rows}
     if column not in existing:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
         conn.commit()
