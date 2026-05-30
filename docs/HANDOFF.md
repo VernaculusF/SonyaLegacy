@@ -16,6 +16,61 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-30 — сквозной smoke ВСЕХ tool handlers + 5 фиксов + goals seed
+
+Прогнал `_execute_tool` через 55 тестов — точную имитацию того что
+делает live agent_session. Нашёл 5 ERR, все пофиксил.
+
+**Smoke результаты после фиксов:** 52/55 OK, 3 ERR (все by-design
+sandbox restrictions filesystem на `~`/`/etc` с понятным сообщением
+"use shell.run / code.exec"), 0 CRASH.
+
+#### Что фиксили
+
+1. **filesystem.* не разворачивал `~`** — `_resolve_under_project` теперь
+   делает `os.path.expanduser` + `expandvars`. Если путь всё равно вне
+   project_root — конкретное сообщение "use shell.run / code.exec for
+   paths outside the repo" вместо немого "outside project root".
+
+2. **plugins.create ломался на block form** — `arg.split(" ", 1)`
+   обрабатывал только inline `<name> <code>`. Block form `<name>\n<source>`
+   парсился как имя файла с newline. Теперь:
+   - есть newline → first line = name, rest = source
+   - нет newline → `<name> <inline>`
+   - name валидируется regex
+   - source compile()-ится перед записью (раннее SyntaxError)
+   - load_plugin обёрнут в try/except — сообщает причину
+   - `plugins.call` ловит ImportError → конкретная ошибка вместо crash
+
+3. **mind.thought требовал outbound — теперь fallback на stream**
+   Mind pane — внутренний канал, никаких daily caps / TG нет.
+   Если outbound есть — идёт через него (gate dedup).
+   Если нет — пишем напрямую в continuity_stream как
+   `outgoing.mind_thought` с поддержкой `[PRIVATE]` префикса.
+
+4. **Goals seed на старте** — `main.py` при старте сидит 4 default
+   goals соответствующих L0-L3 hierarchy из SOUL.md:
+   - L0 (prio=100): быть рядом с Иваном
+   - L1 (prio=80): self-improvement через selfmod
+   - L2 (prio=60): финансовая автономия
+   - L3 (prio=40): AGI + физическое тело
+   Идемпотентно по title — повторный запуск ничего не дублирует.
+
+5. **Goals visibility в active session prompt** — `internal_loop._run_active_session`
+   fetch'ит active goals и инжектит блок "## Активные долгосрочные
+   цели" сразу после context.system_prompt + до session_suffix.
+   Каждая active session видит цели как часть header — раньше Соня
+   их вообще не видела (audit: 0 вызовов goals.* за 24ч).
+
+**Live verify после deploy:**
+- `default_goals_seeded count=4` в logs
+- smoke: `goals.list` → "Active goals: [goal-...] (prio=100) L0: быть рядом с Иваном..."
+- smoke: `skills.register_runtime` → создаёт + `skills.run skill-smoke` отрабатывает
+- smoke: `plugins.create` block form → создаёт + `plugins.call` работает
+- smoke: `browser.open/text/eval/close` — все 4 OK в live процессе
+
+737 passed, 6 skipped, 3 deselected, 0 регрессий.
+
 ### 2026-05-30 — browser tool работает в live сессии + escalation playbook
 
 **Live verify прошлого хода показал:** Соня попыталась `browser.open` —
