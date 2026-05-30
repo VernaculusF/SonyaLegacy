@@ -147,6 +147,20 @@ function handleEvent(msg) {
     setFeed('current_focus', text);
   }
 
+  // body.expression / body.outfit / mind.mood_tint update avatar state
+  // directly. Without this, the UI waits for the next /atrium/meta poll
+  // (every ~5s) before the avatar reflects the change — feels laggy.
+  // The marker lives in payload.marker; previous in payload.previous.
+  if (kind === 'outgoing.body_expression' && payload && payload.marker) {
+    setFeed('current_expression', String(payload.marker));
+  }
+  if (kind === 'outgoing.body_outfit' && payload && payload.marker) {
+    setFeed('current_outfit', String(payload.marker));
+  }
+  if (kind === 'outgoing.mind_mood_tint' && payload && payload.tint) {
+    setFeed('mood_tint', String(payload.tint));
+  }
+
   // Reason-stream — all events except pure dialog noise
   // Skip pure-dialog kinds because they're already in Dialog pane
   const skipFromStream = new Set([

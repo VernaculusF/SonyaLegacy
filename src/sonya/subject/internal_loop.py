@@ -896,6 +896,33 @@ class InternalProcess:
                             bits.append(
                                 f"Notes from previous session:\n{next_task.last_session_notes[:1500]}"
                             )
+                        # Long-running task self-check: if the same task has
+                        # had many sessions without `tasks.complete`, it's
+                        # likely stuck on the wrong approach. Surface this
+                        # so she can switch tactics or escalate to Ivan
+                        # rather than burn a 23rd identical session.
+                        if next_task.sessions_used >= 10:
+                            bits.append(
+                                f"\n[STUCK-TASK ALERT] Эта задача провела "
+                                f"{next_task.sessions_used} сессий без "
+                                f"`tasks.complete`. Это сильный сигнал что "
+                                f"подход не работает.\n"
+                                "Варианты сейчас:\n"
+                                "  1. ПОЛНОСТЬЮ другой угол — не повторяй "
+                                "что не сработало; попробуй tools которые "
+                                "ещё не использовала (browser.*, "
+                                "code.exec с cloudscraper, requests c "
+                                "headers/прокси, plugins.create под задачу).\n"
+                                "  2. Если действительно зашла в тупик "
+                                "по железному ограничению (нет ключа, "
+                                "нужен Tor) — `chat.dialog` Ивану одной "
+                                "фразой что нужно и `tasks.block` с "
+                                "конкретным blocker.\n"
+                                "  3. Если задача была плохо сформулирована "
+                                "или потеряла смысл — `tasks.fail` с "
+                                "честной reason.\n"
+                                "Не уходи на 23-ю сессию без смены подхода."
+                            )
                         bits.append(
                             "BEFORE [DONE], call `tasks.handoff` with what you accomplished + concrete next_step. "
                             "Then call `tasks.complete` if done, otherwise [DONE] keeps it in_progress."

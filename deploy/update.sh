@@ -83,6 +83,7 @@ echo "=> Ensuring runtime dependencies..."
     "fastembed>=0.4" "numpy>=1.26" "imagehash>=4.3" \
     "pytest>=8.0" "pytest-timeout>=2.0" "pytest-asyncio>=0.23" \
     "playwright>=1.40" \
+    "cloudscraper>=1.2" "httpx[socks]>=0.27" \
     2>&1 | grep -v "already satisfied" || true
 
 # Install Chromium for playwright (idempotent — skips if already there).

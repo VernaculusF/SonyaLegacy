@@ -334,6 +334,28 @@ _BLOCKER_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
         "Доступ запрещён. Альтернатива — другой эндпойнт, прокси, или другой подход к данным.",
     ),
     (
+        "cloudflare_block",
+        re.compile(
+            r"\b(cloudflare|cf-ray|just[_ -]a[_ -]moment|attention[_ -]required|"
+            r"checking[_ -]your[_ -]browser|enable[_ -]javascript|"
+            r"please[_ -]wait\.\.\.|HTTP\s+(415|520|521|522|524|525))\b",
+            re.IGNORECASE,
+        ),
+        "Cloudflare/JS-challenge блокирует прямой HTTP. Попробуй `browser.open` "
+        "(Playwright рендерит JS, обходит большинство challenge), или "
+        "`code.exec` с `cloudscraper`. На голой `web.fetch` это не пройдёт.",
+    ),
+    (
+        "tls_handshake",
+        re.compile(
+            r"\b(SSL|TLS).*\b(handshake|certificate|verify|cert[_ ]?expired)\b|"
+            r"\bSSLError\b|\bCERTIFICATE_VERIFY_FAILED\b",
+            re.IGNORECASE,
+        ),
+        "TLS-проблема. Если сертификат не критичен — попробуй "
+        "`requests.get(..., verify=False)` через code.exec, либо `browser.open`.",
+    ),
+    (
         "rate_limit",
         re.compile(r"\b(429|rate[_ ]limit(ed)?|too many requests|quota exceeded)\b", re.IGNORECASE),
         "Rate-limit. Сейчас повтор не поможет — возьми другой ключ/IP/провайдер либо "
