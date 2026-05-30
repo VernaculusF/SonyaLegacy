@@ -50,8 +50,10 @@ _PACKAGE_SOURCE_EXT = {
 }
 _PACKAGE_SKIP_DIRS = {
     "node_modules", "dist", "build", ".git", "target", "__pycache__",
-    ".pytest_cache", "public",
+    ".pytest_cache", "public", "egg-info",
 }
+# Suffix-style skip (for *.egg-info, *.dist-info)
+_PACKAGE_SKIP_SUFFIXES = (".egg-info", ".dist-info")
 
 
 def _root_for(kind: str) -> Path:
@@ -102,7 +104,10 @@ def _list_dir(kind: str) -> list[dict]:
     for pkg in sorted(root.iterdir()):
         if not pkg.is_dir() or pkg.name.startswith("."):
             continue
-        out.append(_build_tree(pkg, root))
+        node = _build_tree(pkg, root)
+        # Skip empty packages (no source files anywhere underneath).
+        if node.get("children"):
+            out.append(node)
     return out
 
 
@@ -117,6 +122,8 @@ def _build_tree(node_path: Path, root: Path) -> dict:
         entries = []
     for child in entries:
         if child.name.startswith(".") or child.name in _PACKAGE_SKIP_DIRS:
+            continue
+        if child.is_dir() and child.name.endswith(_PACKAGE_SKIP_SUFFIXES):
             continue
         if child.is_dir():
             sub = _build_tree(child, root)
