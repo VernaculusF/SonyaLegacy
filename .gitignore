@@ -26,6 +26,9 @@ tmp_commit_msg.txt
 tmp_*.py
 tmp_*.sh
 tmp_*.txt
+_check.py
+_msg.txt
+_*.tmp
 
 # Sonya knowledge base — markdown facts she creates / edits. Lives in
 # ~/.sonya/knowledge/ on every host (substrate-side). НЕ в repo —
