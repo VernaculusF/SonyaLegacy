@@ -225,6 +225,12 @@ async def workshop_read(request: web.Request) -> web.Response:
         return _cors(web.json_response({"error": err}, status=401))
     kind = request.query.get("kind", "")
     path = request.query.get("path", "")
+    # Чтение разрешено только для skills. tools и packages — только список.
+    if kind != "skills":
+        return _cors(web.json_response({
+            "error": f"read disabled for kind={kind!r} (skills only — "
+                     f"tools/packages are list-only via workshop)",
+        }, status=403))
     try:
         root = _root_for(kind)
         p = _safe_resolve(root, path)
@@ -258,21 +264,14 @@ async def workshop_write(request: web.Request) -> web.Response:
     kind = str(data.get("kind") or "").strip()
     path = str(data.get("path") or "").strip()
     content = data.get("content")
-    if kind not in ("skills", "tools"):
+    if kind != "skills":
         return _cors(web.json_response(
-            {"error": "write only allowed for skills|tools"}, status=400))
+            {"error": f"write only allowed for kind='skills' (got {kind!r})"},
+            status=403))
     if not path or not isinstance(content, str):
         return _cors(web.json_response({"error": "path + content required"}, status=400))
     if not path.endswith(".py"):
         return _cors(web.json_response({"error": "only .py files"}, status=400))
-    # tools writes must be inside plugins/.
-    if kind == "tools":
-        rel = path.replace("\\", "/").lstrip("/")
-        if not rel.startswith("plugins/"):
-            return _cors(web.json_response({
-                "error": "tools writes must target plugins/<name>.py "
-                         "(core tools are read-only via workshop)",
-            }, status=400))
     try:
         root = _root_for(kind)
         root.mkdir(parents=True, exist_ok=True)
@@ -351,6 +350,10 @@ async def workshop_reply(request: web.Request) -> web.Response:
     msg = str(data.get("message") or "").strip()
     if not msg:
         return _cors(web.json_response({"error": "message required"}, status=400))
+    if kind != "skills":
+        return _cors(web.json_response({
+            "error": "reply via workshop only for skills (tools/packages — list-only)",
+        }, status=403))
     config = request.app["config"]
     from sonya.admin.server import _get_substrate_writable
     sub = _get_substrate_writable(config)

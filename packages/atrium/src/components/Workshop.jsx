@@ -1,70 +1,26 @@
-/* Workshop — обозрение и редактор Сониного «кода жизни»:
- *   - skills    : Python в src/sonya/skills/builtins/*.py
- *   - tools     : hot-loadable плагины в src/sonya/tools/plugins/*.py
- *   - packages  : packages/* (atrium, tg-userbot) — структурный обзор
+/* Workshop — Сонин «код жизни».
  *
- * Можно: смотреть список / читать / писать (skills+tools) / тестово
- * запускать (tools) / задавать вопрос Соне про этот файл (reply).
+ *   - skills    : Python в src/sonya/skills/builtins/*.py
+ *                 → ПОЛНЫЙ доступ: смотреть, редактировать, создавать новые,
+ *                   спрашивать Соню про файл (reply).
+ *   - tools     : tools/*.py + plugins/*.py
+ *                 → ТОЛЬКО список (имя + размер). Чтение/редактирование запрещено.
+ *   - packages  : packages/* (atrium, tg-userbot)
+ *                 → ТОЛЬКО список верхнеуровневых пакетов (имя + кол-во файлов).
+ *                   Никаких раскрытий, чтения, редактирования.
  *
  * Открывается из header («⚙ workshop») как полноэкранный overlay.
  */
 import { createSignal, onMount, onCleanup, For, Show } from 'solid-js';
 import { settings } from '../store.js';
 
-/**
- * TreeNode — рекурсивный узел дерева для kind='packages'.
- *
- * node.type === 'dir':  раскрывающаяся папка (свой createSignal collapsed).
- * node.type === 'file': кликабельный файл (открывает в редакторе).
- *
- * skills/tools остаются плоским списком и рендерятся отдельно.
- */
-function TreeNode(props) {
-  const { node, depth = 0, isActive, onPick } = props;
-  const [open, setOpen] = createSignal(depth === 0);  // top-level packages раскрыты по умолчанию
-
-  if (node.type === 'file') {
-    return (
-      <button
-        classList={{ 'ws-item': true, 'ws-tree-file': true, on: isActive(node) }}
-        style={{ 'padding-left': `${10 + depth * 12}px` }}
-        onClick={() => onPick(node)}
-        title={`${node.path} · ${node.size}b`}
-      >
-        <span class="ws-item-name">{node.name}</span>
-        <span class="ws-item-size">{Math.round(node.size / 102.4) / 10}k</span>
-      </button>
-    );
-  }
-  // dir
-  return (
-    <div class="ws-tree-dir">
-      <button
-        class="ws-tree-dir-head"
-        style={{ 'padding-left': `${10 + depth * 12}px` }}
-        onClick={() => setOpen(!open())}
-        title={node.path}
-      >
-        <span class="ws-tree-chev">{open() ? '▾' : '▸'}</span>
-        <span class="ws-tree-dir-name">{node.name}</span>
-        <span class="ws-tree-dir-count">{(node.children || []).length}</span>
-      </button>
-      <Show when={open()}>
-        <div class="ws-tree-children">
-          <For each={node.children || []}>
-            {(child) => <TreeNode node={child} depth={depth + 1} isActive={isActive} onPick={onPick} />}
-          </For>
-        </div>
-      </Show>
-    </div>
-  );
-}
-
 const KINDS = [
   { id: 'skills', label: 'skills', desc: 'Python поведение (skills.run)' },
-  { id: 'tools', label: 'tools', desc: 'hot-loadable плагины тулов' },
-  { id: 'packages', label: 'packages', desc: 'подпроекты (atrium, tg-userbot)' },
+  { id: 'tools', label: 'tools', desc: 'тулы (read-only список)' },
+  { id: 'packages', label: 'packages', desc: 'подпроекты (read-only список)' },
 ];
+
+const EDITABLE_KINDS = new Set(['skills']);
 
 async function api(path, opts = {}) {
   const url = `http://${settings.vps_host}${path}`;
@@ -92,11 +48,11 @@ export default function Workshop(props) {
   const [savedContent, setSavedContent] = createSignal('');
   const [busy, setBusy] = createSignal(false);
   const [status, setStatus] = createSignal('');
-  const [test, setTest] = createSignal({ input: '', output: '' });
   const [replyMsg, setReplyMsg] = createSignal('');
   const dirty = () => content() !== savedContent();
+  const editable = () => EDITABLE_KINDS.has(kind());
 
-  // Recursive file count for tree (packages); flat length otherwise.
+  // Recursive file count for tree (packages).
   function _countFiles(nodes) {
     let n = 0;
     for (const it of nodes || []) {
@@ -117,6 +73,9 @@ export default function Workshop(props) {
   async function loadList() {
     setBusy(true);
     setStatus('');
+    setActive(null);
+    setContent('');
+    setSavedContent('');
     try {
       const r = await api(`/api/atrium/workshop/list?kind=${kind()}`);
       setItems(r.items || []);
@@ -128,6 +87,7 @@ export default function Workshop(props) {
   }
 
   async function openFile(it) {
+    if (!editable()) return;  // tools/packages — read-only список
     if (dirty() && !confirm('есть несохранённые изменения. сбросить?')) return;
     setBusy(true);
     setStatus('');
@@ -144,11 +104,7 @@ export default function Workshop(props) {
   }
 
   async function save() {
-    if (!active()) return;
-    if (kind() === 'packages') {
-      setStatus('packages — read-only из workshop (правь через git как обычный код)');
-      return;
-    }
+    if (!active() || !editable()) return;
     setBusy(true);
     setStatus('');
     try {
@@ -158,7 +114,6 @@ export default function Workshop(props) {
       });
       setSavedContent(content());
       setStatus(`saved → ${active().path}`);
-      // Refresh list (size may have changed; new files appear).
       loadList();
     } catch (e) {
       setStatus('save failed: ' + e.message);
@@ -168,41 +123,22 @@ export default function Workshop(props) {
   }
 
   async function newFile() {
-    if (kind() === 'packages') return;
+    if (!editable()) return;
     if (dirty() && !confirm('есть несохранённые изменения. сбросить?')) return;
     const name = prompt('имя файла (например: my_helper.py):');
     if (!name || !/^[a-z0-9_]+\.py$/i.test(name)) {
       setStatus('only .py with [a-z0-9_]');
       return;
     }
-    const stub = kind() === 'tools'
-      ? `"""${name} — hot-loadable tool plugin."""\n\ndef run(arg: str) -> str:\n    return f"echo: {arg}"\n`
-      : `"""${name} — skill module."""\n\ndef run(ctx) -> str:\n    return "TODO"\n`;
+    const stub = `"""${name} — skill module."""\n\ndef run(ctx) -> str:\n    return "TODO"\n`;
     setActive({ path: name, name, lang: 'python', size: stub.length });
     setContent(stub);
-    setSavedContent('');  // new file — anything counts as dirty until saved
+    setSavedContent('');
     setStatus('new (unsaved) — Ctrl+S чтобы сохранить');
   }
 
-  async function runTest() {
-    if (!active()) return;
-    setBusy(true);
-    setStatus('');
-    try {
-      const r = await api('/api/atrium/workshop/test', {
-        method: 'POST',
-        body: { kind: kind(), path: active().path, input: test().input },
-      });
-      setTest({ ...test(), output: r.result || JSON.stringify(r) });
-    } catch (e) {
-      setTest({ ...test(), output: 'error: ' + e.message });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function sendReply() {
-    if (!replyMsg().trim()) return;
+    if (!replyMsg().trim() || !editable()) return;
     setBusy(true);
     setStatus('');
     try {
@@ -231,16 +167,13 @@ export default function Workshop(props) {
   onMount(() => {
     loadList();
     const onKey = (e) => {
-      // Ctrl/Cmd+S → save (only when an active file + editable kind)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        if (active() && kind() !== 'packages') {
+        if (active() && editable()) {
           e.preventDefault();
           save();
         }
         return;
       }
-      // Esc — only close when focus is NOT in a text field, otherwise let it
-      // act normally (so Esc inside the textarea doesn't kill the editor).
       if (e.key === 'Escape') {
         const tag = (e.target && e.target.tagName) || '';
         if (!/^(TEXTAREA|INPUT|SELECT)$/i.test(tag)) tryClose();
@@ -249,6 +182,29 @@ export default function Workshop(props) {
     window.addEventListener('keydown', onKey);
     onCleanup(() => window.removeEventListener('keydown', onKey));
   });
+
+  /** Чёрно-белый рендер строки списка. По клику открывает файл (skills) или
+   * ничего не делает (tools/packages — read-only). */
+  function ListRow(p) {
+    const it = p.item;
+    const meta = p.meta;  // правый текст (размер / count)
+    const isOn = () => editable() && active()?.path === it.path;
+    return (
+      <button
+        classList={{
+          'ws-item': true,
+          on: isOn(),
+          readonly: !editable(),
+        }}
+        onClick={() => editable() && openFile(it)}
+        disabled={!editable()}
+        title={`${it.path}${meta ? ' · ' + meta : ''}`}
+      >
+        <span class="ws-item-name">{it.path || it.name}</span>
+        <span class="ws-item-size">{meta}</span>
+      </button>
+    );
+  }
 
   return (
     <div class="workshop-overlay">
@@ -260,7 +216,7 @@ export default function Workshop(props) {
               {(k) => (
                 <button
                   classList={{ tab: true, on: kind() === k.id }}
-                  onClick={() => { setKind(k.id); setActive(null); setContent(''); loadList(); }}
+                  onClick={() => { setKind(k.id); loadList(); }}
                   title={k.desc}
                 >{k.label}</button>
               )}
@@ -275,7 +231,7 @@ export default function Workshop(props) {
           <aside class="ws-list">
             <div class="ws-list-head">
               <span>{kind()} ({listCount()})</span>
-              <Show when={kind() !== 'packages'}>
+              <Show when={editable()}>
                 <button class="mini-btn" onClick={newFile} title="новый файл">+ new</button>
               </Show>
             </div>
@@ -286,25 +242,17 @@ export default function Workshop(props) {
                   fallback={
                     <For each={items()}>
                       {(it) => (
-                        <button
-                          classList={{ 'ws-item': true, on: active()?.path === it.path }}
-                          onClick={() => openFile(it)}
-                          title={`${it.path} · ${it.size}b`}
-                        >
-                          <span class="ws-item-name">{it.path}</span>
-                          <span class="ws-item-size">{Math.round(it.size / 102.4) / 10}k</span>
-                        </button>
+                        <ListRow item={it} meta={`${Math.round(it.size / 102.4) / 10}k`} />
                       )}
                     </For>
                   }
                 >
+                  {/* packages — плоский список верхнеуровневых пакетов, без раскрытий */}
                   <For each={items()}>
-                    {(node) => (
-                      <TreeNode
-                        node={node}
-                        depth={0}
-                        isActive={(n) => active()?.path === n.path}
-                        onPick={(n) => openFile(n)}
+                    {(pkg) => (
+                      <ListRow
+                        item={{ path: pkg.name, name: pkg.name }}
+                        meta={`${_countFiles(pkg.children)} files`}
                       />
                     )}
                   </For>
@@ -315,58 +263,53 @@ export default function Workshop(props) {
 
           <main class="ws-editor">
             <Show
-              when={active()}
-              fallback={<div class="ws-placeholder">выбери файл слева</div>}
+              when={editable()}
+              fallback={
+                <div class="ws-placeholder ws-readonly-note">
+                  <div class="ws-readonly-title">read-only</div>
+                  <div class="ws-readonly-desc">
+                    {kind() === 'tools'
+                      ? 'тулы — список без редактирования. Изменения через git.'
+                      : 'пакеты — список без редактирования. Изменения через git.'}
+                  </div>
+                </div>
+              }
             >
-              <div class="ws-editor-head">
-                <span class="ws-path">
-                  {active().path}
-                  <Show when={dirty()}><span class="ws-dirty" title="несохранённые изменения">●</span></Show>
-                </span>
-                <span class="ws-lang">{active().lang}</span>
-                <span class="spacer"></span>
-                <Show when={kind() !== 'packages'}>
+              <Show
+                when={active()}
+                fallback={<div class="ws-placeholder">выбери файл слева</div>}
+              >
+                <div class="ws-editor-head">
+                  <span class="ws-path">
+                    {active().path}
+                    <Show when={dirty()}><span class="ws-dirty" title="несохранённые изменения">●</span></Show>
+                  </span>
+                  <span class="ws-lang">{active().lang}</span>
+                  <span class="spacer"></span>
                   <button class="mini-btn primary" disabled={busy() || !dirty()} onClick={save}
                     title="Ctrl+S">save</button>
-                </Show>
-              </div>
-              <textarea
-                class="ws-textarea"
-                spellcheck={false}
-                value={content()}
-                onInput={(e) => setContent(e.currentTarget.value)}
-              ></textarea>
+                </div>
+                <textarea
+                  class="ws-textarea"
+                  spellcheck={false}
+                  value={content()}
+                  onInput={(e) => setContent(e.currentTarget.value)}
+                ></textarea>
 
-              <Show when={kind() === 'tools'}>
-                <div class="ws-test">
-                  <div class="ws-test-row">
-                    <input
-                      type="text"
-                      placeholder="input для run(arg) …"
-                      value={test().input}
-                      onInput={(e) => setTest({ ...test(), input: e.currentTarget.value })}
-                    />
-                    <button class="mini-btn" disabled={busy()} onClick={runTest}>▶ run</button>
-                  </div>
-                  <Show when={test().output}>
-                    <pre class="ws-test-out">{test().output}</pre>
-                  </Show>
+                <div class="ws-reply">
+                  <div class="ws-reply-label">спросить Соню про этот файл:</div>
+                  <textarea
+                    class="ws-reply-input"
+                    placeholder="что это делает? почему так? упрости. напиши тест. …"
+                    value={replyMsg()}
+                    onInput={(e) => setReplyMsg(e.currentTarget.value)}
+                  ></textarea>
+                  <button class="mini-btn primary" disabled={busy() || !replyMsg().trim()} onClick={sendReply}>
+                    ✉ send to Sonya
+                  </button>
                 </div>
               </Show>
             </Show>
-
-            <div class="ws-reply">
-              <div class="ws-reply-label">спросить Соню про этот файл:</div>
-              <textarea
-                class="ws-reply-input"
-                placeholder="что это делает? почему так? упрости. напиши тест. …"
-                value={replyMsg()}
-                onInput={(e) => setReplyMsg(e.currentTarget.value)}
-              ></textarea>
-              <button class="mini-btn primary" disabled={busy() || !replyMsg().trim()} onClick={sendReply}>
-                ✉ send to Sonya
-              </button>
-            </div>
           </main>
         </div>
       </div>
