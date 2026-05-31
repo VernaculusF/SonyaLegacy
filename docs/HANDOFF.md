@@ -61,6 +61,50 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-31 — автономия pre-RWKV: boot resume + watchdogs + recurring + drift-react
+
+После аудита sub-agent'а («что мешает Соне выполнить любую задачу») закрыл топ-5 пробелов:
+
+1. **Auto-resume IN_PROGRESS на boot** — в `main.py` после `bundle.start()`
+   проверяем substrate на open in_progress задачи → пинаем worker
+   через `request_worker_soon(10s)`. Тоже для unanswered incoming —
+   эмитим `internal.active_session_requested_external` если последний
+   incoming.atrium_dialog/telegram_message без outgoing-ответа.
+   **Раньше**: после рестарта background-задача висла до 30 мин до подхвата.
+
+2. **busy_lock hard-timeout** в `internal_loop.py` — wrap
+   `_run_active_session` в `asyncio.wait_for(timeout=2100)` и worker в
+   `asyncio.wait_for(timeout=1200)`. Замороженный LLM-call больше не
+   пинит busy_lock навсегда.
+
+3. **Provider-outage backoff** — `_provider_outage_until` field. На
+   `NoKeysAvailable` ставим cooldown 600s; в течение которого active/
+   worker/idle не выбираются. Heartbeat `internal.provider_outage_active`
+   раз в 30 мин пока активен.
+
+4. **Recurring tasks** — новый `src/sonya/tasks/recurring.py` + wire в
+   internal_loop tick (каждые 10 ticks ≈ 5 мин). Формат `recurring_spec`:
+   `{"every": "1d"}` / `{"every": "30m"}` / `{"every": "1d", "at": "09:00"}`.
+   DONE/FAILED задача с recurring_spec → клон по cadence с `parent_task_id`.
+   Поле было в schema с v9 — никто не обрабатывал. 10 тестов.
+
+5. **TG send retry/backoff** — `packages/tg-userbot/src/tg_userbot/channel.py`.
+   FloodWaitError → ждём `seconds` (cap 5 мин) → retry, до 3 попыток.
+   RPCError/ServerError/ConnectionError → exp backoff 2/4/8s.
+   **Раньше**: send упал на flood — сообщение терялось навсегда.
+
+6. **High-severity drift mid-everything** —
+   `internal_loop._react_to_high_severity_drift`. На signal severity ≥0.7:
+   1) Уведомляет Ивана через chat.dialog (throttle 6h)
+   2) Создаёт urgent self-task `[DRIFT-CHECK]` с identity-проверкой
+   3) Пуллит активную сессию через 30s
+   **Раньше**: drift signal только в логах, никаких действий.
+
+7. **`tasks.create` prompt-doc** — добавлено описание `recurring_spec` для
+   Сони чтобы знала про повторяющиеся задачи.
+
+**Tests: 811 passed (+10), 0 регрессий.**
+
 ### 2026-05-31 — Atrium APK для Android (Tauri 2 mobile)
 
 **Зачем:** Иван будет использовать Atrium на телефоне как клиент к
