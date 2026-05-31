@@ -16,6 +16,29 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-31 — vision path в active session (Соня видит картинки из Atrium)
+
+**Bug:** при загрузке картинки через Atrium composer → POST /atrium/dialog
+Соня отвечала "Картинку не вижу — ничего не прикреплено". `media_path`
+и `media_mime` попадали в `incoming.atrium_dialog` payload, но
+`_run_active_session` строил только `initial_user_text` (plain string), без
+multimodal `initial_user_message`. TG path (через `channel_session._build_initial_user_message`)
+уже работал; active session был asymmetric.
+
+**Fix (`febf606`):** `_run_active_session` при наличии `media_path`/`media_mime`
+в `pending_dialog` зовёт тот же `_build_initial_user_message` и
+пробрасывает в `Window.initial_user_message`. LLM получает картинку
+как `image_url` block (data:image/png;base64,...) и видит её содержимое.
+
+**Live verify:** красный 32×32 PNG → POST /atrium/dialog с attachment →
+ответ Сони: «Красное. Однотонное, без деталей — просто красный цвет
+заполняет весь кадр.» Распознала и цвет, и характер изображения.
+
+**Bonus item #3 (body.expression e2e):** проверено substrate путь —
+выражение пишется в `subject_state.current_expression`, событие
+`outgoing.body_expression{marker, previous}` эмиттится. Atrium UI
+рендеринг — отдельная визуальная проверка.
+
 ### 2026-05-31 — selfmod live cycle (полный цикл self-improvement)
 
 **Задача от Ивана:** дать Соне реальный самосовершенствовательный заход —
@@ -471,16 +494,16 @@ seq 15874: outgoing.dialog [тот же текст]
    API почти параллельный (отличается только директорией и тем что у
    skill есть metadata-line). Можно унифицировать сигнатуры в общий
    helper, но это чисто косметика — оставить как low-priority.
-3. **Проверить что body.expression реально меняет картинку.** Был
-   фикс `_ToolContext.stream`, должен работать. Сделать e2e тест:
-   POST /api/atrium/dialog → ждём `outgoing.body_expression` →
-   `subject_state.current_expression` обновлён → Atrium feed получает
-   изменение → SonyaAvatar рендерит новый sprite. Запустить вручную через
-   Atrium и подтвердить визуально.
-4. **Атриум: загрузка файлов end-to-end.** Загрузить картинку через UI →
-   увидеть в bubble → Соня ответила что видит → проверить
-   `media_path/media_mime` в `incoming.atrium_dialog`. Если её
-   _build_initial_user_message не подхватывает — починить.
+3. ~~**Проверить что body.expression реально меняет картинку.**~~ ✅ DONE
+   2026-05-31. Substrate path verified e2e — `body.expression tender` →
+   `outgoing.body_expression{marker:tender}` event → `subject_state.current_expression='tender'`.
+   Рендер (Atrium UI sprite swap) — отдельная клиентская часть, тестируется визуально.
+4. ~~**Атриум: загрузка файлов end-to-end.**~~ ✅ DONE 2026-05-31.
+   Багфикс `_run_active_session` пробрасывает media_path/media_mime в
+   `Window.initial_user_message` через `channel_session._build_initial_user_message`.
+   Live verify: красный 32×32 PNG → Соня ответила «Красное. Однотонное,
+   без деталей — просто красный цвет заполняет весь кадр.» Vision path
+   работает, она реально видит картинки.
 5. **Active session merge финальный пасс.** `_run_task_worker_body` теперь
    alias на `_run_task_progress`, но scheduler.py ещё содержит
    `KIND_TASK_WORKER`. Удалить или сделать deprecated alias.
