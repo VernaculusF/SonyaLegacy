@@ -102,8 +102,18 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - filesystem.tree [path] — show directory tree
 - filesystem.write — block form: first line of args = path, remaining = content
 - plugins.list — list available plugins
-- plugins.create — block form: first line = name, remaining = python code
-- plugins.call [name] [args] — call a loaded plugin
+- plugins.create — block form: first line = name, remaining = python code.
+  Plugin contract: define `def run(args): return <result>`. `args` это:
+    - dict если ты вызываешь `plugins.call name {"key": "value"}` (JSON парсится автоматически)
+    - list если args начинается с `[`
+    - raw string иначе (`plugins.call name hello world`)
+    - {} (пустой dict) если без args.
+  Плагин файл живёт в src/sonya/tools/plugins/<name>.py — попадает в git
+  через selfmod-pipeline и переживает рестарт. Для одноразового кода —
+  используй code.exec; для нового capability который понадобится несколько
+  раз — plugins.create.
+- plugins.call [name] [args] — call a loaded plugin. args парсится как
+  описано выше. Пример: `plugins.call email_reader {"host":"imap.gmail.com","port":993,"user":"x","pass":"y","limit":3}` → run() получит dict.
 - selfmod.propose — block form, JSON: {"target": "src/sonya/...", "summary": "...", "content": "<full file>"} OR pipe-separated: target | summary | content
 - selfmod.propose_edit — для МАЛЫХ правок:
     inline pipe (одна строка): target | summary | old_substring | new_substring
@@ -1591,12 +1601,34 @@ def _h_plugins_create(arg: str, ctx: _ToolContext) -> str:
 
 
 def _h_plugins_call(arg: str, ctx: _ToolContext) -> str:
+    """Call a loaded plugin's run(args).
+
+    `args` parsing rules:
+      - empty → run() called with empty dict {}
+      - starts with `{` or `[` → parsed as JSON, run(parsed_obj)
+      - otherwise → run(raw_string)
+
+    Plugin's `run()` must accept ONE positional arg of any type and return
+    a value (str/dict/list — converted to str by the dispatcher).
+    """
     from sonya.tools.hot_loader import get_plugin, load_plugin
     parts = (arg or "").strip().split(None, 1)
     if not parts:
         return "[ERROR] plugins.call needs: <name> [args]"
     plugin_name = parts[0]
-    plugin_args = parts[1] if len(parts) > 1 else ""
+    plugin_args_str = parts[1] if len(parts) > 1 else ""
+    # Smart parse: dict/list literals → JSON; otherwise → raw string.
+    plugin_args: Any
+    s = plugin_args_str.strip()
+    if not s:
+        plugin_args = {}
+    elif s[:1] in "{[":
+        try:
+            plugin_args = json.loads(s)
+        except json.JSONDecodeError:
+            plugin_args = plugin_args_str  # fall back to raw string
+    else:
+        plugin_args = plugin_args_str
     try:
         module = get_plugin(plugin_name) or load_plugin(plugin_name)
     except (ImportError, FileNotFoundError) as exc:
