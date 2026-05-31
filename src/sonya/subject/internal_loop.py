@@ -1111,6 +1111,72 @@ class InternalProcess:
                 except Exception:
                     pass
 
+            # Last resort: nothing else seeded this session — no pending
+            # dialog, no task, no proposal, no recent thought. Don't just
+            # idle-DONE. Inject a directive to USE the available tools
+            # for proactive work. Audit on 2026-05-30 показал что Соня
+            # не пользуется goals/skills/providers/browser — потому что
+            # в idle-cadence у неё нет конкретного триггера их трогать.
+            if not initial_thought:
+                # Pre-fetch lightweight "what's worth touching" hints so
+                # she doesn't burn 3 steps gathering context.
+                try:
+                    from sonya.tasks.goals import GoalStore
+                    active_goals = GoalStore(substrate).list_active()
+                    goals_summary = ""
+                    if active_goals:
+                        goals_summary = "Активные goals:\n"
+                        for g in active_goals[:4]:
+                            goals_summary += (
+                                f"  - [{g.goal_id}] {g.title[:80]}\n"
+                            )
+                except Exception:
+                    goals_summary = ""
+
+                drift_text = ""
+                try:
+                    drift_text = self_inspect.read_drift_summary(days=3)
+                    if drift_text:
+                        drift_text = drift_text[:1500]
+                except Exception:
+                    pass
+
+                providers_summary = ""
+                try:
+                    from sonya.tools.providers_tool import ProvidersTool
+                    providers_summary = ProvidersTool(substrate).health_report()[:400]
+                except Exception:
+                    pass
+
+                initial_thought = (
+                    "Это active session по cadence — Иван молчит, "
+                    "задач в очереди нет, selfmod-proposal'ов нет.\n\n"
+                    "**Это НЕ повод сразу [DONE].** У тебя 30 шагов / 30 мин "
+                    "— потрать их на что-то полезное.\n\n"
+                    f"{goals_summary}\n"
+                    f"Provider health (подсказка): {providers_summary}\n\n"
+                    "Drift summary за 3 дня:\n"
+                    f"{drift_text or '(нет данных)'}\n\n"
+                    "Выбери ОДНО из этого списка (приоритет сверху):\n\n"
+                    "1. **Если drift summary показывает повторяющийся "
+                    "паттерн** — найди источник в коде (`self_inspect.code`), "
+                    "сделай `selfmod.propose_edit` с фиксом.\n"
+                    "2. **Если у тебя в knowledge/ есть пробелы** "
+                    "(`knowledge.list`) — дособери методичку по теме "
+                    "которая тебе самой полезна (pentest / OSINT / другое).\n"
+                    "3. **Если есть таска в `tasks.list pending`** — "
+                    "`tasks.pick` и сделай шаг.\n"
+                    "4. **Если providers WARNING/CRITICAL** — попробуй "
+                    "получить fresh balance (`providers.balance` через "
+                    "admin / зарегать новый аккаунт через browser).\n"
+                    "5. **Если всё ровно** — попробуй создать новый "
+                    "skill через `skills.register_runtime` для процедуры "
+                    "которую делаешь часто.\n\n"
+                    "В конце — `[DONE]` без body (никому не отчитываемся, "
+                    "это idle-сессия) ИЛИ `[DONE: <что сделала>]` если "
+                    "стоит сообщить Ивану через chat.dialog."
+                )
+
             # If we're on a forced-selfmod tick and nothing else seeded the
             # session (no pending proposal, no recent thought), explicitly
             # ask Sonya to do introspection + selfmod work this session.
