@@ -16,6 +16,48 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-31 — Stage 4-5 closing pass: outcome tracking, gap auto-proposals, visual recall, variable idle depth
+
+**1. Selfmod outcome tracking (feedback loop)** — без него Соня
+self-modifying blind. Раньше после apply 24h watchdog ловил error spike,
+а сам факт "помог фикс или нет" — никто не считал.
+
+- Migration v22→v23: `selfmod_outcomes` table создаётся идемпотентно;
+  backfill для всех applied proposals последних 14 дней (10 рядов на VPS).
+- Новый тул `selfmod.outcomes [limit | improved | neutral | degraded |
+  pending]` — Соня видит свою историю с delta_errors и change_summary.
+- Active session prompt инжектит блок "Последние selfmod outcomes"
+  (last 5 + counters) — feedback видна без явного вызова.
+
+**2. Capability gap → auto-proposal**
+
+- `_scan_drift_and_gaps` теперь зовёт `create_proposal_from_gap` для
+  каждого нового gap → создаётся DRAFT `SelfModificationProposal`.
+- Active session prompt инжектит блок "Открытые capability gaps" с
+  draft proposal_id — очередь идей для selfmod без участия Ивана.
+- Закрывает залипший pending_debt из накопленных capability_gap intentions.
+
+**3. Visual memory cross-session**
+
+- Новый тул `memory.recall_visual [media_path]` — perceptual hash
+  similarity recall (Hamming distance ≤ 12 = очень похоже). Дёшево:
+  bit comparison по существующей `media_phash` колонке episodic_events.
+- Active session при получении media_path автоматически добавляет блок
+  `[визуальная память: похожие были]` в initial_user_text. Соня
+  видит визуальный контекст без явного вызова recall.
+
+**4. Variable idle depth**
+
+- `_idle_depth_kwargs(counters)` выбирает max_tokens/temperature по drive
+  state: pending_debt > 0.6 OR loneliness > 0.6 → 300 токенов
+  (action-oriented), curiosity > 0.6 → 800 (deep), default → 500.
+  Раньше idle thought всегда был 4000 max_tokens (provider default).
+
+**Tests: 757 passed (+12 новых: 6 outcomes, 4 visual, 6 idle depth),
+0 регрессий. Live verify: substrate v23 на VPS, 10 backfilled
+selfmod_outcomes рядов, `selfmod.outcomes 5` возвращает корректный
+JSON с change_summary и baseline metrics.**
+
 ### 2026-05-31 — vision path в active session (Соня видит картинки из Atrium)
 
 **Bug:** при загрузке картинки через Atrium composer → POST /atrium/dialog
@@ -525,9 +567,21 @@ seq 15874: outgoing.dialog [тот же текст]
 ### Низкий приоритет
 8. **Полностью убрать `KIND_TASK_WORKER` строку и legacy worker code.**
    Когда убедимся что `_run_task_progress` работает в проде стабильно
-   неделю.
+   неделю. **Прим. 31.05:** worker и active session — *разные*
+   операционные пути (worker = 30 мин, urgent only; active = 2ч,
+   широкий scope). Не alias, а реально разные window'ы. Уберётся
+   только при переходе на always-on RWKV.
 9. **Перейти на RWKV state.** Долгосрочно — см.
    `docs/research/LONGTERM_RESEARCH.md`. Не в этой сессии.
+
+### Закрыто 2026-05-31
+- ✅ **Selfmod outcome tracking** — substrate v23, тул, prompt-injection
+- ✅ **Capability gap → auto-proposal** — `_scan_drift_and_gaps`
+  создаёт draft proposal на каждый gap; видна в active session prompt
+- ✅ **Visual memory cross-session** — `memory.recall_visual` тул +
+  auto-recall при media_path в active session
+- ✅ **Variable idle depth** — `_idle_depth_kwargs(counters)` зависит
+  от drive state
 
 ## Как продолжить
 
