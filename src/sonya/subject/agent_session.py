@@ -463,17 +463,37 @@ _EMPTY_OK_TOOLS = frozenset({
 # descriptions, knowledge base, memory recall). These NEVER make external
 # calls so HTTP/auth blocker detection on their output is always a FP.
 _LOCAL_DATA_TOOLS = frozenset({
+    # tasks.* — read AND write paths return task content (title, blocker,
+    # next_step_hint, last_session_notes) which can legitimately contain
+    # "403", "forbidden", "Cloudflare", etc. as part of stored description.
+    # The 31.05 task-225 case: tasks.block on a Cloudflare-blocked task
+    # echoed back blocker text containing "403" → false-positive auth_403.
     "tasks.get", "tasks.list", "tasks.plan", "tasks.step",
+    "tasks.create", "tasks.complete", "tasks.fail", "tasks.block",
+    "tasks.unblock", "tasks.pause", "tasks.handoff", "tasks.pick",
     "memory.recall", "memory.index_status",
     "knowledge.list", "knowledge.read", "knowledge.search",
+    "knowledge.write", "knowledge.delete",
     "self_inspect.identity", "self_inspect.state", "self_inspect.thoughts",
     "self_inspect.memories", "self_inspect.intentions", "self_inspect.code",
     "self_inspect.modules", "self_inspect.drift",
     "filesystem.list", "filesystem.read", "filesystem.tree",
-    "env.list", "env.get",
-    "skills.list",
+    # filesystem.write returns "[OK] Written N chars to path" — no FP
+    # vector, but adding for symmetry. write blockers caught at exec.
+    "filesystem.write",
+    "env.list", "env.get", "env.set", "env.clear",
+    "skills.list", "skills.run", "skills.register_runtime",
+    "skills.register_builtins",
     "selfmod.list", "selfmod.get", "selfmod.check_governed",
-    "goals.list",
+    "selfmod.propose", "selfmod.propose_edit", "selfmod.validate",
+    "selfmod.apply", "selfmod.rollback", "selfmod.governed",
+    "goals.list", "goals.create", "goals.achieve", "goals.abandon",
+    "providers.list", "providers.balance", "providers.health",
+    "providers.settings",
+    "plugins.list", "plugins.create", "plugins.call",
+    "chat.dialog", "chat.tell_ivan", "chat.emergency", "chat.worker_log",
+    "mind.focus", "mind.thought", "mind.mood_tint",
+    "body.expression", "body.outfit", "voice.speak",
 })
 
 
@@ -685,6 +705,12 @@ async def run_agent_session(
     # [DONE] must be preceded by chat.dialog so Sonya reports the result.
     # Mind/body/expression/focus etc don't count — they're internal state,
     # not externally meaningful work.
+    #
+    # tasks.block / tasks.fail / tasks.complete are EXCLUDED — they are
+    # terminal task transitions that already include their own user-facing
+    # notification (notify_mode in service.py auto-dispatches). Requiring
+    # an EXTRA chat.dialog after them produces the duplicate-report stutter
+    # ("Заблокировала task" → gate → chat.dialog "ну заблокировала" → DONE).
     _WORK_TOOLS = frozenset({
         "browser.open", "browser.click", "browser.fill", "browser.text",
         "browser.eval", "browser.screenshot", "browser.wait", "browser.close",
@@ -702,7 +728,11 @@ async def run_agent_session(
         "providers.list", "providers.balance", "providers.health",
         "providers.add", "providers.disable", "providers.enable",
         "providers.set_active",
-        "tasks.complete", "tasks.fail", "tasks.handoff", "tasks.create",
+        # NOTE: tasks.complete/fail/block intentionally NOT here — they
+        # carry their own report. tasks.handoff is for inter-session
+        # continuity, not Ivan-facing, but creates a state-change worth
+        # reporting → kept in for now.
+        "tasks.handoff", "tasks.create",
         "self_inspect.code", "self_inspect.identity", "self_inspect.state",
         "self_inspect.thoughts", "self_inspect.memories", "self_inspect.drift",
     })
@@ -903,6 +933,14 @@ async def run_agent_session(
             # resets the "owe a report" flag; any real-work tool sets it.
             # Used below to block premature [DONE] when she ran tools
             # without reporting back.
+            #
+            # Terminal task transitions (complete/fail/block) ALSO clear
+            # the flag — they auto-notify Ivan via notify_mode, no extra
+            # chat.dialog needed. Without this Соня писала дублирующий
+            # отчёт после `tasks.block` (the 31.05 task-225 case).
+            _TERMINAL_TASK_TOOLS = {
+                "tasks.complete", "tasks.fail", "tasks.block",
+            }
             if tool_name in _DIALOG_TOOLS:
                 if observation:
                     head = observation.lstrip()[:10].upper()
@@ -911,6 +949,14 @@ async def run_agent_session(
                         and not head.startswith("[BLOCKED]")
                     ):
                         _work_done_since_last_dialog = False
+            elif tool_name in _TERMINAL_TASK_TOOLS:
+                if observation:
+                    head = observation.lstrip()[:10].upper()
+                    if not head.startswith(("[ERROR]", "[BLOCKED]")):
+                        _work_done_since_last_dialog = False
+                        # Phase-1 lift too — terminal transitions count
+                        # as her response to Ivan when notify_mode != silent.
+                        _unanswered_inbox = False
             elif tool_name in _WORK_TOOLS:
                 _work_done_since_last_dialog = True
 
