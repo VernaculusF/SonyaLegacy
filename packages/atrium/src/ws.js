@@ -13,6 +13,7 @@ import {
   pushDialogMessage, pushStreamEvent, pushInnerThought,
   applyMeta, flashAvatar,
 } from './store.js';
+import { ensureNotificationPermission, notify } from './notify.js';
 
 let ws = null;
 let reconnectTimer = null;
@@ -113,6 +114,12 @@ function handleEvent(msg) {
         // replay (otherwise a cold start spams the avatar + notifications).
         if (feed.synced) {
           flashAvatar();
+          // Native toast — only fires when the window is hidden/unfocused
+          // (notify() handles the visibility check internally).
+          notify({
+            title: 'Соня',
+            body: cleaned.slice(0, 240),
+          }).catch(() => {});
         }
       }
     }
@@ -241,6 +248,10 @@ export function connectWS() {
     setFeed({ connected: false, last_error: 'connection settings missing' });
     return;
   }
+  // Ask once for OS notification permission. Idempotent — после первого
+  // успеха возвращает кэш. Если denied — toast'ы просто не показываются,
+  // приложение работает.
+  ensureNotificationPermission().catch(() => {});
   // Reset sync state — suppress side-effects until this connection's backlog
   // catch-up completes (server sends a 'synced' sentinel).
   setFeed({ reconnecting: true, last_error: '', synced: false });

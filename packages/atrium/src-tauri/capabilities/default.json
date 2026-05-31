@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Atrium default capabilities — core + notifications",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "notification:default",
+    "notification:allow-notify",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission"
+  ]
+}
