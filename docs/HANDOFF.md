@@ -61,6 +61,38 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-31 — Atrium APK для Android (Tauri 2 mobile)
+
+**Зачем:** Иван будет использовать Atrium на телефоне как клиент к
+VPS — отдельная установка, не браузер.
+
+**Установлено:**
+- Android SDK уже был от Android Studio (`~AppData/Local/Android/Sdk`),
+  NDK 27.0.12077973 на месте, JDK 21 от Microsoft.
+- Rust android targets: aarch64-linux-android, armv7-linux-androideabi,
+  i686-linux-android, x86_64-linux-android (через `rustup target add`).
+- `npm run tauri -- android init` создал scaffold в
+  `packages/atrium/src-tauri/gen/android/`.
+
+**Сборка:**
+- `npm run tauri -- android build --apk` → universal APK (4 архитектуры
+  внутри, 325 MB).
+- `npm run tauri -- android build --apk --target aarch64 --split-per-abi`
+  → arm64-only APK (84 MB) — для современных телефонов 2018+.
+
+**Подпись:**
+- Одноразовый keystore `~/.sonya-atrium.jks` (RSA 2048, 10000 дней,
+  CN=Sonya, O=Atrium) — пароль `sonya1990`.
+- zipalign + apksigner — оба APK подписаны и верифицированы.
+
+**Артефакты в `dist-atrium/`:**
+- `Atrium-0.1.0-android-arm64.apk` (84 MB) — основной для Ивана
+- `Atrium-0.1.0-android-universal.apk` (325 MB) — fallback на старые/x86
+- `atrium.exe`, MSI и NSIS — Windows (как и было)
+
+**Backend:** APK подключается к VPS точно так же как desktop —
+через Settings UI вводится `http://34.38.255.149:8877` + token `1990`.
+
 ### 2026-05-31 — Atrium собран в exe (Tauri release)
 
 **Цель:** Atrium перестаёт зависеть от vite dev-сервера; Иван запускает
