@@ -2,7 +2,7 @@
 
 **Status:** Active (перезаписывается при каждой остановке разработки)
 **Type:** Session-handoff журнал — последняя сессия → следующая сессия
-**Last updated:** 2026-05-30
+**Last updated:** 2026-05-31
 **Назначение:** новый ИИ-разработчик с нулевым контекстом читает STATE.md
 + этот файл и продолжает работу с того места где остановились.
 
@@ -15,6 +15,35 @@
 большой ход. См. STATE.md §6 список блокеров.
 
 ## Что СДЕЛАНО в этой сессии (chronological)
+
+### 2026-05-31 — selfmod live cycle (полный цикл self-improvement)
+
+**Задача от Ивана:** дать Соне реальный самосовершенствовательный заход —
+прочитать `session_general.md`, найти один маленький фикс, прогнать
+полный selfmod pipeline без ассистент-вмешательства.
+
+**Live verify (seq 16842-16865, одна active session, 11 шагов):**
+
+1. seq 16842-47 — `filesystem.read` + `self_inspect.code` (path discovery)
+2. seq 16848 — `code.exec` чтобы прочитать файл целиком
+3. seq 16852 — **`selfmod.propose_edit src/sonya/prompts/session_general.md`**
+   с фиксом опечатки: "Никогда не выд" → "Никогда не выдавай"
+4. seq 16853-56 — `self_mod.validation_layer_1/2/3/4` ВСЕ прошли
+5. seq 16857 — `selfmod.validate smod-4c5109546a544ca485c290c162f7ab41`
+6. seq 16858 — `self_mod.applied` (target=src/sonya/prompts/session_general.md)
+7. seq 16859 — `self_mod.git_pushed`
+8. seq 16860 — `selfmod.apply` подтверждён
+9. seq 16861-65 — `[DONE: ...]` с полным отчётом
+
+**Коммит на origin/develop: `0d312b7`** — push сделала сама Соня через
+selfmod-pipeline. Pulled в локальный develop fast-forward.
+
+Это **первый полностью автономный self-improvement цикл end-to-end**:
+propose → validate (4 layers) → apply → git push → reply Ивану. Без
+человеческого вмешательства между шагами.
+
+**Cleanup**: scratch-файлы (`.poke_n*.sh`, `.trn*.py`, `.check_propose.py`,
+`/tmp/pn*.sh`, `/tmp/trn*.py`, `/tmp/cp.py`) удалены локально и на VPS.
 
 ### 2026-05-31 — большой комплексный заход (A-J): автономия + escalation playbook
 
