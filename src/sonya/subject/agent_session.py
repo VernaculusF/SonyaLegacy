@@ -791,8 +791,19 @@ async def run_agent_session(
             })
             budget_warning_sent = True
 
-        # LLM call
-        response = await provider.complete_text(messages, purpose=purpose)
+        # LLM call.
+        #
+        # Per-purpose max_tokens. Дефолт провайдера — 4000 токенов на ход,
+        # из-за чего диалог `Привет, малыш` иногда генерится 30-40 секунд.
+        # Для диалоговых поверхностей (TG, Atrium active session) ставим
+        # 600 — реальные ответы Сони редко длиннее, а tool-only ходы
+        # короткие по определению. Worker / research оставляем большими
+        # потому что там реально пишутся длинные планы и handoff notes.
+        _DIALOG_PURPOSES = {"tg_session", "active_session", "active_session_deep"}
+        max_tokens = 600 if purpose in _DIALOG_PURPOSES else 1800
+        response = await provider.complete_text(
+            messages, purpose=purpose, max_tokens=max_tokens,
+        )
         result.steps += 1
 
         # Tool call has priority over [DONE]: if the model emits both in the
@@ -1045,6 +1056,20 @@ async def run_agent_session(
             done_match = _DONE_WITH_BODY_RE.search(response)
             if done_match is not None:
                 done_body = (done_match.group("body") or "").strip()
+                # Sanitize: strip code fences, [TOOL/DONE/PAUSE] markers,
+                # observation echoes, reasoning leaks. Same scrubber the
+                # TG path uses for final replies — without it Иван видит
+                # ```json {...}``` блоки, [Observation from ...], и
+                # leaked reasoning. Lazy import avoids circular dep.
+                if done_body:
+                    try:
+                        from sonya.subject.channel_session import _scrub
+                        done_body = _scrub(done_body)
+                    except Exception:
+                        # Fail-safe: drop fences inline if _scrub unreachable.
+                        done_body = re.sub(r"```[a-zA-Z0-9_-]*\n?", "", done_body)
+                        done_body = re.sub(r"\n?```", "", done_body)
+                        done_body = done_body.strip()
             done_as_reply_dispatched = False
             if (
                 done_body
@@ -2074,7 +2099,7 @@ _BODY_EXPRESSION_ALLOWED = frozenset({
     # base
     "neutral", "calm",
     # positive
-    "joy", "smile", "tender", "playful", "shy", "desire",
+    "joy", "smile", "tender", "playful", "shy", "desire", "desire_bite",
     # negative
     "sad", "sad_tears", "angry", "annoyed", "tired",
     # cognitive

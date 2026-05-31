@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS = {
   // still animates. Files live in public/avatar/emotions/.
   avatar_emotions: {
     desire: '/avatar/emotions/desire.png',
+    desire_bite: '/avatar/emotions/desire_bite.png',
     sad: '/avatar/emotions/sad.png',
     sad_tears: '/avatar/emotions/sad_tears.png',
     angry: '/avatar/emotions/angry.png',

@@ -20,24 +20,27 @@ class DriveCounters:
     relational_focus: float = 0.0
     pending_debt: float = 0.0
 
-    # Rates per tick
-    boredom_rate: float = 0.01
-    curiosity_rate: float = 0.005
-    relational_rate: float = 0.003
-    # pending_debt: small per-intention increment, capped so 5+ intentions
-    # don't pin it to 1.0 (the all-drives-maxed bug). Net climb is gentler
-    # than decay so it actually settles.
+    # Rates per tick.
+    #
+    # IMPORTANT: each rate must be > decay_rate, otherwise the counter is
+    # net-negative on every tick (decay applied first, then accrual) and
+    # never moves off zero. The 31.05 audit found all four drives pinned
+    # at 0.00 in feed because decay (0.012) > all accruals (0.005-0.01).
+    # Re-tuned so each baseline is net-positive at idle:
+    #   boredom:    +0.012 - 0.006 = +0.006/tick → 0.7 in 117 ticks (~58min)
+    #   curiosity:  +0.009 - 0.006 = +0.003/tick → 0.7 in 234 ticks (~117min)
+    #   relational: +0.008 - 0.006 = +0.002/tick → 0.7 in 350 ticks (~175min)
+    # pending_debt accrues only with active intentions; cap matches decay
+    # so 1-2 intentions bleed off but 3+ slowly climb.
+    boredom_rate: float = 0.012
+    curiosity_rate: float = 0.009
+    relational_rate: float = 0.008
     pending_debt_rate: float = 0.004
-    pending_debt_cap_rate: float = 0.012  # max accumulation per tick regardless of N intentions
+    pending_debt_cap_rate: float = 0.012
 
     threshold: float = 0.7
-    max_value: float = 1.0  # drives are bounded analogs, never exceed this
-    # Passive decay per tick — drives relax toward 0 over time (homeostasis),
-    # so they "breathe" instead of pinning at max. Must be >= accumulation
-    # rate for boredom/curiosity/relational so an idle Sonya doesn't pin every
-    # drive at 1.0 (the "all drives maxed" bug). Net effect: drives rise toward
-    # threshold then oscillate, and fully relax when nothing is accumulating.
-    decay_rate: float = 0.012
+    max_value: float = 1.0
+    decay_rate: float = 0.006
 
     def tick(self, active_intentions_count: int = 0) -> list[str]:
         """Increment counters (with passive decay, clamped to [0, max_value]).

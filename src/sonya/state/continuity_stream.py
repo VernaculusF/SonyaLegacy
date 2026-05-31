@@ -67,7 +67,7 @@ class ContinuityStream:
         )
         self._sub.connection.commit()
         seq = cursor.lastrowid or 0
-        return ContinuityEvent(
+        appended = ContinuityEvent(
             kind=event.kind,
             principal_id=event.principal_id,
             payload=event.payload,
@@ -76,6 +76,125 @@ class ContinuityStream:
             seq=int(seq),
             created_at=now,
         )
+
+        # Expression auto-derive hook.
+        #
+        # Wyrazenie лица — состояние тела, не tool call. См.
+        # docs/atrium/EXPRESSION_AS_STATE.md. На каждый dialog turn
+        # (входящий от Ивана + исходящий от Сони) мы запускаем дешёвую
+        # эвристику и обновляем `subject_state.current_expression` если
+        # классификатор уверен. Heuristic miss → выражение не трогаем.
+        # Чтобы не зацикливаться, hook игнорирует свои же
+        # `outgoing.body_expression` события.
+        try:
+            self._maybe_derive_expression(appended)
+        except Exception:
+            # Hook is best-effort. Crash здесь не должен ломать append.
+            pass
+
+        return appended
+
+    # Kinds на которые срабатывает auto-derive. Текстовые dialog turns —
+    # реакция Сони на вход Ивана и отражение тона её ответа.
+    _DERIVE_KINDS_INCOMING = frozenset({
+        "incoming.atrium_dialog",
+        "incoming.telegram_message",
+    })
+    _DERIVE_KINDS_OUTGOING = frozenset({
+        "outgoing.dialog",
+        "outgoing.telegram_response",
+        "outgoing.telegram_initiative",
+        "outgoing.telegram_progress",
+        "outgoing.response",
+    })
+
+    def _maybe_derive_expression(self, event: ContinuityEvent) -> None:
+        """Run expression classifier on dialog turns; update subject_state.
+
+        Only fires on a small set of kinds (text-bearing dialog events).
+        Heuristic-only — Phase 1. LLM fallback может позже добавить
+        отдельный async worker, но из stream.append синхронно мы LLM
+        не вызываем (nonzero latency).
+        """
+        kind = event.kind
+        if kind not in self._DERIVE_KINDS_INCOMING and kind not in self._DERIVE_KINDS_OUTGOING:
+            return
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        text = (payload.get("text") or "").strip()
+        if not text:
+            return
+        # Don't run on ourselves.
+        if kind == "outgoing.body_expression":
+            return
+
+        # Lazy import — classifier is in state layer (same layer as us)
+        # to keep `state` self-contained (no upward dep on subject).
+        try:
+            from sonya.state.expression_classifier import classify, DEFAULT
+        except Exception:
+            return
+
+        role = "him" if kind in self._DERIVE_KINDS_INCOMING else "her"
+        result = classify(text, role=role)
+        # Only update when heuristic actually matched something.
+        # confidence < 0.5 → DEFAULT marker, не трогаем текущее выражение.
+        if result.confidence < 0.5:
+            return
+        new_marker = result.marker
+        if not new_marker or new_marker == DEFAULT:
+            return
+
+        # Read current expression to skip no-op writes.
+        try:
+            row = self._sub.connection.execute(
+                "SELECT current_expression FROM subject_state WHERE id = 1"
+            ).fetchone()
+            previous = (row[0] if row else "neutral") or "neutral"
+        except Exception:
+            previous = "neutral"
+        if previous == new_marker:
+            return
+
+        # Update subject_state.
+        try:
+            self._sub.connection.execute(
+                "INSERT INTO subject_state(id, current_expression, updated_at) "
+                "VALUES (1, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "current_expression = excluded.current_expression, "
+                "updated_at = excluded.updated_at",
+                (new_marker, _utc_now_iso()),
+            )
+            self._sub.connection.commit()
+        except Exception:
+            return
+
+        # Emit outgoing.body_expression event so Atrium WS picks it up live.
+        # Recursive append goes through us again — but the kind isn't in
+        # _DERIVE_KINDS_*, so the hook short-circuits.
+        try:
+            self._sub.connection.execute(
+                "INSERT INTO continuity_events("
+                "kind, principal_id, payload_json, channel, private, created_at"
+                ") VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    "outgoing.body_expression",
+                    None,
+                    json.dumps({
+                        "marker": new_marker,
+                        "previous": previous,
+                        "source": "auto",
+                        "trigger_kind": kind,
+                        "trigger_seq": event.seq,
+                    }, ensure_ascii=False),
+                    "body",
+                    0,
+                    _utc_now_iso(),
+                ),
+            )
+            self._sub.connection.commit()
+        except Exception:
+            return
 
     def latest_seq(self) -> int:
         row = self._sub.connection.execute(

@@ -512,6 +512,12 @@ class InternalProcess:
             if self._tick_count % 120 == 0:  # ~once per hour
                 self._cleanup_stale_intentions()
 
+            # Expression decay watchdog. См. docs/atrium/EXPRESSION_AS_STATE.md.
+            # Если current_expression застрял на не-baseline > 5 минут,
+            # плавно возвращаем к calm — имитация физиологии (никто не сидит
+            # с одним лицом полчаса). Cheap: один SQL read на тик.
+            self._maybe_decay_expression()
+
     def _check_deadlines(self) -> list[str]:
         """Check active intentions for deadline expiry. Mark overdue."""
         overdue: list[str] = []
@@ -2386,6 +2392,61 @@ class InternalProcess:
                     ))
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+    def _maybe_decay_expression(self) -> None:
+        """Decay current_expression to calm after 5 min of staleness.
+
+        See docs/atrium/EXPRESSION_AS_STATE.md §3.4. Imitates physiology:
+        выражение лица не залипает на одной маске часами. After idle period
+        without auto-derive updates (no dialog turns) we ease back to calm.
+
+        Cheap: one SQL read + one write on stale-only path. No-op when
+        current is already calm/neutral or when last update is recent.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return
+        try:
+            row = substrate.connection.execute(
+                "SELECT current_expression, updated_at "
+                "FROM subject_state WHERE id = 1"
+            ).fetchone()
+            if not row:
+                return
+            current = (row[0] or "").strip()
+            updated = (row[1] or "").strip()
+            if current in ("", "calm", "neutral"):
+                return
+            if not updated:
+                return
+            from datetime import datetime, timezone, timedelta
+            try:
+                ts = datetime.fromisoformat(updated)
+            except ValueError:
+                return
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            if now - ts < timedelta(minutes=5):
+                return
+            iso_now = now.isoformat()
+            substrate.connection.execute(
+                "UPDATE subject_state SET current_expression = 'calm', "
+                "updated_at = ? WHERE id = 1",
+                (iso_now,),
+            )
+            substrate.connection.commit()
+            self._stream.append(ContinuityEvent(
+                kind="outgoing.body_expression",
+                channel="body",
+                payload={
+                    "marker": "calm",
+                    "previous": current,
+                    "source": "decay",
+                },
+            ))
         except Exception:
             pass
 

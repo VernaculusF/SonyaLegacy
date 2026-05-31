@@ -175,7 +175,9 @@ export default function DialogPane(props) {
   createEffect(() => {
     feed.dialog_messages.length;
     queueMicrotask(() => {
-      if (scrollEl && _wasAtBottom) scrollEl.scrollTop = scrollEl.scrollHeight;
+      if (scrollEl && _wasAtBottom) {
+        scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
+      }
     });
   });
 
@@ -245,6 +247,16 @@ export default function DialogPane(props) {
     setDraft('');
     setPending([]);
     if (textareaEl) textareaEl.style.height = 'auto';
+    // User just sent — they want to see their message AND the reply at
+    // the bottom. Force the auto-scroll flag and scroll smoothly so the
+    // local echo is in view even if the textarea growth had nudged the
+    // viewport up earlier.
+    _wasAtBottom = true;
+    queueMicrotask(() => {
+      if (scrollEl) {
+        scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
+      }
+    });
     try {
       await sendDialog(text, atts);
     } catch (err) {

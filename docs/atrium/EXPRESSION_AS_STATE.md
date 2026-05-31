@@ -208,9 +208,11 @@ Tool `body.expression <marker>` остаётся. Когда уместно:
 
 См. `docs/HANDOFF.md` для детального плана. Краткий список:
 
-1. **`src/sonya/subject/expression_classifier.py`** (новый) — Phase 1
-   эвристика + Phase 2 LLM fallback. Один публичный метод
-   `classify(text, context, role) → marker`.
+1. **`src/sonya/state/expression_classifier.py`** (новый, в state-слое
+   потому что classifier чистый pure-text без зависимостей и stream
+   импортирует его) — Phase 1 эвристика + Phase 2 LLM fallback (последний
+   опционально, не блокирует append). Один публичный метод
+   `classify(text, role) → ClassifyResult`.
 
 2. **`src/sonya/state/continuity_stream.py`** — append-hook: на любой
    `incoming.atrium_dialog`, `incoming.telegram_message` и `outgoing.dialog`/
