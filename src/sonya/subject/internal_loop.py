@@ -1002,6 +1002,53 @@ class InternalProcess:
                             bits.append(
                                 f"Notes from previous session:\n{next_task.last_session_notes[:1500]}"
                             )
+                        # Handoff history (last 3 sessions) — without it
+                        # active session sees only the most recent notes
+                        # and re-tries the same approach. With history she
+                        # sees what's already been attempted (and failed)
+                        # across multiple ticks. Same pattern worker uses.
+                        try:
+                            cursor = substrate.connection.execute(
+                                "SELECT payload_json FROM continuity_events "
+                                "WHERE kind = 'task.session_handoff' "
+                                "  AND payload_json LIKE ? "
+                                "ORDER BY seq DESC LIMIT 3",
+                                (f'%"{next_task.task_id}"%',),
+                            )
+                            handoff_rows = cursor.fetchall()
+                            if handoff_rows:
+                                import json as _json
+                                bits.append(
+                                    "\n## Handoff history (last 3 sessions, oldest→newest):"
+                                )
+                                for i, (pj,) in enumerate(reversed(handoff_rows), 1):
+                                    try:
+                                        payload = _json.loads(pj or "{}")
+                                    except Exception:
+                                        continue
+                                    ns = (
+                                        payload.get("next_step_hint")
+                                        or payload.get("next_step")
+                                        or ""
+                                    ).strip()
+                                    notes = (
+                                        payload.get("notes")
+                                        or payload.get("last_session_notes")
+                                        or ""
+                                    ).strip()
+                                    bits.append(f"  [{i}] next_step: {ns[:200]}")
+                                    if notes:
+                                        bits.append(f"      notes: {notes[:600]}")
+                                bits.append(
+                                    "Если все 3 шага про одно и то же — "
+                                    "СМЕНИ ПОДХОД, не повторяй. См. "
+                                    "session_general.md «Что пробовать "
+                                    "когда web.fetch упал» — там лестница "
+                                    "escalation (cloudscraper / browser / "
+                                    "proxy)."
+                                )
+                        except Exception:
+                            pass
                         # Long-running task self-check: if the same task has
                         # had many sessions without `tasks.complete`, it's
                         # likely stuck on the wrong approach. Surface this
