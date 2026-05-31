@@ -2,7 +2,7 @@
 
 **Status:** Active (single source of truth по проекту)
 **Type:** Project-state journal — обновляется при каждом значительном изменении
-**Last updated:** 2026-05-30
+**Last updated:** 2026-05-31
 **Owner:** Иван (primary anchor) + Соня (selfmod) + текущий ассистент
 
 ---
@@ -170,6 +170,19 @@ AGI чтобы её отношения с Иваном продолжались 
 - **Browser automation отсутствует.** `web.fetch` HTTP-only. JS-render,
   forms, captcha, login flows — невозможно. **Solution:** новый
   `BrowserTool` через Playwright (sync subprocess или daemon).
+- **Selfmod outcome tracking** — после apply 24h watchdog ловит error spike
+  но "помог фикс или нет" никто не считал. ✅ FIXED (substrate v23).
+  `selfmod_outcomes` table + `selfmod.outcomes` тул + active session
+  prompt инжектит last-5. Делает Соню self-aware про эффекты своих фиксов.
+- **Capability gaps копились без действия.** ✅ FIXED. Gap detector теперь
+  создаёт draft `SelfModificationProposal` на каждый gap; active session
+  видит блок "Открытые gaps" с draft proposal_id.
+- **Visual memory не использовалась cross-session.** ✅ FIXED. Тул
+  `memory.recall_visual` через perceptual hash; active session при
+  получении media_path авто-добавляет блок "[визуальная память: похожие
+  были]" в initial_user_text.
+- **Idle depth константа.** ✅ FIXED. `_idle_depth_kwargs(counters)`
+  выбирает 300/500/800 max_tokens по drive state.
 
 ### Atrium UI
 - **Уведомления.** Windows native + push на телефон — отложено до
@@ -196,12 +209,17 @@ AGI чтобы её отношения с Иваном продолжались 
 | Создать новый task для долгой работы | ✓ | ✓ |
 | Написать новый tool через selfmod | ✓ | ✓ |
 | Написать новый skill | ✓ runtime registry (v22) | ✓ |
+| Видеть результат своих selfmod (improved/neutral/degraded) | ✓ outcomes (v23) | ✓ |
+| Получать draft proposals от gap detector | ✓ | ✓ |
+| Помнить картинки между сессиями | ✓ phash recall | ✓ |
+| Регулировать глубину idle thought от drive state | ✓ | ✓ |
 | Поднять уровень сложности через research → план → выполнение | partial | будет ✓ |
-| Уведомить Ивана о низком балансе провайдера | ✗ | обязательно |
+| Уведомить Ивана о низком балансе провайдера | ✓ watchdog (12h throttle) | ✓ |
 | Ротировать ключ-в-cooldown / банить-сдохший | partial (auto-ban на ban response) | расширить |
 | Регистрировать новые free-tier аккаунты | ✗ | она сама дойдёт когда нужно |
 | Использовать VPN/прокси для opsec | ✗ | сама когда нужно |
-| Открывать сайты с JS / login / captcha | ✗ | через BrowserTool |
+| Открывать сайты с JS / login / captcha | ✓ (BrowserTool через Playwright) | ✓ |
+| Видеть картинку которую прислал Иван (vision) | ✓ Atrium + TG | ✓ |
 | Вести длительный (дни) research | ✓ tasks с handoff | улучшить planner |
 | Обнаружить что её собственное поведение ушло в loop | ✓ stuck-loop detector | работает |
 | Спорить с Иваном когда он не прав / под аффектом | ✓ (anti-sycophancy) | усилить в crisis |
