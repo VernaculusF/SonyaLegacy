@@ -874,6 +874,7 @@ class InternalProcess:
             pending_dialog = self._pending_ivan_message(substrate)
             initial_thought = ""
             initial_user_text: str | None = None
+            initial_user_message: list[dict] | None = None
             prior_messages: list[dict] = []
             if pending_dialog:
                 force_selfmod_track = False
@@ -887,6 +888,23 @@ class InternalProcess:
                 # forces her to chat.dialog before [DONE].
                 msg_text = (pending_dialog.get("text") or "").strip()
                 initial_user_text = msg_text + att_note
+                # If the atrium dialog event carries an attachment with a
+                # vision-capable MIME, build a multimodal initial_user_message
+                # so the LLM actually sees the file (TG path already does this
+                # via channel_session._build_initial_user_message; active
+                # session was missing this — bug #4 in HANDOFF).
+                media_path = pending_dialog.get("media_path") or ""
+                media_mime = pending_dialog.get("media_mime") or ""
+                if media_path and media_mime:
+                    try:
+                        from sonya.subject.channel_session import (
+                            _build_initial_user_message as _build_mm,
+                        )
+                        initial_user_message = _build_mm(
+                            initial_user_text, media_path, media_mime,
+                        )
+                    except Exception:
+                        initial_user_message = None
                 # initial_thought is INTERNAL nudge to ensure she replies via
                 # chat.dialog before [DONE]. Important: phrase it as
                 # "продолжай разговор" — without it, the LLM saw "Иван
@@ -1368,6 +1386,7 @@ class InternalProcess:
                 },
                 initial_thought=initial_thought,
                 initial_user_text=initial_user_text,
+                initial_user_message=initial_user_message,
                 prior_messages=prior_messages or None,
                 require_dialog_reply=initial_user_text is not None,
                 outbound=self._outbound,
