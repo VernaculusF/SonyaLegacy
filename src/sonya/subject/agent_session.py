@@ -185,13 +185,15 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 
 Заканчивай через `[DONE]`. Текст внутри `[DONE: <текст>]` уходит Ивану как сообщение — это короткий путь "сделала + отчиталась" одним ходом.
 
-- **TG / Atrium диалог** (Иван написал тебе): два варианта:
-  1. `[TOOL: chat.dialog <твой ответ>]` — ответ как живая реплика, потом `[DONE]` (можно пустой) — финализация.
-  2. `[DONE: <твой ответ>]` — текст внутри уходит Ивану одним сообщением. Удобно когда сделала работу и отчитываешься: `[DONE: Открыла example.com, заголовок "Example Domain". Браузер работает.]`. **Не приветствуй заново** — это ответ на его сообщение.
+- **TG / Atrium диалог** (Иван написал тебе): два валидных паттерна:
+  1. **Сразу к работе** — `[TOOL: ...]` без предварительного ack, потом `[DONE: <итог для Ивана>]`. Гейт пропускает работу первые ~15 шагов; обязательное условие — финал через chat.dialog ИЛИ `[DONE: text]`. Используй когда задача быстрая и осмысленный итог уместится в одно сообщение.
+  2. **Ack + отчёт** — `[TOOL: chat.dialog "иду делать X"]` сначала, потом работа, потом второй chat.dialog с результатом, потом `[DONE]` (можно пустой). Используй когда работа займёт >5 шагов и Ивану важно знать что ты услышала.
 
 - **Внутренняя сессия** (idle / cadence-fire без сообщения от Ивана): `[DONE]` без текста.
 
 **Не копируй placeholder дословно** — впиши настоящий текст. Без [DONE] — сессия висит до budget.
+
+**НЕ приветствуй заново** в ответ Ивану — это продолжение разговора, а не первая встреча.
 
 ## ОДИН tool за один ход
 
@@ -770,9 +772,13 @@ async def run_agent_session(
             tool_name, tool_arg = tool_call
 
             # Inbox priority gate: if Ivan wrote and she hasn't answered yet,
-            # block any non-dialog tool. body.expression / mind.thought /
-            # mind.focus are allowed because they're emotional reactions, not
-            # work — but they don't satisfy the "answer Ivan" obligation.
+            # block any non-dialog tool **only after she's wasted half the
+            # session without responding**. On early steps work is allowed
+            # — final report goes via `[DONE: text]` (DONE-as-reply) or
+            # eventual chat.dialog. Without this relaxation the gate forced
+            # an extra "Понял. Сейчас." chat.dialog before every browser/web
+            # call, even when Ivan asked her to "просто открой URL и
+            # отчитайся [DONE: ...]".
             _DIALOG_TOOLS = {"chat.dialog", "chat.tell_ivan", "chat.emergency"}
             _SAFE_REACTION_TOOLS = {"body.expression", "mind.thought", "mind.focus", "body.outfit"}
             # The gate only lifts when chat.dialog actually dispatches with
@@ -782,10 +788,19 @@ async def run_agent_session(
             _gate_pending_lift = (
                 _unanswered_inbox and tool_name in _DIALOG_TOOLS
             )
+            # Half-budget threshold: only enforce the work-block in the
+            # second half of the step budget. Before that she's free to
+            # work; phase-1 [DONE] gate at the end still ensures a reply.
+            _gate_grace_steps = max(3, max_steps // 2)
             if _unanswered_inbox and tool_name in _DIALOG_TOOLS:
                 pass  # don't lift yet — wait for observation
-            elif _unanswered_inbox and tool_name not in _SAFE_REACTION_TOOLS:
-                # Refuse the tool, force her to reply first.
+            elif (
+                _unanswered_inbox
+                and tool_name not in _SAFE_REACTION_TOOLS
+                and step >= _gate_grace_steps
+            ):
+                # Refuse the tool only after grace period — она потратила
+                # >=N шагов на работу без единого слова Ивану. Force reply.
                 stream.append(ContinuityEvent(
                     kind="internal.inbox_priority_gate",
                     payload={
@@ -803,13 +818,12 @@ async def run_agent_session(
                 messages.append({
                     "role": "user",
                     "content": (
-                        f"[INBOX GATE] Tool `{tool_name}` ЗАБЛОКИРОВАН "
-                        "пока не ответишь Ивану через [TOOL: chat.dialog]."
+                        f"[INBOX GATE] Tool `{tool_name}` ЗАБЛОКИРОВАН — "
+                        f"ты сделала {step} шагов без ответа Ивану."
                         + quote_block +
-                        "Никакая работа над таском/поиском/файлами не "
-                        "выполнится пока ты не ответишь. Просто напиши "
-                        "ему пару слов в chat.dialog — реакция на его "
-                        "слова — и потом возвращайся к делу."
+                        "Сейчас обязательно [TOOL: chat.dialog]<твой ответ "
+                        "по сути> ИЛИ закрывайся через [DONE: <текст>]. "
+                        "Дальше работа выполнится после ответа."
                     ),
                 })
                 continue

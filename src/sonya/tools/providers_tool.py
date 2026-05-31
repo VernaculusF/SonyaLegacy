@@ -27,11 +27,14 @@ def _key_balance_amount(k) -> float | None:
     Returns None if no snapshot was ever taken or the snapshot has no
     money-shaped field. ProviderKey.balance() returns the decoded JSON
     snapshot dict; common keys are 'balance' / 'usd' / 'remaining' /
-    'credits'. Anything that can be cast to float wins.
+    'credits'. For Fireworks the snapshot has a nested
+    `monthly_spend_usd: {usage, limit, remaining}` dict — check that too.
+    Anything that can be cast to float wins.
     """
     bal = k.balance() if callable(getattr(k, "balance", None)) else (k.balance or {})
     if not isinstance(bal, dict) or not bal:
         return None
+    # Top-level money fields
     for field in ("balance", "usd", "remaining", "credits"):
         v = bal.get(field)
         if v is None:
@@ -40,6 +43,18 @@ def _key_balance_amount(k) -> float | None:
             return float(v)
         except (TypeError, ValueError):
             continue
+    # Nested fireworks shape: monthly_spend_usd.{remaining, limit, usage}
+    spend = bal.get("monthly_spend_usd")
+    if isinstance(spend, dict):
+        # Prefer 'remaining' (limit - usage). Fall back to limit.
+        for field in ("remaining", "limit"):
+            v = spend.get(field)
+            if v is None:
+                continue
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
     return None
 
 

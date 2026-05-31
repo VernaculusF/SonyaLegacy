@@ -75,6 +75,30 @@ def test_balance_amount_helper_handles_garbage(substrate):
     assert _key_balance_amount(keys[0]) is None
 
 
+def test_balance_amount_helper_handles_fireworks_nested_shape(substrate):
+    """Fireworks snapshot has nested `monthly_spend_usd: {usage, limit, remaining}`
+    instead of a flat `balance` field. Make sure we read it."""
+    store = KeyStore(substrate)
+    _seed(store, name="fw1", balance={
+        "ok": True,
+        "monthly_spend_usd": {
+            "usage": 7.5,
+            "limit": 50.0,
+            "remaining": 42.5,
+        },
+    })
+    keys = store.list_keys()
+    assert _key_balance_amount(keys[0]) == 42.5
+
+    # Fallback: no remaining → use limit
+    _seed(store, name="fw2", balance={
+        "ok": True,
+        "monthly_spend_usd": {"usage": 0, "limit": 100.0},
+    })
+    fw2 = next(k for k in store.list_keys() if k.name == "fw2")
+    assert _key_balance_amount(fw2) == 100.0
+
+
 def test_list_keys_runs_without_crash(substrate):
     """The original 30.05 bug — list_keys() crashed with TypeError on
     `f"balance=${k.balance:.2f}"` because k.balance is a method."""

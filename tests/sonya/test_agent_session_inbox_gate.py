@@ -81,6 +81,68 @@ async def test_done_blocked_when_dialog_reply_required(substrate: Substrate) -> 
     assert provider.calls >= 2, "model should have been re-prompted"
 
 
+async def test_grace_period_allows_early_work_tools(substrate: Substrate, monkeypatch) -> None:
+    """First half of step budget: non-dialog tools NOT blocked.
+
+    Иван заметил что Соня делала "Понял. Сейчас." перед каждым browser.open
+    — лишний шаг. Теперь grace period (max_steps // 2) пропускает работу;
+    финальный [DONE] всё ещё требует chat.dialog ИЛИ [DONE: text].
+    """
+    stream = ContinuityStream(substrate)
+
+    import sonya.initiative.outbound as outbound_mod
+
+    def _fake_call_outbound_sync(_gate, text, **kw):
+        return f"[OK] dialog: {text[:40]}"
+
+    monkeypatch.setattr(
+        outbound_mod, "call_outbound_sync", _fake_call_outbound_sync,
+    )
+
+    # Step 0 — straight to web.fetch (no chat.dialog ack). Gate should NOT
+    # fire because we're under grace threshold. Step 1 — finalize via
+    # DONE-as-reply with body, дispatched as Ivan-reply.
+    provider = _Stub([
+        "[TOOL: web.fetch https://example.com]",
+        "[DONE: Открыла example.com — заголовок Example Domain.]",
+    ])
+
+    from sonya.tools.web_tool import WebTool
+    fake_outbound = object()
+
+    await run_agent_session(
+        provider=provider,
+        stream=stream,
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(),
+        web=WebTool(),
+        outbound=fake_outbound,
+        system_prompt="test",
+        initial_user_text="Открой example.com.",
+        require_dialog_reply=True,
+        max_steps=10,  # grace = 5
+        max_seconds=10.0,
+        purpose="test",
+    )
+
+    # No gate-block on web.fetch (step 0 < grace threshold).
+    rows = substrate.connection.execute(
+        "SELECT payload_json FROM continuity_events "
+        "WHERE kind = 'internal.inbox_priority_gate' "
+        "  AND payload_json LIKE '%web.fetch%'"
+    ).fetchall()
+    assert not rows, (
+        "web.fetch on step 0 must NOT be gate-blocked under grace period"
+    )
+
+    # DONE-as-reply dispatched.
+    rows = substrate.connection.execute(
+        "SELECT 1 FROM continuity_events "
+        "WHERE kind = 'internal.done_as_reply_dispatched'"
+    ).fetchall()
+    assert rows, "DONE-as-reply must dispatch the final body"
+
+
 async def test_done_blocked_after_work_without_followup_dialog(substrate: Substrate, monkeypatch) -> None:
     """Phase 2 of inbox gate: даже если она ответила первый раз, после
     реальной работы (web.fetch / browser / etc.) **bare** `[DONE]` без
