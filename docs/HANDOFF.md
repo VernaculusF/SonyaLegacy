@@ -14,6 +14,65 @@
 состояния, любая задача = она найдёт решение и выполнит"). Бюджет — один
 большой ход. См. STATE.md §6 список блокеров.
 
+## ⚠️ ОТКРЫТЫЕ КОСЯКИ — фиксим прямо сейчас (ordered)
+
+Зафиксированы в живой сессии 2026-05-31 ~20:30. По порядку, по этому
+списку и работаем — не отклоняемся, не добавляем «костыли».
+
+1. **Markdown-fence leak в DONE-as-reply.** `[DONE: ... ```код``` ...]`
+   уходит Ивану как есть. Активная сессия диспатчит `done_body` без
+   санитайзинга. TG путь уже scrub'ит через `_scrub` в
+   `channel_session._extract_reply` — нужна **общая** sanitize функция
+   для DONE-body, и применять её и в active session, и в TG path.
+   - **Файлы:** `src/sonya/subject/agent_session.py` (около строки 1050,
+     `done_as_reply_dispatched` ветка); вынести scrub из
+     `channel_session.py` в общий хелпер.
+
+2. **Эмоции как состояние тела, не tool call** — см.
+   `docs/atrium/EXPRESSION_AS_STATE.md` (новый governing документ). Соня
+   не "выбирает" expression тулом — она **реагирует**. Auto-derive с
+   двух точек (на incoming Ивана + после её reply) + decay к calm через
+   5 минут. Список спрайтов и алиасов — в том же документе. Фиксит:
+   - редкое использование выражений
+   - залипание (thinking остался когда тема сменилась)
+   - shy / desire / blush никогда не появлялись (Соня не запускала их
+     как осознанный tool, а триггер был в тоне реплики, не в намерении)
+   - **Файлы:** новый `src/sonya/subject/expression_classifier.py`;
+     hook в `src/sonya/state/continuity_stream.py` или в
+     `internal_loop._on_incoming` + agent_session post-reply;
+     watchdog decay в `internal_loop.tick`. Доп. спрайт `desire_bite.png`
+     в `packages/atrium/public/avatar/emotions/` (есть исходник
+     `model/animations/emote/похоть вариант 2 (прикусывание губы)-Photoroom.png`).
+
+3. **Долгий ответ.** `provider.complete_text` зовётся без `max_tokens`
+   → fallback 4000. Для диалоговых поверхностей (`tg_session`,
+   `active_session`) ставим **600**. Для `task_worker`/`research`
+   оставляем выше (они реально пишут много). idle уже variable.
+   - **Файлы:** `src/sonya/subject/agent_session.py::run_agent_session`
+     — пробросить per-purpose `max_tokens`; либо в
+     `LLMProvider.complete_text` дефолт по purpose.
+
+4. **Drives на нуле.** Все 4 counter'а 0.00 в feed. Должны качаться по
+   tick (см. `DriveCounters.tick` rates 0.005-0.012). Либо tick не зовётся,
+   либо persist затирает в 0 на startup, либо decay съедает baseline
+   быстрее accrual. Проверить:
+   - вызывается ли `_drives.tick()` в основном loop'е (grep)
+   - `DriveCounters.load_from_substrate` поведение при первом старте
+   - что `on_action_completed` не уносит в 0 за один шаг
+   - **Файлы:** `src/sonya/initiative/drives.py`,
+     `src/sonya/subject/internal_loop.py`.
+
+5. **Атриум: scroll к низу при отправке.** Сейчас auto-scroll работает
+   только когда `_wasAtBottom`. Из-за роста textarea флаг становится
+   false. На локальный echo (sendDialogMessage) насильно ставить
+   `_wasAtBottom = true` И скроллить с smooth.
+   - **Файлы:** `packages/atrium/src/components/DialogPane.jsx`.
+
+6. **Hallucination даты.** Минор. Memory recall выдаёт даты из старых
+   эмбеддингов которые Соня переинтерпретирует. Не блокер.
+
+7. **CPU атриума жрёт.** В конце.
+
 ## Что СДЕЛАНО в этой сессии (chronological)
 
 ### 2026-05-31 — Atrium собран в exe (Tauri release)
