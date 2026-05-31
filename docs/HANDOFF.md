@@ -49,7 +49,15 @@
 6. **Hallucination даты.** Минор. Memory recall выдаёт даты из старых
    эмбеддингов которые Соня переинтерпретирует. Не блокер.
 
-7. **CPU атриума жрёт.** В конце.
+7. ~~**CPU атриума жрёт.**~~ ✅ DONE 2026-05-31. SonyaAvatar.jsx blink
+   loop был на постоянном 60 fps RAF (тикал каждый кадр даже между
+   морганиями). Переписан: setTimeout 3-6s → RAF ~200ms сама анимация →
+   setTimeout. Плюс visibilitychange listener паузит весь цикл когда
+   `document.hidden`. App.jsx + styles.css добавляют
+   `html.app-hidden * { animation-play-state: paused }` чтобы CSS
+   keyframes (s2d-breathe, drift, sway, settle, pulse, typing-bounce,
+   livepulse) тоже стояли при минимизации. Замер: idle CPU ≈ 0.1%
+   на ядро.
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
