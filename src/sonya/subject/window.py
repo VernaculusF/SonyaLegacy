@@ -117,7 +117,14 @@ class Window:
 
 _DEFAULT_BUDGETS: dict[str, tuple[int, float]] = {
     WINDOW_KIND_TG: (15, 150.0),
-    WINDOW_KIND_ACTIVE: (30, 1800.0),
+    # Active session: 60 steps / 30 min. Bumped from 30 because real tasks
+    # (multi-step recon, selfmod cycle propose→validate→apply, register
+    # multiple skills) regularly exceeded 30 steps and ate budget_exceeded.
+    # Live audit on 2026-05-31: skill-creation session used 13 steps just
+    # for one task; recon sessions on task-225 hit 30 cap repeatedly.
+    # Time bucket stays 30min — that's the wall-clock cap for "she's busy
+    # for too long, Ivan should see something move".
+    WINDOW_KIND_ACTIVE: (60, 1800.0),
     WINDOW_KIND_WORKER: (5, 60.0),
     WINDOW_KIND_IDLE: (3, 60.0),  # Phase 2C will use this; today idle bypasses run_window
 }

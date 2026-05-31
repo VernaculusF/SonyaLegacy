@@ -1454,19 +1454,32 @@ class InternalProcess:
             from sonya.tasks.models import TaskStatus
 
             svc = TaskService(TaskStore(substrate), stream=self._stream)
-            # Worker only picks URGENT tasks: deadline-soon / urgency-marked /
-            # Ivan-tasks with notify_mode=progress. Non-urgent tasks (silent
-            # background work) are handled by active session every 2 hours,
-            # which saves tokens — no need to wake worker every 30 min for
-            # slow-burn tasks like "find black-market earning ideas".
+            # Worker picks URGENT tasks first (deadline-soon / urgency=urgent /
+            # Ivan-tasks with notify_mode=progress). If no urgent — fall back
+            # to ANY in_progress task (including self-tasks). Self-tasks like
+            # task-225 mpbacademy were stuck because:
+            #   - active session triggers only every 2h or on Ivan dialog
+            #   - worker triggers every 3-30 min but skipped self-tasks
+            # Result: self-research lay dormant. Worker now picks them up
+            # in the slow lane (background budget: 30 steps / 15 min).
             due_urgent = svc.list_urgent_due_tasks()
-            if not due_urgent:
-                return
-
-            # Prefer in_progress, then pending; oldest updated_at first
-            in_progress = [t for t in due_urgent if t.status is TaskStatus.IN_PROGRESS]
-            pending = [t for t in due_urgent if t.status is TaskStatus.PENDING]
-            actionable = in_progress + sorted(pending, key=lambda t: t.created_at)
+            if due_urgent:
+                # Urgent path — same as before.
+                in_progress = [t for t in due_urgent if t.status is TaskStatus.IN_PROGRESS]
+                pending = [t for t in due_urgent if t.status is TaskStatus.PENDING]
+                actionable = in_progress + sorted(pending, key=lambda t: t.created_at)
+            else:
+                # Background fallback: any in_progress task (urgent already
+                # filtered above; this catches normal/background self-tasks).
+                # If nothing in_progress — bail; pending tasks wait for a
+                # human / scheduler to set in_progress.
+                all_open = svc.list_open()
+                in_progress_bg = [
+                    t for t in all_open if t.status is TaskStatus.IN_PROGRESS
+                ]
+                actionable = sorted(
+                    in_progress_bg, key=lambda t: t.updated_at
+                )
             if not actionable:
                 return
             task = actionable[0]

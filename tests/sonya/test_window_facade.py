@@ -55,7 +55,7 @@ def test_default_budget_for_tg() -> None:
 def test_default_budget_for_active() -> None:
     w = Window(kind=WINDOW_KIND_ACTIVE, system_prompt="x", tools={})
     steps, seconds = _resolve_budget(w)
-    assert steps == 30
+    assert steps == 60  # bumped 2026-05-31 — see _DEFAULT_BUDGETS comment
     assert seconds == 1800.0
 
 
@@ -94,7 +94,7 @@ def test_zero_budget_uses_default() -> None:
     """max_steps=0 means 'use default', not 'no steps allowed'."""
     w = Window(kind=WINDOW_KIND_ACTIVE, system_prompt="x", tools={}, max_steps=0)
     steps, _ = _resolve_budget(w)
-    assert steps == 30
+    assert steps == 60  # bumped 2026-05-31
 
 
 # --- run_window plumbing ---
