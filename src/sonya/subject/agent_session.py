@@ -183,7 +183,15 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 
 ## How to finish
 
-Always end with `[DONE: <твой реальный финальный ответ для Ивана здесь>]` if this is a TG conversation, or `[DONE]` for internal sessions. **Не копируй placeholder дословно** — впиши настоящий текст ответа на русском (например: `[DONE: Поняла, малыш.]`). Текст внутри `[DONE: ...]` уходит Ивану в TG. Без [DONE] — ничего не отправится.
+Заканчивай через `[DONE]`. Текст внутри `[DONE: <текст>]` уходит Ивану как сообщение — это короткий путь "сделала + отчиталась" одним ходом.
+
+- **TG / Atrium диалог** (Иван написал тебе): два варианта:
+  1. `[TOOL: chat.dialog <твой ответ>]` — ответ как живая реплика, потом `[DONE]` (можно пустой) — финализация.
+  2. `[DONE: <твой ответ>]` — текст внутри уходит Ивану одним сообщением. Удобно когда сделала работу и отчитываешься: `[DONE: Открыла example.com, заголовок "Example Domain". Браузер работает.]`. **Не приветствуй заново** — это ответ на его сообщение.
+
+- **Внутренняя сессия** (idle / cadence-fire без сообщения от Ивана): `[DONE]` без текста.
+
+**Не копируй placeholder дословно** — впиши настоящий текст. Без [DONE] — сессия висит до budget.
 
 ## ОДИН tool за один ход
 
@@ -214,6 +222,16 @@ Always end with `[DONE: <твой реальный финальный ответ
 # `]` (e.g. plan_steps array). Falls through to a simple regex if no balanced
 # match found.
 _TOOL_INLINE_RE = re.compile(r"\[TOOL:\s*([^\s\]]+)(?:\s+([^\n\]]*))?\]")
+# DONE marker with optional inline body — `[DONE: текст ответа]`.
+# Matches across newlines so the body can be multi-line. Used by the
+# active-session inbox gate to recognize a "DONE-as-reply" pattern:
+# instead of forcing chat.dialog + [DONE], the model can finalize with
+# `[DONE: <reply text>]` and that text is dispatched as her message.
+# Mirrors the regex in channel_session.py for TG.
+_DONE_WITH_BODY_RE = re.compile(
+    r"\[DONE(?::\s*(?P<body>.+?))?\]",
+    re.DOTALL,
+)
 # Block form: [TOOL: name]\n```optional-lang\n<arg>\n```
 _TOOL_BLOCK_RE = re.compile(
     r"\[TOOL:\s*([^\s\]]+)\s*\]\s*\n```[a-zA-Z0-9_-]*\n(.*?)\n```",
@@ -949,10 +967,53 @@ async def run_agent_session(
         # turn. Otherwise the model could close the session before any tool
         # actually ran.
         if "[DONE" in response or "[PAUSE" in response:
+            # `[DONE: <text>]` short-circuit — the model finalized with
+            # an inline reply body. Treat it as her message to Ivan
+            # (auto-dispatch via outbound) and let [DONE] proceed.
+            # Without this the active-session path forces TWO separate
+            # chat.dialog calls (ack + report), which feels stilted —
+            # Ivan asks "проверь X", Sonya replies "Привет малыш, иду",
+            # works, then "вот результат". With DONE-as-reply she can
+            # just answer: she works, then `[DONE: вот что вышло]` and
+            # Ivan sees one focused reply. Mirrors TG semantics where
+            # `[DONE: text]` IS the message body.
+            done_body = ""
+            done_match = _DONE_WITH_BODY_RE.search(response)
+            if done_match is not None:
+                done_body = (done_match.group("body") or "").strip()
+            done_as_reply_dispatched = False
+            if (
+                done_body
+                and len(done_body) >= 5
+                and outbound is not None
+                and (_unanswered_inbox or _work_done_since_last_dialog)
+            ):
+                try:
+                    from sonya.initiative.outbound import call_outbound_sync
+                    dispatch_result = call_outbound_sync(
+                        outbound, done_body, channel="dialog",
+                    )
+                    if not dispatch_result.startswith(("[ERROR]", "[BLOCKED]")):
+                        if outbound is not None:
+                            result.outbound_sent.append(done_body)
+                        # Dialog dispatched — both gates satisfied.
+                        _unanswered_inbox = False
+                        _work_done_since_last_dialog = False
+                        done_as_reply_dispatched = True
+                        stream.append(ContinuityEvent(
+                            kind="internal.done_as_reply_dispatched",
+                            payload={
+                                "step": step,
+                                "preview": done_body[:240],
+                            },
+                        ))
+                except Exception:
+                    pass
+
             # Inbox-priority gate also applies to [DONE]:
             #
             #   Phase 1 — `_unanswered_inbox`: she hasn't replied to Ivan
-            #     even once. Block.
+            #     even once. Block (unless DONE-as-reply just fired).
             #   Phase 2 — `_work_done_since_last_dialog`: she replied first,
             #     then did real work (browser/code/web/...), but no follow-up
             #     chat.dialog with results. Block — Ivan needs the report.
@@ -962,7 +1023,7 @@ async def run_agent_session(
             # only "Привет, иду", the result of browser work disappears.
             # The 30.05 silent-no-reply bug + 31.05 silent-no-result bug.
             gate_reason = None
-            if _unanswered_inbox:
+            if _unanswered_inbox and not done_as_reply_dispatched:
                 gate_reason = "must_reply_to_ivan_first"
                 # Repeat Ivan's message verbatim — small/fast models lose
                 # focus over long prompts and forget what they're supposed
@@ -975,21 +1036,27 @@ async def run_agent_session(
                 gate_msg = (
                     "[INBOX GATE] [DONE] ЗАБЛОКИРОВАН — Иван ждёт твой ответ."
                     + msg_quote +
-                    "Следующий ход — [TOOL: chat.dialog]<твой ответ ему>. "
-                    "Ответь по сути его последнего сообщения. "
-                    "НЕ ставь [DONE] и НЕ задавай вопрос «что он написал» — "
-                    "его текст вот, выше. Ответ должен быть в твоём голосе, "
-                    "не приветствие, а реакция на сказанное."
+                    "Следующий ход — [TOOL: chat.dialog]<твой ответ ему> "
+                    "ИЛИ напиши финал как `[DONE: <твой ответ>]` — текст "
+                    "уйдёт Ивану. Ответь по сути. "
+                    "НЕ задавай вопрос «что он написал» — его текст выше. "
+                    "Ответ должен быть в твоём голосе, не приветствие, "
+                    "а реакция на сказанное."
                 )
-            elif require_dialog_reply and _work_done_since_last_dialog:
+            elif (
+                require_dialog_reply
+                and _work_done_since_last_dialog
+                and not done_as_reply_dispatched
+            ):
                 gate_reason = "must_report_results"
                 gate_msg = (
                     "[REPORT GATE] [DONE] ЗАБЛОКИРОВАН — после "
                     "первого chat.dialog ты сделала реальную работу "
                     "(browser/code/web/...), но не отчиталась Ивану о "
                     "результате. Иван видит только первое приветствие. "
-                    "Сделай ещё один [TOOL: chat.dialog]<краткий результат: "
-                    "что нашла/сделала/что не получилось>, потом [DONE]."
+                    "Сделай ещё один [TOOL: chat.dialog]<краткий результат> "
+                    "ИЛИ закрывай через `[DONE: <краткий результат>]` — "
+                    "текст уйдёт Ивану."
                 )
 
             if gate_reason is not None:

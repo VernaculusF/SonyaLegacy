@@ -82,13 +82,11 @@ async def test_done_blocked_when_dialog_reply_required(substrate: Substrate) -> 
 
 
 async def test_done_blocked_after_work_without_followup_dialog(substrate: Substrate, monkeypatch) -> None:
-    """Phase 2 of inbox gate: even if она ответила первый раз, после
-    реальной работы (web.fetch / browser / etc.) должен быть второй
-    chat.dialog с отчётом перед [DONE].
-
-    Regression for 31.05 silent-no-result bug: Соня писала "Привет, иду"
-    → делала browser.open/text/close → [DONE] без второго chat.dialog.
-    Ivan видел только приветствие, результат пропадал.
+    """Phase 2 of inbox gate: даже если она ответила первый раз, после
+    реальной работы (web.fetch / browser / etc.) **bare** `[DONE]` без
+    body должен быть заблокирован. (Если есть `[DONE: <text>]` —
+    DONE-as-reply короткозамыкает gate и закрывает сессию: см.
+    test_done_with_body_dispatches_as_reply_short_circuits_gate.)
     """
     stream = ContinuityStream(substrate)
 
@@ -110,13 +108,13 @@ async def test_done_blocked_after_work_without_followup_dialog(substrate: Substr
     # Sequence:
     #  1. [TOOL: chat.tell_ivan привет, начинаю]   → phase 1 lifted (ack)
     #  2. [TOOL: web.fetch https://example.com]    → work done, phase 2 set
-    #  3. [DONE: вот результат]                    → MUST be blocked (phase 2)
-    #  4. [DONE: ну ладно]                         → still blocked
+    #  3. [DONE]   (bare, no body)                  → MUST be blocked (phase 2)
+    #  4. [DONE]   (bare again)                     → still blocked
     provider = _Stub([
         "Принято.\n[TOOL: chat.tell_ivan]\nпривет, начинаю",
         "Получаю данные.\n[TOOL: web.fetch https://example.com]",
-        "Готово.\n[DONE: всё ок]",
-        "Опять.\n[DONE: точно всё ок]",
+        "Готово.\n[DONE]",   # bare [DONE], no inline body — must block
+        "Опять.\n[DONE]",
     ])
 
     from sonya.tools.web_tool import WebTool
@@ -145,7 +143,7 @@ async def test_done_blocked_after_work_without_followup_dialog(substrate: Substr
         "  AND payload_json LIKE '%must_report_results%'"
     ).fetchall()
     assert len(rows) >= 1, (
-        "phase-2 gate must trigger when [DONE] follows work tools "
+        "phase-2 gate must trigger when bare [DONE] follows work tools "
         "without a follow-up chat.dialog"
     )
 
@@ -178,3 +176,93 @@ async def test_done_allowed_without_dialog_reply_required(substrate: Substrate) 
         "SELECT COUNT(*) FROM continuity_events WHERE kind = 'internal.inbox_priority_gate'"
     ).fetchone()[0]
     assert gate_events == 0
+
+
+async def test_done_with_body_dispatches_as_reply_short_circuits_gate(
+    substrate: Substrate, monkeypatch
+) -> None:
+    """`[DONE: <text>]` should dispatch text as her message AND close the
+    session — bypasses both phase-1 and phase-2 gates without forcing
+    a separate chat.dialog call.
+
+    This makes "Иван спросил → Соня сделала → [DONE: вот результат]"
+    a single-shot pattern instead of two-step "ack + report".
+    """
+    stream = ContinuityStream(substrate)
+
+    sent_via_outbound: list[str] = []
+    import sonya.initiative.outbound as outbound_mod
+
+    def _fake_call_outbound_sync(_gate, text, **kw):
+        sent_via_outbound.append(text)
+        return f"[OK] dialog: {text[:40]}"
+
+    monkeypatch.setattr(
+        outbound_mod, "call_outbound_sync", _fake_call_outbound_sync,
+    )
+
+    # Single turn — model finalizes with DONE-as-reply.
+    provider = _Stub(["[DONE: Открыла example.com, заголовок 'Example Domain'.]"])
+    fake_outbound = object()  # only checked for `is None`
+
+    result = await run_agent_session(
+        provider=provider,
+        stream=stream,
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(),
+        outbound=fake_outbound,
+        system_prompt="test",
+        initial_user_text="Соня, открой example.com.",
+        require_dialog_reply=True,
+        max_steps=4,
+        max_seconds=10.0,
+        purpose="test",
+    )
+
+    # Outbound dispatched the body
+    assert sent_via_outbound, "DONE-with-body must dispatch as outbound reply"
+    assert "Example Domain" in sent_via_outbound[0]
+
+    # Audit event written
+    rows = substrate.connection.execute(
+        "SELECT 1 FROM continuity_events "
+        "WHERE kind = 'internal.done_as_reply_dispatched'"
+    ).fetchall()
+    assert rows, "done_as_reply_dispatched audit event must fire"
+
+    # Session closed cleanly (one LLM call, no gate blocks)
+    assert provider.calls == 1
+    gate_events = substrate.connection.execute(
+        "SELECT COUNT(*) FROM continuity_events "
+        "WHERE kind = 'internal.inbox_priority_gate'"
+    ).fetchone()[0]
+    assert gate_events == 0
+
+
+async def test_bare_done_without_body_still_blocked_by_phase_1(
+    substrate: Substrate,
+) -> None:
+    """`[DONE]` без body НЕ короткозамкнёт gate — нужен либо `chat.dialog`,
+    либо текст внутри `[DONE: ...]`."""
+    stream = ContinuityStream(substrate)
+    provider = _Stub([
+        "[DONE]",  # bare, no body
+        "[DONE]",  # still bare
+    ])
+    await run_agent_session(
+        provider=provider,
+        stream=stream,
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(),
+        system_prompt="test",
+        initial_user_text="привет",
+        require_dialog_reply=True,
+        max_steps=3,
+        max_seconds=5.0,
+        purpose="test",
+    )
+    rows = substrate.connection.execute(
+        "SELECT COUNT(*) FROM continuity_events "
+        "WHERE kind = 'internal.inbox_priority_gate'"
+    ).fetchone()[0]
+    assert rows >= 1, "bare [DONE] without body must still trigger gate"
