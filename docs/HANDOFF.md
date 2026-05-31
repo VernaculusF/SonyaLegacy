@@ -16,6 +16,72 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-31 — большой комплексный заход (A-J): автономия + escalation playbook
+
+Серия фиксов поверх вчерашнего prior_messages — над тем чтобы
+"Соня выполняет ЛЮБУЮ задачу". Каждое изменение проверено в живой
+сессии на VPS.
+
+**A.** `[DONE: text]` как валидный финальный ответ (`9537d39`) — body
+dispatched через outbound, gate'ы короткозамкнуты. Поток "Иван спросил
+→ работа → [DONE: итог]" одним сообщением вместо двух chat.dialog.
+
+**B.** Cadence active session с конкретной директивой работы (`e602c79`)
+— пятый fallback инжектит initial_thought с goals + drift + providers
+и 5 prioritised actions. Live verify: Соня сама в одной сессии
+создала 3 runtime skills + закрыла blocked task + написала knowledge
+файл. **Самосовершенствование РАБОТАЕТ.**
+
+**D.** Atrium WS — last_seq updated AFTER processing (`1af502c`) —
+`feed.last_seq` теперь обновляется в самом конце handleEvent. Если
+exception — cursor не сдвигается, при reconnect event переиграется.
+
+**E.** Grace period для phase-1 inbox gate (`f823342`) — на первой
+половине step budget non-dialog tools не блокируются. Соня может
+сразу `[TOOL: ...]` → `[DONE: <итог>]` без обязательного "Понял.
+Сейчас."
+
+**F.** Fireworks balance с nested shape (`f823342`) —
+`monthly_spend_usd: {usage, limit, remaining}`. Live: `[OK]
+суммарный баланс $232.06 по 8/11 active keys`.
+
+**G.** Active session step budget 30 → 60 (`8f67beb`).
+
+**H.** Worker fallback на background self-tasks (`8f67beb`) — если
+urgent tasks нет, worker берёт ЛЮБОЙ in_progress task. Self-research
+тикает в slow lane.
+
+**J.** Handoff history (3 сессии) в active session task pickup
+(`bd6c59b`) — без него active session повторяла last_session_notes
+из одной сессии и не видела что попробовано в прошлых попытках.
+
+**Live verify реальной задачи — task-225 mpbacademy:**
+
+На команду "продолжи task-225, найди НЕпробованный подход" Соня в
+**одной сессии (33 шага)** прошла **полный escalation playbook**:
+
+1. `code.exec import cloudscraper` → попытка через JS-challenge bypass
+2. `browser.text` after cloudscraper attempt
+3. WHOIS через socket → нашла registrar Zeonglobal Technical, email
+   zeonglobal@gmail.com
+4. Попытка через origin IP — tls_handshake blocker → переход дальше
+5. `browser.open + browser.wait body` — Cloudflare challenge детект
+6. Shodan DNS lookup через найденный API-ключ из env.list — 403
+7. `tasks.block` task-225 с конкретным blocker
+8. `chat.dialog` с честным финалом "технические методы исчерпаны,
+   нашла регистранта как результат разведки, нужен Tor или контакт"
+
+**Соня самостоятельно**:
+- прочитала handoff history
+- попробовала ВСЕ методы из playbook (cloudscraper, browser, origin IP)
+- нашла НОВЫЕ данные через WHOIS
+- честно заблокировала когда уперлась
+- отчиталась с конкретным результатом
+
+Это уровень "найдёт решение" из мандата Ивана.
+
+**Тесты: 746 passed, 6 skipped, 3 deselected, 0 регрессий за весь заход.**
+
 ### 2026-05-30 — сквозной smoke ВСЕХ tool handlers + 5 фиксов + goals seed
 
 Прогнал `_execute_tool` через 55 тестов — точную имитацию того что
