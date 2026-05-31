@@ -42,9 +42,20 @@ class DriveCounters:
     max_value: float = 1.0
     decay_rate: float = 0.006
 
+    # Re-emit cadence when a drive is pinned at max_value. Without this the
+    # signal fires once on threshold crossing, then never again until the
+    # drive falls below threshold AND climbs back through it. A drive that
+    # sits at 1.0 (e.g. boredom after 8h of silence) silently saturates and
+    # initiative pressure plateaus instead of escalating. Re-emit every
+    # `_max_re_emit_ticks` (60 ticks ≈ 30min) so the loop hears the alarm
+    # again, gated by quiet/initiative caps as usual.
+    _max_re_emit_ticks: int = 60
+    _ticks_since_max_emit: dict[str, int] = field(default_factory=dict)
+
     def tick(self, active_intentions_count: int = 0) -> list[str]:
         """Increment counters (with passive decay, clamped to [0, max_value]).
-        Returns drives that crossed threshold this tick."""
+        Returns drives that crossed threshold this tick OR are pinned at max
+        and re-emitting periodically."""
         crossed: list[str] = []
         m = self.max_value
         d = self.decay_rate
@@ -57,17 +68,17 @@ class DriveCounters:
 
         prev = self.boredom_analog
         self.boredom_analog = min(m, self.boredom_analog + self.boredom_rate)
-        if self.boredom_analog >= self.threshold and prev < self.threshold:
+        if self._should_emit("boredom_analog", prev, self.boredom_analog, m):
             crossed.append("boredom_analog")
 
         prev = self.curiosity_analog
         self.curiosity_analog = min(m, self.curiosity_analog + self.curiosity_rate)
-        if self.curiosity_analog >= self.threshold and prev < self.threshold:
+        if self._should_emit("curiosity_analog", prev, self.curiosity_analog, m):
             crossed.append("curiosity_analog")
 
         prev = self.relational_focus
         self.relational_focus = min(m, self.relational_focus + self.relational_rate)
-        if self.relational_focus >= self.threshold and prev < self.threshold:
+        if self._should_emit("relational_focus", prev, self.relational_focus, m):
             crossed.append("relational_focus")
 
         if active_intentions_count > 0:
@@ -75,10 +86,38 @@ class DriveCounters:
             inc = min(self.pending_debt_cap_rate,
                       self.pending_debt_rate * active_intentions_count)
             self.pending_debt = min(m, self.pending_debt + inc)
-            if self.pending_debt >= self.threshold and prev < self.threshold:
+            if self._should_emit("pending_debt", prev, self.pending_debt, m):
                 crossed.append("pending_debt")
 
         return crossed
+
+    def _should_emit(self, drive: str, prev: float, cur: float, max_v: float) -> bool:
+        """Decide whether THIS tick produces an emission for `drive`.
+
+        Two cases:
+          1. Threshold crossing: prev < threshold ≤ cur. Standard signal.
+          2. Pinned at max: cur == max_v. Re-emits every
+             `_max_re_emit_ticks` ticks. Counter survives across calls
+             via `_ticks_since_max_emit[drive]`.
+
+        When `cur` falls below max_v, the counter resets so the next pin
+        starts a fresh re-emit window.
+        """
+        # Case 1: threshold crossing (legacy behaviour)
+        if cur >= self.threshold and prev < self.threshold:
+            self._ticks_since_max_emit[drive] = 0
+            return True
+        # Case 2: pinned at max_value — re-emit periodically
+        if cur >= max_v - 1e-9:
+            n = self._ticks_since_max_emit.get(drive, 0) + 1
+            self._ticks_since_max_emit[drive] = n
+            if n >= self._max_re_emit_ticks:
+                self._ticks_since_max_emit[drive] = 0
+                return True
+            return False
+        # Otherwise reset the max-tick counter so a new pin starts fresh
+        self._ticks_since_max_emit[drive] = 0
+        return False
 
     def reset(self, drive: str) -> None:
         if hasattr(self, drive):
