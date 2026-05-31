@@ -665,10 +665,11 @@ seq 15874: outgoing.dialog [тот же текст]
    могла позвать его как готовую процедуру. Мы НЕ пишем готовый код —
    она сама напишет когда понадобится. Просто оставить ей ссылки на
    нужные сервисы в knowledge.write.
-7. **Уведомления Windows.** Atrium теперь exe (см. сборка 2026-05-31).
-   Native notifications через webview2 + Windows toast API — отдельный
-   заход через Tauri plugin-notification. Не критично пока Atrium открыт
-   на втором мониторе; критично станет когда он будет в трее минимизирован.
+7. ~~**Уведомления Windows.**~~ ✅ DONE 2026-05-31. tauri-plugin-notification
+   подключён. На каждое outgoing.dialog от Сони когда `document.hidden`
+   показывается native toast. Permission запрашивается один раз в
+   connectWS, кэшируется. Web fallback для vite-dev. notify.js в
+   packages/atrium/src/.
 
 ### Низкий приоритет
 8. **Полностью убрать `KIND_TASK_WORKER` строку и legacy worker code.**
