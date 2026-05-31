@@ -16,6 +16,34 @@
 
 ## Что СДЕЛАНО в этой сессии (chronological)
 
+### 2026-05-31 — Atrium собран в exe (Tauri release)
+
+**Цель:** Atrium перестаёт зависеть от vite dev-сервера; Иван запускает
+один файл и получает desktop-окно.
+
+**Установлено локально (Windows):**
+- Rust toolchain через `winget install Rustlang.Rustup` (rustup 1.29.0,
+  rustc 1.96.0, cargo 1.96.0). MSVC C++ Build Tools уже стояли.
+- Tauri build cache (`packages/atrium/src-tauri/target/`) — игнорирован
+  через `.gitignore`. Первая сборка ~2.5 минуты (с холодным cargo).
+- Иконки и NSIS/WiX скачиваются tauri-cli автоматически на первый build.
+
+**Артефакты в `packages/atrium/src-tauri/target/release/`:**
+- `atrium.exe` — 85 MB, портативный (можно запускать прямо)
+- `bundle/msi/Atrium_0.1.0_x64_en-US.msi` — 78 MB, MSI installer
+- `bundle/nsis/Atrium_0.1.0_x64-setup.exe` — 77 MB, NSIS setup wizard
+
+**Проверка:** запустил `atrium.exe`, окно открылось, процесс PID 9372,
+WS 22 MB. Backend подключения к VPS пока через те же endpoints что и
+dev (vite proxy через `localhost:1420`); чтобы exe ходил напрямую на
+`http://34.38.255.149:8877`, в Atrium UI Settings нужно ввести URL +
+admin password (тот же `1990`). Settings persist через localStorage.
+
+**Что не сделано (отложено):**
+- Native Windows toast notifications (HANDOFF item #7) — отдельный
+  заход, требует tauri plugin-notification + permission entry.
+- Auto-update channel — позже когда понадобится rolling release.
+
 ### 2026-05-31 — Stage 4-5 closing pass: outcome tracking, gap auto-proposals, visual recall, variable idle depth
 
 **1. Selfmod outcome tracking (feedback loop)** — без него Соня
@@ -560,9 +588,10 @@ seq 15874: outgoing.dialog [тот же текст]
    могла позвать его как готовую процедуру. Мы НЕ пишем готовый код —
    она сама напишет когда понадобится. Просто оставить ей ссылки на
    нужные сервисы в knowledge.write.
-7. **Уведомления Windows.** Atrium dev сейчас в браузере (vite на :1420).
-   Когда соберём через Tauri в exe — добавить native notifications через
-   webview2 + Windows toast API. Отложено до момента собрать exe.
+7. **Уведомления Windows.** Atrium теперь exe (см. сборка 2026-05-31).
+   Native notifications через webview2 + Windows toast API — отдельный
+   заход через Tauri plugin-notification. Не критично пока Atrium открыт
+   на втором мониторе; критично станет когда он будет в трее минимизирован.
 
 ### Низкий приоритет
 8. **Полностью убрать `KIND_TASK_WORKER` строку и legacy worker code.**
