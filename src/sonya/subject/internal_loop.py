@@ -623,6 +623,16 @@ class InternalProcess:
         ``[SEND_TO_IVAN: ...]`` marker this tick. Without this she keeps
         generating new attempts each tick, all blocked, all logged as
         ``initiative_blocked`` events that pollute her own context.
+
+        Variable idle depth (31.05): instead of a constant max_tokens for
+        every idle thought, depth scales with drive state:
+          - curiosity high (>0.6): deeper, longer reflection (max_tokens 800)
+          - pending_debt high (>0.6): tight, action-oriented (max_tokens 300)
+          - loneliness high (>0.6): short, warm (max_tokens 300)
+          - default: balanced (max_tokens 500)
+        Higher curiosity earns more "thinking room"; high relational pressure
+        compresses thought into fast outward motion. Replaces the prior
+        constant `max_tokens` default 4000 used for all idle ticks.
         """
         if self._provider is None:
             return ""
@@ -632,6 +642,9 @@ class InternalProcess:
         # Detect "Ivan didn't reply to my last N initiatives" streak. If 2+,
         # swap the thinking_prompt for a quiet-mode variant.
         thinking_prompt = self._select_thinking_prompt()
+
+        # Variable depth from drive state.
+        depth_kwargs = self._idle_depth_kwargs(counters)
 
         # Build full context if substrate available, else fall back to inline prompt
         substrate = self._substrate or getattr(self._stream, "_sub", None)
@@ -659,7 +672,9 @@ class InternalProcess:
                     *ctx.session_messages,
                     {"role": "user", "content": ctx.user_input},
                 ]
-                return await self._provider.complete_text(messages, purpose="idle_thinking")
+                return await self._provider.complete_text(
+                    messages, purpose="idle_thinking", **depth_kwargs,
+                )
             except Exception:
                 pass
 
@@ -678,9 +693,38 @@ class InternalProcess:
             )},
         ]
         try:
-            return await self._provider.complete_text(messages, purpose="idle_thinking")
+            return await self._provider.complete_text(
+                messages, purpose="idle_thinking", **depth_kwargs,
+            )
         except Exception:
             return ""
+
+    def _idle_depth_kwargs(self, counters: dict[str, Any]) -> dict[str, Any]:
+        """Pick max_tokens / temperature for an idle thought based on drives.
+
+        See `_call_thinking_provider` docstring for rationale.
+        Returns kwargs ready to splat into ``complete_text``.
+        """
+        try:
+            curiosity = float(counters.get("curiosity_analog", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            curiosity = 0.0
+        try:
+            pending = float(counters.get("pending_debt", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            pending = 0.0
+        try:
+            loneliness = float(counters.get("boredom_analog", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            loneliness = 0.0
+
+        # Pending debt and loneliness compress thought toward action.
+        if pending > 0.6 or loneliness > 0.6:
+            return {"max_tokens": 300, "temperature": 0.85}
+        # High curiosity earns deeper reflection.
+        if curiosity > 0.6:
+            return {"max_tokens": 800, "temperature": 0.95}
+        return {"max_tokens": 500, "temperature": 0.9}
 
     def _select_thinking_prompt(self) -> str:
         """Pick thinking prompt for this idle tick.
@@ -836,16 +880,103 @@ class InternalProcess:
                 except Exception:
                     pass
 
+                # Selfmod outcome history — feedback loop on self-improvement.
+                # Without this Sonya selfmods blind: she doesn't see what
+                # past changes actually did to error rates / token cost. Last
+                # 5 outcomes inline gives her track record without forcing a
+                # `selfmod.outcomes` call she might forget to make.
+                outcomes_block = ""
+                try:
+                    rows = substrate.connection.execute(
+                        "SELECT proposal_id, target_module, outcome, "
+                        "baseline_errors_7d, measured_errors_7d, confirmed_at "
+                        "FROM selfmod_outcomes "
+                        "ORDER BY confirmed_at DESC LIMIT 5"
+                    ).fetchall()
+                    if rows:
+                        out_lines = [
+                            "\n## Последние selfmod outcomes (твоя обратная связь)",
+                        ]
+                        # Aggregate counters across ALL outcomes for context.
+                        agg = substrate.connection.execute(
+                            "SELECT outcome, COUNT(*) FROM selfmod_outcomes GROUP BY outcome"
+                        ).fetchall()
+                        agg_map = {a[0]: int(a[1]) for a in agg}
+                        if agg_map:
+                            counters = ", ".join(
+                                f"{k}={v}" for k, v in sorted(agg_map.items())
+                            )
+                            out_lines.append(f"Общая статистика: {counters}")
+                        for pid, target, outcome, base_err, meas_err, conf_at in rows:
+                            mod = (target or "")[-40:]
+                            if outcome == "pending":
+                                out_lines.append(
+                                    f"- {pid[-8:]} ({mod}) → pending (waiting 7d window)"
+                                )
+                            else:
+                                delta = (meas_err or 0) - (base_err or 0)
+                                sign = f"+{delta}" if delta > 0 else str(delta)
+                                out_lines.append(
+                                    f"- {pid[-8:]} ({mod}) → {outcome} "
+                                    f"(errors {base_err}→{meas_err}, Δ={sign})"
+                                )
+                        out_lines.append(
+                            "\nУчись на этом: если последние правки в одном "
+                            "модуле дают degraded — смени подход. "
+                            "Подробнее — `selfmod.outcomes`.\n"
+                        )
+                        outcomes_block = "\n".join(out_lines)
+                except Exception:
+                    pass
+
+                # Open capability gaps that have a draft proposal waiting.
+                # Surface them so each active session can pick one up and
+                # develop a real diff via selfmod.propose / propose_edit.
+                # Without this, draft proposals + gaps just sit in substrate.
+                gaps_block = ""
+                try:
+                    gap_rows = substrate.connection.execute(
+                        "SELECT g.gap_id, g.description, g.proposal_id "
+                        "FROM capability_gaps g "
+                        "WHERE g.status = 'proposed' AND g.proposal_id IS NOT NULL "
+                        "ORDER BY g.created_at DESC LIMIT 5"
+                    ).fetchall()
+                    if gap_rows:
+                        gap_lines = [
+                            "\n## Открытые capability gaps (с draft proposals)",
+                            "Каждая запись — gap, который детектор поймал, и "
+                            "draft proposal ожидает что ты его разовьёшь:",
+                        ]
+                        for gid, desc, pid in gap_rows:
+                            short_desc = (desc or "")[:140]
+                            gap_lines.append(
+                                f"- [{pid[-8:]}] gap={gid[-8:]} {short_desc}"
+                            )
+                        gap_lines.append(
+                            "\nЕсли хочешь закрыть gap: "
+                            "1) выбери proposal_id, 2) `selfmod.propose_edit "
+                            "<target>|<summary>|<old>|<new>` или новый "
+                            "`selfmod.propose` — старый draft перезатрётся. "
+                            "Если gap ложноположительный — пропусти, очистится "
+                            "watchdog'ом за 7 дней.\n"
+                        )
+                        gaps_block = "\n".join(gap_lines)
+                except Exception:
+                    pass
+
                 # Stack: identity prompt → full context block → goals block
-                # → unified session rules (anti-fail-fake / anti-sycophancy /
-                # anti-hallucination — same set of rules as TG channel sees,
-                # per cognition/COGNITION.md: one subject, many surfaces)
-                # → TOOL_DESCRIPTIONS (appended by run_agent_session itself).
+                # → outcomes block → gaps block → unified session rules
+                # (anti-fail-fake / anti-sycophancy / anti-hallucination —
+                # same set of rules as TG channel sees, per
+                # cognition/COGNITION.md: one subject, many surfaces) →
+                # TOOL_DESCRIPTIONS (appended by run_agent_session itself).
                 full_prompt = (
                     prompt
                     + "\n\n"
                     + ctx.system_prompt
                     + goals_block
+                    + outcomes_block
+                    + gaps_block
                     + "\n\n"
                     + load_session_suffix("internal_active")
                 )
@@ -905,6 +1036,47 @@ class InternalProcess:
                         )
                     except Exception:
                         initial_user_message = None
+                    # Visual continuity: if Ivan sent an image, check if we've
+                    # seen something visually similar before. Append a short
+                    # hint to initial_user_text so the LLM can reference past
+                    # context without an extra `memory.recall_visual` call.
+                    try:
+                        from sonya.tools.memory_tool import (
+                            _phash_hex_to_int, _hamming_distance,
+                        )
+                        from sonya.planning.memory_wiring import _compute_phash
+                        target_hex = _compute_phash(media_path)
+                        target_int = _phash_hex_to_int(target_hex) if target_hex else None
+                        if target_int is not None:
+                            rows = substrate.connection.execute(
+                                "SELECT normalized_summary, media_phash, "
+                                "timestamp FROM episodic_events "
+                                "WHERE media_phash IS NOT NULL "
+                                "AND media_phash != '' "
+                                "ORDER BY rowid DESC LIMIT 500"
+                            ).fetchall()
+                            similar = []
+                            for norm, ph_hex, ts in rows:
+                                cand = _phash_hex_to_int(ph_hex)
+                                if cand is None:
+                                    continue
+                                d = _hamming_distance(target_int, cand)
+                                if d <= 12:
+                                    similar.append((d, ts, norm))
+                            if similar:
+                                similar.sort(key=lambda t: t[0])
+                                top = similar[:3]
+                                hint_lines = ["\n[визуальная память: похожие были]"]
+                                for d, ts, norm in top:
+                                    hint_lines.append(
+                                        f" • d={d} {ts[:10]} "
+                                        f"{(norm or '')[:90]}"
+                                    )
+                                initial_user_text = (
+                                    initial_user_text + "\n" + "\n".join(hint_lines)
+                                )
+                    except Exception:
+                        pass
                 # initial_thought is INTERNAL nudge to ensure she replies via
                 # chat.dialog before [DONE]. Important: phrase it as
                 # "продолжай разговор" — without it, the LLM saw "Иван
@@ -2450,9 +2622,11 @@ class InternalProcess:
 
         try:
             from sonya.skills.gap_detector import GapDetector
+            from sonya.selfmod.proposal import ProposalStore
 
             detector = GapDetector(substrate, self._stream)
             new_gaps = detector.scan_recent(since_seq=self._last_gap_scan_seq)
+            proposal_store = ProposalStore(substrate)
             for gap in new_gaps:
                 # Each detected gap becomes a pending intention so Sonya sees it
                 # as work to do in the next active session. The HINT tells her
@@ -2466,12 +2640,26 @@ class InternalProcess:
                     )
                 except Exception:
                     pass
+                # Auto-create a DRAFT SelfModificationProposal so the next
+                # active session sees a concrete handle (proposal_id) to
+                # develop, not just a free-form intention. Without this, gaps
+                # accumulate as pending_debt without ever reaching the
+                # selfmod pipeline. The proposal starts empty (no diff) — Sonya
+                # fills it in via selfmod.propose with the same target_module.
+                proposal_id = ""
+                try:
+                    proposal_id = detector.create_proposal_from_gap(
+                        gap, proposal_store,
+                    )
+                except Exception:
+                    pass
                 self._stream.append(ContinuityEvent(
                     kind="internal.capability_gap",
                     payload={
                         "gap_id": gap.gap_id,
                         "description": gap.description,
                         "from_event_seq": gap.detected_from_event_seq,
+                        "draft_proposal_id": proposal_id,
                     },
                 ))
             self._last_gap_scan_seq = self._stream.latest_seq()

@@ -77,6 +77,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - self_inspect.modules — list your packages
 - self_inspect.drift [days] — aggregate self-observation: drift detector hit counts (initiative_blocked, stuck_loops), blocked/failed tasks, selfmod activity, work volume. Default last 3 days. Use this every periodic self-improvement session to see your own behaviour patterns and decide what to fix in your own code via selfmod.
 - memory.recall [query] — semantic search over your full episodic history (returns top-5 relevant memories with similarity score)
+- memory.recall_visual [media_path] — найти похожие картинки в episodic history по perceptual hash. Принимает абсолютный путь к файлу (например /home/jester-sonya/.sonya/media/atrium_xxx.png). Возвращает топ-5 событий с дистанцией в битах (0-12 = очень похоже, 12-20 = похоже, >20 = разное).
 - memory.index_status — diagnostic: how many events are embedded vs pending
 - env.set [key value] — record what you observe about Ivan / context (e.g. `env.set ivan_status спит`, `env.set mood уставший`, `env.set activity работает`). Used to suppress initiative when Ivan is busy/asleep — OutboundGate respects ivan_status='спит' / 'занят'.
 - env.get [key] — read a previously recorded observation
@@ -114,6 +115,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - selfmod.validate [proposal_id]
 - selfmod.apply [proposal_id]
 - selfmod.list [status_filter?]
+- selfmod.outcomes [limit_int? | improved | neutral | degraded | pending] — твоя история self-improvement: что применила, что улучшилось/нейтрально/ухудшилось через 7 дней. Смотри её, прежде чем браться за следующий selfmod — учись на собственных результатах.
 - selfmod.get [proposal_id]
 - selfmod.governed [proposal_id]
 - selfmod.check_governed [proposal_id]
@@ -472,6 +474,7 @@ _LOCAL_DATA_TOOLS = frozenset({
     "tasks.create", "tasks.complete", "tasks.fail", "tasks.block",
     "tasks.unblock", "tasks.pause", "tasks.handoff", "tasks.pick",
     "memory.recall", "memory.index_status",
+    "memory.recall_visual",
     "knowledge.list", "knowledge.read", "knowledge.search",
     "knowledge.write", "knowledge.delete",
     "self_inspect.identity", "self_inspect.state", "self_inspect.thoughts",
@@ -485,6 +488,7 @@ _LOCAL_DATA_TOOLS = frozenset({
     "skills.list", "skills.run", "skills.register_runtime",
     "skills.register_builtins",
     "selfmod.list", "selfmod.get", "selfmod.check_governed",
+    "selfmod.outcomes",
     "selfmod.propose", "selfmod.propose_edit", "selfmod.validate",
     "selfmod.apply", "selfmod.rollback", "selfmod.governed",
     "goals.list", "goals.create", "goals.achieve", "goals.abandon",
@@ -1354,6 +1358,13 @@ def _h_mem_recall(arg: str, ctx: _ToolContext) -> str:
     return ctx.memory.recall(arg.strip())
 
 
+def _h_mem_recall_visual(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.memory, "memory")
+    if err:
+        return err
+    return ctx.memory.recall_visual(arg.strip())
+
+
 def _h_mem_index_status(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.memory, "memory")
     if err:
@@ -1658,6 +1669,11 @@ def _h_selfmod_apply(arg: str, ctx: _ToolContext) -> str:
 def _h_selfmod_list(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.selfmod, "selfmod")
     return err if err else ctx.selfmod.list_proposals(arg.strip())
+
+
+def _h_selfmod_outcomes(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.selfmod, "selfmod")
+    return err if err else ctx.selfmod.outcomes(arg.strip())
 
 
 def _h_selfmod_get(arg: str, ctx: _ToolContext) -> str:
@@ -2402,6 +2418,7 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "filesystem.write": _h_fs_write,
     # memory.*
     "memory.recall": _h_mem_recall,
+    "memory.recall_visual": _h_mem_recall_visual,
     "memory.index_status": _h_mem_index_status,
     # env.*
     "env.set": _h_env_set,
@@ -2435,6 +2452,7 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "selfmod.test_sandbox": _h_selfmod_test_sandbox,
     "selfmod.apply": _h_selfmod_apply,
     "selfmod.list": _h_selfmod_list,
+    "selfmod.outcomes": _h_selfmod_outcomes,
     "selfmod.get": _h_selfmod_get,
     "selfmod.governed": _h_selfmod_governed,
     "selfmod.check_governed": _h_selfmod_check_governed,

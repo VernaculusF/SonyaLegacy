@@ -491,6 +491,108 @@ class SelfModTool:
             ],
         })
 
+    def outcomes(self, arg: str = "") -> str:
+        """Read selfmod outcome history — does my self-improvement actually help?
+
+        After 24h watchdog confirms a proposal stable, baseline metrics
+        (errors / tokens over the prior 7 days) are recorded. 7 days later
+        the same metrics are measured over the post-apply window and the
+        outcome is bucketed: ``improved`` / ``neutral`` / ``degraded``.
+
+        Returns last N=20 rows newest-first. Optional arg: integer limit
+        (e.g. ``selfmod.outcomes 5``) or ``pending`` / ``improved`` /
+        ``neutral`` / ``degraded`` to filter by bucket.
+
+        This is the feedback loop on Sonya's main autonomous capability —
+        without it she self-modifies blind. Surface this in active session
+        prompt so she sees her own track record.
+        """
+        arg = (arg or "").strip().lower()
+        limit = 20
+        bucket: str | None = None
+        if arg:
+            if arg.isdigit():
+                limit = max(1, min(100, int(arg)))
+            elif arg in ("pending", "improved", "neutral", "degraded"):
+                bucket = arg
+            else:
+                return json.dumps({
+                    "status": "error",
+                    "reason": (
+                        "selfmod.outcomes accepts integer limit or one of "
+                        "pending/improved/neutral/degraded"
+                    ),
+                })
+        try:
+            if bucket:
+                rows = self._sub.connection.execute(
+                    "SELECT proposal_id, target_module, confirmed_at, "
+                    "baseline_errors_7d, baseline_tokens_7d, "
+                    "measured_errors_7d, measured_tokens_7d, "
+                    "outcome, measured_at, measure_at "
+                    "FROM selfmod_outcomes WHERE outcome = ? "
+                    "ORDER BY confirmed_at DESC LIMIT ?",
+                    (bucket, limit),
+                ).fetchall()
+            else:
+                rows = self._sub.connection.execute(
+                    "SELECT proposal_id, target_module, confirmed_at, "
+                    "baseline_errors_7d, baseline_tokens_7d, "
+                    "measured_errors_7d, measured_tokens_7d, "
+                    "outcome, measured_at, measure_at "
+                    "FROM selfmod_outcomes "
+                    "ORDER BY confirmed_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        except Exception as exc:
+            return json.dumps({
+                "status": "error",
+                "reason": f"selfmod_outcomes table missing or unreadable: {exc}",
+            })
+
+        items = []
+        for r in rows:
+            (pid, target, confirmed_at, base_err, base_tok,
+             meas_err, meas_tok, outcome, measured_at, measure_at) = r
+            entry: dict[str, Any] = {
+                "proposal_id": pid,
+                "target_module": target,
+                "confirmed_at": confirmed_at,
+                "baseline_errors_7d": int(base_err or 0),
+                "baseline_tokens_7d": int(base_tok or 0),
+                "outcome": outcome,
+            }
+            if outcome == "pending":
+                entry["measure_at"] = measure_at
+            else:
+                entry["measured_at"] = measured_at
+                entry["measured_errors_7d"] = int(meas_err or 0)
+                entry["measured_tokens_7d"] = int(meas_tok or 0)
+                entry["delta_errors"] = int(meas_err or 0) - int(base_err or 0)
+                entry["delta_tokens"] = int(meas_tok or 0) - int(base_tok or 0)
+            # Pull change summary from proposal store for context.
+            try:
+                p = self._store.get(pid)
+                entry["summary"] = p.change_summary[:120]
+            except ProposalNotFoundError:
+                entry["summary"] = ""
+            items.append(entry)
+
+        # Aggregate counters for at-a-glance visibility.
+        counters: dict[str, int] = {
+            "improved": 0, "neutral": 0, "degraded": 0, "pending": 0,
+        }
+        for it in items:
+            counters[it["outcome"]] = counters.get(it["outcome"], 0) + 1
+
+        return json.dumps({
+            "status": "ok",
+            "count": len(items),
+            "filter": bucket or "all",
+            "counters": counters,
+            "outcomes": items,
+        }, ensure_ascii=False)
+
     def get_proposal(self, proposal_id: str) -> str:
         try:
             p = self._store.get(proposal_id)

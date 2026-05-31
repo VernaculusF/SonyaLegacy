@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 22
+CURRENT_VERSION = 23
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -382,6 +382,90 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 22
+
+    if version == 22:
+        # v22 → v23: selfmod_outcomes — feedback loop closure on self-improvement.
+        #
+        # Schema was in schema.sql since v16-era but never wired through a
+        # migration; existing v22 substrates are missing the table. v23 creates
+        # it idempotently, plus backfills baseline rows for any recent
+        # `self_mod.confirmed_stable` proposals so Sonya immediately gets
+        # feedback on changes that landed before this column existed.
+        #
+        # Watchdog already calls record_baseline → check_pending_outcomes is
+        # already wired in internal_loop. v23 adds the storage so those calls
+        # don't silently swallow IntegrityError.
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS selfmod_outcomes (
+                proposal_id TEXT PRIMARY KEY,
+                target_module TEXT NOT NULL,
+                confirmed_at TEXT NOT NULL,
+                baseline_errors_7d INTEGER NOT NULL DEFAULT 0,
+                baseline_tokens_7d INTEGER NOT NULL DEFAULT 0,
+                measure_at TEXT NOT NULL DEFAULT '',
+                measured_errors_7d INTEGER,
+                measured_tokens_7d INTEGER,
+                outcome TEXT NOT NULL DEFAULT 'pending',
+                measured_at TEXT NOT NULL DEFAULT ''
+            );
+        """)
+        # Backfill: any APPLIED proposal in the last 14 days that doesn't
+        # already have an outcome row gets one. Baseline numbers are
+        # measured at backfill-time over the 7 days BEFORE confirmed_at.
+        try:
+            from datetime import timedelta as _td
+            cutoff_iso = (datetime.now(timezone.utc) - _td(days=14)).isoformat()
+            applied = conn.execute(
+                "SELECT proposal_id, target_module, updated_at FROM self_mod_proposals "
+                "WHERE status = 'applied' AND updated_at > ? ORDER BY updated_at ASC",
+                (cutoff_iso,),
+            ).fetchall()
+            for pid, target, applied_at in applied:
+                exists = conn.execute(
+                    "SELECT 1 FROM selfmod_outcomes WHERE proposal_id = ?", (pid,),
+                ).fetchone()
+                if exists:
+                    continue
+                # Baseline window = 7 days BEFORE applied_at.
+                try:
+                    apply_dt = datetime.fromisoformat(applied_at)
+                except Exception:
+                    apply_dt = datetime.now(timezone.utc)
+                if apply_dt.tzinfo is None:
+                    apply_dt = apply_dt.replace(tzinfo=timezone.utc)
+                baseline_since = (apply_dt - _td(days=7)).isoformat()
+                measure_at = (apply_dt + _td(days=7)).isoformat()
+                err_row = conn.execute(
+                    "SELECT COUNT(*) FROM continuity_events "
+                    "WHERE created_at >= ? AND created_at < ? AND kind IN "
+                    "('internal.tool_error','internal.task_worker_error')",
+                    (baseline_since, applied_at),
+                ).fetchone()
+                baseline_errs = int(err_row[0]) if err_row else 0
+                tok_row = conn.execute(
+                    "SELECT COALESCE(SUM(total_tokens), 0) FROM llm_calls "
+                    "WHERE timestamp >= ? AND timestamp < ?",
+                    (baseline_since, applied_at),
+                ).fetchone()
+                baseline_toks = int(tok_row[0]) if tok_row else 0
+                conn.execute(
+                    "INSERT OR IGNORE INTO selfmod_outcomes"
+                    "(proposal_id, target_module, confirmed_at, "
+                    "baseline_errors_7d, baseline_tokens_7d, measure_at, outcome) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'pending')",
+                    (pid, target, applied_at, baseline_errs, baseline_toks, measure_at),
+                )
+        except sqlite3.OperationalError:
+            # llm_calls or self_mod_proposals missing in extremely minimal
+            # test substrates — skip backfill, table is still created.
+            pass
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (23, now),
+        )
+        conn.commit()
+        version = 23
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
