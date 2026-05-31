@@ -384,17 +384,59 @@ class TelegramChannel:
             tg_chat_id = int(chat_id)
         except ValueError as err:
             raise ValueError(f"telegram chat_id must be int-compatible, got: {chat_id}") from err
-        if message.reply_to_id:
+
+        # Retry/backoff on FloodWaitError. Telegram throttles bursts;
+        # without retry, the message is just lost (audit 31.05 #16).
+        # On FloodWait we wait for the requested seconds (capped to 5min)
+        # and try once more. On other transient errors we retry with
+        # exponential backoff.
+        from telethon.errors import FloodWaitError, RPCError, ServerError
+
+        async def _send_once() -> None:
+            if message.reply_to_id:
+                try:
+                    reply_to = int(message.reply_to_id)
+                    await self._client.send_message(
+                        tg_chat_id, message.text, reply_to=reply_to
+                    )
+                    return
+                except (ValueError, TypeError):
+                    pass  # fall through to non-reply send
+            await self._client.send_message(tg_chat_id, message.text)
+
+        max_attempts = 3
+        last_err: Exception | None = None
+        for attempt in range(max_attempts):
             try:
-                reply_to = int(message.reply_to_id)
-                await self._client.send_message(
-                    tg_chat_id, message.text, reply_to=reply_to
-                )
+                await _send_once()
+                self._last_msg_time[tg_chat_id] = time.time()
                 return
-            except (ValueError, TypeError):
-                pass  # fall through to non-reply send
-        await self._client.send_message(tg_chat_id, message.text)
-        self._last_msg_time[tg_chat_id] = time.time()
+            except FloodWaitError as err:
+                wait_s = min(int(getattr(err, "seconds", 30)), 300)
+                _log.warning(
+                    "tg_flood_wait",
+                    chat_id=tg_chat_id, wait_seconds=wait_s, attempt=attempt,
+                )
+                if attempt + 1 < max_attempts:
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(wait_s)
+                last_err = err
+            except (RPCError, ServerError, ConnectionError, OSError) as err:
+                # Transient network / Telegram backend error — backoff
+                # and retry. Permanent errors (chat not found, no perms)
+                # are RPCError subclasses too, so cap attempts.
+                _log.warning(
+                    "tg_send_transient_error",
+                    chat_id=tg_chat_id, error=str(err)[:200], attempt=attempt,
+                )
+                if attempt + 1 < max_attempts:
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(2.0 * (2 ** attempt))
+                last_err = err
+        # Exhausted retries
+        if last_err is not None:
+            raise last_err
+        raise RuntimeError("tg send failed without explicit error")
 
 
 def build(config: Any) -> "TelegramChannel | None":

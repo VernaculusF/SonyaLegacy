@@ -1444,6 +1444,69 @@ async def _supervisor(config: AppConfig) -> int:
             except Exception as exc:
                 _log.warning("builtin_skills_registration_failed", extra={"error": str(exc)})
 
+            # Boot resume — kick the worker immediately if there are open
+            # in_progress tasks. Без этого после рестарта substrate task
+            # висит без активности до 30-минутного worker-tick interval.
+            # См. audit 31.05 п.1: «long-running tasks» pause после crash.
+            try:
+                from sonya.tasks.service import TaskService
+                from sonya.tasks.store import TaskStore
+                from sonya.tasks.models import TaskStatus as _TS
+                _svc = TaskService(TaskStore(substrate))
+                _open = _svc.list_open()
+                _in_progress = [t for t in _open if t.status is _TS.IN_PROGRESS]
+                if _in_progress and bundle.internal_process is not None:
+                    bundle.internal_process.request_worker_soon(delay_seconds=10.0)
+                    _log.info(
+                        "boot_resume_pinged_worker",
+                        extra={"in_progress_count": len(_in_progress)},
+                    )
+            except Exception as exc:
+                _log.warning("boot_resume_failed", extra={"error": str(exc)})
+
+            # Boot inbox-resume — если процесс упал mid-reply, последнее
+            # incoming.atrium_dialog / incoming.telegram_message может не
+            # иметь outgoing-ответа. Выставим active_session_requested_external
+            # чтобы на следующем тике loop запустил активную сессию и
+            # ответил Ивану. Audit 31.05 п.5.
+            try:
+                row = substrate.connection.execute(
+                    "SELECT MAX(seq) FROM continuity_events WHERE kind IN "
+                    "('incoming.atrium_dialog', 'incoming.telegram_message')"
+                ).fetchone()
+                last_in_seq = int(row[0]) if row and row[0] else 0
+                if last_in_seq:
+                    row2 = substrate.connection.execute(
+                        "SELECT MAX(seq) FROM continuity_events WHERE kind IN "
+                        "('outgoing.dialog', 'outgoing.telegram_response', "
+                        " 'outgoing.telegram_progress', "
+                        " 'outgoing.telegram_initiative', 'outgoing.response')"
+                    ).fetchone()
+                    last_out_seq = int(row2[0]) if row2 and row2[0] else 0
+                    if last_in_seq > last_out_seq:
+                        # Unanswered incoming. Trigger active session.
+                        from sonya.state.continuity_stream import (
+                            ContinuityEvent as _CE,
+                            ContinuityStream as _CS,
+                        )
+                        _CS(substrate).append(_CE(
+                            kind="internal.active_session_requested_external",
+                            payload={
+                                "reason": "boot_resume_unanswered_incoming",
+                                "last_in_seq": last_in_seq,
+                                "last_out_seq": last_out_seq,
+                            },
+                        ))
+                        _log.info(
+                            "boot_resume_unanswered_incoming",
+                            extra={
+                                "last_in_seq": last_in_seq,
+                                "last_out_seq": last_out_seq,
+                            },
+                        )
+            except Exception as exc:
+                _log.warning("boot_inbox_resume_failed", extra={"error": str(exc)})
+
             # Auto-seed L0-L3 goal hierarchy on startup. Idempotent —
             # only inserts goals that don't already exist by title. Without
             # this, `goals.list` returns empty and Sonya's prompt-time goals

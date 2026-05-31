@@ -130,7 +130,8 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
     "scheduled_for": "2026-05-17T15:00:00Z",  // optional ISO timestamp; empty = run now
     "notify_mode": "progress" | "final" | "silent",  // default "progress"
     "max_sessions": 3,                    // optional; 0 = unlimited. After this many active sessions / worker runs, task auto-fails if not done.
-    "urgency": "urgent" | "normal" | "background"   // optional; ivan-tasks default 'normal', self-tasks default 'background'
+    "urgency": "urgent" | "normal" | "background",   // optional; ivan-tasks default 'normal', self-tasks default 'background'
+    "recurring_spec": "{\"every\": \"1d\"}"  // optional JSON; см. recurring_spec ниже
   }
   - urgency=urgent: 8 шагов / 90с window, fast worker pickup (3 min). Use when deadline ≤6h or Ivan said "сейчас же".
   - urgency=normal: 20 шагов / 5 мин window, regular worker (~30 min). Default for most Ivan-tasks.
@@ -140,6 +141,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
   - scheduled_for=future: scheduler holds it until the time
   - notify_mode=progress: chat.tell_ivan after each step. final: only on done. silent: never.
   - max_sessions: hard budget cap. Use when Ivan says "не пытайся продолжать после N попыток".
+  - recurring_spec: для повторяющихся задач. Когда current copy → DONE/FAILED, после cadence создаётся новая PENDING. Форматы: `{"every": "30m"}` (каждые 30 минут), `{"every": "1h"}`, `{"every": "1d"}` (раз в день после completed_at), `{"every": "1d", "at": "09:00"}` (каждый день в 09:00 UTC). Используй для регулярных ритуалов: "каждое утро спросить как настроение", "раз в неделю проверить балансы".
 - tasks.list [status_filter?] — pending / in_progress / blocked / done / failed / open
 - tasks.get [task_id]
 - tasks.pick — pick next open task and mark in_progress

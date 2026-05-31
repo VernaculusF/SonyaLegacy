@@ -143,6 +143,12 @@ class InternalProcess:
         # Task worker: continues in_progress tasks autonomously between active sessions.
         self._last_task_worker_at: float = 0.0
         self._task_worker_running: bool = False
+        # Provider outage backoff. When `_run_active_session` /
+        # `_run_task_worker` raise NoKeysAvailable (audit 31.05 #3),
+        # we set this to `loop.time() + 600` so all LLM-dependent kinds
+        # are skipped for 10 minutes. Without it the worker would burn
+        # tick budget every 3min trying to acquire keys with all-cooldown.
+        self._provider_outage_until: float = 0.0
         # Global "Sonya is busy" lock — held while ANY of:
         # active session / task worker / TG handler / idle thinking is running.
         # Single-stream-of-consciousness: only one cognitive context at a time.
@@ -401,7 +407,20 @@ class InternalProcess:
             )
             candidates: list[Candidate] = []
 
-            if should_active:
+            # Provider outage backoff: skip LLM-dependent candidates while
+            # all keys exhausted. Cleared automatically when now >= outage_until.
+            in_outage = now < self._provider_outage_until
+            if in_outage:
+                # Light heartbeat so we don't go silent in logs.
+                if self._tick_count % 60 == 0:  # ~once per 30 minutes
+                    self._stream.append(ContinuityEvent(
+                        kind="internal.provider_outage_active",
+                        payload={
+                            "remaining_seconds": int(self._provider_outage_until - now),
+                        },
+                    ))
+
+            if should_active and not in_outage:
                 # External-trigger path was already detected above (sets
                 # _last_external_active_request_seq). We can tell whether
                 # this should_active fire is from external trigger by
@@ -424,6 +443,7 @@ class InternalProcess:
                 and not self._task_worker_running
                 and self._provider is not None
                 and not self._busy_lock.locked()
+                and not in_outage
             ):
                 candidates.append(Candidate(
                     priority=PRIO_WORKER_DUE,
@@ -431,7 +451,7 @@ class InternalProcess:
                     reason="worker_interval_elapsed",
                 ))
 
-            if should_think:
+            if should_think and not in_outage:
                 # Distinguish homeostasis-driven thinking from pure idle —
                 # crossed thresholds are higher signal than empty silence.
                 if crossed:
@@ -469,15 +489,88 @@ class InternalProcess:
 
             chosen_kind = decision.chosen.kind
             if chosen_kind == KIND_ACTIVE_SESSION:
-                async with self._busy_lock:
-                    await self._run_active_session()
+                # Wrap whole active session in a hard timeout so a frozen
+                # LLM call can't pin busy_lock forever (the audit 31.05 #2:
+                # one provider hang = всё мышление мертво до systemd-restart).
+                # Timeout = max_seconds budget (1800) + 5min slack для
+                # post-processing + epi-record + drives save.
+                try:
+                    async with self._busy_lock:
+                        await asyncio.wait_for(
+                            self._run_active_session(),
+                            timeout=2100.0,
+                        )
+                except asyncio.TimeoutError:
+                    self._stream.append(ContinuityEvent(
+                        kind="internal.active_session_timeout",
+                        payload={"timeout_seconds": 2100.0},
+                    ))
+                except Exception as exc:
+                    # NoKeysAvailable → ставим outage cooldown 10 мин.
+                    if exc.__class__.__name__ == "NoKeysAvailable":
+                        self._provider_outage_until = now + 600.0
+                        self._stream.append(ContinuityEvent(
+                            kind="internal.provider_outage_backoff",
+                            payload={
+                                "source": "active_session",
+                                "cooldown_seconds": 600.0,
+                                "error": str(exc)[:200],
+                            },
+                        ))
+                    else:
+                        self._stream.append(ContinuityEvent(
+                            kind="internal.active_session_error",
+                            payload={"error": str(exc)[:300], "type": type(exc).__name__},
+                        ))
                 self._last_active_session = now
                 if now - self._last_consolidation_at >= self._consolidation_interval:
                     self._run_consolidation()
                     self._last_consolidation_at = now
             elif chosen_kind == KIND_TASK_WORKER:
                 self._last_task_worker_at = now
-                asyncio.create_task(self._run_task_worker())
+                # Worker has its own internal max_seconds cap (60s urgent,
+                # 300s normal, 900s background) but wrap with hard timeout
+                # as belt-and-suspenders. Worker runs in fire-and-forget
+                # task — wrap inside that task.
+                async def _worker_with_timeout() -> None:
+                    try:
+                        await asyncio.wait_for(self._run_task_worker(), timeout=1200.0)
+                    except asyncio.TimeoutError:
+                        self._task_worker_running = False
+                        try:
+                            self._stream.append(ContinuityEvent(
+                                kind="internal.task_worker_timeout",
+                                payload={"timeout_seconds": 1200.0},
+                            ))
+                        except Exception:
+                            pass
+                    except Exception as exc:
+                        self._task_worker_running = False
+                        # NoKeysAvailable → outage cooldown.
+                        if exc.__class__.__name__ == "NoKeysAvailable":
+                            self._provider_outage_until = (
+                                asyncio.get_event_loop().time() + 600.0
+                            )
+                            try:
+                                self._stream.append(ContinuityEvent(
+                                    kind="internal.provider_outage_backoff",
+                                    payload={
+                                        "source": "task_worker",
+                                        "cooldown_seconds": 600.0,
+                                        "error": str(exc)[:200],
+                                    },
+                                ))
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                self._stream.append(ContinuityEvent(
+                                    kind="internal.task_worker_error_outer",
+                                    payload={"error": str(exc)[:300], "type": type(exc).__name__},
+                                ))
+                            except Exception:
+                                pass
+                asyncio.create_task(_worker_with_timeout())
             elif chosen_kind == KIND_IDLE_THOUGHT:
                 if self._provider is not None:
                     if not self._busy_lock.locked():
@@ -511,6 +604,15 @@ class InternalProcess:
             # indefinitely (15 stale rows from May 17 observed in audit).
             if self._tick_count % 120 == 0:  # ~once per hour
                 self._cleanup_stale_intentions()
+
+            # Recurring task scheduler — clone DONE/FAILED tasks with
+            # recurring_spec into fresh PENDING clones по cadence.
+            # Audit 31.05 #4: поле существовало в schema но никто его не
+            # обрабатывал. См. tasks/recurring.py для spec формата.
+            # Cadence: раз в 5 минут (10 ticks * 30s) — дешевле, чем
+            # каждый tick проверять все DONE/FAILED ряды.
+            if self._tick_count % 10 == 0:
+                self._run_recurring_scheduler()
 
             # Expression decay watchdog. См. docs/atrium/EXPRESSION_AS_STATE.md.
             # Если current_expression застрял на не-baseline > 5 минут,
@@ -2395,6 +2497,118 @@ class InternalProcess:
         except Exception:
             pass
 
+    def _react_to_high_severity_drift(self) -> None:
+        """Wire high-severity anchor drift into immediate self-protection.
+
+        Three actions:
+          1. Notify Ivan via chat.dialog (with throttle — once per 6h max)
+             so he sees the signal in real time.
+          2. Create an urgent self-task to investigate identity drift
+             (skill-identity-check + selfmod review of recent activity).
+          3. Pull next active session forward so она проверит себя в течение
+             ~30s, не через 2 часа.
+
+        Throttle through env-var so storms don't spam.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return
+
+        from datetime import datetime, timedelta, timezone
+
+        # 1. Throttle — env-key for last alert time
+        try:
+            cur = substrate.connection.execute(
+                "SELECT value FROM environment_state WHERE key = ?",
+                ("drift_last_alert_at",),
+            ).fetchone()
+            if cur:
+                last_alert = datetime.fromisoformat(cur[0])
+                if last_alert.tzinfo is None:
+                    last_alert = last_alert.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - last_alert < timedelta(hours=6):
+                    return  # throttled
+        except Exception:
+            pass
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            substrate.connection.execute(
+                "INSERT INTO environment_state(key, value, updated_at) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "value = excluded.value, updated_at = excluded.updated_at",
+                ("drift_last_alert_at", now_iso, now_iso),
+            )
+            substrate.connection.commit()
+        except Exception:
+            pass
+
+        # 2. Notify Ivan
+        if self._outbound is not None:
+            try:
+                from sonya.initiative.outbound import call_outbound_sync
+                call_outbound_sync(
+                    self._outbound,
+                    "Зафиксировала high-severity drift signal у себя. "
+                    "Запустила self-проверку identity. Подробности в "
+                    "internal.drift_signal events.",
+                    channel="dialog",
+                )
+            except Exception:
+                pass
+
+        # 3. Create urgent self-task to investigate
+        try:
+            from sonya.tasks.service import TaskService
+            from sonya.tasks.store import TaskStore
+            svc = TaskService(TaskStore(substrate), stream=self._stream)
+            svc.create(
+                title="[DRIFT-CHECK] investigate anchor drift signal",
+                description=(
+                    "High-severity drift signal detected. Run "
+                    "skill-identity-check, review recent continuity events "
+                    "for identity_critical paths, ensure things_not_to_betray "
+                    "intact. Если ложный — закрыть; если реальный — selfmod "
+                    "rollback недавних изменений."
+                ),
+                created_by="self",
+                urgency="urgent",
+                notify_mode="progress",
+                max_sessions=3,
+            )
+        except Exception:
+            pass
+
+        # 4. Pull active session forward — she investigates within ~30s
+        try:
+            self.request_active_session_soon(delay_seconds=30.0)
+        except Exception:
+            pass
+
+    def _run_recurring_scheduler(self) -> None:
+        """Spawn fresh PENDING clones for recurring tasks whose cadence is due.
+
+        See `tasks/recurring.py`. Cheap: only scans DONE/FAILED rows with
+        non-empty `recurring_spec`. Best-effort — never raises into tick loop.
+        """
+        substrate = self._substrate or getattr(self._stream, "_sub", None)
+        if substrate is None:
+            return
+        try:
+            from sonya.tasks.store import TaskStore
+            from sonya.tasks.recurring import RecurrenceScheduler
+            scheduler = RecurrenceScheduler(TaskStore(substrate))
+            results = scheduler.run_once()
+            for r in results:
+                if r.get("new_task_id"):
+                    self._stream.append(ContinuityEvent(
+                        kind="internal.recurring_task_spawned",
+                        payload=r,
+                    ))
+        except Exception:
+            pass
+
     def _maybe_decay_expression(self) -> None:
         """Decay current_expression to calm after 5 min of staleness.
 
@@ -2667,6 +2881,7 @@ class InternalProcess:
 
             detector = DriftDetector(self._stream)
             new_signals = detector.scan_recent(since_seq=self._last_drift_scan_seq)
+            high_severity_seen = False
             for sig in new_signals:
                 self._stream.append(ContinuityEvent(
                     kind="internal.drift_signal",
@@ -2677,7 +2892,16 @@ class InternalProcess:
                         "details": sig.details,
                     },
                 ))
+                if sig.severity >= 0.7:
+                    high_severity_seen = True
             self._last_drift_scan_seq = self._stream.latest_seq()
+            # High-severity drift mid-anything → notify Ivan + create
+            # urgent self-task to investigate. Audit 31.05 #20.
+            # We don't auto-abort the running session (busy_lock owner has
+            # its own loop); instead we surface so next active session
+            # picks up identity-check skill and looks at the signal.
+            if high_severity_seen:
+                self._react_to_high_severity_drift()
         except Exception:
             pass
 
