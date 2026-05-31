@@ -95,9 +95,12 @@ function handleEvent(msg) {
   const payload = msg.payload || {};
   const src = msg.src || classifySrc(kind, payload);
 
-  if (seq && seq > feed.last_seq) {
-    setFeed('last_seq', seq);
-  }
+  // last_seq updated only AFTER successful processing — see end of fn.
+  // If handler throws, last_seq stays put, and the event will be redelivered
+  // on next reconnect via since_seq query. Without this, a single render
+  // exception silently dropped events (the 31.05 "second outgoing.dialog
+  // never reached UI" bug — Ivan saw the first message but the work-result
+  // reply was lost in transit).
 
   // Dialog messages (her replies in TG/Atrium)
   if (kind === 'outgoing.dialog' || kind === 'outgoing.telegram_initiative' || kind === 'outgoing.telegram_progress' || kind === 'outgoing.telegram_response' || kind === 'outgoing.response') {
@@ -218,6 +221,13 @@ function handleEvent(msg) {
       session_id: msg.session_id,
       body,
     });
+  }
+
+  // Bump last_seq AFTER successful processing — guarantees that a thrown
+  // exception above leaves the cursor in place, so the event will be
+  // redelivered on next reconnect via since_seq.
+  if (seq && seq > feed.last_seq) {
+    setFeed('last_seq', seq);
   }
 }
 
