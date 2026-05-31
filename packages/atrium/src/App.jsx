@@ -38,8 +38,20 @@ export default function App() {
       }
     };
     window.addEventListener('keydown', onKey);
+    // Visibility-aware idle: when window is hidden/minimised, mark a class
+    // on <html> that CSS uses to pause infinite animations. Saves CPU when
+    // user isn't looking. SonyaAvatar's blink loop also gates on
+    // document.hidden directly. Without this WebView2 keeps rendering
+    // CSS keyframes (s2d-breathe, s2d-drift, etc.) at full rate even when
+    // minimised — burning a chunk of CPU for nothing.
+    const onVis = () => {
+      document.documentElement.classList.toggle('app-hidden', document.hidden);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    onVis();
     onCleanup(() => {
       window.removeEventListener('keydown', onKey);
+      document.removeEventListener('visibilitychange', onVis);
       disconnectWS();
       stopHeartbeat();
     });

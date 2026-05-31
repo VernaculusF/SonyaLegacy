@@ -7,6 +7,16 @@
  *  - холодные акценты: её глаза (lazur), thoughts (steel), platinum (mind)
  */
 
+/* Pause every infinite animation when window is minimised / tab hidden.
+ * App.jsx toggles `app-hidden` on <html> via visibilitychange. WebView2
+ * doesn't auto-pause CSS keyframes when minimised, so without this we burn
+ * CPU rendering breathing/drift on an avatar nobody is looking at. */
+html.app-hidden *,
+html.app-hidden *::before,
+html.app-hidden *::after {
+  animation-play-state: paused !important;
+}
+
 :root {
   /* Background layers */
   --bg-deep: #0c0d10;

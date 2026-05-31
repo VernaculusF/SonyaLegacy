@@ -45,26 +45,57 @@ export default function SonyaAvatar(props) {
     let nextBlinkAt = performance.now() + 2500 + Math.random() * 3500;
     let closing = 0; // animation phase 0..1, -1 idle
 
-    const tick = (now) => {
-      rafBlink = requestAnimationFrame(tick);
-      if (closing < 0 && now >= nextBlinkAt) closing = 0.0001;
-      if (closing >= 0) {
-        closing += 0.10; // ~ fast blink
-        // 0→1 close, 1→2 open
-        const p = closing;
-        const v = p < 1 ? 1 - p : Math.min(1, p - 1);
-        setEyeOpen(Math.max(0, Math.min(1, v)));
-        if (closing >= 2) {
-          closing = -1;
-          setEyeOpen(1);
-          nextBlinkAt = now + 2500 + Math.random() * 3500;
-        }
+    // CPU-friendly blink: while waiting for the next blink (3-6 seconds of
+    // nothing), use setTimeout instead of RAF. RAF only kicks in during the
+    // ~200ms eyelid animation. Without this the avatar burns ~5-8% CPU
+    // permanently on a quad-core просто закрывая глаза раз в 5 секунд.
+    let _animFrame = null;
+    let _waitTimeout = null;
+
+    const animateBlink = (now) => {
+      _animFrame = requestAnimationFrame(animateBlink);
+      closing += 0.10; // ~200ms close+open at 60fps
+      const p = closing;
+      const v = p < 1 ? 1 - p : Math.min(1, p - 1);
+      setEyeOpen(Math.max(0, Math.min(1, v)));
+      if (closing >= 2) {
+        // Blink finished — stop RAF, schedule next blink via timeout.
+        cancelAnimationFrame(_animFrame);
+        _animFrame = null;
+        closing = -1;
+        setEyeOpen(1);
+        scheduleNextBlink();
       }
     };
-    rafBlink = requestAnimationFrame(tick);
+
+    const scheduleNextBlink = () => {
+      const delay = 2500 + Math.random() * 3500;
+      _waitTimeout = setTimeout(() => {
+        _waitTimeout = null;
+        closing = 0;
+        _animFrame = requestAnimationFrame(animateBlink);
+      }, delay);
+    };
+
+    // Pause the whole loop when the tab is hidden — Tauri webview keeps
+    // RAF firing even when window is minimized, which is dumb if no one
+    // is looking at the avatar.
+    const onVisChange = () => {
+      if (document.hidden) {
+        if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
+        if (_waitTimeout) { clearTimeout(_waitTimeout); _waitTimeout = null; }
+      } else if (!_animFrame && !_waitTimeout) {
+        scheduleNextBlink();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+
+    scheduleNextBlink();
+
     onCleanup(() => {
-      cancelAnimationFrame(rafBlink);
-      clearTimeout(blinkTimer);
+      if (_animFrame) cancelAnimationFrame(_animFrame);
+      if (_waitTimeout) clearTimeout(_waitTimeout);
+      document.removeEventListener('visibilitychange', onVisChange);
     });
   });
 
