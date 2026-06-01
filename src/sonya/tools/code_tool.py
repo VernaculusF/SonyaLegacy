@@ -50,9 +50,16 @@ class CodeTool:
             script_path = Path(tmp) / "script.py"
             script_path.write_text(code, encoding="utf-8")
 
+            # Use the real user HOME so `~` resolves correctly.
+            # Sonya needs to reach her runtime data (~/.sonya/sonya_substrate.db)
+            # and her own source code (~/Sonya/src/...). The temp dir is
+            # communicated via TMPDIR; python's tempfile.gettempdir() honours it.
+            # Other env vars are deliberately stripped to prevent key leakage.
+            real_home = os.environ.get("HOME") or os.path.expanduser("~")
             env = {
                 "PATH": os.environ.get("PATH", ""),
-                "HOME": tmp,
+                "HOME": real_home,
+                "TMPDIR": tmp,
                 "PYTHONIOENCODING": "utf-8",
                 "PYTHONDONTWRITEBYTECODE": "1",
             }

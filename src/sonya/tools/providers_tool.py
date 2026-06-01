@@ -202,6 +202,83 @@ class ProvidersTool:
         except Exception as e:
             return f"[ERROR] {type(e).__name__}: {e}"
 
+    def list_models(self, provider: str = "") -> str:
+        """List available models for a provider (or all providers if empty).
+
+        Fireworks models are pulled from the Fireworks live catalog API.
+        Kiro and other providers use hardcoded lists since they don't expose
+        a /models endpoint. Returns one model per line in the format:
+        ``provider | model_id | context_window | pricing (input/output M)``.
+        """
+        provider = (provider or "").strip().lower()
+        lines: list[str] = []
+
+        # Fireworks — live catalog
+        if not provider or provider == "fireworks":
+            lines.append("--- fireworks (live catalog) ---")
+            fireworks_models = self._fireworks_models()
+            if fireworks_models:
+                for m in fireworks_models:
+                    lines.append(f"fireworks | {m['id']} | ctx={m.get('context_length','?')} | ${m.get('input_price','?')}/${m.get('output_price','?')}/M")
+            else:
+                lines.append("  (could not fetch Fireworks catalog)")
+
+        # Kiro — hardcoded
+        if not provider or provider in ("kr", "kiro"):
+            lines.append("--- kr (kiro) ---")
+            lines.append("kr | kr/claude-sonnet-4.5 | ctx=200K | ~$3/$15/M")
+            lines.append("kr | kr/claude-haiku-4.5 | ctx=200K | ~$1/$5/M")
+
+        # OpenRouter
+        if not provider or provider == "openrouter":
+            lines.append("--- openrouter ---")
+            lines.append("openrouter | (query openrouter.ai/models for full list)")
+
+        if not lines:
+            return f"[ERROR] unknown provider: {provider}"
+        return "\n".join(lines)
+
+    def _fireworks_models(self) -> list[dict]:
+        """Fetch Fireworks model catalog from their public API.
+
+        Fireworks exposes GET https://api.fireworks.ai/v1/models — no auth
+        needed for the catalog endpoint. Returns list of model dicts with
+        id, context_length, pricing, etc.
+        """
+        import json
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                "https://api.fireworks.ai/v1/models",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            models: list[dict] = []
+            if isinstance(data, dict):
+                entries = data.get("data") or data.get("models") or []
+            elif isinstance(data, list):
+                entries = data
+            else:
+                return []
+            for m in entries[:30]:  # cap to avoid flooding
+                if not isinstance(m, dict):
+                    continue
+                mid = m.get("id") or m.get("name") or ""
+                if not mid:
+                    continue
+                # Extract pricing from nested Fireworks response
+                ctx_len = m.get("context_length") or m.get("context_window") or m.get("max_context_length") or ""
+                models.append({
+                    "id": mid,
+                    "context_length": ctx_len,
+                    "input_price": m.get("input_price") or m.get("input_price_per_million") or "",
+                    "output_price": m.get("output_price") or m.get("output_price_per_million") or "",
+                })
+            return models
+        except Exception:
+            return []
+
     def add_key(self, arg: str) -> str:
         """Add a new provider key.
 

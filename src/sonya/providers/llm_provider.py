@@ -105,59 +105,37 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# Per-purpose slot routing.
+# Per-purpose model hints (2026-06-02: replaces slot-based routing).
 #
-# Slot semantics in provider_keys:
-#   text       — generic text key (default)
-#   text-fast  — preferred for cheap/quick replies (DeepSeek V4 Flash, Haiku 4.5)
-#   text-deep  — preferred for analysis/planning (DeepSeek V4 Pro, Sonnet 4.5)
-#   code       — preferred for codegen/selfmod (Sonnet 4.5 quality)
-#   vision     — vision-capable (handled via separate path)
-#
-# Mapping below translates `purpose` (set by callers like run_window) into
-# a preferred slot. KeyStore.acquire(provider, slot=X) returns the highest-
-# priority eligible key with that slot in its slot list; if no slot match,
-# falls back to ANY eligible key for that provider. So this is a soft hint,
-# not a hard requirement — Sonya never gets NoKeysAvailable just because
-# her preferred slot is empty.
+# Ivan's directive: no "text-fast" / "text-deep" distinctions. All keys are
+# "text". Sonya/system chooses the model per purpose. The hint below is the
+# *default* model name for each purpose; Sonya can override per-request via
+# the ``_model`` kwarg. If a hint model isn't available, the provider
+# falls back to its default model (provider_settings.default_model).
 
-_PURPOSE_SLOT_MAP: dict[str, str] = {
-    # Fast (cheap, lower latency, smaller context) — interactive surfaces
-    # where the bulk of work is chat reply + simple tool dispatch, not
-    # deep reasoning. Codegen branches go through selfmod_* purposes which
-    # explicitly route to 'code'.
-    "tg_session": "text-fast",
-    "idle_thinking": "text-fast",
-    "pre_done_critique": "text-fast",
-    # 2026-06-02: active_session was text-fast → haiku-4.5, but haiku-4.5
-    # pool returns 10-20 token completions on 50K prompts (HTTP 200, status
-    # "ok", functionally empty). Result: 60-step sessions with zero tool
-    # calls. Moved to text-deep which routes to fireworks/deepseek-v4-pro
-    # (working). Ivan's "flash для диалогов" intent is preserved for
-    # tg_session (the actual interactive surface); active sessions need
-    # working models above all.
-    "active_session": "text-deep",
-    # Deep (better quality, more steps, longer context) — task work and
-    # research where we'd rather spend tokens on better reasoning than on
-    # snappy latency. Per Ivan 30.05: "flash для диалогов, pro для тасков
-    # и воркеров".
-    "task_worker": "text-deep",
-    "active_session_deep": "text-deep",
-    "research": "text-deep",
-    # Codegen — Sonnet-class preferred
-    "selfmod_codegen": "code",
-    "selfmod_propose": "code",
+_PURPOSE_MODEL_HINT: dict[str, str] = {
+    # Interactive, latency-sensitive (Telegram, idle thinking, pre-done check)
+    "tg_session": "kr/claude-haiku-4.5",
+    "idle_thinking": "kr/claude-haiku-4.5",
+    "pre_done_critique": "kr/claude-haiku-4.5",
+    # Active session — needs to be smart enough for multi-step tool use
+    "active_session": "accounts/fireworks/models/deepseek-v4-pro",
+    # Task work, research — best reasoning available
+    "task_worker": "accounts/fireworks/models/deepseek-v4-pro",
+    "active_session_deep": "accounts/fireworks/models/deepseek-v4-pro",
+    "research": "accounts/fireworks/models/deepseek-v4-pro",
+    # Codegen — Sonnet-class
+    "selfmod_codegen": "kr/claude-sonnet-4.5",
+    "selfmod_propose": "kr/claude-sonnet-4.5",
 }
 
 
-def _slot_for_purpose(purpose: str) -> str:
-    """Return preferred slot for a given session purpose. Defaults to 'text'.
+def _model_for_purpose(purpose: str) -> str:
+    """Return the preferred model for a given purpose.
 
-    Heuristic: explicit map first, then prefix match for code-related
-    purposes, else generic 'text'.
+    Returns "" if no hint — the provider falls back to its default_model.
     """
-    if not purpose:
-        return "text"
+    return _PURPOSE_MODEL_HINT.get(purpose, "")
     if purpose in _PURPOSE_SLOT_MAP:
         return _PURPOSE_SLOT_MAP[purpose]
     # Codegen-shaped purposes that don't fit the explicit map
@@ -244,31 +222,17 @@ class LLMProvider:
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
         purpose = kwargs.get("purpose", "unknown")
 
-        # Per-purpose slot routing.
-        #
-        # The slot was a SOFT preference until 2026-05-30 — keystore.acquire
-        # would silently fall back to ANY eligible key for the active provider
-        # if no slot match. That defeated the routing: an `active_session`
-        # turn (text-fast → haiku 4.5) would happily land on a fireworks
-        # text-deep key and run on deepseek-v4-pro. Latency 90s for "Привет".
-        #
-        # New policy:
-        #   1. Try `acquire_strict` (slot must match) on the active provider.
-        #   2. If miss, try `acquire_strict` on each fallback provider.
-        #   3. ONLY if every provider has no slot match, fall back to the
-        #      old relaxed `acquire` chain so we never raise NoKeysAvailable
-        #      just because the preferred slot is empty.
-        if "_purpose_slot" in kwargs:
-            preferred_slot = str(kwargs["_purpose_slot"])
+        # Model selection (2026-06-02: replaces slot-based routing).
+        # Priority: explicit _model kwarg > purpose hint > provider default.
+        # Ivan's directive: no text-fast/text-deep, just "text".
+        # Sonya/system picks model per task; subagents can use any model.
+        if "_model" in kwargs:
+            preferred_model = str(kwargs["_model"])
         else:
-            preferred_slot = _slot_for_purpose(purpose)
+            preferred_model = _model_for_purpose(purpose)
 
         # Fallback chain: try active_provider first; if no eligible keys
-        # there, fall back to other providers in order. Each provider gets
-        # one acquire attempt before moving on. This keeps the existing
-        # per-provider rotation but stops a single provider's cooldowns
-        # from causing NoKeysAvailable when other providers have spare
-        # capacity (esp. paid kr fallback for production-critical calls).
+        # there, fall back to other providers in order.
         fallback_chain = [provider]
         for fb in ("kr", "fireworks", "openrouter"):
             if fb != provider and fb not in fallback_chain:
@@ -279,18 +243,19 @@ class LLMProvider:
         for attempt in range(max_attempts):
             key = None
             picked_provider = provider
-            # Phase 1: strict slot match across all providers.
+            # 2026-06-02: no slot filtering. All keys are "text".
+            # Just pick any eligible key from the chain.
             for prov in fallback_chain:
-                key = await self._store.acquire_strict(prov, slot=preferred_slot)
+                key = await self._store.acquire(prov)
                 if key is not None:
                     picked_provider = prov
                     if prov != provider and attempt == 0:
                         _log.info(
                             "provider_fallback_acquired",
-                            extra={"primary": provider, "fallback": prov, "purpose": purpose, "slot": preferred_slot, "match": "strict"},
+                            extra={"primary": provider, "fallback": prov, "purpose": purpose},
                         )
                     break
-            # Phase 2: relaxed — accept any eligible key (slot ignored).
+
             if key is None:
                 for prov in fallback_chain:
                     key = await self._store.acquire(prov, slot=preferred_slot)
@@ -309,7 +274,11 @@ class LLMProvider:
                     )
                 break
 
-            model = key.model or settings.default_model
+            # Model selection: preferred_model (from purpose hint or explicit
+            # _model kwarg) takes priority. Falls back to key.model (if the
+            # key has a fixed model like kr/claude-haiku-4.5), then
+            # provider_settings.default_model.
+            model = preferred_model or key.model or settings.default_model
             base_url = key.base_url or settings.default_base_url
             url = f"{base_url.rstrip('/')}/chat/completions"
             headers = {

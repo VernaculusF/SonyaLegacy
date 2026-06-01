@@ -168,17 +168,19 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 
 - web.search [query]
 - web.fetch [url]
-- code.exec — block form, code goes inside ```python ... ```
+- code.exec — block form, code inside ```python ... ```. NOT sandboxed by path — can access ANY file the user can read, including your own runtime data (~/.sonya/sonya_substrate.db) and source (~/Sonya/src/). Use import sqlite3 to query substrate directly, or read/parse your own code for debugging. stdout is captured and returned. Timeout 30s.
 - shell.run [command] — approval-gated
 - pip.install [package] — approval-gated
 
-- providers.list — твой LLM-pool: имя, статус, баланс, slot, счётчики
+- providers.list — твой LLM-pool: имя, статус, баланс, счётчики
+- providers.models [provider?] — список доступных моделей. Без аргумента — все провайдеры. С аргументом (fireworks/kr/openrouter) — только для одного. Используй чтобы выбрать модель под таск.
 - providers.balance — суммарный баланс по провайдерам
 - providers.health — синтез: OK / WARNING / CRITICAL. Используй когда видишь LLM errors или хочешь понять надо ли регать новый ключ
 - providers.disable [key_id] / providers.enable [key_id]
-- providers.add — JSON: {"provider","name","api_key","base_url?","model?","priority?","slot?"}
+- providers.add — JSON: {"provider","name","api_key","base_url?","model?","priority?"}
 - providers.set_active [provider_name]
 - providers.settings — текущие active_provider / default_model / default_base_url
+- Ты можешь выбрать модель при создании субагента: передай _model=accounts/fireworks/models/deepseek-v4-pro (или любую другую из providers.models) в коде который зовёт complete_text.
 
 - browser.open [url] — Playwright headless, persistent profile в ~/.sonya/browser-profile/
 - browser.click [css selector]
@@ -2428,6 +2430,11 @@ def _h_providers_set_active(arg: str, ctx: _ToolContext) -> str:
     return err if err else ctx.providers.set_active(arg)
 
 
+def _h_providers_models(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.providers, "providers")
+    return err if err else ctx.providers.list_models(arg)
+
+
 # browser.* — Playwright wrapper. См. tools/browser_tool.py
 def _h_browser_open(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.browser, "browser")
@@ -2565,6 +2572,7 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "providers.enable":   _h_providers_enable,
     "providers.add":      _h_providers_add,
     "providers.set_active": _h_providers_set_active,
+    "providers.models":    _h_providers_models,
     # browser.* — Playwright. См. tools/browser_tool.py
     "browser.open":       _h_browser_open,
     "browser.click":      _h_browser_click,

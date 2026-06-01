@@ -1,10 +1,9 @@
-"""Tests for KeyStore.acquire_strict — slot-precise key acquisition.
+"""Tests for KeyStore.acquire — key acquisition (slot-less, 2026-06-02).
 
-Background: prior to 2026-05-30 KeyStore.acquire() softly fell back to any
-eligible key when no slot match existed. That defeated per-purpose routing
-because the LLM provider would happily land on a deep-slot key for a
-fast-slot request and use the deep model. acquire_strict() is the new
-slot-precise primitive used in phase 1 of LLMProvider.complete_text.
+Background: prior to 2026-06-02, KeyStore.acquire() and acquire_strict()
+filtered keys by slot. Per Ivan's directive, all keys are now slot=text
+and the slot parameter has been removed. acquire(provider) picks the
+highest-priority eligible key for the given provider.
 """
 from __future__ import annotations
 
@@ -25,68 +24,71 @@ def store(tmp_path):
     sub.close()
 
 
-def _seed(store: KeyStore, provider: str, key: str, *, slot: str, model: str = "") -> None:
-    """Insert one key with the given provider/slot/model."""
+def _seed(store: KeyStore, provider: str, key: str, *, priority: int = 0, model: str = "") -> None:
+    """Insert one key with the given provider/model."""
     store.add_key(
         provider=provider,
         api_key=key,
-        name=f"{provider}-{slot.replace(',', '-')}",
+        name=f"{provider}-{key}",
         model=model,
         base_url="",
-        slot=slot,
+        slot="text",
+        priority=priority,
     )
 
 
-def test_acquire_strict_returns_none_when_slot_missing(store: KeyStore) -> None:
-    _seed(store, "fireworks", "fw-deep-1", slot="text-deep,text", model="m-pro")
-    out = asyncio.run(store.acquire_strict("fireworks", slot="text-fast"))
-    assert out is None, "strict acquire must NOT fall back to a non-matching slot"
-
-
-def test_acquire_strict_returns_match(store: KeyStore) -> None:
-    _seed(store, "kr", "kr-fast-1", slot="text-fast,text", model="haiku")
-    out = asyncio.run(store.acquire_strict("kr", slot="text-fast"))
-    assert out is not None
-    assert out.model == "haiku"
-
-
-def test_acquire_strict_prefers_higher_priority(store: KeyStore) -> None:
-    _seed(store, "kr", "kr-A", slot="text-fast", model="A")
-    _seed(store, "kr", "kr-B", slot="text-fast", model="B")
-    # Bump B's priority; should win.
-    store._sub.connection.execute(
-        "UPDATE provider_keys SET priority = 10 WHERE name = ?",
-        ("kr-text-fast",),
-    )
-    store._sub.connection.commit()
-    # Both have name=kr-text-fast — that's fine, just pick whichever has
-    # higher priority. Set the second one we inserted (api_key='kr-B').
-    store._sub.connection.execute(
-        "UPDATE provider_keys SET priority = 10 WHERE api_key = 'kr-B'"
-    )
-    store._sub.connection.execute(
-        "UPDATE provider_keys SET priority = 0 WHERE api_key = 'kr-A'"
-    )
-    store._sub.connection.commit()
-    out = asyncio.run(store.acquire_strict("kr", slot="text-fast"))
-    assert out is not None
-    assert out.model == "B"
-
-
-def test_acquire_strict_skips_disabled(store: KeyStore) -> None:
-    _seed(store, "kr", "kr-1", slot="text-fast")
-    # Disable directly via update_status
-    keys = store.list_keys("kr")
-    assert keys, "seed didn't insert"
-    store.update_status(keys[0].key_id, KeyStatus.DISABLED)
-    out = asyncio.run(store.acquire_strict("kr", slot="text-fast"))
+def test_acquire_returns_none_when_no_keys(store: KeyStore) -> None:
+    out = asyncio.run(store.acquire("fireworks"))
     assert out is None
 
 
-def test_acquire_softfallback_still_works(store: KeyStore) -> None:
-    """Sanity: relaxed acquire() still falls back to any text key when
-    the requested slot is empty (legacy behaviour preserved)."""
-    _seed(store, "fireworks", "fw-deep", slot="text-deep,text", model="pro")
-    out = asyncio.run(store.acquire("fireworks", slot="text-fast"))
+def test_acquire_picks_highest_priority(store: KeyStore) -> None:
+    _seed(store, "kr", "kr-1", priority=1, model="sonnet")
+    _seed(store, "kr", "kr-2", priority=5, model="haiku")
+    out = asyncio.run(store.acquire("kr"))
     assert out is not None
-    assert out.model == "pro", "relaxed acquire should fall back to any eligible key"
+    assert out.model == "haiku"  # priority 5 wins over priority 1
+    assert out.name == "kr-kr-2"
+
+
+def test_acquire_filters_by_provider(store: KeyStore) -> None:
+    _seed(store, "fireworks", "fw-1", model="pro")
+    _seed(store, "kr", "kr-1", model="haiku")
+    out = asyncio.run(store.acquire("kr"))
+    assert out is not None
+    assert out.provider == "kr"
+    assert out.model == "haiku"
+
+
+def test_acquire_skips_banned(store: KeyStore) -> None:
+    _seed(store, "kr", "kr-1", model="haiku")
+    raw = store.list_keys("kr")[0]
+    store.update_status(raw.key_id, KeyStatus.BANNED)
+    out = asyncio.run(store.acquire("kr"))
+    assert out is None  # no eligible keys
+
+
+def test_acquire_strict_is_same_as_acquire(store: KeyStore) -> None:
+    """acquire_strict(provider) now delegates to acquire(provider) since
+    all keys are slot=text."""
+    _seed(store, "fireworks", "fw-1", model="pro")
+    a = asyncio.run(store.acquire("fireworks"))
+    b = asyncio.run(store.acquire_strict("fireworks"))
+    assert a is not None and b is not None
+    assert a.key_id == b.key_id
+
+
+def test_acquire_by_slot_still_works_for_vision_etc(store: KeyStore) -> None:
+    """acquire_by_slot(slot) — still functional for non-text slots
+    (vision, embedding, etc.)."""
+    _seed(store, "fireworks", "fw-vision", model="vision-pro")
+    # Override slot to "vision" since we're testing by_slot behavior
+    raw = store.list_keys("fireworks")[0]
+    store._sub.connection.execute("UPDATE provider_keys SET slot = 'vision' WHERE key_id = ?", (raw.key_id,))
+    store._sub.connection.commit()
+    out = asyncio.run(store.acquire_by_slot("vision"))
+    assert out is not None
+    assert out.model == "vision-pro"
+
+    out2 = asyncio.run(store.acquire_by_slot("text"))
+    assert out2 is None  # only vision key exists

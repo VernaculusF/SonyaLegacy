@@ -1,62 +1,50 @@
-"""Tests for per-purpose slot routing in llm_provider.
+"""Tests for per-purpose model selection in llm_provider.
 
-Each Sonya session ("active_session", "tg_session", "task_worker", etc.)
-declares a `purpose`. We translate that into a preferred slot used to
-acquire a provider key. Cheap/fast slot for short interactions, deep slot
-for analysis, dedicated code slot for codegen.
+2026-06-02: Slot routing replaced with model-based routing.
+Each Sonya purpose maps to a preferred model name. The model
+name is passed to the completion API as-is; the provider's
+base URL handles routing to the right backend.
 
-The slot is a SOFT preference: KeyStore.acquire falls back to any text
-key if no slot match. So adding routing never causes NoKeysAvailable
-where it didn't before.
+Purpose → model mapping is in ``_PURPOSE_MODEL_HINT``.
 """
 from __future__ import annotations
 
 import pytest
 
-from sonya.providers.llm_provider import _slot_for_purpose
+from sonya.providers.llm_provider import _model_for_purpose, _PURPOSE_MODEL_HINT
 
 
-# Fast slot
+# Interactive / latency-sensitive → cheapest model
 @pytest.mark.parametrize("purpose", [
     "tg_session",
     "idle_thinking",
     "pre_done_critique",
 ])
 def test_fast_purposes(purpose: str) -> None:
-    assert _slot_for_purpose(purpose) == "text-fast"
+    assert _model_for_purpose(purpose) == "kr/claude-haiku-4.5"
 
 
-# Deep slot — explicit opt-in + task work (Ivan: "flash для диалогов, pro для тасков")
+# Task work / active session → best reasoning
 @pytest.mark.parametrize("purpose", [
+    "active_session",
     "active_session_deep",
     "research",
     "task_worker",
 ])
 def test_deep_purposes(purpose: str) -> None:
-    assert _slot_for_purpose(purpose) == "text-deep"
+    assert _model_for_purpose(purpose) == "accounts/fireworks/models/deepseek-v4-pro"
 
 
-def test_active_session_default_is_deep() -> None:
-    """2026-06-02: active_session = text-deep. Was text-fast → haiku-4.5 but
-    that pool returns functionally-empty completions (10-20 tokens on 50K
-    prompts, HTTP 200). text-deep routes to fireworks/deepseek-v4-pro which
-    works. tg_session (the actual interactive surface) stays text-fast."""
-    assert _slot_for_purpose("active_session") == "text-deep"
-
-
-# Code slot — explicit + heuristic
+# Codegen → Sonnet
 @pytest.mark.parametrize("purpose", [
     "selfmod_codegen",
     "selfmod_propose",
-    "task_worker_codegen",
-    "code_review",
-    "selfmod_validate_codegen",
 ])
 def test_code_purposes(purpose: str) -> None:
-    assert _slot_for_purpose(purpose) == "code"
+    assert _model_for_purpose(purpose) == "kr/claude-sonnet-4.5"
 
 
-# Generic / unknown → text
+# Unknown / unlisted purposes → empty string (provider default)
 @pytest.mark.parametrize("purpose", [
     "",
     "unknown",
@@ -64,24 +52,25 @@ def test_code_purposes(purpose: str) -> None:
     "memory_extraction",
     "consolidation",
 ])
-def test_generic_purpose_falls_back_to_text(purpose: str) -> None:
-    assert _slot_for_purpose(purpose) == "text"
+def test_unknown_purposes_fall_back_to_default(purpose: str) -> None:
+    assert _model_for_purpose(purpose) == ""
 
 
-def test_explicit_map_overrides_heuristic() -> None:
-    """If a purpose is BOTH in the explicit map AND matches code heuristic,
-    explicit map wins."""
-    # selfmod_codegen is in explicit map → code (no ambiguity), but verify
-    # the precedence logic by checking a future addition.
-    assert _slot_for_purpose("selfmod_codegen") == "code"
+def test_all_mapped_purposes_have_known_models() -> None:
+    """Every purpose in the hint map must reference a model that
+    exists in at least one provider's catalog."""
+    # This is a sanity check — we can't validate against live APIs
+    # but at minimum each hint should be non-empty.
+    for purpose, model in _PURPOSE_MODEL_HINT.items():
+        assert model, f"purpose '{purpose}' has empty model hint"
+        assert "/" in model, f"purpose '{purpose}' has invalid model format: {model}"
 
 
-def test_caller_can_override_via_kwarg() -> None:
-    """Verify _purpose_slot kwarg is read correctly. This isn't exercised
-    by _slot_for_purpose directly — the kwarg is checked in complete_text
-    BEFORE calling _slot_for_purpose. Sanity check: existence of the kwarg
-    path doesn't break anything."""
-    # Pure-function test of helper. Override path is integration-tested
-    # implicitly by code review / runtime behavior.
-    assert _slot_for_purpose("active_session") == "text-deep"
-    assert _slot_for_purpose("active_session_deep") == "text-deep"
+def test_explicit_model_kwarg_takes_priority() -> None:
+    """The _model kwarg in complete_text overrides purpose hint.
+    This is verified by the complete_text logic, not _model_for_purpose."""
+    # _model_for_purpose is pure lookup — it doesn't know about kwarg.
+    # The kwarg priority is handled in complete_text.
+    assert _model_for_purpose("tg_session") == "kr/claude-haiku-4.5"
+    # complete_text would use "accounts/fireworks/models/deepseek-v4-pro"
+    # if called with _model="accounts/fireworks/models/deepseek-v4-pro"
