@@ -36,11 +36,12 @@ def test_deep_purposes(purpose: str) -> None:
     assert _slot_for_purpose(purpose) == "text-deep"
 
 
-def test_active_session_default_is_fast() -> None:
-    """v23: active_session moved to text-fast (was text-deep). Bulk of an
-    active turn is dialog reply + simple tool calls; deep work routes via
-    explicit `active_session_deep` purpose now."""
-    assert _slot_for_purpose("active_session") == "text-fast"
+def test_active_session_default_is_deep() -> None:
+    """2026-06-02: active_session = text-deep. Was text-fast → haiku-4.5 but
+    that pool returns functionally-empty completions (10-20 tokens on 50K
+    prompts, HTTP 200). text-deep routes to fireworks/deepseek-v4-pro which
+    works. tg_session (the actual interactive surface) stays text-fast."""
+    assert _slot_for_purpose("active_session") == "text-deep"
 
 
 # Code slot — explicit + heuristic
@@ -82,5 +83,5 @@ def test_caller_can_override_via_kwarg() -> None:
     path doesn't break anything."""
     # Pure-function test of helper. Override path is integration-tested
     # implicitly by code review / runtime behavior.
-    assert _slot_for_purpose("active_session") == "text-fast"
+    assert _slot_for_purpose("active_session") == "text-deep"
     assert _slot_for_purpose("active_session_deep") == "text-deep"

@@ -95,6 +95,39 @@ class EpisodicMemory:
             self._mark_batch_accessed([e.event_id for e in events])
         return events
 
+    def get_by_date_range(
+        self, *, since: str = "", until: str = "", limit: int = 200, mark_accessed: bool = False
+    ) -> list[EpisodicEvent]:
+        """Retrieve events within a date range (ISO 8601 timestamps).
+
+        Useful for retrospection — e.g. ``since='2026-05-01' until='2026-06-01'``
+        to see all of May. Without arguments returns the most recent events.
+
+        ``mark_accessed`` defaults to False because batch-retrospective queries
+        shouldn't artificially boost retention on old events.
+        """
+        clauses = ["archived = 0"]
+        params: list[Any] = []
+        if since:
+            clauses.append("timestamp >= ?")
+            params.append(since)
+        if until:
+            clauses.append("timestamp < ?")
+            params.append(until)
+        where = " AND ".join(clauses)
+        cursor = self._sub.connection.execute(
+            f"SELECT event_id, event_type, timestamp, source, channel, actor, "
+            f"raw_content, normalized_summary, emotion_tags_json, importance_score, "
+            f"retention_strength, last_accessed_at, access_count, archived "
+            f"FROM episodic_events WHERE {where} "
+            f"ORDER BY timestamp DESC LIMIT ?",
+            (*params, limit),
+        )
+        events = [_row_to_event(r) for r in cursor.fetchall()]
+        if mark_accessed and events:
+            self._mark_batch_accessed([e.event_id for e in events])
+        return events
+
     def get_by_type(self, event_type: str, limit: int = 20, *, mark_accessed: bool = True) -> list[EpisodicEvent]:
         cursor = self._sub.connection.execute(
             "SELECT event_id, event_type, timestamp, source, channel, actor, "

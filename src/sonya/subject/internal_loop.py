@@ -2954,8 +2954,14 @@ class InternalProcess:
     def _run_consolidation(self) -> None:
         """Promote high-importance episodic events to semantic facts.
 
-        Runs once per 24h after an active session. Episodic memory grows;
-        semantic memory only accumulates the things worth remembering long-term.
+        Runs once per 24h. Steps:
+          1. Apply Ebbinghaus decay to all episodic events (retention_strength
+             weakens; events below archive_threshold are archived).
+          2. Promote surviving high-importance events to semantic facts.
+
+        Previously decay was defined in EpisodicMemory.apply_decay() but never
+        wired — 12,427 events accumulated with retention_strength=1.0, zero
+        archived (2026-06-02 audit).
         """
         substrate = self._substrate or getattr(self._stream, "_sub", None)
         if substrate is None:
@@ -2965,11 +2971,18 @@ class InternalProcess:
             from sonya.memory.episodic import EpisodicMemory
             from sonya.memory.semantic import SemanticMemory
 
-            pipe = ConsolidationPipeline(EpisodicMemory(substrate), SemanticMemory(substrate))
+            episodic = EpisodicMemory(substrate)
+            archived = episodic.apply_decay()
+            self._stream.append(ContinuityEvent(
+                kind="internal.decay_run",
+                payload={"archived": archived},
+            ))
+
+            pipe = ConsolidationPipeline(episodic, SemanticMemory(substrate))
             created = pipe.run_consolidation()
             self._stream.append(ContinuityEvent(
                 kind="internal.consolidation_run",
-                payload={"facts_created": created},
+                payload={"facts_created": created, "decayed_archived": archived},
             ))
         except Exception:
             pass

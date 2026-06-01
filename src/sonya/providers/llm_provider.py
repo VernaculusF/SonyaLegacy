@@ -129,7 +129,14 @@ _PURPOSE_SLOT_MAP: dict[str, str] = {
     "tg_session": "text-fast",
     "idle_thinking": "text-fast",
     "pre_done_critique": "text-fast",
-    "active_session": "text-fast",
+    # 2026-06-02: active_session was text-fast → haiku-4.5, but haiku-4.5
+    # pool returns 10-20 token completions on 50K prompts (HTTP 200, status
+    # "ok", functionally empty). Result: 60-step sessions with zero tool
+    # calls. Moved to text-deep which routes to fireworks/deepseek-v4-pro
+    # (working). Ivan's "flash для диалогов" intent is preserved for
+    # tg_session (the actual interactive surface); active sessions need
+    # working models above all.
+    "active_session": "text-deep",
     # Deep (better quality, more steps, longer context) — task work and
     # research where we'd rather spend tokens on better reasoning than on
     # snappy latency. Per Ivan 30.05: "flash для диалогов, pro для тасков

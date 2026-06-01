@@ -49,8 +49,24 @@ class SelfInspectTool:
             for e in thoughts
         )
 
-    def read_recent_memories(self, limit: int = 10) -> str:
-        memories = EpisodicMemory(self._sub).get_recent(limit=limit)
+    def read_recent_memories(self, limit: int = 100, *, since: str = "", until: str = "") -> str:
+        """Read episodic memories. Default: 100 most recent spanning ~2-3 days.
+
+        Pass ``since`` / ``until`` ISO dates (e.g. ``since=2026-05-01``
+        ``until=2026-06-01``) to zoom into a specific month. Without date
+        args, returns the last ``limit`` events sorted by recency.
+
+        For semantic search over ALL memories (embeddings-based), use
+        ``memory.recall <query>`` — that tool searches the full corpus by
+        meaning, not just recency.
+        """
+        ep = EpisodicMemory(self._sub)
+        if since or until:
+            memories = ep.get_by_date_range(since=since, until=until, limit=limit)
+        else:
+            memories = ep.get_recent(limit=limit)
+        if not memories:
+            return "(no memories found)"
         return "\n".join(
             f"[{m.event_type} {m.timestamp[:16]}] {m.raw_content[:600]}"
             for m in memories

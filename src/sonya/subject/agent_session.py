@@ -71,7 +71,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - self_inspect.identity — read your identity record
 - self_inspect.state — read current subject state (drives, intentions)
 - self_inspect.thoughts — read your recent thoughts
-- self_inspect.memories — read recent episodic memories
+- self_inspect.memories [since=YYYY-MM-DD] [until=YYYY-MM-DD] — read recent episodic memories (default 100). Use date args for month retrospection: `self_inspect.memories since=2026-05-01 until=2026-06-01`
 - self_inspect.intentions — read active intentions
 - self_inspect.code [module_path] — read your own source code (e.g. "planning/planner.py")
 - self_inspect.modules — list your packages
@@ -1320,7 +1320,16 @@ def _h_si_thoughts(arg: str, ctx: _ToolContext) -> str:
 
 
 def _h_si_memories(arg: str, ctx: _ToolContext) -> str:
-    return ctx.self_inspect.read_recent_memories()
+    since = ""
+    until = ""
+    if arg.strip():
+        parts = arg.strip().split()
+        for i, p in enumerate(parts):
+            if p.startswith("since=") and len(p) > 6:
+                since = p[6:]
+            elif p.startswith("until=") and len(p) > 6:
+                until = p[6:]
+    return ctx.self_inspect.read_recent_memories(since=since, until=until)
 
 
 def _h_si_intentions(arg: str, ctx: _ToolContext) -> str:
