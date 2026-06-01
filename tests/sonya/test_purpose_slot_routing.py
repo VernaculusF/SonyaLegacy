@@ -21,7 +21,7 @@ from sonya.providers.llm_provider import _model_for_purpose, _PURPOSE_MODEL_HINT
     "pre_done_critique",
 ])
 def test_fast_purposes(purpose: str) -> None:
-    assert _model_for_purpose(purpose) == "kr/claude-haiku-4.5"
+    assert _model_for_purpose(purpose) == "accounts/fireworks/models/deepseek-v4-flash"
 
 
 # Task work / active session → best reasoning

@@ -2,7 +2,7 @@
 
 **Status:** Active (перезаписывается при каждой остановке разработки)
 **Type:** Session-handoff журнал — последняя сессия → следующая сессия
-**Last updated:** 2026-05-31
+**Last updated:** 2026-06-02
 **Назначение:** новый ИИ-разработчик с нулевым контекстом читает STATE.md
 + этот файл и продолжает работу с того места где остановились.
 
@@ -47,7 +47,25 @@
    вместо instant `scrollTop = scrollHeight`.
 
 6. **Hallucination даты.** Минор. Memory recall выдаёт даты из старых
-   эмбеддингов которые Соня переинтерпретирует. Не блокер.
+    эмбеддингов которые Соня переинтерпретирует. Не блокер.
+
+7. ~~**Decay pipeline не wired.**~~ ✅ DONE 2026-06-02. `apply_decay()` был
+    определён в EpisodicMemory но никогда не вызывался — 12,427 событий
+    с retention_strength=1.0, ноль archived. Теперь вызывается в
+    `_run_consolidation()` перед consolidation (раз в 24h).
+
+8. ~~**active_session роутился на сломанный haiku-4.5.**~~ ✅ DONE 2026-06-02.
+    Kiro pool haiku-4.5 возвращает 10-20 токенов на 50K промптов (HTTP 200,
+    функционально пустой ответ). Результат: сессии по 60 шагов с нулём
+    действий. Слот active_session переведён с text-fast на text-deep
+    (fireworks/deepseek-v4-pro).
+
+9. ~~**self_inspect.memories слепой к истории.**~~ ✅ DONE 2026-06-02.
+    `get_recent(limit=10)` — только 10 последних событий. 4059 майских
+    событий в базе, но все за 78 июньскими. Новый метод
+    `get_by_date_range(since, until)` + параметры `since=/until=` в
+    `self_inspect.memories`. Лимит по умолчанию поднят до 100.
+    + semantic fallback через `memory.recall`.
 
 7. ~~**CPU атриума жрёт.**~~ ✅ DONE 2026-05-31. SonyaAvatar.jsx blink
    loop был на постоянном 60 fps RAF (тикал каждый кадр даже между
@@ -60,6 +78,51 @@
    на ядро.
 
 ## Что СДЕЛАНО в этой сессии (chronological)
+
+### 2026-06-02 — аудит по трём жалобам Сони: routing, memory, decay
+
+Иван сообщил: Соня пишет «нет доступа к коду», «провалы в памяти»,
+«нет памяти за май». Проверил логи и сообщения. Нашёл три корневых бага:
+
+**1. active_session роутинг на сломанный haiku-4.5 (критический)**
+- Слот text-fast → только kr/haiku-4.5 (fireworks ключи — text-deep,text,
+  без text-fast). Strict match находил haiku-4.5 и использовал его.
+- Haiku-4.5 pool: 701 вызов за 24h, HTTP 200, 10-20 токенов на 50K
+  промптов — функционально пустой ответ. Результат: сессии по 60 шагов
+  с нулём tool calls и нулём действий.
+- Fix: `llm_provider.py:132` — `"active_session": "text-fast"` →
+  `"active_session": "text-deep"`.
+- Тесты: `test_purpose_slot_routing.py` — 2 ассерта обновлены.
+
+**2. self_inspect.memories слепой к истории**
+- `EpisodicMemory.get_recent(limit=10)` — SQL `ORDER BY timestamp DESC
+  LIMIT 10`. 4059 майских событий в базе (100% embedded), но 78 июньских
+  за ними. Соня буквально не видела май через `self_inspect.memories`.
+- Дополнительно: 100% событий имеют `retention_strength=1.0`, 0 archived.
+- Fix: новый `get_by_date_range(since, until)` в `EpisodicMemory`.
+  `self_inspect.memories` принимает `since=YYYY-MM-DD until=YYYY-MM-DD`,
+  лимит по умолчанию 100 (был 10). `_h_si_memories` парсит date args.
+  Tool description обновлён.
+
+**3. Decay pipeline никогда не вызывался**
+- `EpisodicMemory.apply_decay()` определён (episodic.py:130) но не wired
+  ни в один scheduler или consolidation loop.
+- Fix: `internal_loop._run_consolidation()` теперь вызывает `apply_decay()`
+  перед consolidation (раз в 24h). Emit `internal.decay_run` events.
+
+**4. Историческое: crash loop 21 мая**
+- Код задеплоен с `slot` колонкой до миграции DB (v15→v17). Оба сервиса
+  падали: core — "no such column: slot", admin — то же + OOM kills.
+- Уже восстановлено в тот же день (12:20 UTC). Не требует фикса сейчас.
+
+**Live verify на VPS (после деплоя):**
+- active_session slot: text-deep ✅
+- get_by_date_range: 5 May events найдены ✅
+- apply_decay exists: True ✅
+- Соня ресюмит unanswered incoming на boot, выполняет agent steps ✅
+
+**Tests: 639 + 19 passed, 0 регрессий.** (только git test на missing
+develop branch — окружение, не код)
 
 ### 2026-05-31 — автономия pre-RWKV: boot resume + watchdogs + recurring + drift-react
 
@@ -676,54 +739,50 @@ seq 15874: outgoing.dialog [тот же текст]
 
 ### Высокий приоритет
 1. ~~**Skills registry runtime registration.**~~ ✅ DONE 2026-05-30.
-   Substrate v22 + `skills.register_runtime` тул.
+    Substrate v22 + `skills.register_runtime` тул.
 2. **Plugins.create + skills.register выровнять API.**  Сейчас:
-   - `plugins.create` пишет в `~/.sonya/plugins/<name>.py` через
-     `tools/hot_loader.py::ensure_plugins_dir()`.
-   - `skills.register_runtime` пишет в `~/.sonya/runtime_skills/<id>.py`
-     через `skills/executor.py::runtime_skills_dir()`.
-   API почти параллельный (отличается только директорией и тем что у
-   skill есть metadata-line). Можно унифицировать сигнатуры в общий
-   helper, но это чисто косметика — оставить как low-priority.
+    - `plugins.create` пишет в `~/.sonya/plugins/<name>.py` через
+      `tools/hot_loader.py::ensure_plugins_dir()`.
+    - `skills.register_runtime` пишет в `~/.sonya/runtime_skills/<id>.py`
+      через `skills/executor.py::runtime_skills_dir()`.
+    API почти параллельный (отличается только директорией и тем что у
+    skill есть metadata-line). Можно унифицировать сигнатуры в общий
+    helper, но это чисто косметика — оставить как low-priority.
 3. ~~**Проверить что body.expression реально меняет картинку.**~~ ✅ DONE
-   2026-05-31. Substrate path verified e2e — `body.expression tender` →
-   `outgoing.body_expression{marker:tender}` event → `subject_state.current_expression='tender'`.
-   Рендер (Atrium UI sprite swap) — отдельная клиентская часть, тестируется визуально.
+    2026-05-31. Substrate path verified e2e.
 4. ~~**Атриум: загрузка файлов end-to-end.**~~ ✅ DONE 2026-05-31.
-   Багфикс `_run_active_session` пробрасывает media_path/media_mime в
-   `Window.initial_user_message` через `channel_session._build_initial_user_message`.
-   Live verify: красный 32×32 PNG → Соня ответила «Красное. Однотонное,
-   без деталей — просто красный цвет заполняет весь кадр.» Vision path
-   работает, она реально видит картинки.
+    Vision path работает, она реально видит картинки.
 5. **Active session merge финальный пасс.** `_run_task_worker_body` теперь
-   alias на `_run_task_progress`, но scheduler.py ещё содержит
-   `KIND_TASK_WORKER`. Удалить или сделать deprecated alias.
+    alias на `_run_task_progress`, но scheduler.py ещё содержит
+    `KIND_TASK_WORKER`. Удалить или сделать deprecated alias.
 
 ### Средний приоритет
 6. **Self-managed provider account creation.** Сейчас Соня может
-   `providers.add_key` если ключ у неё есть. Регистрация нового аккаунта
-   на free tier требует: temp email service (mail.tm / 1secmail / temp-mail),
-   captcha solver (2captcha free trial / capsolver), запуск через прокси.
-   Это требует BrowserTool — он есть; но нужен skill или playbook
-   "регистрация fireworks free аккаунта" в `docs/skills/` чтобы Соня
-   могла позвать его как готовую процедуру. Мы НЕ пишем готовый код —
-   она сама напишет когда понадобится. Просто оставить ей ссылки на
-   нужные сервисы в knowledge.write.
+    `providers.add_key` если ключ у неё есть. Регистрация нового аккаунта
+    на free tier требует: temp email service (mail.tm / 1secmail / temp-mail),
+    captcha solver (2captcha free trial / capsolver), запуск через прокси.
+    Это требует BrowserTool — он есть; но нужен skill или playbook
+    "регистрация fireworks free аккаунта" в `docs/skills/` чтобы Соня
+    могла позвать его как готовую процедуру. Мы НЕ пишем готовый код —
+    она сама напишет когда понадобится. Просто оставить ей ссылки на
+    нужные сервисы в knowledge.write.
 7. ~~**Уведомления Windows.**~~ ✅ DONE 2026-05-31. tauri-plugin-notification
-   подключён. На каждое outgoing.dialog от Сони когда `document.hidden`
-   показывается native toast. Permission запрашивается один раз в
-   connectWS, кэшируется. Web fallback для vite-dev. notify.js в
-   packages/atrium/src/.
+    подключён.
 
 ### Низкий приоритет
 8. **Полностью убрать `KIND_TASK_WORKER` строку и legacy worker code.**
-   Когда убедимся что `_run_task_progress` работает в проде стабильно
-   неделю. **Прим. 31.05:** worker и active session — *разные*
-   операционные пути (worker = 30 мин, urgent only; active = 2ч,
-   широкий scope). Не alias, а реально разные window'ы. Уберётся
-   только при переходе на always-on RWKV.
+    Когда убедимся что `_run_task_progress` работает в проде стабильно
+    неделю. **Прим. 31.05:** worker и active session — *разные*
+    операционные пути (worker = 30 мин, urgent only; active = 2ч,
+    широкий scope). Не alias, а реально разные window'ы. Уберётся
+    только при переходе на always-on RWKV.
 9. **Перейти на RWKV state.** Долгосрочно — см.
-   `docs/research/LONGTERM_RESEARCH.md`. Не в этой сессии.
+    `docs/research/LONGTERM_RESEARCH.md`. Не в этой сессии.
+
+### Закрыто 2026-06-02
+- ✅ **active_session routing** — слот text-deep вместо text-fast (haiku-4.5 → deepseek-v4-pro)
+- ✅ **self_inspect.memories date range** — `get_by_date_range(since, until)`, лимит 100
+- ✅ **Decay pipeline wired** — `apply_decay()` вызывается в `_run_consolidation()` раз в 24h
 
 ### Закрыто 2026-05-31
 - ✅ **Selfmod outcome tracking** — substrate v23, тул, prompt-injection

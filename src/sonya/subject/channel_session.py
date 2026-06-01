@@ -283,6 +283,7 @@ def build_tools(
     from sonya.tools.knowledge import KnowledgeTool
     from sonya.tools.providers_tool import ProvidersTool
     from sonya.tools.browser_tool import BrowserTool
+    from sonya.tools.subagent_tool import SubagentTool
     return {
         "self_inspect": SelfInspectTool(substrate),
         "filesystem": FilesystemTool(),
@@ -297,6 +298,7 @@ def build_tools(
         "knowledge": KnowledgeTool(),
         "providers": ProvidersTool(substrate),
         "browser": BrowserTool(),
+        "subagent": SubagentTool(substrate),
         "outbound": outbound,
     }
 

@@ -193,7 +193,12 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
   Используй для JS-render, форм, login, captcha (через 2captcha-style), скриншотов, выполнения JS.
   Куки сохраняются между сессиями — логинись один раз.
 
-
+- subagent.spawn — JSON: {"task": "...", "provider?": "fireworks|kr|openrouter", "model?": "model/name", "max_steps?": 8}
+  Создаёт субагента который выполнит задачу в фоне. Субагент имеет доступ к web, code, memory, self_inspect.
+  Это НЕ замена твоей работы — используй для параллельных задач (сбор инфы, проверка фактов, research) пока сама занята другим.
+  Субагент работает на указанной модели (если не указана — твой active_provider). Результат забираешь через subagent.result.
+- subagent.list — список всех субагентов (pending/running/done/failed)
+- subagent.result [subagent_id] — забрать результат завершённого субагента
 
 - chat.tell_ivan [message] — send a message to Ivan in TG (throttled, max 5/day). Use during long tasks for progress updates.
 
@@ -635,6 +640,7 @@ async def run_agent_session(
     outbound = None,  # OutboundGate; avoid hard import to keep agent_session standalone
     providers: Any | None = None,  # ProvidersTool — providers.* family
     browser: Any | None = None,  # BrowserTool — browser.* family
+    subagent: Any | None = None,  # SubagentTool — subagent.* family
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
     initial_user_text: str | None = None,
@@ -925,6 +931,7 @@ async def run_agent_session(
                 outbound_sent=result.outbound_sent,
                 providers=providers,
                 browser=browser,
+                subagent=subagent,
             )
 
             # Record in continuity
@@ -1278,6 +1285,7 @@ class _ToolContext:
     stream: Any | None = None  # ContinuityStream — body.*/mind.* handlers use this
     providers: Any | None = None  # ProvidersTool — providers.* family
     browser: Any | None = None  # BrowserTool — browser.* family
+    subagent: Any | None = None  # SubagentTool — subagent.* family
 
 
 def _require(tool: Any, name: str) -> str | None:
@@ -2435,6 +2443,22 @@ def _h_providers_models(arg: str, ctx: _ToolContext) -> str:
     return err if err else ctx.providers.list_models(arg)
 
 
+# subagent.* — spawn/list/check subagent tasks
+def _h_subagent_spawn(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.subagent, "subagent")
+    return err if err else ctx.subagent.spawn(arg)
+
+
+def _h_subagent_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.subagent, "subagent")
+    return err if err else ctx.subagent.list_all(arg)
+
+
+def _h_subagent_result(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.subagent, "subagent")
+    return err if err else ctx.subagent.result(arg)
+
+
 # browser.* — Playwright wrapper. См. tools/browser_tool.py
 def _h_browser_open(arg: str, ctx: _ToolContext) -> str:
     err = _require(ctx.browser, "browser")
@@ -2573,6 +2597,9 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "providers.add":      _h_providers_add,
     "providers.set_active": _h_providers_set_active,
     "providers.models":    _h_providers_models,
+    "subagent.spawn":      _h_subagent_spawn,
+    "subagent.list":       _h_subagent_list,
+    "subagent.result":     _h_subagent_result,
     # browser.* — Playwright. См. tools/browser_tool.py
     "browser.open":       _h_browser_open,
     "browser.click":      _h_browser_click,
@@ -2604,6 +2631,7 @@ def _execute_tool(
     outbound_sent: list[str] | None = None,
     providers: Any | None = None,
     browser: Any | None = None,
+    subagent: Any | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string.
 
@@ -2631,6 +2659,7 @@ def _execute_tool(
         stream=stream,
         providers=providers,
         browser=browser,
+        subagent=subagent,
     )
     try:
         return handler(arg, ctx)

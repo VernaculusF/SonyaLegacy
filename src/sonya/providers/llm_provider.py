@@ -114,19 +114,18 @@ def _utc_now_iso() -> str:
 # falls back to its default model (provider_settings.default_model).
 
 _PURPOSE_MODEL_HINT: dict[str, str] = {
-    # Interactive, latency-sensitive (Telegram, idle thinking, pre-done check)
-    "tg_session": "kr/claude-haiku-4.5",
-    "idle_thinking": "kr/claude-haiku-4.5",
-    "pre_done_critique": "kr/claude-haiku-4.5",
-    # Active session — needs to be smart enough for multi-step tool use
+    # Interactive, latency-sensitive — use Flash for speed
+    "tg_session": "accounts/fireworks/models/deepseek-v4-flash",
+    "idle_thinking": "accounts/fireworks/models/deepseek-v4-flash",
+    "pre_done_critique": "accounts/fireworks/models/deepseek-v4-flash",
+    # Active session / tasks / research — Pro for quality
     "active_session": "accounts/fireworks/models/deepseek-v4-pro",
-    # Task work, research — best reasoning available
     "task_worker": "accounts/fireworks/models/deepseek-v4-pro",
     "active_session_deep": "accounts/fireworks/models/deepseek-v4-pro",
     "research": "accounts/fireworks/models/deepseek-v4-pro",
-    # Codegen — Sonnet-class
-    "selfmod_codegen": "kr/claude-sonnet-4.5",
-    "selfmod_propose": "kr/claude-sonnet-4.5",
+    # Codegen — Pro handles code well
+    "selfmod_codegen": "accounts/fireworks/models/deepseek-v4-pro",
+    "selfmod_propose": "accounts/fireworks/models/deepseek-v4-pro",
 }
 
 

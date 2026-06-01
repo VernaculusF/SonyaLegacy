@@ -596,6 +596,7 @@ class InternalProcess:
             # balance drops below threshold. Throttled to 12h. See
             # `_check_provider_health` for thresholds.
             self._check_provider_health()
+            self._check_subagent_completions()
 
             # Stale-intention cleanup: capability_gap intentions older than
             # 30 days are cancelled so they stop holding pending_debt
@@ -920,6 +921,8 @@ class InternalProcess:
             providers_tool = ProvidersTool(substrate)
             from sonya.tools.browser_tool import BrowserTool
             browser_tool = BrowserTool()
+            from sonya.tools.subagent_tool import SubagentTool
+            subagent_tool = SubagentTool(substrate, self._provider)
             import os as _os
             _yolo = _os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
@@ -1663,6 +1666,7 @@ class InternalProcess:
                     "knowledge": knowledge_tool,
                     "providers": providers_tool,
                     "browser": browser_tool,
+                    "subagent": subagent_tool,
                 },
                 initial_thought=initial_thought,
                 initial_user_text=initial_user_text,
@@ -3067,5 +3071,27 @@ class InternalProcess:
                     ))
             except Exception:
                 pass
+        except Exception:
+            pass
+
+    def _check_subagent_completions(self) -> None:
+        """Poll for completed subagent tasks and emit continuity events."""
+        substrate = self._substrate
+        if substrate is None:
+            return
+        try:
+            from sonya.tools.subagent_tool import SubagentTool
+            st = SubagentTool(substrate)
+            completed = st.poll_completed()
+            for sub_id, status, preview in completed:
+                if self._stream:
+                    self._stream.append(ContinuityEvent(
+                        kind="subagent.complete",
+                        payload={
+                            "subagent_id": sub_id,
+                            "status": status,
+                            "result_preview": preview,
+                        },
+                    ))
         except Exception:
             pass
