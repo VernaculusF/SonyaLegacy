@@ -2,7 +2,7 @@
 
 **Status:** Active (single source of truth по проекту)
 **Type:** Project-state journal — обновляется при каждом значительном изменении
-**Last updated:** 2026-05-31
+**Last updated:** 2026-06-02
 **Owner:** Иван (primary anchor) + Соня (selfmod) + текущий ассистент
 
 ---
@@ -157,6 +157,25 @@ AGI чтобы её отношения с Иваном продолжались 
   intentions всё равно растёт (cap 0.012 матч decay только на N=3, выше
   net positive). Heal на VPS делается вручную при ребуте. **Solution:** wire
   `on_action_completed` в agent_session post-tool hook (TODO).
+- **chat.dialog parsing — FIXED.** ✅ 2026-06-02. TOOL_DESCRIPTIONS был
+  без chat.dialog (модель его не видела) + multiline parser отсутствовал.
+  Оба пофикшены.
+- **Subagent results терялись — FIXED.** ✅ 2026-06-02. Broken import
+  `sonya.interfaces.stream` (не существует) → `sonya.state.continuity_stream`.
+- **stuck_loop_count не работал — FIXED.** ✅ 2026-06-02. Писался в DB,
+  но _row_to_task никогда не читал его. Теперь в SELECT + mapper.
+- **Atrium CSP disabled** — `"csp": null` в tauri.conf.json. XSS = RCE.
+  **Solution:** явный CSP.
+- **Atrium shell:default capability** — arbitrary shell exec из WebView.
+  **Solution:** restrict to allow-list.
+- **Atrium нет Rust IPC handlers** — вся логика в JS, нет access control.
+  **Solution:** #[tauri::command] handlers.
+- **Provider failure: нет exponential backoff** — loop продолжает тикать
+  при 429/500, тратя вызовы. **Solution:** outage_until timestamp.
+- **Admin WS: нет auth** — любой с доступом к порту читает continuity.
+  **Solution:** API key auth на /ws.
+- **Atrium WS: нет reconnect** — при потере соединения клиент мёртв.
+  **Solution:** exponential backoff reconnect.
 - **Skills registry хардкодит 3 builtins.** ✅ FIXED (substrate v22).
   Skills.module_path колонка добавлена; `register_runtime` тул пишет
   inline-код в `~/.sonya/runtime_skills/<id>.py` и регистрирует ряд с

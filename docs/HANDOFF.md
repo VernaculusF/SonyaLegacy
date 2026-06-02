@@ -46,38 +46,129 @@
    `_wasAtBottom = true` force при send + `scrollTo({behavior:"smooth"})`
    вместо instant `scrollTop = scrollHeight`.
 
-6. **Hallucination даты.** Минор. Memory recall выдаёт даты из старых
+ 6. **Hallucination даты.** Минор. Memory recall выдаёт даты из старых
     эмбеддингов которые Соня переинтерпретирует. Не блокер.
 
-7. ~~**Decay pipeline не wired.**~~ ✅ DONE 2026-06-02. `apply_decay()` был
-    определён в EpisodicMemory но никогда не вызывался — 12,427 событий
-    с retention_strength=1.0, ноль archived. Теперь вызывается в
-    `_run_consolidation()` перед consolidation (раз в 24h).
+ 7. ~~**Decay pipeline не wired.**~~ ✅ DONE 2026-06-02.
+ 8. ~~**active_session роутился на сломанный haiku-4.5.**~~ ✅ DONE 2026-06-02.
+ 9. ~~**self_inspect.memories слепой к истории.**~~ ✅ DONE 2026-06-02.
+10. ~~**CPU атриума жрёт.**~~ ✅ DONE 2026-05-31.
 
-8. ~~**active_session роутился на сломанный haiku-4.5.**~~ ✅ DONE 2026-06-02.
-    Kiro pool haiku-4.5 возвращает 10-20 токенов на 50K промптов (HTTP 200,
-    функционально пустой ответ). Результат: сессии по 60 шагов с нулём
-    действий. Слот active_session переведён с text-fast на text-deep
-    (fireworks/deepseek-v4-pro).
+--- Найдены в аудите 2026-06-02 ---
 
-9. ~~**self_inspect.memories слепой к истории.**~~ ✅ DONE 2026-06-02.
-    `get_recent(limit=10)` — только 10 последних событий. 4059 майских
-    событий в базе, но все за 78 июньскими. Новый метод
-    `get_by_date_range(since, until)` + параметры `since=/until=` в
-    `self_inspect.memories`. Лимит по умолчанию поднят до 100.
-    + semantic fallback через `memory.recall`.
+11. ~~**chat.dialog отсутствовал в TOOL_DESCRIPTIONS.**~~ ✅ DONE 2026-06-02.
+12. ~~**Многострочный TOOL parser.**~~ ✅ DONE 2026-06-02.
+13. ~~**Broken import subagent_runner.**~~ ✅ DONE 2026-06-02.
+14. ~~**stuck_loop_count не читался.**~~ ✅ DONE 2026-06-02.
+15. ~~**poll_completed реэмитит.**~~ ✅ DONE 2026-06-02.
+16. ~~**schema.sql vs migrations рассинхрон.**~~ ✅ DONE 2026-06-02.
 
-7. ~~**CPU атриума жрёт.**~~ ✅ DONE 2026-05-31. SonyaAvatar.jsx blink
-   loop был на постоянном 60 fps RAF (тикал каждый кадр даже между
-   морганиями). Переписан: setTimeout 3-6s → RAF ~200ms сама анимация →
-   setTimeout. Плюс visibilitychange listener паузит весь цикл когда
-   `document.hidden`. App.jsx + styles.css добавляют
-   `html.app-hidden * { animation-play-state: paused }` чтобы CSS
-   keyframes (s2d-breathe, drift, sway, settle, pulse, typing-bounce,
-   livepulse) тоже стояли при минимизации. Замер: idle CPU ≈ 0.1%
-   на ядро.
+--- Ещё открытые из аудита 2026-06-02 ---
+
+17. **CSP полностью отключён в Atrium** (КРИТИЧЕСКИЙ).
+    `tauri.conf.json:28` — `"csp": null`. WebView может грузить
+    любые скрипты/стили/коннекты. XSS = RCE в Tauri контексте.
+    Fix: поставить явный CSP.
+
+18. **shell:default в Atrium capabilities** (ВЫСОКИЙ).
+    `capabilities/default.json` — `shell:default` даёт WebView
+    право на произвольные shell команды. Без gatekeeping.
+    Fix: ограничить до allow-list, убрать shell:default.
+
+19. **Нет IPC command handlers в Rust** (ВЫСОКИЙ).
+    `src-tauri/src/lib.rs` — 0 зарегистрированных Tauri commands.
+    Вся бизнес-логика в JS WebView. Любой XSS → полный контроль.
+    Fix: перенести чувствительные операции в Rust #[tauri::command].
+
+20. **OutboundGate._check_gates: ivan_status vs in-session** (СРЕДНИЙ).
+    `_check_gates(ignore_quiet=True)` пропускает ivan_status check,
+    что правильно для chat.dialog. НО: в outbound.send_via_tool
+    dedup и quiet gate не применяются к in-session (ignore_quiet=True).
+    Daily cap для in-session = progress_updates_max_per_day (50).
+    Если Соня в одной сессии пошлёт 50+ chat.dialog — не блокируется.
+    Fix: добавить ivan_status gate после ignore_quiet early-return.
+
+21. **subagent_runner: _sub может быть None** (СРЕДНИЙ).
+    `subagent_runner.py:_on_done` — `self._sub.connection.execute`
+    без проверки на None. Если substrate не передан — AttributeError.
+    Fix: guard `if self._sub is None: return`.
+
+22. **internal_loop: нет exponential backoff на provider failure** (СРЕДНИЙ).
+    Когда провайдер падает (HTTP 429/500), loop продолжает тикать
+    с тем же интервалом, тратя вызовы впустую. Нет backoff.
+    Fix: provider_outage_until timestamp, skip LLM ticks до истечения.
+
+23. **EpisodicMemory: embed() не обрабатывает ошибки** (СРЕДНИЙ).
+    `episodic.py` — если embedding API падает, событие записывается
+    с `embedding=NULL`. memory.recall не найдёт его по similarity.
+    Fix: retry с backoff, или mark как "unembedded".
+
+24. **Atrium WebSocket: нет reconnect logic** (СРЕДНИЙ).
+    `api.ts` — при потере WS соединения клиент не реконнектится.
+    Нужно: exponential backoff reconnect + visual indicator.
+    Fix: добавить reconnect loop.
+
+25. **admin/server.py: нет auth на WebSocket** (СРЕДНИЙ).
+    WS endpoint `/ws` не требует авторизации. Любой с доступом
+    к порту может читать весь continuity stream.
+    Fix: добавить API key auth.
+
+26. **Dead code: _ThinkingProvider()** (НИЗКИЙ).
+    ~~Удалён в этой сессии~~ ✅ DONE.
 
 ## Что СДЕЛАНО в этой сессии (chronological)
+
+### 2026-06-02 (вечер) — chat.dialog parsing + 4 critical bugfixes + full audit
+
+Иван: «в твоём коде оказывается много ошибок, так что нужно их поправить».
+Провёл полный аудит проекта (3 параллельных агента). Нашёл и пофиксил:
+
+**1. chat.dialog отсутствовал в TOOL_DESCRIPTIONS (критический)**
+- `agent_session.py:203` — только `chat.tell_ivan` был в списке тулов.
+  Gate говорит "используй chat.dialog", модель его не видит → вызывает
+  env.set вместо ответа → inbox_priority_gate loop (27 шагов, 0 ответов).
+- Fix: добавлен `- chat.dialog [message]` в TOOL_DESCRIPTIONS перед
+  `chat.tell_ivan`.
+
+**2. Многострочный [TOOL: chat.dialog text\n\nmore] не парсился (критический)**
+- `_find_balanced_inline_tool` (agent_session.py:308) прерывается на `\n`.
+  Модель пишет `[TOOL: chat.dialog *текст*\n\nОтвет.]` — закрытая `]`
+  на следующей строке. Все три парсера (inline, soft-block, fallback) падают.
+- Fix: новая `_find_balanced_multiline_tool()` — позволяет `\n` в arg,
+  ограничена `_SOFT_BLOCK_TEXT_TOOLS` (chat.*, mind.*, voice.*).
+
+**3. Broken import в subagent_runner.py (критический)**
+- `subagent_runner.py:175` — `from sonya.interfaces.stream import ContinuityEvent`.
+  Модуля `sonya.interfaces.stream` не существует. Импорт в try/except,
+  `ModuleNotFoundError` проглатывается → subagent completion events
+  **никогда** не пишутся в continuity stream. Результаты субагентов теряются.
+- Fix: `from sonya.state.continuity_stream import ContinuityEvent`.
+
+**4. Dead code в main.py:634**
+- `return _ThinkingProvider()` после `return LLMProvider(store)` —
+  недостижимый код, плюс `_ThinkingProvider` не существует (legacy).
+- Fix: удалён.
+
+**5. stuck_loop_count никогда не читался (высокий)**
+- `tasks/store.py:_row_to_task` не включает `stuck_loop_count` —
+  инкремент пишется в DB, но `_row_to_task` всегда возвращает 0.
+  Stuck-loop detection полностью неработоспособен.
+- Fix: `stuck_loop_count` добавлен во все SELECT запросы + в mapper.
+
+**6. poll_completed реэмитит одни и те же завершённые задачи (высокий)**
+- `subagent_tool.py:poll_completed` — `WHERE status IN ('done','failed')`
+  без фильтрации уже опрошенных → каждый тик возвращает одни и те же 5 задач.
+- Fix: `_already_polled: set[str]` трекинг, только новые ID возвращаются.
+
+**7. schema.sql vs migrations.py рассинхрон (средний)**
+- `schema.sql` создаёт goals без `parent_goal_id` и `completed_at`,
+  а миграция v18 — `CREATE TABLE IF NOT EXISTS` (no-op если таблица
+  уже существует из schema.sql). Fresh install = broken goals.
+- Fix: schema.sql обновлён, migration добавлены `_add_column_if_missing`.
+
+**Полный аудит — ещё найденные косяки (не пофиксены, см. список ниже):**
+
+См. § «ОТКРЫТЫЕ КОСЯКИ» ниже — полный список из аудита.
 
 ### 2026-06-02 — аудит по трём жалобам Сони: routing, memory, decay
 
