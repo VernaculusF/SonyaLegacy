@@ -631,8 +631,6 @@ def _create_thinking_provider(config: AppConfig, substrate: "Substrate"):
     )
     return LLMProvider(store)
 
-    return _ThinkingProvider()
-
 
 def _build_incoming_handler(
     *,

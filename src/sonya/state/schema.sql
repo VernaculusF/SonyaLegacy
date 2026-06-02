@@ -461,8 +461,11 @@ CREATE TABLE IF NOT EXISTS goals (
     description TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'active',      -- active | achieved | abandoned
     priority INTEGER NOT NULL DEFAULT 0,       -- higher = more important
+    parent_goal_id TEXT DEFAULT NULL,
+    completed_at TEXT DEFAULT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (parent_goal_id) REFERENCES goals(goal_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);

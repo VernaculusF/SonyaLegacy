@@ -172,7 +172,7 @@ class SubagentRunner:
         self._save_task(task)
 
         # Emit continuity event
-        from sonya.interfaces.stream import ContinuityEvent
+        from sonya.state.continuity_stream import ContinuityEvent
         try:
             self._sub.connection.execute(
                 "INSERT INTO continuity_events (kind, payload_json) VALUES (?, ?)",

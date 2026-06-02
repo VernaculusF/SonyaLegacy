@@ -27,6 +27,7 @@ class SubagentTool:
         self._sub = substrate
         self._provider = provider or LLMProvider(substrate)
         self._running: dict[str, asyncio.Task] = {}
+        self._already_polled: set[str] = set()
 
     def spawn(self, arg: str) -> str:
         """Spawn a subagent from a JSON task description.
@@ -148,11 +149,17 @@ class SubagentTool:
 
         Called by the main loop in _tick_maintenance. Returns list of
         (subagent_id, status, result_preview) tuples for newly completed tasks.
+        Only returns tasks not previously polled to avoid re-emitting.
         """
         rows = self._sub.connection.execute(
             """SELECT subagent_id, status, substr(result, 1, 300)
                FROM subagent_tasks
                WHERE status IN ('done', 'failed')
-               ORDER BY completed_at DESC LIMIT 5"""
+               ORDER BY completed_at DESC LIMIT 20"""
         ).fetchall()
-        return [(r[0], r[1], r[2] or "") for r in rows]
+        new_results = []
+        for r in rows:
+            if r[0] not in self._already_polled:
+                self._already_polled.add(r[0])
+                new_results.append((r[0], r[1], r[2] or ""))
+        return new_results

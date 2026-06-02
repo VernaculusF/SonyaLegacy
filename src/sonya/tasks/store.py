@@ -64,8 +64,8 @@ class TaskStore:
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
             "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
-            "FROM tasks WHERE task_id = ?",
+"max_sessions, sessions_used, last_session_notes, next_step_hint, urgency, stuck_loop_count "
+"FROM tasks WHERE task_id = ?",
             (task_id,),
         ).fetchone()
         if row is None:
@@ -78,7 +78,7 @@ class TaskStore:
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
                 "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-                "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
+                "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency, stuck_loop_count "
                 "FROM tasks WHERE status = ? ORDER BY updated_at DESC LIMIT ?",
                 (status, limit),
             )
@@ -87,7 +87,7 @@ class TaskStore:
                 "SELECT task_id, title, description, status, principal_id, parent_task_id, "
                 "deadline, plan_steps_json, completed_steps_json, blocker, result, "
                 "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-                "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
+                "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency, stuck_loop_count "
                 "FROM tasks ORDER BY updated_at DESC LIMIT ?",
                 (limit,),
             )
@@ -99,7 +99,7 @@ class TaskStore:
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
             "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency, stuck_loop_count "
             "FROM tasks "
             "WHERE status IN ('pending','in_progress','blocked') ORDER BY updated_at DESC"
         )
@@ -120,7 +120,7 @@ class TaskStore:
             "SELECT task_id, title, description, status, principal_id, parent_task_id, "
             "deadline, plan_steps_json, completed_steps_json, blocker, result, "
             "created_at, updated_at, created_by, scheduled_for, recurring_spec, notify_mode, "
-            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency "
+            "max_sessions, sessions_used, last_session_notes, next_step_hint, urgency, stuck_loop_count "
             "FROM tasks "
             "WHERE status = 'failed' AND updated_at > ? "
             "ORDER BY updated_at DESC LIMIT ?",
@@ -278,4 +278,5 @@ def _row_to_task(row) -> Task:
         last_session_notes=row[19] if len(row) > 19 else "",
         next_step_hint=row[20] if len(row) > 20 else "",
         urgency=row[21] if len(row) > 21 and row[21] else "normal",
+        stuck_loop_count=int(row[22]) if len(row) > 22 and row[22] is not None else 0,
     )

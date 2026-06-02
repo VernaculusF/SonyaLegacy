@@ -279,6 +279,8 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 FOREIGN KEY (parent_goal_id) REFERENCES goals(goal_id)
             );
         """)
+        _add_column_if_missing(conn, "goals", "parent_goal_id", "TEXT DEFAULT NULL")
+        _add_column_if_missing(conn, "goals", "completed_at", "TEXT DEFAULT NULL")
         conn.execute(
             "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
             (18, now),
