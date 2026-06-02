@@ -317,6 +317,36 @@ def _find_balanced_inline_tool(response: str) -> tuple[str, str] | None:
     return None
 
 
+def _find_balanced_multiline_tool(response: str) -> tuple[str, str] | None:
+    """Same as _find_balanced_inline_tool but allows newlines in the arg.
+
+    Only applies to _SOFT_BLOCK_TEXT_TOOLS (chat.*, mind.*, voice.*) to
+    avoid false positives on JSON/code tools. Fixes the case where the
+    model writes `[TOOL: chat.dialog text
+
+    more text]` with closing `]` on a later line.
+    """
+    m = _TOOL_INLINE_START_RE.search(response)
+    if not m:
+        return None
+    tool_name = m.group(1)
+    if tool_name not in _SOFT_BLOCK_TEXT_TOOLS:
+        return None
+    arg_start = m.end()
+    depth = 1
+    i = arg_start
+    while i < len(response):
+        ch = response[i]
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return tool_name, response[arg_start:i].strip()
+        i += 1
+    return None
+
+
 def _extract_tool_call(response: str) -> tuple[str, str] | None:
     """Return (tool_name, arg) if response contains a tool invocation.
 
@@ -335,6 +365,13 @@ def _extract_tool_call(response: str) -> tuple[str, str] | None:
         # block form without a fence. Fall through to soft-block to
         # recover the text on following lines.
         if arg or tool_name not in _SOFT_BLOCK_TEXT_TOOLS:
+            return tool_name, arg
+    # Multiline balanced: handles `[TOOL: chat.dialog text\n\nmore]`
+    # where closing `]` is on a later line (inline parser aborts on \n).
+    balanced_ml = _find_balanced_multiline_tool(response)
+    if balanced_ml is not None:
+        tool_name, arg = balanced_ml
+        if arg:
             return tool_name, arg
     # Soft-block recovery: `[TOOL: name]\n<text>` for plain-text tools.
     m = _TOOL_SOFT_BLOCK_RE.search(response)
