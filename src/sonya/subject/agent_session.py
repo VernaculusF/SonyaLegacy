@@ -200,7 +200,8 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 - subagent.list — список всех субагентов (pending/running/done/failed)
 - subagent.result [subagent_id] — забрать результат завершённого субагента
 
-- chat.tell_ivan [message] — send a message to Ivan in TG (throttled, max 5/day). Use during long tasks for progress updates.
+- chat.dialog [message] — отправить сообщение Ивану (TG + Atrium). Основной канал диалога: ответы, отчёты, прогресс. Не дросселируется в активной сессии — используй для каждого ответа ему.
+- chat.tell_ivan [message] — алиас на chat.dialog. То же самое.
 
 ## How to finish
 
