@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sonya.providers.llm_provider import LLMProvider
+from sonya.providers.keystore import KeyStore
 from sonya.tools.web_tool import WebTool
 from sonya.tools.browser_tool import BrowserTool
 from sonya.tools.code_tool import CodeTool
@@ -71,7 +72,7 @@ class SubagentRunner:
 
     def __init__(self, substrate: Substrate, llm_provider: LLMProvider | None = None):
         self._sub = substrate
-        self._provider = llm_provider or LLMProvider(substrate)
+        self._provider = llm_provider or LLMProvider(KeyStore(substrate))
 
     async def run(self, task: SubagentTask) -> str:
         """Execute a subagent task and return the result string."""
@@ -217,6 +218,7 @@ class SubagentRunner:
         try:
             result = fn(arg)
             if asyncio.iscoroutine(result):
+                result.close()
                 # Run sync tools only for now
                 return f"[SKIP] async tool '{name}' not supported in subagent (use sync)"
             return str(result)

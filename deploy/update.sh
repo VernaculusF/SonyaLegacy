@@ -52,9 +52,12 @@ echo "=> Ensuring substrate directory exists with correct permissions..."
 mkdir -p "$SUBSTRATE_DIR"
 chmod 755 "$SUBSTRATE_DIR"
 # Ensure substrate file is writable by current user (in case git reset touched it)
-if [ -f "$SUBSTRATE_DIR/sonya_substrate.db" ]; then
-    chmod 644 "$SUBSTRATE_DIR/sonya_substrate.db"
-fi
+for f in "$SUBSTRATE_DIR"/sonya_substrate.db "$SUBSTRATE_DIR"/sonya_substrate.db-wal "$SUBSTRATE_DIR"/sonya_substrate.db-shm; do
+    if [ -e "$f" ]; then
+        chown "$(id -un):$(id -gn)" "$f" 2>/dev/null || true
+        chmod u+rw,g+rw "$f"
+    fi
+done
 
 echo "=> Cleaning stale lock files..."
 rm -f "$SUBSTRATE_DIR"/*.lock

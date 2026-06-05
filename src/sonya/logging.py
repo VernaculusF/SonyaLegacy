@@ -14,6 +14,43 @@ _RESERVED_LOG_RECORD_ATTRS = {
 }
 
 
+class SafeExtraLogger(logging.Logger):
+    """Logger that prevents `extra` collisions with LogRecord internals.
+
+    Python raises KeyError before our formatter runs if a caller passes
+    extra={"module": ...} or any other reserved LogRecord attribute. Runtime
+    plugins/selfmods can still do that accidentally, so sanitize at logger
+    entry instead of trusting every call site.
+    """
+
+    def makeRecord(  # noqa: N802 - logging API
+        self,
+        name: str,
+        level: int,
+        fn: str,
+        lno: int,
+        msg: object,
+        args: object,
+        exc_info: object,
+        func: str | None = None,
+        extra: dict[str, Any] | None = None,
+        sinfo: str | None = None,
+    ) -> logging.LogRecord:
+        if isinstance(extra, dict):
+            clean: dict[str, Any] = {}
+            for key, value in extra.items():
+                if key in _RESERVED_LOG_RECORD_ATTRS or key.startswith("_"):
+                    clean[f"extra_{key.lstrip('_')}"] = value
+                else:
+                    clean[key] = value
+            extra = clean
+        return super().makeRecord(name, level, fn, lno, msg, args, exc_info, func, extra, sinfo)
+
+
+if not issubclass(logging.getLoggerClass(), SafeExtraLogger):
+    logging.setLoggerClass(SafeExtraLogger)
+
+
 class JsonFormatter(logging.Formatter):
     """Render LogRecord as a single-line JSON object."""
 
@@ -36,6 +73,8 @@ class JsonFormatter(logging.Formatter):
 def setup_logging(level: str = "INFO") -> None:
     """Configure root sonya logger with a single JSON handler."""
     root = logging.getLogger("sonya")
+    if not isinstance(root, SafeExtraLogger):
+        root.__class__ = SafeExtraLogger
     root.setLevel(level)
     for handler in list(root.handlers):
         root.removeHandler(handler)
@@ -49,4 +88,7 @@ def get_logger(component: str) -> logging.Logger:
     """Return a namespaced logger under sonya.*."""
     if not component.startswith("sonya"):
         component = f"sonya.{component}"
-    return logging.getLogger(component)
+    logger = logging.getLogger(component)
+    if not isinstance(logger, SafeExtraLogger):
+        logger.__class__ = SafeExtraLogger
+    return logger

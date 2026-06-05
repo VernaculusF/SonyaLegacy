@@ -256,16 +256,6 @@ class LLMProvider:
                     break
 
             if key is None:
-                for prov in fallback_chain:
-                    key = await self._store.acquire(prov, slot=preferred_slot)
-                    if key is not None:
-                        picked_provider = prov
-                        _log.info(
-                            "provider_slot_relaxed_fallback",
-                            extra={"primary": provider, "picked": prov, "purpose": purpose, "slot": preferred_slot},
-                        )
-                        break
-            if key is None:
                 if attempt == 0:
                     raise NoKeysAvailable(
                         f"no active keys for provider '{provider}' or any fallback. "
@@ -382,19 +372,28 @@ class LLMProvider:
             try:
                 resp.raise_for_status()
             except Exception as err:
-                _log.warning("key_http_error", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
+                status = resp.status_code
+                if status == 402 or "suspended" in resp.text.lower() or "credits" in resp.text.lower():
+                    failure_kind = "auth_error"
+                elif status in (400, 404, 412):
+                    failure_kind = "config_error"
+                else:
+                    failure_kind = "other"
+                _log.warning("key_http_error", extra={"key_id": key.key_id, "status": status, "kind": failure_kind, "body": resp.text[:200]})
 
                 _record_call(
                     self._store, key_id=key.key_id, provider=picked_provider, model=model,
                     purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                    latency_ms=latency_ms, status="error", http_status=resp.status_code,
+                    latency_ms=latency_ms, status=failure_kind, http_status=status,
                     error=resp.text[:300],
                 )
                 await self._store.report_failure(
-                    key.key_id, kind="other",
-                    error_message=f"HTTP {resp.status_code}: {resp.text[:200]}",
+                    key.key_id, kind=failure_kind,
+                    error_message=f"HTTP {status}: {resp.text[:200]}",
                 )
                 last_err = err
+                if failure_kind == "config_error":
+                    break
                 continue
 
             text = resp.text.strip()

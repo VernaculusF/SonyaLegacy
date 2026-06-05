@@ -698,6 +698,8 @@ def _build_incoming_handler(
                         channel = registry.get("telegram")
                         if channel is not None and hasattr(channel, "_client") and channel._client is not None:
                             client = channel._client
+                            if hasattr(client, "is_connected") and not client.is_connected():
+                                raise ConnectionError("telegram client disconnected")
                             my_id = channel._my_id
                             recent = await client.get_messages(int(msg.chat_id), limit=12)
                             for m in reversed(recent):

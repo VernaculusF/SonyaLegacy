@@ -7,6 +7,7 @@ Opens on http://localhost:8877
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -29,6 +30,22 @@ except ImportError:
 
 # Simple auth
 _ADMIN_PASSWORD = None  # Set via env SONYA_ADMIN_PASSWORD
+
+
+async def _json_body(request: web.Request) -> dict[str, Any]:
+    try:
+        data = await request.json()
+    except json.JSONDecodeError as err:
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "invalid_json", "detail": str(err)}, ensure_ascii=False),
+            content_type="application/json",
+        ) from err
+    if not isinstance(data, dict):
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "json_object_required"}, ensure_ascii=False),
+            content_type="application/json",
+        )
+    return data
 
 
 @middleware
@@ -233,7 +250,7 @@ async def api_memory(request: web.Request) -> web.Response:
 
 async def api_chat_send(request: web.Request) -> web.Response:
     config = request.app["config"]
-    data = await request.json()
+    data = await _json_body(request)
     message = data.get("message", "")
     if not message:
         return web.json_response({"response": ""})
@@ -894,7 +911,7 @@ async def api_providers_settings(request: web.Request) -> web.Response:
     """
     from sonya.providers import KeyStore
     config = request.app["config"]
-    data = await request.json()
+    data = await _json_body(request)
     sub = _get_substrate_writable(config)
     try:
         store = KeyStore(sub)
@@ -919,7 +936,7 @@ async def api_providers_keys_add(request: web.Request) -> web.Response:
     """Add a new key. Body: {provider, name, api_key, base_url?, model?, priority?, slot?}"""
     from sonya.providers import KeyStore
     config = request.app["config"]
-    data = await request.json()
+    data = await _json_body(request)
     required = ("provider", "name", "api_key")
     for f in required:
         if not str(data.get(f, "")).strip():
@@ -968,7 +985,7 @@ async def api_providers_keys_update(request: web.Request) -> web.Response:
     from sonya.providers import KeyStore
     config = request.app["config"]
     key_id = request.match_info["key_id"]
-    data = await request.json()
+    data = await _json_body(request)
     sub = _get_substrate_writable(config)
     try:
         store = KeyStore(sub)
@@ -1007,7 +1024,7 @@ async def api_providers_keys_status(request: web.Request) -> web.Response:
     from sonya.providers import KeyStatus, KeyStore
     config = request.app["config"]
     key_id = request.match_info["key_id"]
-    data = await request.json()
+    data = await _json_body(request)
     raw = (data.get("status") or "").strip().lower()
     if raw not in {"active", "disabled", "banned"}:
         return web.json_response({"error": "status must be active/disabled/banned"}, status=400)
@@ -1572,7 +1589,7 @@ async def api_operator_trigger_active(request: web.Request) -> web.Response:
     """
     config = request.app["config"]
     try:
-        data = await request.json()
+        data = await _json_body(request)
     except Exception:
         data = {}
     reason = str(data.get("reason") or "operator_panel").strip()[:200]
@@ -1603,7 +1620,7 @@ async def api_operator_inject_message(request: web.Request) -> web.Response:
     """
     config = request.app["config"]
     try:
-        data = await request.json()
+        data = await _json_body(request)
     except Exception:
         data = {}
     text = str(data.get("text") or "").strip()
@@ -1667,7 +1684,7 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
     config = request.app["config"]
     task_id = request.match_info["task_id"]
     try:
-        data = await request.json()
+        data = await _json_body(request)
     except Exception:
         data = {}
     action = str(data.get("action") or "").strip().lower()
@@ -2002,7 +2019,7 @@ async def atrium_nudge(request: web.Request) -> web.Response:
     if admin_password and token != admin_password:
         return _atrium_cors(web.json_response({"error": "auth"}, status=401))
     try:
-        data = await request.json()
+        data = await _json_body(request)
     except Exception:
         data = {}
     session_id = str(data.get("session_id") or "").strip()
@@ -2078,7 +2095,7 @@ async def atrium_dialog(request: web.Request) -> web.Response:
     if admin_password and token != admin_password:
         return _atrium_cors(web.json_response({"error": "auth"}, status=401))
     try:
-        data = await request.json()
+        data = await _json_body(request)
     except Exception:
         data = {}
     text = str(data.get("text") or "").strip()
@@ -2457,5 +2474,7 @@ def create_app() -> web.Application:
 
 def main() -> None:
     app = create_app()
-    print("Sonya Admin: http://0.0.0.0:8877")
-    web.run_app(app, host="0.0.0.0", port=8877)
+    host = os.environ.get("SONYA_ADMIN_HOST", "0.0.0.0")
+    port = int(os.environ.get("SONYA_ADMIN_PORT", "8877"))
+    print(f"Sonya Admin: http://{host}:{port}")
+    web.run_app(app, host=host, port=port)

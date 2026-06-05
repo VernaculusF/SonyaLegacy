@@ -82,16 +82,16 @@ def _decode_ddg_redirect(href: str) -> str:
     return href
 
 
-def _run_async(coro):
+def _run_async(factory):
     """Run an async coroutine from sync code, handling 'already in event loop'.
 
     Tool dispatch sits inside an async ReAct loop, so when WebTool.search is
     called we are always inside a running event loop. asyncio.run() refuses
     to run nested loops. We use a one-shot thread with its own loop.
 
-    The coroutine is constructed by the caller (e.g. self._do_search(q)).
-    Importantly, we always submit the SAME coroutine — never recreate it
-    after the first attempt — to avoid 'coroutine was never awaited' warnings.
+    The coroutine is constructed inside the event loop that will consume it.
+    Creating it earlier can leak "coroutine was never awaited" warnings if an
+    exception happens before the runner gets to await it.
     """
     import concurrent.futures
     try:
@@ -99,12 +99,12 @@ def _run_async(coro):
         asyncio.get_running_loop()
     except RuntimeError:
         # No event loop in this thread — safe to use asyncio.run directly.
-        return asyncio.run(coro)
+        return asyncio.run(factory())
     # Running loop exists. Run coro on a separate thread+loop.
     def _runner():
         loop = asyncio.new_event_loop()
         try:
-            return loop.run_until_complete(coro)
+            return loop.run_until_complete(factory())
         finally:
             loop.close()
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -124,7 +124,7 @@ class WebTool:
         if not query:
             return "[ERROR] web.search needs a query"
         try:
-            return _run_async(self._do_search(query))
+            return _run_async(lambda: self._do_search(query))
         except Exception as err:
             return f"[ERROR] web.search failed: {type(err).__name__}: {err}"
 
@@ -285,7 +285,7 @@ class WebTool:
         if not (url.startswith("http://") or url.startswith("https://")):
             return "[ERROR] web.fetch needs http(s):// URL"
         try:
-            return _run_async(self._do_fetch(url))
+            return _run_async(lambda: self._do_fetch(url))
         except Exception as err:
             return f"[ERROR] web.fetch failed: {type(err).__name__}: {err}"
 

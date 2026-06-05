@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 from pathlib import Path
 
 
@@ -45,6 +46,11 @@ class CodeTool:
             # Remove trailing fence
             if code.rstrip().endswith("```"):
                 code = code.rstrip()[:-3]
+        code = textwrap.dedent(code).strip()
+        try:
+            compile(code, "<code.exec>", "exec")
+        except SyntaxError as err:
+            return f"[ERROR] SyntaxError: {err.msg} (line {err.lineno})"
 
         with tempfile.TemporaryDirectory(prefix="sonya-code-") as tmp:
             script_path = Path(tmp) / "script.py"

@@ -2,7 +2,7 @@
 
 **Status:** Active (перезаписывается при каждой остановке разработки)
 **Type:** Session-handoff журнал — последняя сессия → следующая сессия
-**Last updated:** 2026-06-02
+**Last updated:** 2026-06-05
 **Назначение:** новый ИИ-разработчик с нулевым контекстом читает STATE.md
 + этот файл и продолжает работу с того места где остановились.
 
@@ -64,6 +64,49 @@
 16. ~~**schema.sql vs migrations рассинхрон.**~~ ✅ DONE 2026-06-02.
 
 --- Ещё открытые из аудита 2026-06-02 ---
+
+--- VPS log audit fixes 2026-06-05 ---
+
+17a. ~~**runtime_start_failed: LogRecord module collision.**~~ ✅ DONE 2026-06-05.
+     `logging` падал до formatter при `extra={"module": ...}`. Добавлен
+     `SafeExtraLogger`, который переименовывает reserved поля в `extra_*`.
+
+17b. ~~**runtime_start_failed: provider_keys.slot drift на stamped DB.**~~ ✅ DONE 2026-06-05.
+     Добавлен `ensure_critical_schema()` на каждый writable `Substrate.open()`:
+     idempotent repair для `provider_keys.slot` и legacy vision columns даже если
+     `schema_version` уже current и forward migrations не запускаются.
+
+17c. ~~**key_http_error долбил мёртвые/config-broken ключи.**~~ ✅ DONE 2026-06-05.
+     Удалён stale fallback `acquire(..., slot=preferred_slot)`. `400/404/412`
+     теперь classified как `config_error` с 1h cooldown и без прожигания всех
+     ключей; `402`/suspended/credits classified как auth/depleted-style ban.
+
+17d. ~~**readonly database после deploy/restart.**~~ ✅ DONE 2026-06-05.
+     `deploy/update.sh` теперь чинит ownership и `u+rw,g+rw` для
+     `sonya_substrate.db`, `-wal`, `-shm`, а не только `chmod 644` main db.
+
+17e. ~~**admin address already in use / hardcoded port.**~~ ✅ DONE 2026-06-05.
+     `sonya.admin.server.main()` читает `SONYA_ADMIN_HOST`/`SONYA_ADMIN_PORT`.
+     Это не убивает второй процесс само по себе, но убирает hardcode и даёт
+     systemd/operator способ развести инстансы без патча кода.
+
+17f. ~~**admin JSONDecodeError из request.json().**~~ ✅ DONE 2026-06-05.
+     Добавлен `_json_body()` helper: invalid/non-object JSON возвращает 400 JSON,
+     а не 500 traceback. Все direct POST `request.json()` заменены.
+
+17g. ~~**IndentationError в code.exec.**~~ ✅ DONE 2026-06-05.
+     `CodeTool.exec_python()` теперь `textwrap.dedent()` + pre-`compile()` и
+     возвращает краткий SyntaxError/IndentationError без subprocess traceback.
+
+17h. ~~**WebTool coroutine never awaited.**~~ ✅ DONE 2026-06-05.
+     `_run_async()` принимает coroutine factory и создаёт coroutine внутри
+     consuming loop; subagent dispatcher закрывает coroutine, если async tool
+     всё же вернулся.
+
+17i. ~~**TG disconnect/history noise.**~~ ✅ DONE 2026-06-05.
+     `AuthKeyDuplicatedError` логируется как fatal session invalidation с явным
+     operator action; typing/send catches расширены до `OSError/RPCError`; history
+     fetch проверяет `client.is_connected()`.
 
 17. **CSP полностью отключён в Atrium** (КРИТИЧЕСКИЙ).
     `tauri.conf.json:28` — `"csp": null`. WebView может грузить

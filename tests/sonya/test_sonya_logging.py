@@ -85,3 +85,15 @@ def test_get_logger_namespaces_under_sonya() -> None:
     assert log.name == "sonya.foo"
     log2 = get_logger("sonya.bar")
     assert log2.name == "sonya.bar"
+
+
+def test_logger_sanitizes_reserved_extra_fields() -> None:
+    _, buffer = _capture_logger_output("INFO")
+    log = get_logger("sonya.reserved")
+
+    log.info("reserved", extra={"module": "plugin_x", "event": "boot"})
+
+    last = _parse_lines(buffer)[-1]
+    assert last["msg"] == "reserved"
+    assert last["event"] == "boot"
+    assert last["extra_module"] == "plugin_x"

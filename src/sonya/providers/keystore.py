@@ -369,6 +369,9 @@ class KeyStore:
                 new_status = KeyStatus.COOLDOWN
             elif kind == "auth_error":
                 new_status = KeyStatus.BANNED
+            elif kind == "config_error":
+                cooldown = 3600
+                new_status = KeyStatus.COOLDOWN
             else:
                 cooldown = 15
                 new_status = KeyStatus.COOLDOWN

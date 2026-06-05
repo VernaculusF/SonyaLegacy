@@ -26,6 +26,20 @@ def apply_initial_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def ensure_critical_schema(conn: sqlite3.Connection) -> None:
+    """Repair columns that current runtime assumes even on stamped DBs.
+
+    Production once reached the current schema_version while missing columns
+    that were added by ALTER migrations. A stamped DB skips forward migrations,
+    so these idempotent guards run on every writable open.
+    """
+    _add_column_if_missing(conn, "provider_keys", "slot", "TEXT NOT NULL DEFAULT 'text'")
+    _add_column_if_missing(conn, "provider_settings", "vision_provider", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "provider_settings", "vision_model", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "provider_settings", "vision_base_url", "TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
 def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
     """Apply forward migrations from `current_version` to CURRENT_VERSION.
 

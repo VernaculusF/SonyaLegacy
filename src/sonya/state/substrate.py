@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from sonya.state.migrations import apply_initial_schema, migrate_to_current, read_current_version
+from sonya.state.migrations import apply_initial_schema, ensure_critical_schema, migrate_to_current, read_current_version
 
 
 class SubstrateVersionError(RuntimeError):
@@ -46,6 +46,8 @@ class Substrate:
             version = read_current_version(conn)
         elif version > 0 and version < cls.WRITABLE_VERSION and not read_only:
             version = migrate_to_current(conn, version)
+        if not read_only:
+            ensure_critical_schema(conn)
         if version not in cls.READABLE_VERSIONS:
             conn.close()
             raise SubstrateVersionError(

@@ -68,6 +68,7 @@ class TelegramChannel:
             return
         try:
             from telethon import TelegramClient, events
+            from telethon.errors import AuthKeyDuplicatedError, RPCError
             from telethon.tl.types import (
                 MessageMediaPhoto,
                 MessageMediaDocument,
@@ -82,8 +83,16 @@ class TelegramChannel:
         self._deps = deps
         self._client = TelegramClient(self._session_path, self._api_id, self._api_hash)
 
-        await self._client.connect()
-        if not await self._client.is_user_authorized():
+        try:
+            await self._client.connect()
+            authorized = await self._client.is_user_authorized()
+        except AuthKeyDuplicatedError as err:
+            _log.error(
+                "tg_session_invalidated",
+                extra={"error": str(err), "action": "stop duplicate Telegram session and re-login"},
+            )
+            raise RuntimeError("Telegram session invalidated by simultaneous use from another IP") from err
+        if not authorized:
             _log.error("tg_not_authorized")
             raise RuntimeError("Telegram session not authorized")
         _log.info("tg_authorized")
@@ -277,7 +286,7 @@ class TelegramChannel:
                     try:
                         async with client.action(event.chat_id, "typing"):
                             response = await deps.on_incoming(msg)
-                    except ConnectionError:
+                    except (ConnectionError, OSError, RPCError):
                         response = await deps.on_incoming(msg)
                     if response and response.text:
                         now = time.time()
@@ -306,7 +315,7 @@ class TelegramChannel:
                                         client, event.chat_id, emoji, self._sticker_store,
                                     )
                             last_msg_time[event.chat_id] = now
-                        except ConnectionError as conn_err:
+                        except (ConnectionError, OSError, RPCError) as conn_err:
                             _log.warning(
                                 "tg_send_skipped_disconnected",
                                 extra={"chat_id": str(event.chat_id), "error": str(conn_err)},
@@ -318,7 +327,7 @@ class TelegramChannel:
                 # without ever receiving a reply (the response was discarded
                 # here anyway). That's a budget-DoS vector. Tracking already
                 # happened via deps.notify_external_event() above.
-            except ConnectionError as err:
+            except (ConnectionError, OSError, RPCError) as err:
                 _log.warning(
                     "tg_handler_disconnected",
                     extra={"error": str(err)},
@@ -374,8 +383,7 @@ class TelegramChannel:
         if msg_channel != "dialog":
             _log.debug(
                 "tg_skip_channel",
-                channel=msg_channel,
-                preview=(message.text or "")[:80],
+                extra={"channel": msg_channel, "preview": (message.text or "")[:80]},
             )
             return  # silently drop, не считаем в outbound metrics
         if not self._running or self._client is None:
