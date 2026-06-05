@@ -17,6 +17,7 @@ from sonya.state.substrate import Substrate
 from sonya.subject.subagent_runner import SubagentTask, SubagentRunner
 from sonya.providers.llm_provider import LLMProvider
 from sonya.providers.keystore import KeyStore
+from sonya.tools.subagent_model_picker import pick_subagent_model
 
 _log = logging.getLogger("sonya.subagent")
 
@@ -51,12 +52,15 @@ class SubagentTool:
             return "[ERROR] subagent.spawn: task is required"
 
         provider = str(data.get("provider", "")).strip()
-        if not provider:
-            # Default to active provider
-            settings = KeyStore(self._sub).get_settings()
-            provider = settings.active_provider
-
         model = str(data.get("model", "")).strip()
+        pick = pick_subagent_model(
+            task_text,
+            KeyStore(self._sub),
+            requested_provider=provider,
+            requested_model=model,
+        )
+        provider = pick.provider
+        model = pick.model
         max_steps = min(int(data.get("max_steps", 6) or 6), 12)
 
         task = SubagentTask(
@@ -79,8 +83,14 @@ class SubagentTool:
         self._sub.connection.commit()
 
         # Launch background task
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._sub.connection.execute("DELETE FROM subagent_tasks WHERE subagent_id = ?", (task.subagent_id,))
+            self._sub.connection.commit()
+            return "[ERROR] subagent.spawn requires a running event loop"
         runner = SubagentRunner(self._sub, self._provider)
-        t = asyncio.create_task(runner.run(task))
+        t = loop.create_task(runner.run(task))
         self._running[task.subagent_id] = t
 
         return (
@@ -88,6 +98,7 @@ class SubagentTool:
             f"  task: {task_text[:100]}...\n"
             f"  provider: {task.provider}\n"
             f"  model: {task.model or '(provider default)'}\n"
+            f"  selection: {pick.reason}\n"
             f"  max_steps: {task.max_steps}\n"
             f"  Check result with: subagent.result {task.subagent_id}"
         )

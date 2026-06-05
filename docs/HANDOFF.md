@@ -80,6 +80,12 @@
      Таблица `subagent_tasks` добавлена в `schema.sql` и в
      `ensure_critical_schema()` для stamped-current DB.
 
+17l. ~~**Subagent provider/model choice был в docs, но не в runtime.**~~ ✅ DONE 2026-06-05.
+     Добавлен deterministic picker `subagent_model_picker.py`: explicit
+     provider/model respected, иначе система выбирает лучший доступный
+     backend по task traits и keystore. По умолчанию free-tier first,
+     premium only for critical/hard tasks.
+
 17a. ~~**runtime_start_failed: LogRecord module collision.**~~ ✅ DONE 2026-06-05.
      `logging` падал до formatter при `extra={"module": ...}`. Добавлен
      `SafeExtraLogger`, который переименовывает reserved поля в `extra_*`.

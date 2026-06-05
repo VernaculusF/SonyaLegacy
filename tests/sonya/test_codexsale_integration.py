@@ -97,3 +97,13 @@ async def test_subagent_runner_passes_explicit_provider(tmp_path) -> None:
         assert fake.calls[0]["_model"] == "gpt-5.4"
     finally:
         sub.close()
+
+
+def test_subagent_spawn_returns_error_without_running_loop(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "codex.db")
+    try:
+        tool = SubagentTool(sub, provider=_CaptureProvider())
+        out = tool.spawn('{"task":"check this","provider":"codexsale","model":"gpt-5.4-mini"}')
+        assert "running event loop" in out
+    finally:
+        sub.close()

@@ -193,10 +193,11 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
   Используй для JS-render, форм, login, captcha (через 2captcha-style), скриншотов, выполнения JS.
   Куки сохраняются между сессиями — логинись один раз.
 
-- subagent.spawn — JSON: {"task": "...", "provider?": "fireworks|kr|openrouter", "model?": "model/name", "max_steps?": 8}
+- subagent.spawn — JSON: {"task": "...", "provider?": "fireworks|kr|openrouter|codexsale", "model?": "model/name", "max_steps?": 8}
   Создаёт субагента который выполнит задачу в фоне. Субагент имеет доступ к web, code, memory, self_inspect.
   Это НЕ замена твоей работы — используй для параллельных задач (сбор инфы, проверка фактов, research) пока сама занята другим.
-  Субагент работает на указанной модели (если не указана — твой active_provider). Результат забираешь через subagent.result.
+  Если provider/model не указаны, система сама выбирает лучший доступный инструмент по задаче и доступным ключам.
+  Явно указывай provider/model только когда нужен конкретный backend. Результат забираешь через subagent.result.
 - subagent.list — список всех субагентов (pending/running/done/failed)
 - subagent.result [subagent_id] — забрать результат завершённого субагента
 

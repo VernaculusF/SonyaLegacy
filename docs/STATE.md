@@ -186,6 +186,11 @@ AGI чтобы её отношения с Иваном продолжались 
   provider для субагентов (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`) через
   explicit `provider` + `model` path. `gpt-image-2` и `gpt-4o-transcribe`
   пока остаются planned special workers, не частью текущего text-only loop.
+- **Subagent auto-pick model router — FIXED.** ✅ 2026-06-05.
+  `subagent.spawn` теперь умеет сам выбирать `provider/model` по тексту
+  задачи и реально доступным ключам в keystore. Policy deterministic:
+  сначала free-tier модели (`openrouter`/`fireworks`) если хватает, premium
+  (`codexsale`/`kr`) только на critical/hard cases или при отсутствии free.
 - **Atrium CSP disabled** — `"csp": null` в tauri.conf.json. XSS = RCE.
   **Solution:** явный CSP.
 - **Atrium shell:default capability** — arbitrary shell exec из WebView.
