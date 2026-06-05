@@ -77,6 +77,7 @@ class SubagentRunner:
     async def run(self, task: SubagentTask) -> str:
         """Execute a subagent task and return the result string."""
         task.status = "running"
+        self._current_task = task
         self._save_task(task)
 
         # Minimal tool set — read-only, observation, safe execution
@@ -216,15 +217,35 @@ class SubagentRunner:
         fn = tools.get(name)
         if fn is None:
             return f"[SKIP] tool '{name}' not available to subagents"
+        _t0 = time.monotonic()
         try:
             result = fn(arg)
             if asyncio.iscoroutine(result):
                 result.close()
-                # Run sync tools only for now
                 return f"[SKIP] async tool '{name}' not supported in subagent (use sync)"
-            return str(result)
+            observation = str(result)
         except Exception as e:
-            return f"[ERROR] {type(e).__name__}: {e}"
+            observation = f"[ERROR] {type(e).__name__}: {e}"
+
+        elapsed_ms = int((time.monotonic() - _t0) * 1000)
+        try:
+            from sonya.memory.tool_experience import ToolExperience, classify_outcome, extract_tool_tags
+            tx = ToolExperience(self._sub)
+            tx.record(
+                tool_name=name,
+                tool_arg_summary=(arg or "")[:200],
+                outcome=classify_outcome(observation),
+                outcome_detail=observation[:500],
+                provider=self._current_task.provider if hasattr(self, "_current_task") else "",
+                model=self._current_task.model if hasattr(self, "_current_task") else "",
+                latency_ms=elapsed_ms,
+                tags=extract_tool_tags(name, arg, observation) + ("subagent_worker",),
+                session_type="subagent",
+            )
+        except Exception:
+            pass
+
+        return observation
 
     def _save_task(self, task: SubagentTask) -> None:
         """Persist subagent task to substrate."""

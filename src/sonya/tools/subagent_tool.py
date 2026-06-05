@@ -17,7 +17,7 @@ from sonya.state.substrate import Substrate
 from sonya.subject.subagent_runner import SubagentTask, SubagentRunner
 from sonya.providers.llm_provider import LLMProvider
 from sonya.providers.keystore import KeyStore
-from sonya.tools.subagent_model_picker import pick_subagent_model
+from sonya.tools.subagent_model_picker import is_text_loop_model, pick_subagent_model
 
 _log = logging.getLogger("sonya.subagent")
 
@@ -58,9 +58,15 @@ class SubagentTool:
             KeyStore(self._sub),
             requested_provider=provider,
             requested_model=model,
+            substrate=self._sub,
         )
         provider = pick.provider
         model = pick.model
+        if model and not is_text_loop_model(model, provider):
+            return (
+                "[ERROR] subagent.spawn only supports text-loop models; "
+                f"{provider}/{model} requires a special worker"
+            )
         max_steps = min(int(data.get("max_steps", 6) or 6), 12)
 
         task = SubagentTask(

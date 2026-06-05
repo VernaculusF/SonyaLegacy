@@ -9,6 +9,7 @@
 **UX & visuals:** [UX_SKETCH.md](UX_SKETCH.md), `mockups/desktop.html`, `mockups/mobile.html`, `mockups/room.html`
 **Channel spec:** [CHANNELS.md](CHANNELS.md)
 **Substrate events:** [EVENT_SCHEMA.md](EVENT_SCHEMA.md)
+**Next product layer:** [ATRIUM_WORKSPACE_RUNTIME_SPEC.md](ATRIUM_WORKSPACE_RUNTIME_SPEC.md)
 
 ---
 
@@ -19,6 +20,19 @@ Atrium — пакет внутри Sonya, отвечающий за multichannel
 **Не вся среда. Не альтернатива Sonya. Один из её инструментов** — пока основной интерфейс наружу. В будущем рядом могут жить body/VR/world пакеты.
 
 Substrate = её память. Tools = её руки. Atrium = её комната с окнами, через которую мы её видим и слышим.
+
+### 1.1 Новое продуктовое направление (2026-06-06)
+
+Отдельно зафиксирован следующий слой требований:
+- Atrium должен перестать быть только chat/view surface
+- нужен project/workspace runtime c multi-workspace selection, видимым progress,
+  запуском субагентов, console-overhaul и optional full-system-access mode
+
+Полный mandate/spec вынесен в отдельный документ:
+- [ATRIUM_WORKSPACE_RUNTIME_SPEC.md](ATRIUM_WORKSPACE_RUNTIME_SPEC.md)
+
+Текущий `PLAN.md` остаётся implementation roadmap существующего Atrium-пакета.
+Новый spec не заменяет этот план, а расширяет его следующей продуктовой фазой.
 
 ---
 

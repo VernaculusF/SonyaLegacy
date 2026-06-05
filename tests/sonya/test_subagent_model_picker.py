@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sonya.providers.keystore import KeyStore
 from sonya.state.substrate import Substrate
-from sonya.tools.subagent_model_picker import pick_subagent_model
+from sonya.tools.subagent_model_picker import is_text_loop_model, pick_subagent_model
 
 
 def _seed_key(store: KeyStore, provider: str, *, model: str = "") -> None:
@@ -76,3 +76,9 @@ def test_picker_respects_explicit_provider_and_auto_selects_model_within_it(tmp_
         assert pick.model == "gpt-5.4-mini"
     finally:
         sub.close()
+
+
+def test_special_worker_models_are_not_text_loop_capable() -> None:
+    assert is_text_loop_model("gpt-5.4", "codexsale") is True
+    assert is_text_loop_model("gpt-image-2", "codexsale") is False
+    assert is_text_loop_model("gpt-4o-transcribe", "codexsale") is False

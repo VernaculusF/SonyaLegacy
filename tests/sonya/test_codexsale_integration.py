@@ -107,3 +107,16 @@ def test_subagent_spawn_returns_error_without_running_loop(tmp_path) -> None:
         assert "running event loop" in out
     finally:
         sub.close()
+
+
+def test_subagent_spawn_rejects_special_worker_model(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "codex.db")
+    try:
+        tool = SubagentTool(sub, provider=_CaptureProvider())
+        out = tool.spawn('{"task":"transcribe this audio","provider":"codexsale","model":"gpt-4o-transcribe"}')
+        assert "special worker" in out
+        rows = sub.connection.execute("SELECT COUNT(*) FROM subagent_tasks").fetchone()
+        assert rows is not None
+        assert rows[0] == 0
+    finally:
+        sub.close()

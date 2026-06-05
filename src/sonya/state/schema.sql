@@ -508,3 +508,26 @@ CREATE TABLE IF NOT EXISTS subagent_tasks (
 -- Computed via imagehash.phash on downloaded images. Allows "same image?"
 -- comparisons without re-downloading or re-embedding.
 -- ALTER TABLE addition handled by migration.
+
+-- v25 addition: tool experience memory.
+-- Records every tool invocation outcome so Sonya learns from experience,
+-- not from prompt text. Queried by picker for success rates / cooldowns,
+-- and mirrored into episodic_events for semantic recall.
+CREATE TABLE IF NOT EXISTS tool_experiences (
+    exp_id TEXT PRIMARY KEY,
+    tool_name TEXT NOT NULL,
+    tool_arg_summary TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL DEFAULT 'success',
+    outcome_detail TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    session_type TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_texp_tool ON tool_experiences(tool_name);
+CREATE INDEX IF NOT EXISTS idx_texp_outcome ON tool_experiences(outcome);
+CREATE INDEX IF NOT EXISTS idx_texp_provider_model ON tool_experiences(provider, model);
+CREATE INDEX IF NOT EXISTS idx_texp_created ON tool_experiences(created_at);

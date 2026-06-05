@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
 from sonya.providers.keystore import KeyStore
 
@@ -98,7 +98,18 @@ def _infer_provider_from_model(model: str) -> str:
     return ""
 
 
-def _score(profile: ModelProfile, traits: set[str], *, prefer_free: bool) -> int:
+def is_text_loop_model(model: str, provider: str = "") -> bool:
+    provider = (provider or "").strip()
+    for profile in _PROFILES:
+        if profile.model != model:
+            continue
+        if provider and profile.provider != provider:
+            continue
+        return profile.text_loop_ok
+    return True
+
+
+def _score(profile: ModelProfile, traits: set[str], *, prefer_free: bool, exp_bonus: int = 0) -> int:
     score = 0
     for strength in profile.strengths:
         if strength in traits:
@@ -138,6 +149,8 @@ def _score(profile: ModelProfile, traits: set[str], *, prefer_free: bool) -> int
         score += 1
     if profile.latency == "slow" and "general_fast" in traits:
         score -= 3
+
+    score += exp_bonus
     return score
 
 
@@ -147,6 +160,7 @@ def pick_subagent_model(
     *,
     requested_provider: str = "",
     requested_model: str = "",
+    substrate: Any = None,
 ) -> PickResult:
     requested_provider = (requested_provider or "").strip()
     requested_model = (requested_model or "").strip()
@@ -163,17 +177,35 @@ def pick_subagent_model(
         settings = store.get_settings()
         return PickResult(settings.active_provider, settings.default_model, "fallback to active provider (no eligible key scan result)")
 
-    # Premium only when clearly justified or when no free providers are available.
     free_available = any(p in available for p in ("openrouter", "fireworks"))
     premium_needed = bool({"critical_review", "hard_reasoning"} & traits)
     prefer_free = free_available and not premium_needed
+
+    exp_map: dict[tuple[str, str], int] = {}
+    if substrate is not None:
+        try:
+            from sonya.memory.tool_experience import ToolExperience
+            tx = ToolExperience(substrate)
+            for stat in tx.model_stats(since_hours=168):
+                key = (stat["provider"], stat["model"])
+                bonus = 0
+                if stat["total"] >= 3:
+                    bonus += int(stat["rate"] * 6) - 3
+                    if stat["errors"] > stat["success"]:
+                        bonus -= 5
+                    avg_lat = stat["avg_latency_ms"]
+                    if avg_lat > 15000:
+                        bonus -= 2
+                exp_map[key] = bonus
+        except Exception:
+            pass
 
     if requested_provider:
         candidates = _profiles_for_provider(requested_provider)
         if not candidates:
             settings = store.get_settings()
             return PickResult(requested_provider, settings.default_model, f"provider {requested_provider} has no known profile; using provider default")
-        chosen = max(candidates, key=lambda p: _score(p, traits, prefer_free=False))
+        chosen = max(candidates, key=lambda p: _score(p, traits, prefer_free=False, exp_bonus=exp_map.get((p.provider, p.model), 0)))
         return PickResult(chosen.provider, chosen.model, f"auto-picked within explicit provider {requested_provider} from traits={sorted(traits) or ['default']}")
 
     candidates = [p for p in _PROFILES if p.provider in available and p.text_loop_ok]
@@ -181,7 +213,7 @@ def pick_subagent_model(
         settings = store.get_settings()
         return PickResult(settings.active_provider, settings.default_model, "fallback to active provider (no catalog candidate available)")
 
-    chosen = max(candidates, key=lambda p: _score(p, traits, prefer_free=prefer_free))
+    chosen = max(candidates, key=lambda p: _score(p, traits, prefer_free=prefer_free, exp_bonus=exp_map.get((p.provider, p.model), 0)))
     return PickResult(
         chosen.provider,
         chosen.model,

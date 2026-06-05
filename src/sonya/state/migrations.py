@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 24
+CURRENT_VERSION = 25
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -520,6 +520,34 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 24
+
+    if version == 24:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS tool_experiences (
+                exp_id TEXT PRIMARY KEY,
+                tool_name TEXT NOT NULL,
+                tool_arg_summary TEXT NOT NULL DEFAULT '',
+                outcome TEXT NOT NULL DEFAULT 'success',
+                outcome_detail TEXT NOT NULL DEFAULT '',
+                provider TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                latency_ms INTEGER NOT NULL DEFAULT 0,
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                session_type TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_texp_tool ON tool_experiences(tool_name);
+            CREATE INDEX IF NOT EXISTS idx_texp_outcome ON tool_experiences(outcome);
+            CREATE INDEX IF NOT EXISTS idx_texp_provider_model ON tool_experiences(provider, model);
+            CREATE INDEX IF NOT EXISTS idx_texp_created ON tool_experiences(created_at);
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (25, now),
+        )
+        conn.commit()
+        version = 25
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

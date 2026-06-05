@@ -971,6 +971,7 @@ async def run_agent_session(
                 providers=providers,
                 browser=browser,
                 subagent=subagent,
+                substrate=self_inspect._sub,
             )
 
             # Record in continuity
@@ -1320,11 +1321,12 @@ class _ToolContext:
     skills: SkillsTool | None
     outbound: Any
     outbound_sent: list[str] | None
-    knowledge: Any | None = None  # KnowledgeTool — knowledge.* family (default None for BC)
-    stream: Any | None = None  # ContinuityStream — body.*/mind.* handlers use this
-    providers: Any | None = None  # ProvidersTool — providers.* family
-    browser: Any | None = None  # BrowserTool — browser.* family
-    subagent: Any | None = None  # SubagentTool — subagent.* family
+    knowledge: Any | None = None
+    stream: Any | None = None
+    providers: Any | None = None
+    browser: Any | None = None
+    subagent: Any | None = None
+    substrate: Any | None = None
 
 
 def _require(tool: Any, name: str) -> str | None:
@@ -2671,10 +2673,12 @@ def _execute_tool(
     providers: Any | None = None,
     browser: Any | None = None,
     subagent: Any | None = None,
+    substrate: Any | None = None,
 ) -> str:
     """Execute a tool by name. Returns observation string.
 
     Logs failures (exception) to continuity stream as ``internal.tool_error``.
+    Records every invocation into tool_experiences for learning.
     Unknown tool names return a uniform "[ERROR] Unknown tool: X" string.
     """
     handler = _TOOL_HANDLERS.get(name)
@@ -2699,11 +2703,14 @@ def _execute_tool(
         providers=providers,
         browser=browser,
         subagent=subagent,
+        substrate=substrate,
     )
+
+    _t0 = time.monotonic()
     try:
-        return handler(arg, ctx)
+        observation = handler(arg, ctx)
     except Exception as e:
-        err_msg = f"[ERROR] {type(e).__name__}: {e}"
+        observation = f"[ERROR] {type(e).__name__}: {e}"
         if stream is not None:
             try:
                 stream.append(ContinuityEvent(
@@ -2717,4 +2724,23 @@ def _execute_tool(
                 ))
             except Exception:
                 pass
-        return err_msg
+
+    elapsed_ms = int((time.monotonic() - _t0) * 1000)
+
+    if substrate is not None:
+        try:
+            from sonya.memory.tool_experience import ToolExperience, classify_outcome, extract_tool_tags
+            tx = ToolExperience(substrate)
+            tx.record(
+                tool_name=name,
+                tool_arg_summary=(arg or "")[:200],
+                outcome=classify_outcome(observation),
+                outcome_detail=observation[:500],
+                latency_ms=elapsed_ms,
+                tags=extract_tool_tags(name, arg, observation),
+                session_type="agent_session",
+            )
+        except Exception:
+            pass
+
+    return observation
