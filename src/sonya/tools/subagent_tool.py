@@ -16,6 +16,7 @@ from uuid import uuid4
 from sonya.state.substrate import Substrate
 from sonya.subject.subagent_runner import SubagentTask, SubagentRunner
 from sonya.providers.llm_provider import LLMProvider
+from sonya.providers.keystore import KeyStore
 
 _log = logging.getLogger("sonya.subagent")
 
@@ -25,7 +26,7 @@ class SubagentTool:
 
     def __init__(self, substrate: Substrate, provider: LLMProvider | None = None):
         self._sub = substrate
-        self._provider = provider or LLMProvider(substrate)
+        self._provider = provider or LLMProvider(KeyStore(substrate))
         self._running: dict[str, asyncio.Task] = {}
         self._already_polled: set[str] = set()
 
@@ -52,8 +53,7 @@ class SubagentTool:
         provider = str(data.get("provider", "")).strip()
         if not provider:
             # Default to active provider
-            from sonya.providers.keystore import ProviderSettings
-            settings = ProviderSettings.load(self._sub)
+            settings = KeyStore(self._sub).get_settings()
             provider = settings.active_provider
 
         model = str(data.get("model", "")).strip()

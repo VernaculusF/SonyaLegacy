@@ -490,6 +490,19 @@ CREATE TABLE IF NOT EXISTS selfmod_outcomes (
     measured_at TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS subagent_tasks (
+    subagent_id TEXT PRIMARY KEY,
+    task TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    max_steps INTEGER NOT NULL DEFAULT 6,
+    status TEXT NOT NULL DEFAULT 'pending',
+    result TEXT NOT NULL DEFAULT '',
+    steps_taken INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL DEFAULT ''
+);
+
 
 -- v16 addition (cont): perceptual hash for media-attached episodic events.
 -- Computed via imagehash.phash on downloaded images. Allows "same image?"

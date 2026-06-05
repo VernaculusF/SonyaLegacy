@@ -234,6 +234,15 @@ class ProvidersTool:
             lines.append("--- openrouter ---")
             lines.append("openrouter | (query openrouter.ai/models for full list)")
 
+        # Codex Sale
+        if not provider or provider == "codexsale":
+            lines.append("--- codexsale ---")
+            lines.append("codexsale | gpt-5.4 | ctx=? | premium text flagship")
+            lines.append("codexsale | gpt-5.4-mini | ctx=? | premium fast text")
+            lines.append("codexsale | gpt-5.5 | ctx=? | premium text flagship+")
+            lines.append("codexsale | gpt-image-2 | ctx=n/a | image generation (special worker)")
+            lines.append("codexsale | gpt-4o-transcribe | ctx=n/a | audio transcription (special worker)")
+
         if not lines:
             return f"[ERROR] unknown provider: {provider}"
         return "\n".join(lines)
@@ -296,10 +305,15 @@ class ProvidersTool:
             return "[ERROR] providers.add_key: provider, name, api_key обязательны"
         base_url = str(data.get("base_url", "")).strip()
         model = str(data.get("model", "")).strip()
-        priority = int(data.get("priority", 0) or 0)
         slot = str(data.get("slot", "text")).strip() or "text"
+        if provider == "codexsale":
+            if not base_url:
+                base_url = "https://codex.sale/v1"
+            if not model and slot == "text":
+                model = "gpt-5.4-mini"
+        priority = int(data.get("priority", 0) or 0)
         try:
-            key_id = self._store.add_key(
+            key = self._store.add_key(
                 provider=provider,
                 name=name,
                 api_key=api_key,
@@ -308,7 +322,7 @@ class ProvidersTool:
                 priority=priority,
                 slot=slot,
             )
-            return f"[OK] added key_id={key_id} ({provider}/{name}, slot={slot})"
+            return f"[OK] added key_id={key.key_id} ({provider}/{name}, slot={slot})"
         except Exception as e:
             return f"[ERROR] {type(e).__name__}: {e}"
 

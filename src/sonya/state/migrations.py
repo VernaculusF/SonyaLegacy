@@ -37,6 +37,20 @@ def ensure_critical_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "provider_settings", "vision_provider", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "provider_settings", "vision_model", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "provider_settings", "vision_base_url", "TEXT NOT NULL DEFAULT ''")
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS subagent_tasks (
+            subagent_id TEXT PRIMARY KEY,
+            task TEXT NOT NULL,
+            provider TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            max_steps INTEGER NOT NULL DEFAULT 6,
+            status TEXT NOT NULL DEFAULT 'pending',
+            result TEXT NOT NULL DEFAULT '',
+            steps_taken INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            completed_at TEXT NOT NULL DEFAULT ''
+        );
+    """)
     conn.commit()
 
 

@@ -120,6 +120,7 @@ class SubagentRunner:
                 response = await self._provider.complete_text(
                     messages=messages,
                     purpose="subagent",
+                    _provider=task.provider,
                     _model=task.model,
                     max_tokens=2000,
                 )

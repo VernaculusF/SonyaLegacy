@@ -128,6 +128,16 @@ _PURPOSE_MODEL_HINT: dict[str, str] = {
     "selfmod_propose": "accounts/fireworks/models/deepseek-v4-pro",
 }
 
+_PROVIDER_DEFAULT_BASE_URL: dict[str, str] = {
+    "codexsale": "https://codex.sale/v1",
+}
+
+_PROVIDER_DEFAULT_MODEL: dict[str, str] = {
+    # Conservative default for direct premium provider: cheaper/faster than
+    # full GPT-5.4/5.5, still high quality for explicit fallback use.
+    "codexsale": "gpt-5.4-mini",
+}
+
 
 def _model_for_purpose(purpose: str) -> str:
     """Return the preferred model for a given purpose.
@@ -217,9 +227,10 @@ class LLMProvider:
                     **{**kwargs, "_vision_stripped": True},
                 )
 
-        provider = settings.active_provider
+        provider = str(kwargs.get("_provider") or settings.active_provider or "").strip() or settings.active_provider
         max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
         purpose = kwargs.get("purpose", "unknown")
+        explicit_provider = bool(str(kwargs.get("_provider", "")).strip())
 
         # Model selection (2026-06-02: replaces slot-based routing).
         # Priority: explicit _model kwarg > purpose hint > provider default.
@@ -233,9 +244,10 @@ class LLMProvider:
         # Fallback chain: try active_provider first; if no eligible keys
         # there, fall back to other providers in order.
         fallback_chain = [provider]
-        for fb in ("kr", "fireworks", "openrouter"):
-            if fb != provider and fb not in fallback_chain:
-                fallback_chain.append(fb)
+        if not explicit_provider:
+            for fb in ("kr", "fireworks", "openrouter", "codexsale"):
+                if fb != provider and fb not in fallback_chain:
+                    fallback_chain.append(fb)
 
         last_err: Exception | None = None
 
@@ -267,8 +279,8 @@ class LLMProvider:
             # _model kwarg) takes priority. Falls back to key.model (if the
             # key has a fixed model like kr/claude-haiku-4.5), then
             # provider_settings.default_model.
-            model = preferred_model or key.model or settings.default_model
-            base_url = key.base_url or settings.default_base_url
+            model = preferred_model or key.model or _PROVIDER_DEFAULT_MODEL.get(picked_provider) or settings.default_model
+            base_url = key.base_url or _PROVIDER_DEFAULT_BASE_URL.get(picked_provider) or settings.default_base_url
             url = f"{base_url.rstrip('/')}/chat/completions"
             headers = {
                 "Content-Type": "application/json",

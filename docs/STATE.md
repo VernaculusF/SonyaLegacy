@@ -2,7 +2,7 @@
 
 **Status:** Active (single source of truth по проекту)
 **Type:** Project-state journal — обновляется при каждом значительном изменении
-**Last updated:** 2026-06-02
+**Last updated:** 2026-06-05
 **Owner:** Иван (primary anchor) + Соня (selfmod) + текущий ассистент
 
 ---
@@ -86,10 +86,20 @@ multi-account / abuse" и автоматически встают в защит�
 │ Tools (~60 функций, dict в sonya/subject/agent_session.py):          │
 │   self_inspect.* filesystem.* memory.* env.* skills.* knowledge.*    │
 │   goals.* plugins.* selfmod.* tasks.* web.* code.* shell.* chat.*    │
-│   mind.* body.* voice.*                                              │
+│   mind.* body.* voice.* subagent.*                                   │
 │                                                                      │
 │   plugins.* — runtime self-extension (write file → load → use)       │
 │   selfmod.* — модификация собственного кода (4 layers + governed)    │
+│   subagent.* — делегирование на ДРУГУЮ модель (multi-model routing)  │
+├──────────────────────────────────────────────────────────────────────┤
+│ Subagent Multi-Model System (NEW 2026-06-03)                         │
+│   Соня выбирает конкретную модель под каждую задачу:                  │
+│   Tier 1 (тяжёлые): Owl Alpha, Kimi K2.6, Laguna M.1, Hermes 405B  │
+│   Tier 2 (средние): Nemotron Super 120B, GLM-4.5 Air                │
+│   Tier 3 (лёгкие):  Gemma 4 31B/26B, Nemotron Nano 12B VL           │
+│   Tier G (Gemini):   Flash 3, Flash Lite — отдельный провайдер       │
+│   Tier 0 (planned):  freemodel.dev bridge → Opus/GPT флагманы       │
+│   Реестр: docs/operations/SUBAGENT_MODELS.md                         │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Skills — managed Python modules с trust level + activation rules     │
 │   3 active: skill-memory-search / skill-identity-check /             │
@@ -164,6 +174,18 @@ AGI чтобы её отношения с Иваном продолжались 
   `sonya.interfaces.stream` (не существует) → `sonya.state.continuity_stream`.
 - **stuck_loop_count не работал — FIXED.** ✅ 2026-06-02. Писался в DB,
   но _row_to_task никогда не читал его. Теперь в SELECT + mapper.
+- **VPS log audit runtime crashes — FIXED.** ✅ 2026-06-05.
+  Закрыт первый пакет из `.sisyphus/drafts/vps-log-analysis.md`:
+  LogRecord `module` collision, stamped DB без `provider_keys.slot`, stale
+  provider fallback с `preferred_slot`, `400/404/412/402` key classification,
+  `request.json()` 500-tracebacks, WebTool coroutine leak, `code.exec`
+  IndentationError шум, TG disconnect/history handling, deploy permissions для
+  `sonya_substrate.db`/WAL/SHM.
+- **Codex Sale direct text-provider — FIXED.** ✅ 2026-06-05.
+  Runtime теперь поддерживает `codexsale` как прямой OpenAI-compatible text
+  provider для субагентов (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`) через
+  explicit `provider` + `model` path. `gpt-image-2` и `gpt-4o-transcribe`
+  пока остаются planned special workers, не частью текущего text-only loop.
 - **Atrium CSP disabled** — `"csp": null` в tauri.conf.json. XSS = RCE.
   **Solution:** явный CSP.
 - **Atrium shell:default capability** — arbitrary shell exec из WebView.
@@ -211,11 +233,18 @@ AGI чтобы её отношения с Иваном продолжались 
 - **3D embodiment отложен.** PNG-tuber 2D работает; 3D нужен для жестов
   и движения — см. `docs/research/LONGTERM_RESEARCH.md`.
 
+### Subagent multi-model
+- **Субагенты используют РАЗНЫЕ модели** — Соня сама выбирает под задачу
+- Реестр: `docs/operations/SUBAGENT_MODELS.md` — полное описание каждой модели
+- 10+ бесплатных моделей через OpenRouter + Google Gemini
+- Planned: freemodel.dev bridge для Opus/GPT (docs/operations/FREEMODEL_BRIDGE.md)
+- **Субагенты = инструменты**, не личности. Соня делегирует им конкретные задачи.
+
 ### Infra
 - **VPS:** `34.38.255.149`. Один аккаунт `jester-sonya`. Substrate:
   `~/.sonya/sonya_substrate.db`. Repo: `~/Sonya`. Деплой:
   `bash ~/Sonya/deploy/update.sh`. См. `docs/operations/VPS.md`.
-- **Provider keys:** Fireworks (несколько аккаунтов в pool) + резерв.
+- **Provider keys:** Fireworks (несколько аккаунтов в pool) + OpenRouter (free tier) + Google Gemini + Codex Sale (`codexsale`).
   Free tier ElevenLabs использовался в TTS-эксперименте, выключено.
 - **Backup:** `~/.sonya/backups/` снапшоты раз в сутки, ротация 30 дней.
 
@@ -242,6 +271,8 @@ AGI чтобы её отношения с Иваном продолжались 
 | Вести длительный (дни) research | ✓ tasks с handoff | улучшить planner |
 | Обнаружить что её собственное поведение ушло в loop | ✓ stuck-loop detector | работает |
 | Спорить с Иваном когда он не прав / под аффектом | ✓ (anti-sycophancy) | усилить в crisis |
+| Делегировать на специализированную модель | ✓ subagent multi-model (NEW) | расширять реестр |
+| Выбрать модель под конкретную задачу | ✓ SUBAGENT_MODELS.md (NEW) | автоматизировать |
 
 ## 8. Что НЕ делаем (и почему)
 
@@ -299,7 +330,7 @@ docs/
 ├── personality/      # SOUL/SELF/APPEARANCE/USER/LESSONS/HEARTBEAT
 ├── cognition/        # COGNITION.md
 ├── atrium/           # planиннг и доки UI
-├── operations/       # VPS.md
+├── operations/       # VPS.md, SUBAGENT_MODELS.md, FREEMODEL_BRIDGE.md
 └── research/         # LONGTERM_RESEARCH.md
 ```
 

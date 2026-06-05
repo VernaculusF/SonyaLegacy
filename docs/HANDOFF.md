@@ -67,6 +67,19 @@
 
 --- VPS log audit fixes 2026-06-05 ---
 
+17j. ~~**Codex Sale text-subagent runtime support отсутствовал.**~~ ✅ DONE 2026-06-05.
+     Добавлен direct provider path `codexsale` без bridge для text-моделей.
+     `LLMProvider.complete_text()` теперь умеет explicit `_provider` override,
+     subagent path реально пробрасывает `provider`+`model` вместо игнора,
+     `providers.add_key` ставит defaults `base_url=https://codex.sale/v1`
+     и `model=gpt-5.4-mini` для text keys. `providers.list_models` знает
+     `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`, а `gpt-image-2` /
+     `gpt-4o-transcribe` помечены как special workers, не text loop.
+
+17k. ~~**schema.sql снова отстал от migrations: subagent_tasks missing on fresh DB.**~~ ✅ DONE 2026-06-05.
+     Таблица `subagent_tasks` добавлена в `schema.sql` и в
+     `ensure_critical_schema()` для stamped-current DB.
+
 17a. ~~**runtime_start_failed: LogRecord module collision.**~~ ✅ DONE 2026-06-05.
      `logging` падал до formatter при `extra={"module": ...}`. Добавлен
      `SafeExtraLogger`, который переименовывает reserved поля в `extra_*`.
