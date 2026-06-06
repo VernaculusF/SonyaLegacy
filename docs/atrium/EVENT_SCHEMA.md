@@ -5,7 +5,7 @@
 **Last reviewed:** 2026-05-28
 **Scope:** Конкретные substrate events которые добавляются для Atrium. ContinuityStream kinds, payload-структуры, schema migrations. Reference при коде Этапов 0-2.
 
-**Governing:** [PLAN.md](PLAN.md), [CHANNELS.md](CHANNELS.md)
+**Governing:** [PLAN.md](PLAN.md). Channel details are now considered legacy if `CHANNELS.md` is absent in the worktree.
 
 ---
 

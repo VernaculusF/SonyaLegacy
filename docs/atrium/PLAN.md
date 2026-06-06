@@ -1,13 +1,13 @@
 # ATRIUM — план реализации
 
-**Status:** Active (working plan, ready to start Этап 0)
+**Status:** Active (partially implemented; plan now spans existing UI/runtime plus the next workspace layer)
 **Type:** Implementation plan
-**Last reviewed:** 2026-05-28
+**Last reviewed:** 2026-06-06
 **Scope:** Конкретный план реализации Atrium — пакета multichannel-вывода/UI внутри Sonya. Что строится, в каком порядке, и как каждый этап самодостаточен.
 
 **Governing doc:** [ENVIRONMENT_AS_SONYA.md](../core/ENVIRONMENT_AS_SONYA.md)
-**UX & visuals:** [UX_SKETCH.md](UX_SKETCH.md), `mockups/desktop.html`, `mockups/mobile.html`, `mockups/room.html`
-**Channel spec:** [CHANNELS.md](CHANNELS.md)
+**UX & visuals:** legacy visual docs/mockups may be absent from the current worktree; treat in-file references as historical unless restored.
+**Channel spec:** legacy `CHANNELS.md` references may need restoration/migration.
 **Substrate events:** [EVENT_SCHEMA.md](EVENT_SCHEMA.md)
 **Next product layer:** [ATRIUM_WORKSPACE_RUNTIME_SPEC.md](ATRIUM_WORKSPACE_RUNTIME_SPEC.md)
 
@@ -190,13 +190,13 @@ Migration v19 → v20 добавляет колонки idempotently. `Substrate
 
 ## 4. Этап 1 — Atrium v0 (2-3 недели)
 
-**Цель:** Tauri-приложение которое подключается к WS feed и рисует UI согласно [UX_SKETCH.md](UX_SKETCH.md).
+**Цель:** hosted web-приложение, которое подключается к WS feed и рисует project-first UI.
 
 ### 4.1 Задачи
 
 **T1.1 — Скелет пакета**
 
-- `packages/atrium/` — Tauri 2 shell (Rust + WebView)
+- `packages/atrium/` — hosted web frontend (Solid/Vite), сервится админом из `/atrium`
 - `package.json` для frontend (Vite + Solid.js — без React, лёгче)
 - Backend Rust: WS client, native notifications, native window management
 
@@ -271,7 +271,7 @@ Persistence: layout sizes, collapsed states, scroll positions → localStorage.
 
 Mockup готов: `mockups/room.html`.
 
-**T1.8 — Mobile layout (Tauri mobile-beta или PWA)**
+**T1.8 — Mobile layout (PWA / responsive web)**
 
 Phone portrait:
 - Avatar compact сверху (~25%)
@@ -281,7 +281,7 @@ Phone portrait:
 
 Mockup: `mockups/mobile.html`.
 
-Решение Tauri-mobile vs PWA — на старте Этапа 1, не блокирует backend.
+Решение mobile-web vs desktop shell — не блокирует backend.
 
 **T1.9 — Composer с микрофоном**
 
@@ -540,9 +540,9 @@ VR-аватар через Steam VR API (OpenXR). Иван надевает шл
 
 1. **Аутентификация WS** — Phase 0: shared secret (`X-Atrium-Token`). Решено — using `SONYA_ADMIN_PASSWORD`.
 2. **Latency** — VPS Россия → Иван (Подмосковье) — ожидаем ≤200ms RTT. Если хуже — кэшируем feed локально.
-3. **Mobile** — Tauri-mobile beta или PWA. Решение в Этапе 1, не блокирует.
+3. **Mobile** — responsive web / PWA. Решение в Этапе 1, не блокирует.
 4. **Multi-instance** — два Atrium одновременно (комп + ноут). Both subscribe to same WS feed. Nudge race-condition: serialized backend-side, last-wins.
-5. **Audio permissions** — Tauri попросит OS permission, нужен onboarding step при первом enter room.
+5. **Audio permissions** — browser permission, нужен onboarding step при первом enter room.
 
 Эти вопросы НЕ блокируют старт Этапа 0 — backend channels строится без них.
 

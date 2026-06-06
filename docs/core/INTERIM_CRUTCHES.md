@@ -287,7 +287,7 @@
 
 **Почему это костыль:** Нарушение `cognition/COGNITION.md` §1-§7 ("channels are renderers, not surfaces"). Один renderer на всё = смешанные уровни вывода = шум.
 
-**Что будет вместо:** Atrium — пакет multichannel-вывода. Соня сама помечает channel при каждом outbound action (`chat.dialog | chat.worker_log | mind.* | body.* | voice.*`). TG bridge получает только `dialog`. Reason-streams pane в Atrium показывает worker_log/mind/body. См. [atrium/PLAN.md](../atrium/PLAN.md), [atrium/CHANNELS.md](../atrium/CHANNELS.md).
+**Что будет вместо:** Atrium — пакет multichannel-вывода. Соня сама помечает channel при каждом outbound action (`chat.dialog | chat.worker_log | mind.* | body.* | voice.*`). TG bridge получает только `dialog`. Reason-streams pane в Atrium показывает worker_log/mind/body. См. `docs/atrium/PLAN.md`; старый `CHANNELS.md` может быть отсутствовать в worktree.
 
 **Снимет также:**
 - частично CRUTCH-012 (notify_mode становится менее костылистым потому что worker_log идёт в свою pane без ограничений; dialog-mode остаётся для real Dialog с гейтами)

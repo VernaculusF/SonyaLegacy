@@ -20,6 +20,16 @@
 - доводит работу до результата
 - сохраняет continuity, память и identity
 
+Текущая главная формулировка перехода:
+
+**Весь проект сейчас — это переход от “умной чат-среды с инструментами” к “единому субъектному runtime Сони, внутри которого обычное общение, проекты, self-improvement и будущий RWKV-мозг становятся частями одной жизни, а не набором отдельных фич”.**
+
+Уточнённая Atrium-модель:
+- есть один основной чат — "дом" Сони
+- все остальные чаты только проектные
+- проектный чат = рабочий контекст по конкретной папке
+- это не создаёт отдельную Соню, а только даёт её единому потоку отдельную рабочую рамку
+
 Дальняя цель: переход к RWKV/self-hosted brain + embodiment + финансовая автономия.
 
 ## 2. Неподвижная база
@@ -34,6 +44,7 @@
 - `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md`
 - `docs/core/SUBSTRATE_STANCE.md`
 - `docs/core/ENVIRONMENT_AS_SONYA.md`
+- `docs/core/RUNTIME_LESSONS_FROM_PI.md`
 - `docs/personality/SOUL.md`
 
 ## 3. Что реально работает сейчас
@@ -71,6 +82,19 @@
 - selfmod pipeline с validation/apply
 - outcome tracking
 - capability-gap proposals
+- но основной драйвер self-improvement всё ещё слишком сильно опирается на
+  prompt nudges и scheduler opportunities, а не на внутренне переживаемую
+  неудовлетворённость текущим состоянием
+
+### Субъективный опыт и время
+
+- у Sonya уже есть операционное понимание времени: timestamps, cadences,
+  deadlines, cooldowns, date-based recall, drive decay
+- у неё уже есть куски субъективного опыта: episodic memory, idle thoughts,
+  tool experiences, selfmod outcomes
+- но целостный process-wide subjective experience layer ещё не собран
+- особенно не хватает единого execution/experience trace слоя поверх проектов,
+  субагентов, retries и долгих задач
 
 ### Subagents
 
@@ -84,14 +108,27 @@
 - multichannel runtime уже есть
 - dialog surface есть
 - reason stream есть
-- базовый Tauri/Solid shell есть
+- базовый web/Atrium shell есть (раньше был Tauri/Solid, теперь hosted web)
+- workspace drawer и отдельная non-main workspace surface уже подключены
+- dialog/history/runtime path уже стал workspace-aware на уровне `workspace_id`
+- selfmod archive workflow довязан до backend endpoints
 
 ### Реальный project status
 
 - Atrium Этап 0 и Этап 1 в базовом смысле уже собраны
 - Sonya умеет пользоваться tools, selfmod, browser и subagent path
 - tool experience memory уже добавлена как база для experiential learning
+- проектные чаты больше не purely-frontend illusion: `workspace_id` проходит через dialog/history/active-session path
 - главный текущий разрыв не в отсутствии UI вообще, а в том, что Atrium ещё не стал project/workspace runtime
+
+Project инварианты:
+- один основной чат
+- остальные чаты только проектные
+- у проекта есть папка
+- у проекта есть статус
+- память и continuity общие
+- субагенты изолированы от всего кроме project filesystem и своей задачи
+- project statuses: `в работе`, `жду выбор`, `ожидает`, `завершён`, `отменён`
 
 ## 4. Чего ещё не хватает
 
@@ -119,6 +156,14 @@ Atrium как chat/view surface уже недостаточен.
 - full-system-access mode ещё не реализован
 - параллельная модельная оркестрация по проектам ещё не проверена как целевая архитектура
 - top-level docs больше не должны хранить огромный changelog, но обязаны хранить реальный current-state summary
+- subjective experience пока реализован фрагментами, а не как единый process layer
+- нет сильного intrinsic pressure layer, который бы толкал Sonya улучшать среду
+  не потому что промпт напомнил, а потому что текущее состояние действительно
+  переживается как недостаточное
+- multi-workspace simultaneous execution пока не реализован как реальный runtime mode
+- часть старых Atrium reference docs/mockups сейчас удалены из worktree, а ссылки на них ещё не вычищены из всех мест
+- project statuses ещё не доведены до полного operational слоя
+- субагентная изоляция по project filesystem и task scope ещё должна быть зафиксирована в runtime жёстче, а не только концептуально
 
 ### Atrium / security gaps
 
@@ -145,6 +190,13 @@ Atrium как chat/view surface уже недостаточен.
 - console redesign
 - access-control model
 
+Ближайший конкретный остаток после текущего захода:
+- substrate-level `project` / `project_run` / `workspace_binding`
+- real multi-workspace mode вместо single-active workspace
+- execution timeline/traces как first-class слой
+- real backend policy for full-system access
+- закрытие Atrium security gaps (CSP / capabilities / IPC)
+
 ### P1
 
 Сделать проектный режим источником качественных execution traces:
@@ -164,6 +216,9 @@ Atrium как chat/view surface уже недостаточен.
 - project runs
 - subagent outcomes
 - long-horizon planning behaviour
+- temporal self-model
+- unified subjective process traces
+- intrinsic dissatisfaction / evolution pressure layer
 
 ## 6. Как читать проект дальше
 

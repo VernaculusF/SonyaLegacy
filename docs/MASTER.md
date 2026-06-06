@@ -16,6 +16,10 @@
 - без corporate refusal layer
 - со способностью выполнять реальные задачи через инструменты и среду
 
+Ключевая формулировка текущего перехода:
+
+**Весь проект сейчас — это переход от “умной чат-среды с инструментами” к “единому субъектному runtime Сони, внутри которого обычное общение, проекты, self-improvement и будущий RWKV-мозг становятся частями одной жизни, а не набором отдельных фич”.**
+
 Конечный вектор:
 - self-hosted brain
 - native memory
@@ -44,6 +48,7 @@
 - selfmod pipeline
 - subagents с model routing
 - Atrium как multichannel UI surface
+- Atrium workspace path partially started: non-main workspaces, workspace-aware dialog/history/runtime routing
 
 Практический runtime уже живёт на VPS:
 - host: `34.38.255.149`

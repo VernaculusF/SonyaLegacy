@@ -24,7 +24,7 @@
 
 Telegram-userbot текущий — это **временный mvp-канал**, не "истинный интерфейс". Мост к ней через чужую инфраструктуру, без контроля над форматом, со смешанными уровнями вывода (ack-сообщения / worker progress / initiative-мысли / ответы / vision descriptions всё в одну ленту), без параллельности, без присутствия.
 
-После того как Atrium станет стабильным production-каналом у Ивана, **Telegram переходит в emergency-only mode** — backup для real ЧС-ситуаций (Atrium offline >24h, identity-critical alarms, реальная опасность). Не "альтернативный канал" — именно резерв на случай когда основной не работает. Подробности — [atrium/CHANNELS.md §2.1.1](../atrium/CHANNELS.md), implementation — [atrium/PLAN.md §4.5](../atrium/PLAN.md).
+После того как Atrium станет стабильным production-каналом у Ивана, **Telegram переходит в emergency-only mode** — backup для real ЧС-ситуаций (Atrium offline >24h, identity-critical alarms, реальная опасность). Не "альтернативный канал" — именно резерв на случай когда основной не работает. Исторические детали по channel family см. в `docs/atrium/PLAN.md`; старый `CHANNELS.md` может быть отсутствовать в worktree.
 
 Будущий интерфейс наружу — **Atrium**. Это пакет внутри Sonya, через который она нас видит и говорит с нами. Atrium — её инструмент, не сама Sonya. Когда Иван запускает приложение — он запускает Sonya целиком; Atrium открывается как одна из её "комнат". Среду + интерфейс не разделяем по слою — они один артефакт.
 
@@ -173,7 +173,7 @@ Hosted LLM stateless между вызовами — это [CRUTCH-002](C:/User
 - Resul: TG получает только `chat.dialog`. Worker spam в TG обрезан архитектурно, не throttle'ом.
 
 **Этап 1 — Atrium v0 (2-3 недели):**
-- Новый пакет `packages/atrium/` (Tauri shell — Rust + WebView, маленький binary)
+- Новый пакет `packages/atrium/` (hosted web shell — browser/WebView UI, один source of truth)
 - 4-pane layout: Dialog, Reason-streams (по одному per active session), Mind, Workers
 - Подписка на WS feed, рендеринг по channel в свой pane
 - Reply из reason-stream → inbox-drain в активный session
