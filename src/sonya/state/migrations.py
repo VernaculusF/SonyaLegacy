@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 25
+CURRENT_VERSION = 28
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -40,6 +40,7 @@ def ensure_critical_schema(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS subagent_tasks (
             subagent_id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL DEFAULT '',
             task TEXT NOT NULL,
             provider TEXT NOT NULL DEFAULT '',
             model TEXT NOT NULL DEFAULT '',
@@ -503,6 +504,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS subagent_tasks (
                 subagent_id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL DEFAULT '',
                 task TEXT NOT NULL,
                 provider TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL DEFAULT '',
@@ -548,6 +550,118 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 25
+
+    if version == 25:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS projects (
+                project_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                workspace_path TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                owner_principal_id TEXT NOT NULL DEFAULT 'ivan',
+                policy_json TEXT NOT NULL DEFAULT '{}',
+                last_activity_at TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+            CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_principal_id);
+
+            CREATE TABLE IF NOT EXISTS project_runs (
+                run_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'main',
+                status TEXT NOT NULL DEFAULT 'pending',
+                agent_type TEXT NOT NULL DEFAULT '',
+                summary TEXT NOT NULL DEFAULT '',
+                steps_json TEXT NOT NULL DEFAULT '[]',
+                result TEXT NOT NULL DEFAULT '',
+                error TEXT NOT NULL DEFAULT '',
+                started_at TEXT NOT NULL DEFAULT '',
+                completed_at TEXT NOT NULL DEFAULT '',
+                continuity_seq_start INTEGER NOT NULL DEFAULT 0,
+                continuity_seq_end INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(project_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pruns_project ON project_runs(project_id);
+            CREATE INDEX IF NOT EXISTS idx_pruns_status ON project_runs(status);
+            CREATE INDEX IF NOT EXISTS idx_pruns_kind ON project_runs(kind);
+
+            CREATE TABLE IF NOT EXISTS execution_traces (
+                trace_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                project_id TEXT NOT NULL DEFAULT '',
+                step_seq INTEGER NOT NULL DEFAULT 0,
+                step_type TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                tool_name TEXT NOT NULL DEFAULT '',
+                tool_arg_summary TEXT NOT NULL DEFAULT '',
+                outcome TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                provider TEXT NOT NULL DEFAULT '',
+                latency_ms INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES project_runs(run_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_trace_run ON execution_traces(run_id);
+            CREATE INDEX IF NOT EXISTS idx_trace_project ON execution_traces(project_id);
+            CREATE INDEX IF NOT EXISTS idx_trace_type ON execution_traces(step_type);
+
+            CREATE TABLE IF NOT EXISTS evolution_pressure (
+                pressure_id TEXT PRIMARY KEY,
+                dimension TEXT NOT NULL,
+                current_score REAL NOT NULL DEFAULT 0.5,
+                target_score REAL NOT NULL DEFAULT 1.0,
+                gap REAL NOT NULL DEFAULT 0.5,
+                evidence TEXT NOT NULL DEFAULT '',
+                last_evaluated_at TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_evo_pressure_dim ON evolution_pressure(dimension);
+            CREATE INDEX IF NOT EXISTS idx_evo_pressure_gap ON evolution_pressure(gap);
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (26, now),
+        )
+        conn.commit()
+        version = 26
+
+    if version < 27:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS workspace_policy (
+                workspace_id TEXT PRIMARY KEY,
+                policy_json TEXT NOT NULL DEFAULT '{}',
+                full_system_access INTEGER NOT NULL DEFAULT 0,
+                allowed_paths TEXT NOT NULL DEFAULT '',
+                denied_paths TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (workspace_id) REFERENCES projects(project_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_wsp_workspace ON workspace_policy(workspace_id);
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (27, now),
+        )
+        conn.commit()
+        version = 27
+
+    if version == 27:
+        _add_column_if_missing(
+            conn, "subagent_tasks", "workspace_id",
+            "TEXT NOT NULL DEFAULT ''"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (28, now),
+        )
+        conn.commit()
+        version = 28
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

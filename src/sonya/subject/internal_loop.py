@@ -904,12 +904,27 @@ class InternalProcess:
             if substrate is None:
                 return
 
+            _p_msgs = self._pending_ivan_messages(substrate)
+            _early_pending_ws = str(_p_msgs[0].get("workspace_id") or "") if _p_msgs else ""
+            
+            project_root = None
+            if _early_pending_ws and _early_pending_ws != "main":
+                try:
+                    from sonya.project import WorkspacePolicyStore, ProjectStore
+                    _wsp = WorkspacePolicyStore(substrate).get(_early_pending_ws)
+                    if not _wsp.full_system_access:
+                        _p = ProjectStore(substrate).get(_early_pending_ws)
+                        if _p.workspace_path:
+                            project_root = _p.workspace_path
+                except Exception:
+                    pass
+
             self_inspect = SelfInspectTool(substrate)
-            filesystem = FilesystemTool()
+            filesystem = FilesystemTool(project_root=project_root) if project_root else FilesystemTool()
             selfmod = SelfModTool(substrate)
             tasks_tool = TasksTool(substrate, stream=self._stream, default_created_by="self")
             web_tool = WebTool()
-            code_tool = CodeTool()
+            code_tool = CodeTool(sandbox_dir=project_root) if project_root else CodeTool()
             memory_tool = MemoryTool(substrate)
             from sonya.tools.env_tool import EnvTool
             env_tool = EnvTool(substrate)
@@ -922,7 +937,9 @@ class InternalProcess:
             from sonya.tools.browser_tool import BrowserTool
             browser_tool = BrowserTool()
             from sonya.tools.subagent_tool import SubagentTool
-            subagent_tool = SubagentTool(substrate, self._provider)
+            subagent_tool = SubagentTool(substrate, self._provider, workspace_id=_early_pending_ws or "main")
+            from sonya.tools.projects_tool import ProjectsTool
+            projects_tool = ProjectsTool(substrate)
             import os as _os
             _yolo = _os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
@@ -1075,19 +1092,61 @@ class InternalProcess:
                 except Exception:
                     pass
 
+                # Active projects — long-lived activity contexts with policy.
+                # Surface active projects so each session knows what workspace
+                # it belongs to and what actions are allowed autonomously.
+                projects_block = ""
+                try:
+                    from sonya.project import ProjectStore
+                    active_projects = ProjectStore(substrate).list_all(status="active")
+                    if active_projects:
+                        proj_lines = [
+                            "\n## Активные проекты",
+                            "Каждый проект — защищённое пространство. Проверяй policy перед действием:",
+                        ]
+                        for p in active_projects[:6]:
+                            line = f"- [{p.project_id}] {p.title}"
+                            if p.workspace_path:
+                                line += f" (path: {p.workspace_path})"
+                            # Summarise policy
+                            auto = [k for k, v in p.policy.items() if v == "allowed"]
+                            consent = [k for k, v in p.policy.items() if v == "consent"]
+                            forbidden = [k for k, v in p.policy.items() if v == "forbidden"]
+                            if auto:
+                                line += f" | auto: {', '.join(auto)}"
+                            if consent:
+                                line += f" | consent: {', '.join(consent)}"
+                            if forbidden:
+                                line += f" | forbidden: {', '.join(forbidden)}"
+                            proj_lines.append(line)
+                        proj_lines.append(
+                            "\nДля действий с consent — спроси Ивана через "
+                            "chat.dialog перед тем как действовать. "
+                            "Forbidden — никогда.\n"
+                        )
+                        projects_block = "\n".join(proj_lines)
+                except Exception:
+                    pass
+
                 # Stack: identity prompt → full context block → goals block
-                # → outcomes block → gaps block → unified session rules
+                # → outcomes block → gaps block → projects block → unified session rules
                 # (anti-fail-fake / anti-sycophancy / anti-hallucination —
                 # same set of rules as TG channel sees, per
                 # cognition/COGNITION.md: one subject, many surfaces) →
                 # TOOL_DESCRIPTIONS (appended by run_agent_session itself).
+                project_hint = ""
+                if _early_pending_ws and _early_pending_ws != "main":
+                    project_hint = "\n[ВАЖНО] Ты находишься в проектном чате. Основную кодовую работу и анализ делегируй субагентам (`subagent.spawn`), а сама оставайся оркестратором. Инструменты работы с файловой системой для тебя ограничены рамками проекта.\n"
+                
                 full_prompt = (
                     prompt
+                    + project_hint
                     + "\n\n"
                     + ctx.system_prompt
                     + goals_block
                     + outcomes_block
                     + gaps_block
+                    + projects_block
                     + "\n\n"
                     + load_session_suffix("internal_active")
                 )
@@ -1113,7 +1172,36 @@ class InternalProcess:
             # (atrium or TG) that she hasn't answered yet, THIS session must
             # reply to it first — not run selfmod / tasks. Without this she
             # would wander into self_inspect and ignore him (the 30.05 bug).
-            pending_dialog = self._pending_ivan_message(substrate)
+            #
+            # Multi-workspace: collect ALL unanswered messages across all
+            # workspaces. If multiple workspaces have pending messages,
+            # Sonya addresses them all in one session, starting with the
+            # highest-priority workspace (the one with the oldest unanswered).
+            pending_messages = self._pending_ivan_messages(substrate)
+            pending_dialog = pending_messages[0] if pending_messages else None
+            multi_workspace_hints = ""
+            if len(pending_messages) > 1:
+                ws_names = {}
+                try:
+                    from sonya.project import ProjectStore
+                    for pm in pending_messages:
+                        ws = str(pm.get("workspace_id") or "")
+                        if ws and ws != "main":
+                            try:
+                                p = ProjectStore(substrate).get(ws)
+                                ws_names[ws] = p.title
+                            except Exception:
+                                ws_names[ws] = ws
+                except Exception:
+                    pass
+                hint_lines = ["\nНеотвеченные сообщения в нескольких контекстах:"]
+                for pm in pending_messages:
+                    ws = str(pm.get("workspace_id") or "")
+                    name = ws_names.get(ws, "основной чат") if ws else "основной чат"
+                    text = (pm.get("text") or "")[:80]
+                    hint_lines.append(f"  [{name}] {text}")
+                hint_lines.append("Ответь на каждое через chat.dialog с нужным workspace_id.")
+                multi_workspace_hints = "\n".join(hint_lines)
             initial_thought = ""
             initial_user_text: str | None = None
             initial_user_message: list[dict] | None = None
@@ -1203,6 +1291,7 @@ class InternalProcess:
                     "Ответь по сути его последнего сообщения через "
                     "[TOOL: chat.dialog]<твой ответ>. Не приветствуй "
                     "заново — продолжи разговор там где он остановился."
+                    + multi_workspace_hints
                 )
                 # Build prior dialog history so the LLM sees CONTINUITY,
                 # not a cold start. Без этого каждая active session
@@ -1211,6 +1300,7 @@ class InternalProcess:
                 # (incoming + outgoing) before the pending message.
                 try:
                     pending_seq = int(pending_dialog.get("seq", 0) or 0)
+                    pending_ws = str(pending_dialog.get("workspace_id") or "")
                     rows = substrate.connection.execute(
                         "SELECT seq, kind, payload_json FROM continuity_events "
                         "WHERE seq < ? AND kind IN ("
@@ -1228,6 +1318,13 @@ class InternalProcess:
                             p = _json.loads(pj or "{}")
                         except Exception:
                             continue
+                        event_ws = str(p.get("workspace_id") or "")
+                        if pending_ws:
+                            if event_ws != pending_ws:
+                                continue
+                        else:
+                            if event_ws:
+                                continue
                         text = (p.get("text") or "").strip()
                         if not text:
                             continue
@@ -1647,10 +1744,12 @@ class InternalProcess:
             from sonya.subject.window import (
                 Window,
                 WINDOW_KIND_ACTIVE,
+                WINDOW_KIND_SELF_EVO,
                 run_window,
             )
+            session_kind = WINDOW_KIND_SELF_EVO if force_selfmod_track else WINDOW_KIND_ACTIVE
             window = Window(
-                kind=WINDOW_KIND_ACTIVE,
+                kind=session_kind,
                 system_prompt=full_prompt,
                 tools={
                     "self_inspect": self_inspect,
@@ -1667,11 +1766,13 @@ class InternalProcess:
                     "providers": providers_tool,
                     "browser": browser_tool,
                     "subagent": subagent_tool,
+                    "projects": projects_tool,
                 },
                 initial_thought=initial_thought,
                 initial_user_text=initial_user_text,
                 initial_user_message=initial_user_message,
                 prior_messages=prior_messages or None,
+                workspace_id=str(pending_dialog.get("workspace_id") or "") if pending_dialog else "",
                 require_dialog_reply=initial_user_text is not None,
                 outbound=self._outbound,
                 inbox_drain=_ivan_inbox_drain,
@@ -1758,6 +1859,15 @@ class InternalProcess:
                         notes=auto_notes,
                         next_step=auto_next_step,
                     )
+            except Exception:
+                pass
+
+            # Evolution pressure self-evaluation: after each active session,
+            # update pressure dimensions based on session outcomes. This
+            # creates the intrinsic dissatisfaction loop — Sonya tracks
+            # the gap between current and desired capability.
+            try:
+                self._update_evolution_pressure(substrate, result)
             except Exception:
                 pass
         except Exception:
@@ -2070,6 +2180,7 @@ class InternalProcess:
                         "knowledge": tools.get("knowledge"),
                         "providers": tools.get("providers"),
                         "browser": tools.get("browser"),
+                        "projects": tools.get("projects"),
                     },
                     initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
                     max_steps=w_steps,
@@ -2327,6 +2438,118 @@ class InternalProcess:
     # Stuck-loop detection
     # ====================================================================
 
+    def _update_evolution_pressure(self, substrate: object, result: object) -> None:
+        """Update evolution_pressure dimensions based on session outcomes.
+
+        Each active session nudges the current_score of relevant dimensions:
+          - capability: did tools succeed or fail?
+          - reliability: were there errors?
+          - coverage: how many different tools were used?
+          - speed: did the session hit budget_exceeded?
+          - autonomy: did she need to ask Ivan?
+          - experience: was a memory recorded?
+
+        Small nudges only (±0.01 per session) so the pressure drifts slowly.
+        """
+        if substrate is None:
+            return
+        try:
+            from datetime import datetime, timezone
+            import uuid
+            conn = substrate.connection
+            now = datetime.now(timezone.utc).isoformat()
+
+            actions = getattr(result, "actions", [])
+            steps = getattr(result, "steps", 0)
+            budget_exceeded = getattr(result, "budget_exceeded", False)
+            final_output = getattr(result, "final_output", "") or ""
+
+            error_count = sum(1 for a in actions if "[ERROR]" in a or "tool_error" in a)
+            success_count = len(actions) - error_count
+            tool_diversity = len(set(a.split()[0] for a in actions if a))
+
+            nudges = {}
+            nudges["reliability"] = -0.02 if error_count > success_count else 0.01
+            nudges["capability"] = 0.01 if success_count > 0 else -0.01
+            nudges["speed"] = -0.03 if budget_exceeded else 0.01
+            nudges["coverage"] = min(0.02, tool_diversity * 0.005)
+            nudges["autonomy"] = -0.01 if "chat.dialog" in str(actions) and "?" in final_output else 0.005
+            nudges["experience"] = 0.005 if steps > 3 else 0.0
+
+            for dim, delta in nudges.items():
+                if abs(delta) < 0.001:
+                    continue
+                existing = conn.execute(
+                    "SELECT pressure_id, current_score, target_score FROM evolution_pressure WHERE dimension = ?",
+                    (dim,),
+                ).fetchone()
+                if existing:
+                    pid, cur, tgt = existing
+                    new_cur = max(0.0, min(1.0, cur + delta))
+                    new_gap = max(0.0, tgt - new_cur)
+                    conn.execute(
+                        "UPDATE evolution_pressure SET current_score=?, gap=?, last_evaluated_at=?, updated_at=? "
+                        "WHERE dimension=?",
+                        (new_cur, new_gap, now, now, dim),
+                    )
+                else:
+                    cur = 0.5 + delta
+                    tgt = {"reliability": 0.95, "capability": 0.9, "speed": 0.85,
+                           "coverage": 0.8, "autonomy": 0.7, "experience": 0.75}.get(dim, 0.9)
+                    conn.execute(
+                        "INSERT INTO evolution_pressure "
+                        "(pressure_id, dimension, current_score, target_score, gap, "
+                        "evidence, last_evaluated_at, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (f"evo-{uuid.uuid4().hex[:8]}", dim, cur, tgt,
+                         max(0.0, tgt - cur),
+                         f"auto-eval after active session: {steps} steps, {success_count} ok, {error_count} err",
+                         now, now, now),
+                    )
+            conn.commit()
+
+            # Drift detection: if any dimension has gap >= 0.3 for
+            # >=3 consecutive evaluations, emit a self-improvement
+            # intention. This is the "intrinsic dissatisfaction" signal:
+            # Sonya notices she's not improving and creates her own task.
+            try:
+                for dim, delta in nudges.items():
+                    row = conn.execute(
+                        "SELECT gap, evidence FROM evolution_pressure WHERE dimension = ?",
+                        (dim,),
+                    ).fetchone()
+                    if row and row[0] >= 0.3:
+                        existing_intentions = conn.execute(
+                            "SELECT intention_id FROM intentions "
+                            "WHERE title LIKE ? AND status = 'pending' LIMIT 1",
+                            (f"capability_gap:{dim}%",),
+                        ).fetchone()
+                        if not existing_intentions:
+                            import uuid as _uuid
+                            iid = f"int-{_uuid.uuid4().hex[:8]}"
+                            conn.execute(
+                                "INSERT INTO intentions "
+                                "(intention_id, title, body, status, priority, "
+                                "origin, created_at, updated_at) "
+                                "VALUES (?, ?, ?, 'pending', 0.6, "
+                                "'evolution_pressure', ?, ?)",
+                                (iid,
+                                 f"capability_gap:{dim}",
+                                 f"Dimension '{dim}' gap = {row[0]:.2f}. "
+                                 f"Score stuck below target. "
+                                 f"Evidence: {row[1] or 'N/A'}",
+                                 now, now),
+                            )
+                            conn.commit()
+                            self._stream.append(ContinuityEvent(
+                                kind="internal.evolution_drift_detected",
+                                payload={"dimension": dim, "gap": row[0]},
+                            ))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _should_force_selfmod_track(self, substrate: object) -> bool:
         """Return True when active session should ignore Ivan-task pickup
         and do selfmod / capability work instead.
@@ -2393,19 +2616,20 @@ class InternalProcess:
             return False
 
     def _pending_ivan_message(self, substrate: object) -> dict | None:
-        """Return the latest unanswered dialog message from Ivan, or None.
+        """Return the latest unanswered dialog message from Ivan, or None."""
+        msgs = self._pending_ivan_messages(substrate)
+        return msgs[0] if msgs else None
 
-        "Unanswered" = the most recent incoming dialog event
-        (incoming.atrium_dialog / incoming.telegram_message) has a higher seq
-        than the most recent outgoing reply she sent
-        (outgoing.dialog / outgoing.telegram_response / outgoing.response).
+    def _pending_ivan_messages(self, substrate: object) -> list[dict]:
+        """Return all unanswered dialog messages from Ivan, one per workspace.
 
-        Returns the incoming payload dict (text, media_kind, ...) so the
-        active session can be seeded to reply. This makes Atrium a real
-        primary I/O surface: a message from Ivan is always answered first.
+        For each workspace (including the default empty-string workspace),
+        returns the single newest unanswered message. This enables
+        multi-workspace simultaneous mode: Sonya can address messages
+        across all active projects in one active session.
         """
         if substrate is None:
-            return None
+            return []
         try:
             import json as _json
             incoming_kinds = (
@@ -2420,34 +2644,49 @@ class InternalProcess:
                 "outgoing.response",
             )
             in_ph = ",".join("?" for _ in incoming_kinds)
-            row = substrate.connection.execute(
-                f"SELECT seq, payload_json FROM continuity_events "
-                f"WHERE kind IN ({in_ph}) ORDER BY seq DESC LIMIT 1",
-                incoming_kinds,
-            ).fetchone()
-            if row is None:
-                return None
-            last_in_seq = int(row[0])
-            payload = _json.loads(row[1] or "{}")
-
             out_ph = ",".join("?" for _ in outgoing_kinds)
-            row2 = substrate.connection.execute(
-                f"SELECT seq FROM continuity_events "
-                f"WHERE kind IN ({out_ph}) ORDER BY seq DESC LIMIT 1",
+            in_rows = substrate.connection.execute(
+                f"SELECT seq, payload_json FROM continuity_events "
+                f"WHERE kind IN ({in_ph}) ORDER BY seq DESC LIMIT 100",
+                incoming_kinds,
+            ).fetchall()
+            out_rows = substrate.connection.execute(
+                f"SELECT seq, payload_json FROM continuity_events "
+                f"WHERE kind IN ({out_ph}) ORDER BY seq DESC LIMIT 200",
                 outgoing_kinds,
-            ).fetchone()
-            last_out_seq = int(row2[0]) if row2 else 0
+            ).fetchall()
 
-            if last_in_seq > last_out_seq:
-                if isinstance(payload, dict):
-                    # Add seq so callers can fetch prior history before
-                    # this message (build_full_context-style continuity).
+            latest_out_by_workspace: dict[str, int] = {}
+            for seq, payload_json in out_rows:
+                try:
+                    out_payload = _json.loads(payload_json or "{}")
+                except Exception:
+                    out_payload = {}
+                ws = str(out_payload.get("workspace_id") or "") if isinstance(out_payload, dict) else ""
+                if ws not in latest_out_by_workspace:
+                    latest_out_by_workspace[ws] = int(seq)
+
+            result: list[dict] = []
+            seen_workspaces: set[str] = set()
+            for seq, payload_json in in_rows:
+                try:
+                    payload = _json.loads(payload_json or "{}")
+                except Exception:
+                    payload = {}
+                if not isinstance(payload, dict):
+                    continue
+                ws = str(payload.get("workspace_id") or "")
+                if ws in seen_workspaces:
+                    continue
+                last_out_seq = latest_out_by_workspace.get(ws, 0)
+                if int(seq) > last_out_seq:
                     payload = dict(payload)
-                    payload["seq"] = last_in_seq
-                    return payload
-            return None
+                    payload["seq"] = int(seq)
+                    result.append(payload)
+                    seen_workspaces.add(ws)
+            return result
         except Exception:
-            return None
+            return []
 
     def _cleanup_stale_intentions(self) -> None:
         """Cancel pending intentions that have outlived their usefulness.

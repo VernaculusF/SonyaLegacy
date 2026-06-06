@@ -21,6 +21,7 @@ class ProposalStatus(str, Enum):
     REJECTED = "rejected"
     APPLIED = "applied"
     REVERTED = "reverted"
+    ARCHIVED = "archived"
 
 
 class ProposalNotFoundError(KeyError):

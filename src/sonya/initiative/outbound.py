@@ -141,6 +141,7 @@ class OutboundGate:
         ignore_quiet: bool = True,
         channel: str = "dialog",
         emergency_override: bool = False,
+        workspace_id: str = "",
     ) -> str:
         """Tool entry point. Returns a status string for the agent.
 
@@ -173,7 +174,7 @@ class OutboundGate:
         # record the dialog for Atrium to render but skip the TG mirror.
         suppress, why = self._suppress_tg_dialog(emergency_override=emergency_override)
         if suppress:
-            return await self._dispatch_dialog_atrium_only(text, reason=reason)
+            return await self._dispatch_dialog_atrium_only(text, reason=reason, workspace_id=workspace_id)
         # Dialog channel: full original gate logic.
         # Cross-session dedup: refuse near-duplicate of any outbound sent in
         # the last 6 hours. Catches the "Продолжаю разведку sweetcow..." spam
@@ -188,7 +189,7 @@ class OutboundGate:
         ok, why = self._check_gates(ignore_quiet=ignore_quiet)
         if not ok:
             return f"[BLOCKED] initiative gate: {why}"
-        return await self._dispatch(text, reason=reason)
+        return await self._dispatch(text, reason=reason, workspace_id=workspace_id)
 
     async def maybe_send_from_thought(self, thought_text: str) -> Optional[str]:
         """Scan an idle thought for the [SEND_TO_IVAN: ...] marker.
@@ -492,7 +493,7 @@ class OutboundGate:
 
     # ---------- dispatch ----------
 
-    async def _dispatch_dialog_atrium_only(self, text: str, *, reason: str) -> str:
+    async def _dispatch_dialog_atrium_only(self, text: str, *, reason: str, workspace_id: str = "") -> str:
         """Record a dialog message for Atrium only (T1.5 emergency-mode).
 
         TG is suppressed because Atrium is the live primary surface. The event
@@ -507,6 +508,7 @@ class OutboundGate:
                 "reason": reason,
                 "tg_suppressed": True,
                 "surface": "atrium",
+                **({"workspace_id": workspace_id} if workspace_id else {}),
             },
         ))
         if self._substrate is not None:
@@ -593,7 +595,7 @@ class OutboundGate:
         suffix = " [private]" if is_private else ""
         return f"[OK] {channel}{suffix}"
 
-    async def _dispatch(self, text: str, *, reason: str) -> str:
+    async def _dispatch(self, text: str, *, reason: str, workspace_id: str = "") -> str:
         try:
             ok = await self._registry.send(
                 self._channel,
@@ -633,12 +635,13 @@ class OutboundGate:
         self._stream.append(ContinuityEvent(
             kind=event_kind,
             payload={
-                "reason": reason,
-                "target": self._target,
-                "text": text[:20000],
-                "sent_today": self._sent_today,
-                "daily_cap": self._max_per_day,
-                "progress_today": self._progress_today,
+                    "reason": reason,
+                    "target": self._target,
+                    "text": text[:20000],
+                    **({"workspace_id": workspace_id} if workspace_id else {}),
+                    "sent_today": self._sent_today,
+                    "daily_cap": self._max_per_day,
+                    "progress_today": self._progress_today,
                 "progress_cap": self._max_progress_per_day,
             },
         ))
@@ -663,6 +666,7 @@ class OutboundGate:
 def call_outbound_sync(
     gate: OutboundGate, text: str, *, channel: str = "dialog",
     emergency_override: bool = False,
+    workspace_id: str = "",
 ) -> str:
     """Call OutboundGate.send_via_tool from sync code (the agent dispatcher).
 
@@ -697,12 +701,12 @@ def call_outbound_sync(
         # real crisis) which forces the TG dispatch.
         suppress, _why = gate._suppress_tg_dialog(emergency_override=emergency_override)
         if suppress:
-            coro = gate._dispatch_dialog_atrium_only(text, reason="tool")
+            coro = gate._dispatch_dialog_atrium_only(text, reason="tool", workspace_id=workspace_id)
         else:
             ok, why = gate._check_gates(ignore_quiet=True)
             if not ok:
                 return f"[BLOCKED] initiative gate: {why}"
-            coro = gate._dispatch(text, reason="tool")
+            coro = gate._dispatch(text, reason="tool", workspace_id=workspace_id)
 
     if loop is not None and loop.is_running():
         loop.create_task(coro)

@@ -492,6 +492,7 @@ CREATE TABLE IF NOT EXISTS selfmod_outcomes (
 
 CREATE TABLE IF NOT EXISTS subagent_tasks (
     subagent_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL DEFAULT '',
     task TEXT NOT NULL,
     provider TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',

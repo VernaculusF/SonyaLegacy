@@ -680,10 +680,12 @@ async def run_agent_session(
     providers: Any | None = None,  # ProvidersTool — providers.* family
     browser: Any | None = None,  # BrowserTool — browser.* family
     subagent: Any | None = None,  # SubagentTool — subagent.* family
+    projects: Any | None = None,  # ProjectsTool — projects.* family
     initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
     initial_user_text: str | None = None,
     prior_messages: list[dict[str, Any]] | None = None,
+    workspace_id: str = "",
     require_dialog_reply: bool = False,
     max_steps: int = 30,
     max_seconds: float = 1200.0,
@@ -875,6 +877,61 @@ async def run_agent_session(
         if tool_call is not None:
             tool_name, tool_arg = tool_call
 
+            # Project policy consent gate: before executing sensitive tools,
+            # check if the current project policy requires Ivan's consent.
+            # If the action is "forbidden", block entirely. If "consent",
+            # block and tell Sonya to ask Ivan via chat.dialog first.
+            _POLICY_GATED_TOOLS = {
+                "shell.run": "shell_run",
+                "filesystem.write": "file_write",
+                "selfmod.apply": "selfmod_apply",
+                "selfmod.propose": "selfmod_propose",
+                "subagent.spawn": "subagent_spawn",
+            }
+            _skip_policy_gate = False
+            if workspace_id:
+                try:
+                    from sonya.project import WorkspacePolicyStore
+                    _wsp = WorkspacePolicyStore(substrate or self_inspect._sub).get(workspace_id)
+                    if _wsp.full_system_access:
+                        _skip_policy_gate = True
+                except Exception:
+                    pass
+            if projects is not None and workspace_id and workspace_id != "main" and not _skip_policy_gate:
+                _policy_action = _POLICY_GATED_TOOLS.get(tool_name)
+                if _policy_action:
+                    try:
+                        from sonya.project import ProjectStore
+                        _p = ProjectStore(substrate or self_inspect._sub).get(workspace_id)
+                        if _p.policy_forbids(_policy_action):
+                            observation = (
+                                f"[PROJECT POLICY: FORBIDDEN] Действие '{_policy_action}' "
+                                f"запрещено в проекте '{_p.title}'. "
+                                f"Используй projects.check_policy чтобы узнать что разрешено."
+                            )
+                            messages.append({"role": "assistant", "content": response})
+                            messages.append({"role": "user", "content": f"[Observation]: {observation}"})
+                            stream.append(ContinuityEvent(
+                                kind="internal.project_policy_block",
+                                payload={"tool": tool_name, "action": _policy_action, "project_id": workspace_id, "verdict": "forbidden"},
+                            ))
+                            continue
+                        if _p.policy_requires_consent(_policy_action):
+                            observation = (
+                                f"[PROJECT POLICY: CONSENT REQUIRED] Для '{_policy_action}' "
+                                f"в проекте '{_p.title}' нужно одобрение Ивана. "
+                                f"Спроси через chat.dialog перед тем как действовать."
+                            )
+                            messages.append({"role": "assistant", "content": response})
+                            messages.append({"role": "user", "content": f"[Observation]: {observation}"})
+                            stream.append(ContinuityEvent(
+                                kind="internal.project_policy_block",
+                                payload={"tool": tool_name, "action": _policy_action, "project_id": workspace_id, "verdict": "consent"},
+                            ))
+                            continue
+                    except Exception:
+                        pass  # Project not found or no policy — allow by default
+
             # Inbox priority gate: if Ivan wrote and she hasn't answered yet,
             # block any non-dialog tool **only after she's wasted half the
             # session without responding**. On early steps work is allowed
@@ -972,6 +1029,8 @@ async def run_agent_session(
                 browser=browser,
                 subagent=subagent,
                 substrate=self_inspect._sub,
+                projects=projects,
+                workspace_id=workspace_id,
             )
 
             # Record in continuity
@@ -979,6 +1038,35 @@ async def run_agent_session(
                 kind="internal.agent_step",
                 payload={"step": step, "type": "action", "tool": tool_name, "arg": tool_arg, "thought": response[:8000]},
             ))
+
+            # Auto-trace: if workspace_id is a project, record every step
+            # into execution_traces for transparency. This gives Ivan a
+            # step-by-step view of what Sonya did inside each project run.
+            if workspace_id and workspace_id != "main" and substrate is not None:
+                try:
+                    from sonya.project import ExecutionTraceStore, ProjectRunStore
+                    _run_store = ProjectRunStore(substrate)
+                    _existing = _run_store.list_by_project(workspace_id, kind="main", limit=1)
+                    if _existing and _existing[0].status in ("pending", "running"):
+                        _run_id = _existing[0].run_id
+                    else:
+                        _run = _run_store.create(workspace_id, kind="main", agent_type=purpose)
+                        _run_store.start(_run.run_id)
+                        _run_id = _run.run_id
+                    _trace_store = ExecutionTraceStore(substrate)
+                    _prev = _trace_store.list_by_run(_run_id, limit=1)
+                    _seq = (_prev[0].step_seq + 1) if _prev else step
+                    step_type = "action" if not observation.lstrip().startswith("[ERROR]") else "error"
+                    _trace_store.append(
+                        _run_id, workspace_id,
+                        step_seq=_seq,
+                        step_type=step_type,
+                        content=response[:4000],
+                        tool_name=tool_name,
+                        outcome=observation[:2000],
+                    )
+                except Exception:
+                    pass
 
             # Feed observation back
             messages.append({"role": "assistant", "content": response})
@@ -1327,6 +1415,8 @@ class _ToolContext:
     browser: Any | None = None
     subagent: Any | None = None
     substrate: Any | None = None
+    projects: Any | None = None
+    workspace_id: str = ""
 
 
 def _require(tool: Any, name: str) -> str | None:
@@ -2054,7 +2144,12 @@ def _h_chat_tell_ivan(arg: str, ctx: _ToolContext) -> str:
                 "say something genuinely different."
             )
     from sonya.initiative.outbound import call_outbound_sync
-    result = call_outbound_sync(ctx.outbound, text, channel="dialog")
+    result = call_outbound_sync(
+        ctx.outbound,
+        text,
+        channel="dialog",
+        workspace_id=ctx.workspace_id or "",
+    )
     # Record sent text so channel_session can suppress a [DONE: ...] echo
     # of the same content (prevents duplicate messages to Ivan).
     if ctx.outbound_sent is not None:
@@ -2094,7 +2189,11 @@ def _h_chat_emergency(arg: str, ctx: _ToolContext) -> str:
         return "[ERROR] chat.emergency: empty message"
     from sonya.initiative.outbound import call_outbound_sync
     result = call_outbound_sync(
-        ctx.outbound, text, channel="dialog", emergency_override=True
+        ctx.outbound,
+        text,
+        channel="dialog",
+        emergency_override=True,
+        workspace_id=ctx.workspace_id or "",
     )
     if ctx.outbound_sent is not None:
         ctx.outbound_sent.append(text)
@@ -2541,6 +2640,138 @@ def _h_browser_close(arg: str, ctx: _ToolContext) -> str:
     return err if err else ctx.browser.close(arg)
 
 
+async def _h_projects_dispatch(call: dict) -> str:
+    import asyncio
+    tool = call.get("_projects_tool")
+    if tool is None:
+        return "[ERROR] projects tool not configured"
+    return await tool.execute(call)
+
+
+def _h_projects(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.projects, "projects")
+    if err:
+        return err
+    import json
+    try:
+        call = json.loads(arg) if arg.startswith("{") else {"name": "projects.list", "arguments": {}}
+    except Exception:
+        call = {"name": "projects.list", "arguments": {}}
+    call["_projects_tool"] = ctx.projects
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _h_projects_dispatch(call))
+                return future.result(timeout=30)
+        else:
+            return loop.run_until_complete(_h_projects_dispatch(call))
+    except Exception:
+        return asyncio.run(_h_projects_dispatch(call))
+
+
+def _h_projects_demo_webchat(arg: str, ctx: _ToolContext) -> str:
+    """Create a test website/chat-bot project and orchestrate it with subagents only.
+
+    This is the end-to-end verification path the user asked for.
+    It creates a project, then spawns subagents for planning / execution /
+    review, letting the subagent model picker choose appropriate models.
+    """
+    err = _require(ctx.projects, "projects")
+    if err:
+        return err
+    err = _require(ctx.subagent, "subagent")
+    if err:
+        return err
+    import json
+    try:
+        data = json.loads(arg or "{}")
+    except Exception:
+        data = {}
+    title = str(data.get("title") or "test website chat-bot").strip()
+    workspace_path = str(data.get("workspace_path") or "").strip()
+    description = str(data.get("description") or "")
+    # 1) Create project
+    project_res = ctx.projects.execute({
+        "name": "projects.create",
+        "arguments": {
+            "title": title,
+            "description": description or "End-to-end test project: website + chat-bot",
+            "workspace_path": workspace_path,
+        },
+    })
+    # 2) Extract project_id from the result
+    import re
+    m = re.search(r"\[(proj-[a-z0-9]+)\]", project_res)
+    project_id = m.group(1) if m else ""
+    if not project_id:
+        return f"[ERROR] Could not parse project_id from: {project_res}"
+
+    # 3) Spawn subagents only (no direct tool execution of the project work).
+    sub_tasks = [
+        {
+            "name": "planner",
+            "task": (
+                f"Project {project_id}: design a minimal website chat-bot architecture. "
+                f"Break it into small implementable tasks. Focus on cheap/free models for execution, "
+                f"keep expensive models for reasoning/review only if needed."
+            ),
+        },
+        {
+            "name": "executor-ui",
+            "task": (
+                f"Project {project_id}: implement the frontend skeleton for a website chat-bot. "
+                f"Only handle UI implementation steps. Use the fastest suitable model."
+            ),
+        },
+        {
+            "name": "executor-backend",
+            "task": (
+                f"Project {project_id}: implement backend endpoints and persistence for a website chat-bot. "
+                f"Keep the work split into small steps; do not attempt the whole backend in one shot."
+            ),
+        },
+        {
+            "name": "reviewer",
+            "task": (
+                f"Project {project_id}: review architecture, verify policy gates, and report gaps. "
+                f"Use strong reasoning only for review; otherwise stay cheap/fast."
+            ),
+        },
+    ]
+    spawned = []
+    for item in sub_tasks:
+        try:
+            resp = ctx.subagent.spawn(json.dumps({"task": item["task"], "max_steps": 8}))
+            spawned.append(f"[{item['name']}] {resp.splitlines()[0] if resp else 'spawned'}")
+        except Exception as e:
+            spawned.append(f"[{item['name']}] ERROR: {e}")
+
+    # 4) Record a trace marker that this is the verification workflow.
+    try:
+        ctx.projects.execute({
+            "name": "projects.trace",
+            "arguments": {
+                "project_id": project_id,
+                "step_type": "decision",
+                "content": "Initialized demo web chat-bot project and spawned role-based subagents only.",
+                "tool_name": "projects.demo_webchat",
+                "outcome": "ok",
+            },
+        })
+    except Exception:
+        pass
+
+    return (
+        f"[OK] Demo web chat-bot project created: {project_id}\n"
+        f"Project: {title}\n"
+        f"Spawned subagents:\n- " + "\n- ".join(spawned) +
+        f"\n\nNext: check subagent.result for each spawned subagent and continue from there."
+    )
+
+
 _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     # self_inspect.*
     "self_inspect.identity": _h_si_identity,
@@ -2650,6 +2881,13 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "browser.screenshot": _h_browser_screenshot,
     "browser.wait":       _h_browser_wait,
     "browser.close":      _h_browser_close,
+    # projects.* — project management, policy, traces, evolution pressure
+    "projects.list":        _h_projects,
+    "projects.check_policy": _h_projects,
+    "projects.create":      _h_projects,
+    "projects.trace":       _h_projects,
+    "projects.pressure":    _h_projects,
+    "projects.demo_webchat": _h_projects_demo_webchat,
 }
 
 
@@ -2674,6 +2912,8 @@ def _execute_tool(
     browser: Any | None = None,
     subagent: Any | None = None,
     substrate: Any | None = None,
+    projects: Any | None = None,
+    workspace_id: str = "",
 ) -> str:
     """Execute a tool by name. Returns observation string.
 
@@ -2704,6 +2944,8 @@ def _execute_tool(
         browser=browser,
         subagent=subagent,
         substrate=substrate,
+        projects=projects,
+        workspace_id=workspace_id,
     )
 
     _t0 = time.monotonic()

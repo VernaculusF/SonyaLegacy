@@ -32,6 +32,14 @@ from sonya.state.substrate import Substrate
 
 _log = logging.getLogger("sonya.subagent")
 
+from sonya.tools.web_tool import WebTool
+from sonya.tools.browser_tool import BrowserTool
+from sonya.tools.code_tool import CodeTool
+from sonya.tools.self_inspect import SelfInspectTool
+from sonya.state.substrate import Substrate
+
+_log = logging.getLogger("sonya.subagent")
+
 _MAX_STEPS = 12
 _MAX_SECONDS = 300  # 5 min
 _MAX_OUTPUT_CHARS = 4000
@@ -52,6 +60,7 @@ class SubagentTask:
     provider: str  # e.g. "fireworks", "kr"
     model: str      # e.g. "accounts/fireworks/models/deepseek-v4-pro"
     max_steps: int
+    workspace_id: str = ""
     status: str = "pending"     # pending | running | done | failed
     result: str = ""
     steps_taken: int = 0
@@ -81,10 +90,10 @@ class SubagentRunner:
         self._save_task(task)
 
         # Minimal tool set — read-only, observation, safe execution
+        # File system tools are added below if workspace_id is set
         tools: dict[str, Any] = {
             "web.search": WebTool().search,
             "web.fetch": WebTool().fetch,
-            "code.exec": CodeTool(timeout_seconds=30).exec_python,
             "self_inspect.memories": SelfInspectTool(self._sub).read_recent_memories,
             "self_inspect.code": SelfInspectTool(self._sub).read_own_code,
             "browser.open": BrowserTool().open,
@@ -92,6 +101,25 @@ class SubagentRunner:
             "browser.close": BrowserTool().close,
             "memory.recall": None,  # will be set below
         }
+        
+        sandbox_dir: str | None = None
+        if task.workspace_id and task.workspace_id != "main":
+            try:
+                from sonya.project import ProjectStore
+                from sonya.tools.filesystem import FilesystemTool
+                p = ProjectStore(self._sub).get(task.workspace_id)
+                if p.workspace_path:
+                    sandbox_dir = p.workspace_path
+                    fs_tool = FilesystemTool(project_root=p.workspace_path)
+                    tools["filesystem.list"] = fs_tool.list_dir
+                    tools["filesystem.read"] = fs_tool.read_file
+                    tools["filesystem.search"] = fs_tool.search
+                    # Write tools remain restricted, but subagents can read project files
+            except Exception:
+                pass
+                
+        tools["code.exec"] = CodeTool(timeout_seconds=30, sandbox_dir=sandbox_dir).exec_python
+
         # Wire memory.recall if available
         try:
             from sonya.tools.memory_tool import MemoryTool
@@ -110,6 +138,18 @@ class SubagentRunner:
         # ReAct loop
         result = ""
         t_start = time.time()
+        
+        # Start project run trace for observability
+        run_id = None
+        if task.workspace_id and task.workspace_id != "main":
+            try:
+                from sonya.project import ProjectRunStore
+                _run_store = ProjectRunStore(self._sub)
+                _run = _run_store.create(task.workspace_id, kind="subagent", agent_type=task.model)
+                _run_store.start(_run.run_id)
+                run_id = _run.run_id
+            except Exception:
+                pass
 
         for step in range(task.max_steps):
             if time.time() - t_start > _MAX_SECONDS:
@@ -153,10 +193,32 @@ class SubagentRunner:
             for tool_name, tool_arg in tool_calls:
                 tool_name = tool_name.strip()
                 tool_arg = tool_arg.strip()
+                t_tool_start = time.time()
                 tool_result = self._dispatch_tool(tools, tool_name, tool_arg)
+                tool_elapsed_ms = int((time.time() - t_tool_start) * 1000)
                 tool_results.append(
                     f"[OBS: {tool_name}]\n{tool_result[:2000]}"
                 )
+                
+                # Trace execution if bound to project
+                if run_id:
+                    try:
+                        from sonya.project import ExecutionTraceStore
+                        _trace_store = ExecutionTraceStore(self._sub)
+                        _trace_store.append(
+                            run_id, task.workspace_id,
+                            step_seq=step,
+                            step_type="action" if not tool_result.lstrip().startswith("[ERROR]") else "error",
+                            content="",
+                            tool_name=tool_name,
+                            tool_arg_summary=tool_arg[:200],
+                            outcome=tool_result[:500],
+                            model=task.model,
+                            provider=task.provider,
+                            latency_ms=tool_elapsed_ms,
+                        )
+                    except Exception:
+                        pass
 
             # Append to conversation
             messages.append({"role": "assistant", "content": response})
@@ -173,6 +235,18 @@ class SubagentRunner:
         task.status = "done" if not result.startswith("[ERROR]") and not result.startswith("[TIMEOUT]") else "failed"
         task.completed_at = _utc_now_iso()
         self._save_task(task)
+        
+        # End project run trace
+        if run_id:
+            try:
+                from sonya.project import ProjectRunStore
+                _run_store = ProjectRunStore(self._sub)
+                if task.status == "done":
+                    _run_store.complete(run_id, task.result[:500])
+                else:
+                    _run_store.fail(run_id, task.result[:500])
+            except Exception:
+                pass
 
         # Emit continuity event
         from sonya.state.continuity_stream import ContinuityEvent
@@ -257,16 +331,16 @@ class SubagentRunner:
             if existing:
                 self._sub.connection.execute(
                     """UPDATE subagent_tasks SET
-                       status=?, result=?, steps_taken=?, completed_at=?
+                       status=?, result=?, steps_taken=?, completed_at=?, workspace_id=?
                        WHERE subagent_id=?""",
-                    (task.status, task.result, task.steps_taken, task.completed_at or "", task.subagent_id),
+                    (task.status, task.result, task.steps_taken, task.completed_at or "", task.workspace_id, task.subagent_id),
                 )
             else:
                 self._sub.connection.execute(
                     """INSERT INTO subagent_tasks
-                       (subagent_id, task, provider, model, max_steps, status, result, steps_taken, created_at, completed_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (task.subagent_id, task.task, task.provider, task.model, task.max_steps,
+                       (subagent_id, workspace_id, task, provider, model, max_steps, status, result, steps_taken, created_at, completed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (task.subagent_id, task.workspace_id, task.task, task.provider, task.model, task.max_steps,
                      task.status, task.result, task.steps_taken, task.created_at, task.completed_at or ""),
                 )
             self._sub.connection.commit()

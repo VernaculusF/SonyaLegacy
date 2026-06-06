@@ -28,9 +28,10 @@ _MAX_OUTPUT_BYTES = 200_000
 
 
 class CodeTool:
-    def __init__(self, *, python_executable: str | None = None, timeout_seconds: int = _DEFAULT_TIMEOUT) -> None:
+    def __init__(self, *, python_executable: str | None = None, timeout_seconds: int = _DEFAULT_TIMEOUT, sandbox_dir: str | None = None) -> None:
         self._python = python_executable or sys.executable
         self._timeout = timeout_seconds
+        self._sandbox_dir = sandbox_dir
 
     def exec_python(self, code: str) -> str:
         if not code.strip():
@@ -55,6 +56,10 @@ class CodeTool:
         with tempfile.TemporaryDirectory(prefix="sonya-code-") as tmp:
             script_path = Path(tmp) / "script.py"
             script_path.write_text(code, encoding="utf-8")
+            
+            run_cwd = tmp
+            if self._sandbox_dir:
+                run_cwd = self._sandbox_dir
 
             # Use the real user HOME so `~` resolves correctly.
             # Sonya needs to reach her runtime data (~/.sonya/sonya_substrate.db)
@@ -72,7 +77,7 @@ class CodeTool:
             try:
                 proc = subprocess.run(
                     [self._python, str(script_path)],
-                    cwd=tmp,
+                    cwd=run_cwd,
                     env=env,
                     capture_output=True,
                     timeout=self._timeout,

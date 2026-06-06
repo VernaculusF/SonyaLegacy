@@ -330,6 +330,43 @@ def test_dialog_rejects_empty_no_attachment(tmp_path: Path) -> None:
     assert resp.status == 400
 
 
+def test_dialog_records_workspace_id_and_history_filters_by_it(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
+    from sonya.admin.server import atrium_dialog, atrium_history
+    from sonya.config import load_config
+
+    cfg = load_config()
+
+    class _Req:
+        def __init__(self, app, body=None, query=None):
+            self.app = app
+            self._body = body or {}
+            self.headers = {}
+            self.query = query or {}
+
+        async def json(self):
+            return self._body
+
+    app = {"config": cfg, "admin_password": ""}
+    body_main = {"text": "main chat"}
+    body_ws = {"text": "project chat", "workspace_id": "ws_proj"}
+    assert asyncio.run(atrium_dialog(_Req(app, body_main))).status == 200
+    assert asyncio.run(atrium_dialog(_Req(app, body_ws))).status == 200
+
+    resp_ws = asyncio.run(atrium_history(_Req(app, query={"before_seq": "0", "limit": "20", "workspace_id": "ws_proj"})))
+    assert resp_ws.status == 200
+    import json as _json
+    data_ws = _json.loads(resp_ws.text)
+    assert len(data_ws["events"]) == 1
+    assert data_ws["events"][0]["payload"]["workspace_id"] == "ws_proj"
+
+    resp_main = asyncio.run(atrium_history(_Req(app, query={"before_seq": "0", "limit": "20"})))
+    assert resp_main.status == 200
+    data_main = _json.loads(resp_main.text)
+    assert len(data_main["events"]) == 1
+    assert data_main["events"][0]["text"] == "main chat"
+
+
 def test_workshop_read_write_disabled(tmp_path: Path) -> None:
     """Workshop is list-only — read and write return 403 for all kinds."""
     from sonya.admin.workshop import workshop_read, workshop_write

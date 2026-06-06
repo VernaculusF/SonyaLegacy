@@ -81,7 +81,7 @@ def test_all_statuses_are_valid() -> None:
     expected = {
         "draft", "validating", "passed_layer_1", "passed_layer_2",
         "passed_layer_3", "passed_layer_4", "requires_governed_change",
-        "governed_approved", "approved", "rejected", "applied", "reverted",
+        "governed_approved", "approved", "rejected", "applied", "reverted", "archived",
     }
     actual = {s.value for s in ProposalStatus}
     assert actual == expected

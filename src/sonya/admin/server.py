@@ -530,6 +530,51 @@ async def api_selfmod_deny(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def api_selfmod_archive(request: web.Request) -> web.Response:
+    """Archive a terminal selfmod proposal so operator lists can be cleaned up."""
+    config = request.app["config"]
+    proposal_id = request.match_info.get("proposal_id", "")
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.selfmod import ProposalStore
+        from sonya.selfmod.proposal import ProposalNotFoundError, ProposalStatus
+
+        store = ProposalStore(sub)
+        try:
+            p = store.get(proposal_id)
+        except ProposalNotFoundError:
+            return web.json_response({"error": "not found"}, status=404)
+
+        terminal = {
+            ProposalStatus.REJECTED,
+            ProposalStatus.APPLIED,
+            ProposalStatus.REVERTED,
+            ProposalStatus.GOVERNED_APPROVED,
+            ProposalStatus.APPROVED,
+        }
+        if p.status not in terminal:
+            return web.json_response({"error": f"proposal status is {p.status.value}, archive only allowed for terminal proposals"}, status=400)
+        store.update_status(proposal_id, ProposalStatus.ARCHIVED)
+        return web.json_response({"status": "archived", "proposal_id": proposal_id})
+    finally:
+        sub.close()
+
+
+async def api_selfmod_clear_archived(request: web.Request) -> web.Response:
+    """Delete archived proposals from substrate for operator hygiene."""
+    config = request.app["config"]
+    sub = _get_substrate_writable(config)
+    try:
+        cur = sub.connection.execute("SELECT COUNT(*) FROM self_mod_proposals WHERE status = 'archived'")
+        row = cur.fetchone()
+        count = int(row[0]) if row else 0
+        sub.connection.execute("DELETE FROM self_mod_proposals WHERE status = 'archived'")
+        sub.connection.commit()
+        return web.json_response({"status": "cleared", "removed": count})
+    finally:
+        sub.close()
+
+
 # --- Core process management ---
 
 _core_process: Any = None
@@ -2099,6 +2144,7 @@ async def atrium_dialog(request: web.Request) -> web.Response:
     except Exception:
         data = {}
     text = str(data.get("text") or "").strip()
+    workspace_id = str(data.get("workspace_id") or "").strip()
     # Optional attachment metadata (uploaded separately via /api/atrium/upload,
     # which returns {name, media_path, media_mime, media_kind}). The composer
     # passes these back here so the incoming event carries the reference.
@@ -2132,6 +2178,8 @@ async def atrium_dialog(request: web.Request) -> web.Response:
             payload["media_kind"] = first.get("media_kind")
         if attachments:
             payload["attachments"] = attachments
+        if workspace_id:
+            payload["workspace_id"] = workspace_id
         ev = stream.append(ContinuityEvent(
             kind="incoming.atrium_dialog",
             channel="dialog",
@@ -2170,6 +2218,7 @@ async def atrium_history(request: web.Request) -> web.Response:
         before_seq = int(request.query.get("before_seq", "0"))
     except ValueError:
         before_seq = 0
+    workspace_id = str(request.query.get("workspace_id", "") or "").strip()
     try:
         limit = max(1, min(100, int(request.query.get("limit", "50"))))
     except ValueError:
@@ -2192,13 +2241,14 @@ async def atrium_history(request: web.Request) -> web.Response:
         if before_seq > 0:
             where_extra = "AND seq < ? "
             params.append(before_seq)
+        raw_limit = max(limit * 5, 100)
         rows = sub.connection.execute(
             f"SELECT seq, kind, channel, principal_id, payload_json, created_at "
             f"FROM continuity_events "
             f"WHERE kind IN ({ph}) AND private = 0 "
             f"{where_extra}"
             f"ORDER BY seq DESC LIMIT ?",
-            (*params, limit),
+            (*params, raw_limit),
         ).fetchall()
         events = []
         for r in reversed(rows):
@@ -2206,6 +2256,13 @@ async def atrium_history(request: web.Request) -> web.Response:
                 payload = json.loads(r[4] or "{}")
             except Exception:
                 payload = {}
+            ev_ws = str(payload.get("workspace_id") or "") if isinstance(payload, dict) else ""
+            if workspace_id:
+                if ev_ws != workspace_id:
+                    continue
+            else:
+                if ev_ws:
+                    continue
             events.append({
                 "seq": r[0],
                 "kind": r[1],
@@ -2215,10 +2272,13 @@ async def atrium_history(request: web.Request) -> web.Response:
                 "text": payload.get("text", "") if isinstance(payload, dict) else "",
                 "payload": payload,
             })
+            if len(events) >= limit:
+                break
         return _atrium_cors(web.json_response({
             "events": events,
-            "has_more": len(rows) == limit,
+            "has_more": len(rows) >= raw_limit or len(events) >= limit,
             "before_seq": before_seq,
+            "workspace_id": workspace_id,
         }))
     finally:
         sub.close()
@@ -2423,6 +2483,8 @@ def create_app() -> web.Application:
     app.router.add_get("/api/selfmod/{proposal_id}", api_selfmod_get)
     app.router.add_post("/api/selfmod/{proposal_id}/approve", api_selfmod_approve)
     app.router.add_post("/api/selfmod/{proposal_id}/deny", api_selfmod_deny)
+    app.router.add_post("/api/selfmod/{proposal_id}/archive", api_selfmod_archive)
+    app.router.add_post("/api/selfmod/clear-archived", api_selfmod_clear_archived)
     # Providers (key pool management)
     app.router.add_get("/api/providers", api_providers_get)
     app.router.add_post("/api/providers/settings", api_providers_settings)
@@ -2469,7 +2531,11 @@ def create_app() -> web.Application:
     # Repo control — git status/commit/push/revert for the Atrium Console.
     from sonya.admin.repo import register_routes as _register_repo
     _register_repo(app)
+    # Project runtime API — Atrium hosted web workspace
+    from sonya.admin.project_api import register_project_routes as _register_projects
+    _register_projects(app)
     return app
+
 
 
 def main() -> None:

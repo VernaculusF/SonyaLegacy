@@ -64,6 +64,8 @@ WINDOW_KIND_TG = "tg_session"
 WINDOW_KIND_ACTIVE = "active_session"
 WINDOW_KIND_WORKER = "task_worker"
 WINDOW_KIND_IDLE = "idle_thought"
+WINDOW_KIND_PROJECT = "project_session"
+WINDOW_KIND_SELF_EVO = "self_evolution"
 
 
 @dataclass(slots=True)
@@ -102,6 +104,7 @@ class Window:
     # Goes between system prompt and initial_user_text so the LLM sees
     # continuity, not a cold start. Built by caller from continuity_events.
     prior_messages: list[dict[str, Any]] | None = None
+    workspace_id: str = ""
     # Caller hint: this Window opened on an Ivan message that he is
     # actively waiting for a reply to. Forces the inbox-priority gate
     # in run_agent_session — chat.dialog must fire before [DONE]. Used
@@ -126,7 +129,9 @@ _DEFAULT_BUDGETS: dict[str, tuple[int, float]] = {
     # for too long, Ivan should see something move".
     WINDOW_KIND_ACTIVE: (60, 1800.0),
     WINDOW_KIND_WORKER: (5, 60.0),
-    WINDOW_KIND_IDLE: (3, 60.0),  # Phase 2C will use this; today idle bypasses run_window
+    WINDOW_KIND_IDLE: (3, 60.0),
+    WINDOW_KIND_PROJECT: (40, 1200.0),
+    WINDOW_KIND_SELF_EVO: (20, 600.0),
 }
 
 
@@ -169,11 +174,13 @@ async def run_window(
         knowledge=tools.get("knowledge"),
         providers=tools.get("providers"),
         browser=tools.get("browser"),
+        projects=tools.get("projects"),
         outbound=window.outbound,
         initial_thought=window.initial_thought,
         initial_user_message=window.initial_user_message,
         initial_user_text=window.initial_user_text,
         prior_messages=window.prior_messages,
+        workspace_id=window.workspace_id,
         require_dialog_reply=window.require_dialog_reply,
         max_steps=steps,
         max_seconds=seconds,
@@ -190,4 +197,6 @@ __all__ = [
     "WINDOW_KIND_ACTIVE",
     "WINDOW_KIND_WORKER",
     "WINDOW_KIND_IDLE",
+    "WINDOW_KIND_PROJECT",
+    "WINDOW_KIND_SELF_EVO",
 ]
