@@ -1,13 +1,11 @@
-/* Atrium root — handles onboarding gate vs main app shell.
- * См. UX_SKETCH.md §5 для desktop layout.
- */
 import { Show, createSignal, onMount, onCleanup } from 'solid-js';
-import { settings, feed, updateSetting } from './store.js';
+import { settings, feed, updateSetting, activeWorkspaceId, fetchProjects, fetchEvolutionPressure } from './store.js';
 import { connectWS, disconnectWS, startHeartbeat, stopHeartbeat } from './ws.js';
 import Onboarding from './components/Onboarding.jsx';
 import Header from './components/Header.jsx';
-import AvatarPane from './components/AvatarPane.jsx';
+import ChatSidebar from './components/ChatSidebar.jsx';
 import DialogPane from './components/DialogPane.jsx';
+import ProjectWorkspace from './components/ProjectWorkspace.jsx';
 import MindPane from './components/MindPane.jsx';
 import ReasonStream from './components/ReasonStream.jsx';
 import Settings from './components/Settings.jsx';
@@ -21,16 +19,15 @@ export default function App() {
   const [showWorkshop, setShowWorkshop] = createSignal(false);
   const [showConsole, setShowConsole] = createSignal(false);
 
-  // Onboarding done if both fields are set
   const isConfigured = () => Boolean(settings.vps_host && settings.atrium_token);
 
-  // Connect on mount if configured
   onMount(() => {
     if (isConfigured()) {
       connectWS();
       startHeartbeat();
+      fetchProjects();
+      fetchEvolutionPressure();
     }
-    // Keyboard: Ctrl+J / Cmd+J → toggle reason-stream collapse
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
         e.preventDefault();
@@ -38,12 +35,6 @@ export default function App() {
       }
     };
     window.addEventListener('keydown', onKey);
-    // Visibility-aware idle: when window is hidden/minimised, mark a class
-    // on <html> that CSS uses to pause infinite animations. Saves CPU when
-    // user isn't looking. SonyaAvatar's blink loop also gates on
-    // document.hidden directly. Without this WebView2 keeps rendering
-    // CSS keyframes (s2d-breathe, s2d-drift, etc.) at full rate even when
-    // minimised — burning a chunk of CPU for nothing.
     const onVis = () => {
       document.documentElement.classList.toggle('app-hidden', document.hidden);
     };
@@ -51,7 +42,7 @@ export default function App() {
     onVis();
     onCleanup(() => {
       window.removeEventListener('keydown', onKey);
-      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('visibilitychange', onVis);
       disconnectWS();
       stopHeartbeat();
     });
@@ -75,11 +66,23 @@ export default function App() {
           'streams-collapsed': settings.streams_collapsed,
         }}
       >
-        <Header onOpenSettings={() => setShowSettings(true)} onOpenWorkshop={() => setShowWorkshop(true)} onOpenConsole={() => setShowConsole(true)} />
+        <Header
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenWorkshop={() => setShowWorkshop(true)}
+          onOpenConsole={() => setShowConsole(true)}
+        />
 
         <div class="main">
-          <AvatarPane onEnterRoom={() => setShowRoom(true)} />
-          <DialogPane onEnterRoom={() => setShowRoom(true)} />
+          <ChatSidebar />
+          <Show
+            when={activeWorkspaceId() !== 'main'}
+            fallback={<DialogPane onEnterRoom={() => setShowRoom(true)} />}
+          >
+            <ProjectWorkspace
+              onEnterRoom={() => setShowRoom(true)}
+              onOpenWorkshop={() => setShowWorkshop(true)}
+            />
+          </Show>
           <MindPane />
         </div>
 

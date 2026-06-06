@@ -14,7 +14,9 @@ import { createSignal } from 'solid-js';
 const SETTINGS_KEY = 'atrium.settings.v1';
 
 const DEFAULT_SETTINGS = {
-  vps_host: '34.38.255.149:8877',
+  vps_host: typeof window !== 'undefined'
+    ? window.location.host
+    : 'localhost:8877',
   atrium_token: '',
   // UI prefs
   streams_collapsed: false,
@@ -28,6 +30,11 @@ const DEFAULT_SETTINGS = {
   show_private_count: true,
   notifications_dialog: 'full', // full | quiet | off
   notifications_stuck: true,
+  // Workspace runtime settings — чаты как контексты диалога
+  workspaces: [
+    { id: 'main', name: 'main', description: 'Основной чат — общие вопросы, задачи, наблюдение за проектами', path: '', type: 'local', created_at: Date.now(), last_message_at: Date.now() },
+  ],
+  full_system_access: false, // Full-System Access toggle
   // Avatar VRM model URL. Default served from public/models by Vite/Tauri.
   // Empty → fall back to the static SVG silhouette.
   avatar_model_url: '/models/sonya.vrm',
@@ -76,6 +83,22 @@ function loadSettings() {
         ...DEFAULT_SETTINGS.streams_filters,
         ...(parsed.streams_filters || {}),
       },
+      workspaces: (() => {
+        // Migration: take saved workspaces if any, ensuring main is present
+        let ws = Array.isArray(parsed.workspaces) && parsed.workspaces.length > 0
+          ? parsed.workspaces.map(w => {
+              // Strip old `active` field from pre-drawer format
+              const { active, ...rest } = w;
+              return rest;
+            })
+          : DEFAULT_SETTINGS.workspaces;
+        // Ensure main workspace always exists as first entry
+        if (!ws.some(w => w.id === 'main')) {
+          ws = [...DEFAULT_SETTINGS.workspaces, ...ws];
+        }
+        return ws;
+      })(),
+      full_system_access: Boolean(parsed.full_system_access),
     };
     // Backfill / refresh avatar_frames. Empty → use default. Also refresh when
     // the saved frames point at the bundled /avatar/sonya_ assets (so a version
@@ -96,15 +119,15 @@ function loadSettings() {
   }
 }
 
-function saveSettings(s) {
+export const [settings, setSettings] = createStore(loadSettings());
+
+export function saveSettings(s) {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   } catch {
     // localStorage might be disabled / full — non-fatal
   }
 }
-
-export const [settings, setSettings] = createStore(loadSettings());
 
 export function updateSetting(key, value) {
   setSettings(key, value);
@@ -115,6 +138,83 @@ export function updateFilter(src, on) {
   setSettings('streams_filters', src, on);
   saveSettings(settings);
 }
+
+// ---------- Workspace / Chat functions ----------
+
+// Текущий активный чат (один, не мультивыбор)
+export const [activeWorkspaceId, setActiveWorkspaceId] = createSignal('main');
+
+export function switchWorkspace(id) {
+  setActiveWorkspaceId(id);
+}
+
+export function createWorkspace(ws) {
+  setSettings('workspaces', (cur) => {
+    if (cur.some((w) => w.id === ws.id)) return cur;
+    return [...cur, {
+      ...ws,
+      created_at: ws.created_at || Date.now(),
+      last_message_at: ws.last_message_at || Date.now(),
+    }];
+  });
+  saveSettings(settings);
+  setActiveWorkspaceId(ws.id);
+}
+
+export function removeWorkspace(id) {
+  if (id === 'main') return; // нельзя удалить основной чат
+  setSettings('workspaces', (cur) => cur.filter((w) => w.id !== id));
+  saveSettings(settings);
+  if (activeWorkspaceId() === id) setActiveWorkspaceId('main');
+}
+
+export function updateWorkspace(id, updates) {
+  setSettings('workspaces', (cur) =>
+    cur.map((w) => (w.id === id ? { ...w, ...updates } : w))
+  );
+  saveSettings(settings);
+}
+
+export function touchWorkspace(id) {
+  setSettings('workspaces', (cur) =>
+    cur.map((w) => (w.id === id ? { ...w, last_message_at: Date.now() } : w))
+  );
+  saveSettings(settings);
+}
+
+export function getWorkspace(id) {
+  return settings.workspaces.find((w) => w.id === id) || null;
+}
+
+/**
+ * Windows-native folder picker (showDirectoryPicker).
+ * Returns the picked folder path as string, or null if cancelled / unavailable.
+ * Falls back to a prompt() if the API isn't supported.
+ */
+export async function pickProjectFolder() {
+  try {
+    if (typeof window !== 'undefined' && window.showDirectoryPicker) {
+      const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      // Browser file-system APIs intentionally hide the absolute path.
+      // We still use the native picker for convenience, then ask the user to
+      // confirm the real path explicitly so project bindings stay stable.
+      const hinted = prompt(
+        `Выбрана папка "${handle.name}". Введите полный путь к проекту:`,
+        handle.name,
+      );
+      return hinted ? { path: hinted, handle } : null;
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') return null; // user cancelled
+    // fall through to prompt
+  }
+  // Fallback for non-Chrome browsers
+  const path = prompt('Введите путь к папке проекта (например C:\\Projects\\sonya-core):');
+  return path ? { path, handle: null } : null;
+}
+
+// Алиас для совместимости — addWorkspace = createWorkspace
+export const addWorkspace = createWorkspace;
 
 // ---------- Live feed state ----------
 
@@ -148,6 +248,10 @@ export const [feed, setFeed] = createStore({
   // While false, side-effects (avatar glow, notifications) are suppressed so
   // the cold-start replay doesn't spam.
   synced: false,
+  // Projects — fetched from /api/projects
+  projects: [],
+  // Evolution pressure dimensions — fetched from /api/evolution-pressure
+  evolution_pressure: [],
 });
 
 // Cap collections to avoid unbounded growth
@@ -156,37 +260,42 @@ const MAX_DIALOG = 200;
 const MAX_THOUGHTS = 50;
 
 export function pushDialogMessage(msg) {
+  // If caller explicitly set workspace_id, use it. Otherwise the message
+  // belongs to the global (main) dialog. Only non-main workspaces require
+  // tagging so per-project chat filtering works.
+  const tagged = msg.workspace_id ? msg : { ...msg, workspace_id: undefined };
   setFeed('dialog_messages', (cur) => {
     // Dedup by seq — reconnects / overlapping catch-up must not double-post.
-    if (msg.seq != null && cur.some((m) => m.seq === msg.seq)) return cur;
+    if (tagged.seq != null && cur.some((m) => m.seq === tagged.seq)) return cur;
     // Dedup optimistic echo vs WS echo: same sender + same text within 30s.
     // The composer pushes a local- echo immediately; the backend later emits
     // the same text with a real seq via the feed. We must NOT remove+re-add
     // (that causes a visible flicker) — instead we keep the existing bubble
     // in place and just upgrade its seq in-place if it was a local echo.
-    if (msg.text) {
-      const t = msg.ts ? new Date(msg.ts).getTime() : Date.now();
+    if (tagged.text) {
+      const t = tagged.ts ? new Date(tagged.ts).getTime() : Date.now();
       const dupIdx = cur.findIndex((m) =>
-        m.sender === msg.sender &&
-        (m.text || '').trim() === (msg.text || '').trim() &&
+        m.sender === tagged.sender &&
+        (m.text || '').trim() === (tagged.text || '').trim() &&
         Math.abs((m.ts ? new Date(m.ts).getTime() : 0) - t) < 30000
       );
       if (dupIdx >= 0) {
         const existing = cur[dupIdx];
         // Upgrade local echo → real seq without changing array order/length.
-        if (typeof msg.seq === 'number' && String(existing.seq).startsWith('local-')) {
+        if (typeof tagged.seq === 'number' && String(existing.seq).startsWith('local-')) {
           const copy = cur.slice();
-          copy[dupIdx] = { ...existing, seq: msg.seq, ts: existing.ts };
+          copy[dupIdx] = { ...existing, seq: tagged.seq, ts: existing.ts };
           return copy;
         }
         // Otherwise it's a true duplicate — ignore.
         return cur;
       }
     }
-    const next = [...cur, msg];
+    const next = [...cur, tagged];
     if (next.length > MAX_DIALOG) next.splice(0, next.length - MAX_DIALOG);
     return next;
   });
+  touchWorkspace(tagged.workspace_id || 'main');
 }
 
 export function pushStreamEvent(ev) {
@@ -234,6 +343,30 @@ export const [avatarGlow, setAvatarGlow] = createSignal(0);
 
 export function flashAvatar() {
   setAvatarGlow((n) => n + 1);
+}
+
+// ---------- Execution trace (in-memory, from WS feed) ----------
+const MAX_TRACE = 200;
+export const [executionTrace, setExecutionTrace] = createStore({ events: [] });
+
+export function addTraceEvent(ev) {
+  const event = { ...ev, ts: ev.ts || Date.now() };
+  setExecutionTrace('events', (cur) => {
+    const next = [...cur, event];
+    if (next.length > MAX_TRACE) next.splice(0, next.length - MAX_TRACE);
+    return next;
+  });
+}
+
+export function clearTrace(phase) {
+  if (phase) setExecutionTrace('events', (cur) => cur.filter((e) => e.phase !== phase));
+  else setExecutionTrace('events', []);
+}
+
+export function getTrace(phase, limit = 50) {
+  const all = executionTrace.events;
+  const filtered = phase ? all.filter((e) => e.phase === phase) : all;
+  return filtered.slice(-limit);
 }
 
 // Speaking state — drives 2D mouth animation. setSpeaking(true) starts a
@@ -307,4 +440,93 @@ export function endSpeech() {
   _speakEnd = 0;
   setMouthLevel(0);
   setSpeaking(false);
+}
+
+// ---- Project API fetch helpers ----
+
+function _apiBase() {
+  const host = settings.vps_host || (typeof window !== 'undefined' ? window.location.host : 'localhost:8877');
+  const proto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'https' : 'http';
+  return proto + '://' + host;
+}
+
+function _apiHeaders(extra) {
+  return { 'X-Atrium-Token': settings.atrium_token || '', 'Content-Type': 'application/json', ...extra };
+}
+
+export async function fetchProjects() {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects', { headers: _apiHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    setFeed('projects', data.projects || []);
+  } catch { /* ignore */ }
+}
+
+export async function deleteProject(projectId) {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects/' + projectId, {
+      method: 'DELETE',
+      headers: _apiHeaders(),
+    });
+    if (!res.ok) return false;
+    await fetchProjects();
+    return true;
+  } catch { return false; }
+}
+
+export async function updateProjectStatus(projectId, status) {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects/' + projectId, {
+      method: 'POST',
+      headers: _apiHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) return false;
+    await fetchProjects();
+    return true;
+  } catch { return false; }
+}
+
+export async function fetchEvolutionPressure() {
+  try {
+    const res = await fetch(_apiBase() + '/api/evolution-pressure', { headers: _apiHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    setFeed('evolution_pressure', data.dimensions || []);
+  } catch { /* ignore */ }
+}
+
+export async function fetchProjectTraces(projectId) {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects/' + projectId + '/traces', { headers: _apiHeaders() });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.traces || [];
+  } catch { return []; }
+}
+
+export async function createProject(title, description, workspacePath) {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects', {
+      method: 'POST',
+      headers: _apiHeaders(),
+      body: JSON.stringify({ title, description, workspace_path: workspacePath }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    await fetchProjects();
+    return data;
+  } catch { return null; }
+}
+
+export async function setWorkspacePolicy(workspaceId, policy) {
+  try {
+    const res = await fetch(_apiBase() + '/api/workspace-policy/' + workspaceId, {
+      method: 'POST',
+      headers: _apiHeaders(),
+      body: JSON.stringify(policy),
+    });
+    return res.ok;
+  } catch { return false; }
 }

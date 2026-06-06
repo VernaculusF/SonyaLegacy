@@ -1,9 +1,11 @@
-/* First-run onboarding: asks for VPS host + admin token. */
+/* First-run onboarding: asks for admin token.
+ * In hosted web mode, host auto-fills from window.location. */
 import { createSignal } from 'solid-js';
 import { settings, updateSetting } from '../store.js';
 
 export default function Onboarding(props) {
-  const [host, setHost] = createSignal(settings.vps_host || '');
+  const autoHost = typeof window !== 'undefined' ? window.location.host : '';
+  const [host, setHost] = createSignal(settings.vps_host || autoHost);
   const [token, setToken] = createSignal('');
   const [error, setError] = createSignal('');
   const [testing, setTesting] = createSignal(false);

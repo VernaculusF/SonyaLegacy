@@ -2,7 +2,7 @@
  * Updates via meta-messages every 60s + immediate on mind.* events.
  */
 import { For, Show } from 'solid-js';
-import { feed, settings, speaking } from '../store.js';
+import { feed, settings, speaking, fetchEvolutionPressure } from '../store.js';
 
 const EXPRESSION_LABEL = {
   neutral: 'спокойна',
@@ -100,6 +100,17 @@ export default function MindPane() {
           </For>
         </div>
       </div>
+
+      <Show when={feed.evolution_pressure.length > 0}>
+        <div class="mind-section">
+          <h2>EVOLUTION PRESSURE</h2>
+          <div class="drives">
+            <For each={feed.evolution_pressure}>
+              {(dim) => <DriveBar label={dim.dimension} value={dim.gap ?? 0} />}
+            </For>
+          </div>
+        </div>
+      </Show>
 
       <div class="mind-section">
         <h2>SUBJECT STATE</h2>

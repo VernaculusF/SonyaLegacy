@@ -11,7 +11,8 @@
 import {
   feed, setFeed, settings,
   pushDialogMessage, pushStreamEvent, pushInnerThought,
-  applyMeta, flashAvatar,
+  applyMeta, flashAvatar, addTraceEvent,
+  activeWorkspaceId,
 } from './store.js';
 import { ensureNotificationPermission, notify } from './notify.js';
 
@@ -78,13 +79,31 @@ function relativeAge(ts) {
 function cleanDialogText(t) {
   if (!t) return '';
   let s = String(t);
-  // Drop leading bracket-tag lines: [workshop reply: ...]\n, [NEW MESSAGE], etc.
+  // Drop leading bracket-tag lines: [workshop reply: …]\n, [NEW MESSAGE], etc.
   s = s.replace(/^(?:\s*\[[^\]\n]{1,80}\][^\n]*\n)+/, '');
   // Drop standalone bracketed markers anywhere on their own line.
   s = s.replace(/^\s*\[[^\]\n]{1,80}\]\s*$/gm, '');
   // Collapse 3+ newlines.
   s = s.replace(/\n{3,}/g, '\n\n');
   return s.trim();
+}
+
+// Inherit workspace context from a recent dialog message.
+// Keeps Sonya's replies in the same project as the user's message,
+// and acts as a fallback for WS echoes when the server doesn't echo
+// workspace_id. Only inherits from messages <30s old to avoid tagging
+// old history replay during reconnection backlog.
+function inheritWorkspaceContext() {
+  const msgs = feed.dialog_messages;
+  const now = Date.now();
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.workspace_id && m.ts) {
+      const age = now - new Date(m.ts).getTime();
+      if (age < 30000) return m.workspace_id;
+    }
+  }
+  return undefined;
 }
 
 function handleEvent(msg) {
@@ -109,7 +128,8 @@ function handleEvent(msg) {
       const cleaned = cleanDialogText(text);
       if (cleaned) {
         const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
-        pushDialogMessage({ seq, ts, sender: 'her', text: cleaned, attachments: atts });
+        const wsId = payload.workspace_id || inheritWorkspaceContext();
+        pushDialogMessage({ seq, ts, sender: 'her', text: cleaned, attachments: atts, ...(wsId ? { workspace_id: wsId } : {}) });
         // Only flash/notify for live events, not during the initial backlog
         // replay (otherwise a cold start spams the avatar + notifications).
         if (feed.synced) {
@@ -137,7 +157,8 @@ function handleEvent(msg) {
       });
     }
     if (cleaned || atts.length) {
-      pushDialogMessage({ seq, ts, sender: 'him', text: cleaned, attachments: atts });
+      const wsId = payload.workspace_id || inheritWorkspaceContext();
+      pushDialogMessage({ seq, ts, sender: 'him', text: cleaned, attachments: atts, ...(wsId ? { workspace_id: wsId } : {}) });
     }
   }
 
@@ -229,6 +250,28 @@ function handleEvent(msg) {
       body,
     });
   }
+
+  // Execution trace capture — detect phase transitions, agent assignments,
+  // task progress events from Sonya's RWKV data layer.
+  try {
+    const isTrace = (
+      kind?.startsWith('trace.') || kind?.startsWith('internal.trace_') ||
+      kind === 'internal.phase_start' || kind === 'internal.phase_end' ||
+      kind === 'internal.agent_assigned' || kind === 'internal.agent_completed' ||
+      kind === 'internal.task_progress' ||
+      msg.type === 'trace' || msg.event === 'trace_event'
+    );
+    if (isTrace) {
+      addTraceEvent({
+        type: kind || msg.type || 'trace',
+        phase: payload?.phase || msg.phase || '',
+        subagent: payload?.agent || payload?.subagent || msg.agent || '',
+        task_id: payload?.task_id || msg.task_id || '',
+        detail: payload?.summary || payload?.step || payload?.next_step || '',
+        ts: ts || Date.now(),
+      });
+    }
+  } catch (_) { /* trace capture never breaks event processing */ }
 
   // Bump last_seq AFTER successful processing — guarantees that a thrown
   // exception above leaves the cursor in place, so the event will be
@@ -367,13 +410,18 @@ export async function sendDialog(text, attachments = []) {
     throw new Error('connection settings missing');
   }
   const url = `http://${settings.vps_host}/api/atrium/dialog`;
+  const body = { text, attachments };
+  // Include current workspace/project context so the server can route
+  // the message. Main chat sends no workspace_id.
+  const wId = activeWorkspaceId();
+  if (wId !== 'main') body.workspace_id = wId;
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Atrium-Token': settings.atrium_token,
     },
-    body: JSON.stringify({ text, attachments }),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     const txt = await resp.text();
@@ -422,11 +470,12 @@ export function mediaUrl(nameOrPath) {
 }
 
 // Load older dialog history (paginated). before_seq=0 → newest page.
-export async function loadDialogHistory(beforeSeq = 0, limit = 50) {
+export async function loadDialogHistory(beforeSeq = 0, limit = 50, workspaceId = '') {
   if (!settings.vps_host || !settings.atrium_token) {
     throw new Error('connection settings missing');
   }
-  const url = `http://${settings.vps_host}/api/atrium/history?before_seq=${beforeSeq}&limit=${limit}`;
+  const wsPart = workspaceId ? `&workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  const url = `http://${settings.vps_host}/api/atrium/history?before_seq=${beforeSeq}&limit=${limit}${wsPart}`;
   const resp = await fetch(url, { headers: { 'X-Atrium-Token': settings.atrium_token } });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return resp.json();

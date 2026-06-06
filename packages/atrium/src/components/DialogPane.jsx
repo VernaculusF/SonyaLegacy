@@ -6,8 +6,8 @@
  *   - render her replies + Ivan's messages with media inline, code blocks, and
  *     large text scrollable.
  */
-import { For, Show, createEffect, createSignal } from 'solid-js';
-import { feed, pushDialogMessage, prependDialogMessages } from '../store.js';
+import { For, Show, createEffect, createSignal, createMemo } from 'solid-js';
+import { feed, pushDialogMessage, prependDialogMessages, activeWorkspaceId } from '../store.js';
 import { sendDialog, uploadAtriumFile, mediaUrl, loadDialogHistory } from '../ws.js';
 
 function formatTime(ts) {
@@ -107,6 +107,14 @@ export default function DialogPane(props) {
   const [loadingHistory, setLoadingHistory] = createSignal(false);
   const [historyExhausted, setHistoryExhausted] = createSignal(false);
 
+  // Filter messages by active workspace. Main chat shows messages without
+  // workspace_id; project chats show only their messages.
+  const visibleMessages = createMemo(() => {
+    const wId = activeWorkspaceId();
+    if (wId === 'main') return feed.dialog_messages.filter(m => !m.workspace_id);
+    return feed.dialog_messages.filter(m => m.workspace_id === wId);
+  });
+
   // Track if the user is near the bottom — only auto-scroll then.
   let _wasAtBottom = true;
 
@@ -117,7 +125,7 @@ export default function DialogPane(props) {
 
   async function loadOlderHistory() {
     if (loadingHistory() || historyExhausted()) return;
-    const cur = feed.dialog_messages;
+    const cur = visibleMessages();
     // Find oldest numeric seq we have. Local echoes start with 'local-' string.
     const oldestSeq = cur.reduce((min, m) => {
       const s = typeof m.seq === 'number' ? m.seq : null;
@@ -127,7 +135,8 @@ export default function DialogPane(props) {
     setLoadingHistory(true);
     const prevHeight = scrollEl ? scrollEl.scrollHeight : 0;
     try {
-      const r = await loadDialogHistory(oldestSeq || 0, 50);
+      const wId = activeWorkspaceId();
+      const r = await loadDialogHistory(oldestSeq || 0, 50, wId !== 'main' ? wId : '');
       const msgs = (r.events || []).map((e) => {
         const isHis = e.kind === 'incoming.atrium_dialog' || e.kind === 'incoming.telegram_message';
         const payload = e.payload || {};
@@ -173,7 +182,7 @@ export default function DialogPane(props) {
   }
 
   createEffect(() => {
-    feed.dialog_messages.length;
+    visibleMessages().length;
     queueMicrotask(() => {
       if (scrollEl && _wasAtBottom) {
         scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
@@ -237,12 +246,14 @@ export default function DialogPane(props) {
     if ((!text && !atts.length) || sending()) return;
     setSendError('');
     setSending(true);
+    const wId = activeWorkspaceId();
     pushDialogMessage({
       seq: `local-${Date.now()}`,
       ts: new Date().toISOString(),
       sender: 'him',
       text,
       attachments: atts,
+      ...(wId !== 'main' ? { workspace_id: wId } : {}),
     });
     setDraft('');
     setPending([]);
@@ -290,19 +301,19 @@ export default function DialogPane(props) {
         <Show when={loadingHistory()}>
           <div class="history-loader">загружаю историю…</div>
         </Show>
-        <Show when={historyExhausted() && feed.dialog_messages.length > 0}>
+        <Show when={historyExhausted() && visibleMessages().length > 0}>
           <div class="history-loader exhausted">— начало диалога —</div>
         </Show>
         <Show
-          when={feed.dialog_messages.length > 0}
+          when={visibleMessages().length > 0}
           fallback={
             <div class="empty-dialog">
               ничего пока. она думает или ждёт что ты напишешь.
             </div>
           }
         >
-          <div class="day-marker">{dayMarker(feed.dialog_messages)}</div>
-          <For each={feed.dialog_messages}>
+          <div class="day-marker">{dayMarker(visibleMessages())}</div>
+          <For each={visibleMessages()}>
             {(m) => (
               <div class="msg-row" data-seq={String(m.seq)}>
                 <div classList={{ ts: true, 'her-ts': m.sender === 'her', 'him-ts': m.sender === 'him' }}>

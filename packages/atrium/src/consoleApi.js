@@ -43,6 +43,8 @@ export const getSelfmodList = (status) =>
 export const getSelfmod = (id) => call(`/api/selfmod/${encodeURIComponent(id)}`);
 export const approveSelfmod = (id) => call(`/api/selfmod/${encodeURIComponent(id)}/approve`, { method: 'POST' });
 export const denySelfmod = (id) => call(`/api/selfmod/${encodeURIComponent(id)}/deny`, { method: 'POST' });
+export const archiveSelfmod = (id) => call(`/api/selfmod/${encodeURIComponent(id)}/archive`, { method: 'POST' });
+export const clearArchivedSelfmod = () => call('/api/selfmod/clear-archived', { method: 'POST' });
 
 // --- approvals ---
 export const getApprovals = () => call('/api/approvals');

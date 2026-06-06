@@ -1,6 +1,6 @@
 /* Settings modal — Connection / Avatar / Notifications / Privacy. */
 import { createSignal } from 'solid-js';
-import { settings, updateSetting } from '../store.js';
+import { settings, updateSetting, activeWorkspaceId, setWorkspacePolicy } from '../store.js';
 import { connectWS, disconnectWS } from '../ws.js';
 
 export default function Settings(props) {
@@ -70,6 +70,22 @@ export default function Settings(props) {
           />
           <span style="margin-left: 0; color: var(--ink-3); font-size: 12px;">
             свой 3D-room .glb/.gltf (если есть) — иначе встроенная сцена
+          </span>
+        </div>
+
+        <div class="modal-section">
+          <label>full-system access</label>
+          <input
+            type="checkbox"
+            checked={settings.full_system_access}
+            onChange={async (e) => {
+              const val = e.currentTarget.checked;
+              updateSetting('full_system_access', val);
+              await setWorkspacePolicy('main', { full_system_access: val });
+            }}
+          />
+          <span style="margin-left: 8px; color: var(--ink-3); font-size: 12px;">
+            разрешает shell, file_write, selfmod без consent gate в основном чате
           </span>
         </div>
 
