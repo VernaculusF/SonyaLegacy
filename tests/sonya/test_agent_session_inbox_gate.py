@@ -81,6 +81,35 @@ async def test_done_blocked_when_dialog_reply_required(substrate: Substrate) -> 
     assert provider.calls >= 2, "model should have been re-prompted"
 
 
+async def test_project_consent_block_sets_waiting_choice(substrate: Substrate, tmp_path: Path) -> None:
+    from sonya.project import ProjectStore
+    from sonya.tools.projects_tool import ProjectsTool
+
+    project = ProjectStore(substrate).create(
+        "consent project",
+        workspace_path=str(tmp_path / "consent-project"),
+    )
+    provider = _Stub([
+        "[TOOL: shell.run echo blocked]",
+        "[DONE: waiting for choice]",
+    ])
+
+    await run_agent_session(
+        provider=provider,
+        stream=ContinuityStream(substrate),
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(project_root=tmp_path),
+        projects=ProjectsTool(substrate),
+        workspace_id=project.project_id,
+        system_prompt="test",
+        max_steps=2,
+        max_seconds=10.0,
+        purpose="test",
+    )
+
+    assert ProjectStore(substrate).get(project.project_id).status == "waiting_choice"
+
+
 async def test_grace_period_allows_early_work_tools(substrate: Substrate, monkeypatch) -> None:
     """First half of step budget: non-dialog tools NOT blocked.
 

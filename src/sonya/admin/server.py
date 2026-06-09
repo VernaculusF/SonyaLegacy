@@ -2167,6 +2167,29 @@ async def atrium_dialog(request: web.Request) -> web.Response:
     try:
         from sonya.state.continuity_stream import ContinuityStream, ContinuityEvent
 
+        if workspace_id and workspace_id != "main":
+            from sonya.project import ProjectStore
+            from sonya.project.model import ProjectNotFoundError
+            project_store = ProjectStore(sub)
+            try:
+                project = project_store.get(workspace_id)
+            except ProjectNotFoundError:
+                return _atrium_cors(web.json_response(
+                    {"error": "workspace not found"}, status=404))
+            if project.status == "waiting_choice":
+                project_store.set_status(
+                    workspace_id,
+                    "in_progress",
+                    reason="Ivan replied in project chat",
+                    source="atrium_dialog",
+                )
+            elif project.status != "in_progress":
+                return _atrium_cors(web.json_response({
+                    "error": f"project is read-only while status is '{project.status}'",
+                    "project_id": workspace_id,
+                    "status": project.status,
+                }, status=409))
+
         stream = ContinuityStream(sub)
         primary_id = config.primary_user_tg_id or "5785127604"
         # First attachment (if any) is wired into media_path/media_mime so the

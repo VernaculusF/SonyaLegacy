@@ -233,7 +233,7 @@ class ProjectsTool:
         
         store = ProjectStore(self._sub)
         try:
-            p = store.update(pid, status=status)
+            p = store.set_status(pid, status, source="projects_tool")
             return f"Статус проекта [{p.project_id}] '{p.title}' изменён на '{p.status}'."
         except ProjectNotFoundError:
             return f"Проект {pid} не найден."

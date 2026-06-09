@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 from pathlib import Path
 from sonya.state.substrate import Substrate
 from sonya.project.model import ProjectStore, WorkspacePolicyStore, ProjectRunStore
@@ -52,13 +53,13 @@ def test_reality_check_e2e(substrate, tmp_path: Path):
     assert any("project hello" in str(m) for m in proj_pending)
     
     # Proof 5: Permission/Status Flow
-    project_store.update(project_id, status="waiting_for_approval")
-    assert project_store.get(project_id).status == "waiting_for_approval"
+    project_store.set_status(project_id, "waiting_choice")
+    assert project_store.get(project_id).status == "waiting_choice"
     
-    project_store.update(project_id, status="in_progress")
+    project_store.set_status(project_id, "in_progress")
     assert project_store.get(project_id).status == "in_progress"
     
-    project_store.update(project_id, status="completed")
+    project_store.set_status(project_id, "completed")
     assert project_store.get(project_id).status == "completed"
     
     # Proof 6: Full-system-access flow
@@ -100,3 +101,42 @@ def test_reality_check_e2e(substrate, tmp_path: Path):
     assert err_msg2.startswith("[ERROR]")
         
     print("All Reality Check architectural proofs passed!")
+
+
+def test_project_status_transition_is_validated_and_recorded(substrate, tmp_path: Path):
+    store = ProjectStore(substrate)
+    project = store.create("status proof", workspace_path=str(tmp_path / "status-proof"))
+
+    updated = store.set_status(project.project_id, "waiting_choice", reason="needs Ivan")
+    assert updated.status == "waiting_choice"
+
+    row = substrate.connection.execute(
+        "SELECT payload_json FROM continuity_events "
+        "WHERE kind = 'project.status_changed' ORDER BY seq DESC LIMIT 1"
+    ).fetchone()
+    assert row is not None
+    assert project.project_id in row[0]
+    assert "waiting_choice" in row[0]
+
+    with pytest.raises(ValueError):
+        store.set_status(project.project_id, "waiting_for_approval")
+    with pytest.raises(ValueError):
+        store.update(project.project_id, status="waiting")
+
+
+def test_project_api_rejects_invalid_status(substrate, tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "api.db"))
+    from sonya.admin.project_api import api_project_update
+    from sonya.config import load_config
+
+    project = ProjectStore(Substrate.open(tmp_path / "api.db")).create("api status proof")
+
+    class _Req:
+        app = {"config": load_config()}
+        match_info = {"project_id": project.project_id}
+
+        async def json(self):
+            return {"status": "waiting_for_approval"}
+
+    response = asyncio.run(api_project_update(_Req()))
+    assert response.status == 400

@@ -683,6 +683,7 @@ async def run_agent_session(
     projects: Any | None = None,  # ProjectsTool — projects.* family
     model_eval: Any | None = None,  # ModelsEvalTool — models.evaluate, models.scoreboard, models.set_champion
 
+    initial_thought: str = "",
     initial_user_message: list[dict[str, Any]] | None = None,
     initial_user_text: str | None = None,
     prior_messages: list[dict[str, Any]] | None = None,
@@ -893,7 +894,7 @@ async def run_agent_session(
             if workspace_id:
                 try:
                     from sonya.project import WorkspacePolicyStore
-                    _wsp = WorkspacePolicyStore(substrate or self_inspect._sub).get(workspace_id)
+                    _wsp = WorkspacePolicyStore(self_inspect._sub).get(workspace_id)
                     if _wsp.full_system_access:
                         _skip_policy_gate = True
                 except Exception:
@@ -903,7 +904,7 @@ async def run_agent_session(
                 if _policy_action:
                     try:
                         from sonya.project import ProjectStore
-                        _p = ProjectStore(substrate or self_inspect._sub).get(workspace_id)
+                        _p = ProjectStore(self_inspect._sub).get(workspace_id)
                         if _p.policy_forbids(_policy_action):
                             observation = (
                                 f"[PROJECT POLICY: FORBIDDEN] Действие '{_policy_action}' "
@@ -918,6 +919,15 @@ async def run_agent_session(
                             ))
                             continue
                         if _p.policy_requires_consent(_policy_action):
+                            try:
+                                ProjectStore(self_inspect._sub).set_status(
+                                    workspace_id,
+                                    "waiting_choice",
+                                    reason=f"Consent required for {_policy_action}",
+                                    source="project_policy",
+                                )
+                            except Exception:
+                                pass
                             observation = (
                                 f"[PROJECT POLICY: CONSENT REQUIRED] Для '{_policy_action}' "
                                 f"в проекте '{_p.title}' нужно одобрение Ивана. "
@@ -1044,10 +1054,11 @@ async def run_agent_session(
             # Auto-trace: if workspace_id is a project, record every step
             # into execution_traces for transparency. This gives Ivan a
             # step-by-step view of what Sonya did inside each project run.
-            if workspace_id and workspace_id != "main" and substrate is not None:
+            if workspace_id and workspace_id != "main":
                 try:
                     from sonya.project import ExecutionTraceStore, ProjectRunStore
-                    _run_store = ProjectRunStore(substrate)
+                    _trace_substrate = self_inspect._sub
+                    _run_store = ProjectRunStore(_trace_substrate)
                     _existing = _run_store.list_by_project(workspace_id, kind="main", limit=1)
                     if _existing and _existing[0].status in ("pending", "running"):
                         _run_id = _existing[0].run_id
@@ -1055,7 +1066,7 @@ async def run_agent_session(
                         _run = _run_store.create(workspace_id, kind="main", agent_type=purpose)
                         _run_store.start(_run.run_id)
                         _run_id = _run.run_id
-                    _trace_store = ExecutionTraceStore(substrate)
+                    _trace_store = ExecutionTraceStore(_trace_substrate)
                     _prev = _trace_store.list_by_run(_run_id, limit=1)
                     _seq = (_prev[0].step_seq + 1) if _prev else step
                     step_type = "action" if not observation.lstrip().startswith("[ERROR]") else "error"

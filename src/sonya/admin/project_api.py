@@ -137,10 +137,20 @@ async def api_project_update(request: web.Request) -> web.Response:
         except ProjectNotFoundError:
             return _cors(web.json_response({"error": "not found"}, status=404))
         kwargs = {}
-        for k in ("title", "description", "workspace_path", "status", "policy"):
+        for k in ("title", "description", "workspace_path", "policy"):
             if k in data:
                 kwargs[k] = data[k]
         p = store.update(project_id, **kwargs) if kwargs else store.get(project_id)
+        if "status" in data:
+            try:
+                p = store.set_status(
+                    project_id,
+                    str(data["status"]),
+                    reason=str(data.get("reason") or ""),
+                    source="project_api",
+                )
+            except ValueError as exc:
+                return _cors(web.json_response({"error": str(exc)}, status=400))
         return _cors(web.json_response({
             "project_id": p.project_id,
             "title": p.title,

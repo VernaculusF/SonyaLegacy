@@ -348,8 +348,12 @@ def test_dialog_accepts_attachment_bound_to_same_workspace(tmp_path: Path, monke
     monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
     from sonya.admin.server import atrium_dialog
     from sonya.config import load_config
+    from sonya.project import ProjectStore
 
     cfg = load_config()
+    sub = Substrate.open(tmp_path / "test.db")
+    project = ProjectStore(sub).create("attachment project")
+    sub.close()
 
     class _Req:
         def __init__(self, app, body):
@@ -364,13 +368,13 @@ def test_dialog_accepts_attachment_bound_to_same_workspace(tmp_path: Path, monke
     app = {"config": cfg, "admin_password": ""}
     body = {
         "text": "right project",
-        "workspace_id": "proj-target",
+        "workspace_id": project.project_id,
         "attachments": [{
             "name": "atrium_abc.txt",
             "media_path": str(tmp_path / "atrium_abc.txt"),
             "media_mime": "text/plain",
             "media_kind": "text",
-            "workspace_id": "proj-target",
+            "workspace_id": project.project_id,
         }],
     }
     resp = asyncio.run(atrium_dialog(_Req(app, body)))
@@ -401,8 +405,12 @@ def test_dialog_records_workspace_id_and_history_filters_by_it(tmp_path: Path, m
     monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
     from sonya.admin.server import atrium_dialog, atrium_history
     from sonya.config import load_config
+    from sonya.project import ProjectStore
 
     cfg = load_config()
+    sub = Substrate.open(tmp_path / "test.db")
+    project = ProjectStore(sub).create("history project")
+    sub.close()
 
     class _Req:
         def __init__(self, app, body=None, query=None):
@@ -416,22 +424,79 @@ def test_dialog_records_workspace_id_and_history_filters_by_it(tmp_path: Path, m
 
     app = {"config": cfg, "admin_password": ""}
     body_main = {"text": "main chat"}
-    body_ws = {"text": "project chat", "workspace_id": "ws_proj"}
+    body_ws = {"text": "project chat", "workspace_id": project.project_id}
     assert asyncio.run(atrium_dialog(_Req(app, body_main))).status == 200
     assert asyncio.run(atrium_dialog(_Req(app, body_ws))).status == 200
 
-    resp_ws = asyncio.run(atrium_history(_Req(app, query={"before_seq": "0", "limit": "20", "workspace_id": "ws_proj"})))
+    resp_ws = asyncio.run(atrium_history(_Req(app, query={"before_seq": "0", "limit": "20", "workspace_id": project.project_id})))
     assert resp_ws.status == 200
     import json as _json
     data_ws = _json.loads(resp_ws.text)
     assert len(data_ws["events"]) == 1
-    assert data_ws["events"][0]["payload"]["workspace_id"] == "ws_proj"
+    assert data_ws["events"][0]["payload"]["workspace_id"] == project.project_id
 
     resp_main = asyncio.run(atrium_history(_Req(app, query={"before_seq": "0", "limit": "20"})))
     assert resp_main.status == 200
     data_main = _json.loads(resp_main.text)
     assert len(data_main["events"]) == 1
     assert data_main["events"][0]["text"] == "main chat"
+
+
+def test_dialog_resumes_waiting_choice_project(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
+    from sonya.admin.server import atrium_dialog
+    from sonya.config import load_config
+    from sonya.project import ProjectStore
+
+    cfg = load_config()
+    sub = Substrate.open(tmp_path / "test.db")
+    project = ProjectStore(sub).create("choice project")
+    ProjectStore(sub).set_status(project.project_id, "waiting_choice")
+    sub.close()
+
+    class _Req:
+        def __init__(self, app):
+            self.app = app
+            self.headers = {}
+            self.query = {}
+
+        async def json(self):
+            return {"text": "выбираю вариант два", "workspace_id": project.project_id}
+
+    resp = asyncio.run(atrium_dialog(_Req({"config": cfg, "admin_password": ""})))
+    assert resp.status == 200
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        assert ProjectStore(sub).get(project.project_id).status == "in_progress"
+    finally:
+        sub.close()
+
+
+@pytest.mark.parametrize("status", ["waiting", "completed", "cancelled"])
+def test_dialog_rejects_read_only_project_status(tmp_path: Path, monkeypatch, status: str) -> None:
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / f"{status}.db"))
+    from sonya.admin.server import atrium_dialog
+    from sonya.config import load_config
+    from sonya.project import ProjectStore
+
+    cfg = load_config()
+    sub = Substrate.open(tmp_path / f"{status}.db")
+    project = ProjectStore(sub).create(f"{status} project")
+    ProjectStore(sub).set_status(project.project_id, status)
+    sub.close()
+
+    class _Req:
+        def __init__(self, app):
+            self.app = app
+            self.headers = {}
+            self.query = {}
+
+        async def json(self):
+            return {"text": "продолжай", "workspace_id": project.project_id}
+
+    resp = asyncio.run(atrium_dialog(_Req({"config": cfg, "admin_password": ""})))
+    assert resp.status == 409
+    assert status in resp.text
 
 
 def test_workshop_read_write_disabled(tmp_path: Path) -> None:

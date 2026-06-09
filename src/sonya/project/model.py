@@ -31,6 +31,14 @@ _DEFAULT_POLICY: dict[str, Any] = {
     "selfmod_apply": "consent",
 }
 
+PROJECT_STATUSES = (
+    "in_progress",
+    "waiting_choice",
+    "waiting",
+    "completed",
+    "cancelled",
+)
+
 
 @dataclass
 class Project:
@@ -125,10 +133,12 @@ class ProjectStore:
         sets: list[str] = ["updated_at = ?"]
         vals: list[Any] = [now]
         for k, v in kwargs.items():
+            if k == "status":
+                raise ValueError("Use ProjectStore.set_status() for status transitions")
             if k == "policy":
                 sets.append("policy_json = ?")
                 vals.append(json.dumps(v, ensure_ascii=False))
-            elif k in ("title", "description", "workspace_path", "status", "owner_principal_id", "last_activity_at"):
+            elif k in ("title", "description", "workspace_path", "owner_principal_id", "last_activity_at"):
                 sets.append(f"{k} = ?")
                 vals.append(v)
         vals.append(project_id)
@@ -138,6 +148,44 @@ class ProjectStore:
         )
         self._conn.commit()
         return self.get(project_id)
+
+    def set_status(self, project_id: str, status: str, *, reason: str = "",
+                   source: str = "runtime") -> Project:
+        if status not in PROJECT_STATUSES:
+            raise ValueError(
+                f"Invalid project status '{status}'. Allowed: {', '.join(PROJECT_STATUSES)}"
+            )
+        project = self.get(project_id)
+        if project.status == status:
+            return project
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "UPDATE projects SET status = ?, last_activity_at = ?, updated_at = ? "
+            "WHERE project_id = ?",
+            (status, now, now, project_id),
+        )
+        self._conn.commit()
+        updated = self.get(project_id)
+        payload = {
+            "project_id": project_id,
+            "title": project.title,
+            "from_status": project.status,
+            "to_status": status,
+            "reason": reason,
+            "source": source,
+        }
+        self._conn.execute(
+            "INSERT INTO continuity_events "
+            "(kind, channel, payload_json, created_at) VALUES (?, ?, ?, ?)",
+            (
+                "project.status_changed",
+                "worker_log",
+                json.dumps(payload, ensure_ascii=False),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        self._conn.commit()
+        return updated
 
     def touch(self, project_id: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
