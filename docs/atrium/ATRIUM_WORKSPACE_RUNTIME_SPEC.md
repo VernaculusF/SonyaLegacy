@@ -2,7 +2,7 @@
 
 **Status:** Draft (mandate from Ivan, not implemented)
 **Type:** Product / architecture spec
-**Last updated:** 2026-06-06
+**Last updated:** 2026-06-09
 **Scope:** Что Atrium должен стать не просто окном чата, а реальной рабочей средой для проектов, субагентов, управляемого выполнения задач и накопления данных для будущего RWKV-слоя.
 
 **Related docs:**

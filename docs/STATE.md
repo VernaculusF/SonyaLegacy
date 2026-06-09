@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Current project state
-**Last updated:** 2026-06-06
+**Last updated:** 2026-06-09
 **Owner:** Иван + Соня + текущий разработчик
 
 ---
