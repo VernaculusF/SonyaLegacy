@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 29
+CURRENT_VERSION = 30
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -754,6 +754,78 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 29
+
+    if version == 29:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS provider_models (
+                model_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                base_url TEXT NOT NULL DEFAULT '',
+                api_key_ref TEXT NOT NULL DEFAULT '',
+                context_length INTEGER NOT NULL DEFAULT 131072,
+                modalities_json TEXT NOT NULL DEFAULT '["text"]',
+                cost_per_1m_input_tokens REAL NOT NULL DEFAULT 0.0,
+                cost_per_1m_output_tokens REAL NOT NULL DEFAULT 0.0,
+                is_free INTEGER NOT NULL DEFAULT 0,
+                latency_tier TEXT NOT NULL DEFAULT 'medium',
+                strength_json TEXT NOT NULL DEFAULT '{}',
+                role_preference TEXT NOT NULL DEFAULT 'auto',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_checked_at TEXT NOT NULL DEFAULT '',
+                discovery_source TEXT NOT NULL DEFAULT 'manual',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_pm_provider ON provider_models(provider);
+            CREATE INDEX IF NOT EXISTS idx_pm_role ON provider_models(role_preference);
+            CREATE INDEX IF NOT EXISTS idx_pm_enabled ON provider_models(enabled);
+            CREATE INDEX IF NOT EXISTS idx_pm_free ON provider_models(is_free);
+            CREATE INDEX IF NOT EXISTS idx_pm_latency ON provider_models(latency_tier);
+
+        """)
+        # Seed known models — separate executes for each INSERT OR IGNORE
+        seed_models = [
+            # OpenRouter free models
+            ('openrouter/owl-alpha', 'openrouter', 'owl-alpha', 1048576, '["text"]', 0, 0, 1, 'very_slow', 'coordinator'),
+            ('openrouter/nex-n2-pro', 'openrouter', 'nex-n2-pro', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor'),
+            ('openrouter/kimi-k2.6', 'openrouter', 'kimi-k2.6', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor'),
+            ('openrouter/laguna-m.1', 'openrouter', 'laguna-m.1', 262144, '["text"]', 0, 0, 1, 'medium', 'executor'),
+            ('openrouter/glm-4.5-air', 'openrouter', 'glm-4.5-air', 131072, '["text"]', 0, 0, 1, 'fast', 'executor'),
+            ('openrouter/hermes-3-405b', 'openrouter', 'hermes-3-405b', 131072, '["text"]', 0, 0, 1, 'slow', 'planner'),
+            ('openrouter/gemma-4-31b', 'openrouter', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor'),
+            ('openrouter/gemma-4-26b-a4b', 'openrouter', 'gemma-4-26b-a4b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup'),
+            # Nous Research
+            ('nous/nemotron-3-ultra', 'nous', 'nemotron-3-ultra', 1048576, '["text"]', 0, 0, 1, 'medium', 'coordinator'),
+            # Google AI Studio
+            ('google/gemma-4-26b', 'google', 'gemma-4-26b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup'),
+            ('google/gemma-4-31b', 'google', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor'),
+            ('google/gemini-3-flash', 'google', 'gemini-3-flash', 1048576, '["text","image","video","audio"]', 0, 0, 1, 'fast', 'planner'),
+            # Codex Sale (premium)
+            ('codexsale/gpt-5.4', 'codexsale', 'gpt-5.4', 131072, '["text"]', 15.0, 60.0, 0, 'medium', 'planner'),
+            ('codexsale/gpt-5.4-mini', 'codexsale', 'gpt-5.4-mini', 131072, '["text"]', 2.0, 8.0, 0, 'fast', 'executor'),
+            ('codexsale/gpt-5.5', 'codexsale', 'gpt-5.5', 131072, '["text"]', 25.0, 100.0, 0, 'medium', 'reviewer'),
+            ('codexsale/gpt-image-2', 'codexsale', 'gpt-image-2', 0, '["image"]', 0, 0, 0, 'slow', 'auto'),
+            ('codexsale/gpt-4o-transcribe', 'codexsale', 'gpt-4o-transcribe', 0, '["audio"]', 0, 0, 0, 'fast', 'auto'),
+        ]
+        for m in seed_models:
+            conn.execute(
+                "INSERT OR IGNORE INTO provider_models "
+                "(model_id, provider, model_name, context_length, modalities_json, "
+                "cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free, "
+                "latency_tier, role_preference, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (*m, now, now),
+            )
+
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (30, now),
+        )
+        conn.commit()
+        version = 30
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
