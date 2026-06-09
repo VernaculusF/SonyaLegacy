@@ -752,11 +752,11 @@ CREATE TABLE IF NOT EXISTS provider_models (
     -- {"coding": 0.9, "reasoning": 0.8, "math": 0.7, etc.}
     role_preference TEXT NOT NULL DEFAULT 'auto',
     -- preferred role: "planner", "executor", "reviewer", "cleanup", "research", "coordinator", "auto"
-    enabled INTEGER NOT NULL DEFAULT 1,
-    -- 1 = active, 0 = disabled
-    last_checked_at TEXT NOT NULL DEFAULT '',
-    -- when was this model last verified working
-    discovery_source TEXT NOT NULL DEFAULT 'manual',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    text_loop_ok INTEGER NOT NULL DEFAULT 1,
+    -- 1 = can be used in text-loop subagent, 0 = special worker only (image/audio/etc)
+    last_checked_at TEXT NOT NULL DEFAULT '',
+    discovery_source TEXT NOT NULL DEFAULT 'manual',
     -- "manual", "auto-discovered", "config"
     metadata_json TEXT NOT NULL DEFAULT '{}',
     -- extra: rate limits, special flags, notes

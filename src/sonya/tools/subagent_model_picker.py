@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from sonya.providers.keystore import KeyStore
+from sonya.providers.keystore import KeyStore, ProviderModel
 
 
 @dataclass(frozen=True)
@@ -97,7 +97,45 @@ def _available_providers(store: KeyStore) -> set[str]:
     for key in store.list_keys():
         if key.is_eligible():
             out.add(key.provider)
+    # Also add providers from provider_models pool
+    for pm in store.list_provider_models(enabled_only=True):
+        out.add(pm.provider)
     return out
+
+
+def _db_model_profiles(store: KeyStore) -> list[ModelProfile]:
+    """Load provider_models from DB and convert to ModelProfile list."""
+    profiles: list[ModelProfile] = []
+    for pm in store.list_provider_models(enabled_only=True):
+        if not pm.text_loop_ok:
+            continue
+        strengths = pm.strengths()
+        strength_keys: list[str] = []
+        if pm.context_length >= 500000:
+            strength_keys.append("large_context")
+        if pm.latency_tier in ("very_fast", "fast"):
+            strength_keys.append("general_fast")
+        if pm.latency_tier in ("very_fast",):
+            strength_keys.append("fastest")
+        if pm.latency_tier in ("slow", "very_slow"):
+            strength_keys.append("reasoning")
+        if "text" not in pm.modalities():
+            continue
+        for k, v in strengths.items():
+            if v >= 0.7 and k not in strength_keys:
+                strength_keys.append(k)
+        if not strength_keys:
+            strength_keys.append("general_reasoning")
+        profiles.append(ModelProfile(
+            provider=pm.provider,
+            model=pm.model_id,
+            label=pm.model_name,
+            strengths=tuple(strength_keys),
+            latency=pm.latency_tier,
+            premium=not bool(pm.is_free),
+            text_loop_ok=True,
+        ))
+    return profiles
 
 
 def _profiles_for_provider(provider: str) -> list[ModelProfile]:

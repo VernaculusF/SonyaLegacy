@@ -232,14 +232,23 @@ class LLMProvider:
         purpose = kwargs.get("purpose", "unknown")
         explicit_provider = bool(str(kwargs.get("_provider", "")).strip())
 
-        # Model selection (2026-06-02: replaces slot-based routing).
-        # Priority: explicit _model kwarg > purpose hint > provider default.
-        # Ivan's directive: no text-fast/text-deep, just "text".
-        # Sonya/system picks model per task; subagents can use any model.
+        # Model selection: explicit _model > role-based from provider_models pool > purpose hint > provider default.
         if "_model" in kwargs:
             preferred_model = str(kwargs["_model"])
         else:
-            preferred_model = _model_for_purpose(purpose)
+            role = str(kwargs.get("role", "auto")).strip()
+            preferred_model = ""
+            if role and role != "auto":
+                pool_models = self._store.list_provider_models(provider=provider, enabled_only=True)
+                role_matches = [m for m in pool_models if m.role_preference == role and m.enabled]
+                if role_matches:
+                    free_matches = [m for m in role_matches if m.is_free]
+                    if free_matches:
+                        preferred_model = free_matches[0].model_id
+                    else:
+                        preferred_model = role_matches[0].model_id
+            if not preferred_model:
+                preferred_model = _model_for_purpose(purpose)
 
         # Fallback chain: try active_provider first; if no eligible keys
         # there, fall back to other providers in order.

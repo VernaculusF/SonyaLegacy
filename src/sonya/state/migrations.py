@@ -773,6 +773,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 strength_json TEXT NOT NULL DEFAULT '{}',
                 role_preference TEXT NOT NULL DEFAULT 'auto',
                 enabled INTEGER NOT NULL DEFAULT 1,
+                text_loop_ok INTEGER NOT NULL DEFAULT 1,
                 last_checked_at TEXT NOT NULL DEFAULT '',
                 discovery_source TEXT NOT NULL DEFAULT 'manual',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -787,36 +788,39 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
 
         """)
         # Seed known models — separate executes for each INSERT OR IGNORE
+        # Also add text_loop_ok column if not exists (for DBs that already have v29 provider_models)
+        _add_column_if_missing(conn, "provider_models", "text_loop_ok", "INTEGER NOT NULL DEFAULT 1")
+
         seed_models = [
             # OpenRouter free models
-            ('openrouter/owl-alpha', 'openrouter', 'owl-alpha', 1048576, '["text"]', 0, 0, 1, 'very_slow', 'coordinator'),
-            ('openrouter/nex-n2-pro', 'openrouter', 'nex-n2-pro', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor'),
-            ('openrouter/kimi-k2.6', 'openrouter', 'kimi-k2.6', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor'),
-            ('openrouter/laguna-m.1', 'openrouter', 'laguna-m.1', 262144, '["text"]', 0, 0, 1, 'medium', 'executor'),
-            ('openrouter/glm-4.5-air', 'openrouter', 'glm-4.5-air', 131072, '["text"]', 0, 0, 1, 'fast', 'executor'),
-            ('openrouter/hermes-3-405b', 'openrouter', 'hermes-3-405b', 131072, '["text"]', 0, 0, 1, 'slow', 'planner'),
-            ('openrouter/gemma-4-31b', 'openrouter', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor'),
-            ('openrouter/gemma-4-26b-a4b', 'openrouter', 'gemma-4-26b-a4b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup'),
+            ('openrouter/owl-alpha', 'openrouter', 'owl-alpha', 1048576, '["text"]', 0, 0, 1, 'very_slow', 'coordinator', 1),
+            ('openrouter/nex-n2-pro', 'openrouter', 'nex-n2-pro', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor', 1),
+            ('openrouter/kimi-k2.6', 'openrouter', 'kimi-k2.6', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor', 1),
+            ('openrouter/laguna-m.1', 'openrouter', 'laguna-m.1', 262144, '["text"]', 0, 0, 1, 'medium', 'executor', 1),
+            ('openrouter/glm-4.5-air', 'openrouter', 'glm-4.5-air', 131072, '["text"]', 0, 0, 1, 'fast', 'executor', 1),
+            ('openrouter/hermes-3-405b', 'openrouter', 'hermes-3-405b', 131072, '["text"]', 0, 0, 1, 'slow', 'planner', 1),
+            ('openrouter/gemma-4-31b', 'openrouter', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor', 1),
+            ('openrouter/gemma-4-26b-a4b', 'openrouter', 'gemma-4-26b-a4b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup', 1),
             # Nous Research
-            ('nous/nemotron-3-ultra', 'nous', 'nemotron-3-ultra', 1048576, '["text"]', 0, 0, 1, 'medium', 'coordinator'),
+            ('nous/nemotron-3-ultra', 'nous', 'nemotron-3-ultra', 1048576, '["text"]', 0, 0, 1, 'medium', 'coordinator', 1),
             # Google AI Studio
-            ('google/gemma-4-26b', 'google', 'gemma-4-26b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup'),
-            ('google/gemma-4-31b', 'google', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor'),
-            ('google/gemini-3-flash', 'google', 'gemini-3-flash', 1048576, '["text","image","video","audio"]', 0, 0, 1, 'fast', 'planner'),
+            ('google/gemma-4-26b', 'google', 'gemma-4-26b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup', 1),
+            ('google/gemma-4-31b', 'google', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor', 1),
+            ('google/gemini-3-flash', 'google', 'gemini-3-flash', 1048576, '["text","image","video","audio"]', 0, 0, 1, 'fast', 'planner', 1),
             # Codex Sale (premium)
-            ('codexsale/gpt-5.4', 'codexsale', 'gpt-5.4', 131072, '["text"]', 15.0, 60.0, 0, 'medium', 'planner'),
-            ('codexsale/gpt-5.4-mini', 'codexsale', 'gpt-5.4-mini', 131072, '["text"]', 2.0, 8.0, 0, 'fast', 'executor'),
-            ('codexsale/gpt-5.5', 'codexsale', 'gpt-5.5', 131072, '["text"]', 25.0, 100.0, 0, 'medium', 'reviewer'),
-            ('codexsale/gpt-image-2', 'codexsale', 'gpt-image-2', 0, '["image"]', 0, 0, 0, 'slow', 'auto'),
-            ('codexsale/gpt-4o-transcribe', 'codexsale', 'gpt-4o-transcribe', 0, '["audio"]', 0, 0, 0, 'fast', 'auto'),
+            ('codexsale/gpt-5.4', 'codexsale', 'gpt-5.4', 131072, '["text"]', 15.0, 60.0, 0, 'medium', 'planner', 1),
+            ('codexsale/gpt-5.4-mini', 'codexsale', 'gpt-5.4-mini', 131072, '["text"]', 2.0, 8.0, 0, 'fast', 'executor', 1),
+            ('codexsale/gpt-5.5', 'codexsale', 'gpt-5.5', 131072, '["text"]', 25.0, 100.0, 0, 'medium', 'reviewer', 1),
+            ('codexsale/gpt-image-2', 'codexsale', 'gpt-image-2', 0, '["image"]', 0, 0, 0, 'slow', 'auto', 0),
+            ('codexsale/gpt-4o-transcribe', 'codexsale', 'gpt-4o-transcribe', 0, '["audio"]', 0, 0, 0, 'fast', 'auto', 0),
         ]
         for m in seed_models:
             conn.execute(
                 "INSERT OR IGNORE INTO provider_models "
                 "(model_id, provider, model_name, context_length, modalities_json, "
                 "cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free, "
-                "latency_tier, role_preference, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "latency_tier, role_preference, text_loop_ok, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (*m, now, now),
             )
 

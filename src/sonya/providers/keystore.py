@@ -101,6 +101,51 @@ class ProviderSettings:
     updated_at: str
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderModel:
+    model_id: str
+    provider: str
+    model_name: str
+    base_url: str
+    api_key_ref: str
+    context_length: int
+    modalities_json: str
+    cost_per_1m_input_tokens: float
+    cost_per_1m_output_tokens: float
+    is_free: int
+    latency_tier: str
+    strength_json: str
+    role_preference: str
+    enabled: int
+    text_loop_ok: int = 1
+    last_checked_at: str = ''
+    discovery_source: str = 'manual'
+    metadata_json: str = '{}'
+    created_at: str = ''
+    updated_at: str = ''
+
+    def modalities(self) -> list[str]:
+        try:
+            import json as _json
+            return _json.loads(self.modalities_json or '["text"]')
+        except Exception:
+            return ["text"]
+
+    def strengths(self) -> dict[str, float]:
+        try:
+            import json as _json
+            return _json.loads(self.strength_json or '{}')
+        except Exception:
+            return {}
+
+    def metadata(self) -> dict:
+        try:
+            import json as _json
+            return _json.loads(self.metadata_json or '{}')
+        except Exception:
+            return {}
+
+
 class KeyStore:
     """SQLite-backed CRUD + rotation. Thread-safe via asyncio.Lock."""
 
@@ -147,6 +192,84 @@ class KeyStore:
         )
         self._sub.connection.commit()
         return self.get_settings()
+
+    # ---------- provider model pool ----------
+
+    def list_provider_models(self, provider: str | None = None, *, enabled_only: bool = True) -> list[ProviderModel]:
+        clauses = []
+        params: list[Any] = []
+        if provider:
+            clauses.append("provider = ?")
+            params.append(provider)
+        if enabled_only:
+            clauses.append("enabled = 1")
+        where = " AND ".join(clauses) if clauses else "1=1"
+        rows = self._sub.connection.execute(
+            f"SELECT model_id, provider, model_name, base_url, api_key_ref, context_length, "
+            f"modalities_json, cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free, "
+            f"latency_tier, strength_json, role_preference, enabled, last_checked_at, "
+            f"discovery_source, metadata_json, created_at, updated_at "
+            f"FROM provider_models WHERE {where} ORDER BY provider, model_name",
+            params,
+        ).fetchall()
+        return [_row_to_provider_model(r) for r in rows]
+
+    def get_provider_model(self, model_id: str) -> ProviderModel | None:
+        row = self._sub.connection.execute(
+            "SELECT model_id, provider, model_name, base_url, api_key_ref, context_length, "
+            "modalities_json, cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free, "
+            "latency_tier, strength_json, role_preference, enabled, last_checked_at, "
+            "discovery_source, metadata_json, created_at, updated_at "
+            "FROM provider_models WHERE model_id = ?",
+            (model_id,),
+        ).fetchone()
+        return _row_to_provider_model(row) if row else None
+
+    def upsert_provider_model(
+        self,
+        *,
+        model_id: str,
+        provider: str,
+        model_name: str,
+        base_url: str = "",
+        api_key_ref: str = "",
+        context_length: int = 131072,
+        modalities_json: str = '["text"]',
+        cost_per_1m_input_tokens: float = 0.0,
+        cost_per_1m_output_tokens: float = 0.0,
+        is_free: int = 0,
+        latency_tier: str = "medium",
+        strength_json: str = '{}',
+        role_preference: str = 'auto',
+        enabled: int = 1,
+        text_loop_ok: int = 1,
+        last_checked_at: str = '',
+        discovery_source: str = 'manual',
+        metadata_json: str = '{}',
+    ) -> ProviderModel:
+        now = _utc_now_iso()
+        self._sub.connection.execute(
+            "INSERT INTO provider_models "
+            "(model_id, provider, model_name, base_url, api_key_ref, context_length, "
+            "modalities_json, cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free, "
+            "latency_tier, strength_json, role_preference, enabled, text_loop_ok, last_checked_at, "
+            "discovery_source, metadata_json, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(model_id) DO UPDATE SET provider=excluded.provider, model_name=excluded.model_name, "
+            "base_url=excluded.base_url, api_key_ref=excluded.api_key_ref, context_length=excluded.context_length, "
+            "modalities_json=excluded.modalities_json, cost_per_1m_input_tokens=excluded.cost_per_1m_input_tokens, "
+            "cost_per_1m_output_tokens=excluded.cost_per_1m_output_tokens, is_free=excluded.is_free, "
+            "latency_tier=excluded.latency_tier, strength_json=excluded.strength_json, "
+            "role_preference=excluded.role_preference, enabled=excluded.enabled, text_loop_ok=excluded.text_loop_ok, "
+            "last_checked_at=excluded.last_checked_at, discovery_source=excluded.discovery_source, "
+            "metadata_json=excluded.metadata_json, updated_at=excluded.updated_at",
+            (model_id, provider, model_name, base_url, api_key_ref, context_length,
+             modalities_json, cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free,
+             latency_tier, strength_json, role_preference, enabled, text_loop_ok, last_checked_at,
+             discovery_source, metadata_json, now, now),
+        )
+        self._sub.connection.commit()
+        return self.get_provider_model(model_id)  # type: ignore[return-value]
 
     # ---------- keys CRUD ----------
 
@@ -399,4 +522,30 @@ def _row_to_key(row: Iterable[Any]) -> ProviderKey:
         balance_json=(r[18] if len(r) > 18 else "{}") or "{}",
         balance_checked_at=(r[19] if len(r) > 19 else "") or "",
         slot=(r[20] if len(r) > 20 else "text") or "text",
+    )
+
+
+def _row_to_provider_model(row: Iterable[Any]) -> ProviderModel:
+    r = list(row)
+    return ProviderModel(
+        model_id=r[0],
+        provider=r[1],
+        model_name=r[2],
+        base_url=r[3],
+        api_key_ref=r[4],
+        context_length=int(r[5] or 131072),
+        modalities_json=r[6],
+        cost_per_1m_input_tokens=float(r[7] or 0.0),
+        cost_per_1m_output_tokens=float(r[8] or 0.0),
+        is_free=int(r[9] or 0),
+        latency_tier=r[10] or "medium",
+        strength_json=r[11] or '{}',
+        role_preference=r[12] or 'auto',
+        enabled=int(r[13] or 0),
+        text_loop_ok=int(r[14] if len(r) > 14 and r[14] is not None else 1),
+        last_checked_at=r[15] if len(r) > 15 else '',
+        discovery_source=r[16] if len(r) > 16 else 'manual',
+        metadata_json=r[17] if len(r) > 17 else '{}',
+        created_at=r[18] if len(r) > 18 else '',
+        updated_at=r[19] if len(r) > 19 else '',
     )
