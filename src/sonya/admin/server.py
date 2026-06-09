@@ -2151,6 +2151,15 @@ async def atrium_dialog(request: web.Request) -> web.Response:
     attachments = data.get("attachments")
     if not isinstance(attachments, list):
         attachments = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            return _atrium_cors(web.json_response(
+                {"error": "invalid attachment metadata"}, status=400))
+        attachment_workspace_id = str(attachment.get("workspace_id") or "").strip()
+        if attachment_workspace_id != workspace_id:
+            return _atrium_cors(web.json_response(
+                {"error": "attachment workspace does not match dialog workspace"},
+                status=400))
     if not text and not attachments:
         return _atrium_cors(web.json_response({"error": "text or attachment required"}, status=400))
 
@@ -2315,6 +2324,7 @@ async def atrium_upload(request: web.Request) -> web.Response:
     filename = None
     content_type = None
     kind_label = None
+    workspace_id = ""
     saved_path = None
     total = 0
     MAX_BYTES = 60 * 1024 * 1024  # 60 MB per file
@@ -2322,6 +2332,9 @@ async def atrium_upload(request: web.Request) -> web.Response:
     async for part in reader:
         if part.name == "kind":
             kind_label = (await part.text()).strip() or None
+            continue
+        if part.name == "workspace_id":
+            workspace_id = (await part.text()).strip()
             continue
         if part.name == "file":
             filename = part.filename or "upload.bin"
@@ -2349,10 +2362,24 @@ async def atrium_upload(request: web.Request) -> web.Response:
                             {"error": f"file too large (>{MAX_BYTES // (1024*1024)} MB)"},
                             status=413))
                     f.write(chunk)
-            break
+            continue
 
     if not saved_path or total == 0:
         return _atrium_cors(web.json_response({"error": "no file field"}, status=400))
+
+    if workspace_id:
+        sub = _get_substrate(config)
+        try:
+            from sonya.project import ProjectStore
+            from sonya.project.model import ProjectNotFoundError
+            try:
+                ProjectStore(sub).get(workspace_id)
+            except ProjectNotFoundError:
+                saved_path.unlink(missing_ok=True)
+                return _atrium_cors(web.json_response(
+                    {"error": "workspace not found"}, status=404))
+        finally:
+            sub.close()
 
     if not content_type:
         content_type = "application/octet-stream"
@@ -2371,7 +2398,7 @@ async def atrium_upload(request: web.Request) -> web.Response:
         else:
             kind_label = "файл"
 
-    return _atrium_cors(web.json_response({
+    result = {
         "ok": True,
         "name": saved_path.name,
         "orig_name": filename,
@@ -2380,7 +2407,10 @@ async def atrium_upload(request: web.Request) -> web.Response:
         "media_kind": kind_label,
         "size": total,
         "url": f"/api/atrium/media/{saved_path.name}",
-    }))
+    }
+    if workspace_id:
+        result["workspace_id"] = workspace_id
+    return _atrium_cors(web.json_response(result))
 
 
 async def atrium_media_get(request: web.Request) -> web.Response:

@@ -310,6 +310,73 @@ def test_dialog_accepts_attachments(tmp_path: Path, monkeypatch) -> None:
         sub.close()
 
 
+def test_dialog_rejects_attachment_from_another_workspace(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
+    from sonya.admin.server import atrium_dialog
+    from sonya.config import load_config
+
+    cfg = load_config()
+
+    class _Req:
+        def __init__(self, app, body):
+            self.app = app
+            self._body = body
+            self.headers = {}
+            self.query = {}
+
+        async def json(self):
+            return self._body
+
+    app = {"config": cfg, "admin_password": ""}
+    body = {
+        "text": "wrong project",
+        "workspace_id": "proj-target",
+        "attachments": [{
+            "name": "atrium_abc.txt",
+            "media_path": str(tmp_path / "atrium_abc.txt"),
+            "media_mime": "text/plain",
+            "media_kind": "text",
+            "workspace_id": "proj-other",
+        }],
+    }
+    resp = asyncio.run(atrium_dialog(_Req(app, body)))
+    assert resp.status == 400
+    assert "workspace" in resp.text
+
+
+def test_dialog_accepts_attachment_bound_to_same_workspace(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
+    from sonya.admin.server import atrium_dialog
+    from sonya.config import load_config
+
+    cfg = load_config()
+
+    class _Req:
+        def __init__(self, app, body):
+            self.app = app
+            self._body = body
+            self.headers = {}
+            self.query = {}
+
+        async def json(self):
+            return self._body
+
+    app = {"config": cfg, "admin_password": ""}
+    body = {
+        "text": "right project",
+        "workspace_id": "proj-target",
+        "attachments": [{
+            "name": "atrium_abc.txt",
+            "media_path": str(tmp_path / "atrium_abc.txt"),
+            "media_mime": "text/plain",
+            "media_kind": "text",
+            "workspace_id": "proj-target",
+        }],
+    }
+    resp = asyncio.run(atrium_dialog(_Req(app, body)))
+    assert resp.status == 200
+
+
 def test_dialog_rejects_empty_no_attachment(tmp_path: Path) -> None:
     from sonya.admin.server import atrium_dialog
     from sonya.config import load_config

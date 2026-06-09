@@ -438,6 +438,8 @@ export async function uploadAtriumFile(file, onProgress) {
   }
   const url = `http://${settings.vps_host}/api/atrium/upload`;
   const form = new FormData();
+  const wId = activeWorkspaceId();
+  if (wId !== 'main') form.append('workspace_id', wId);
   form.append('file', file, file.name);
   // Use XMLHttpRequest for upload progress events.
   return new Promise((resolve, reject) => {
