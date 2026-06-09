@@ -2,7 +2,7 @@
 
 **Status:** Active (обновляется при добавлении/удалении моделей)
 **Type:** Operational — справочник инструментов
-**Last updated:** 2026-06-05
+**Last updated:** 2026-06-08
 **Назначение:** Соня читает этот документ чтобы выбрать правильную модель под конкретную задачу субагента.
 
 ---
@@ -20,6 +20,19 @@
 4. Учти лимиты (RPD/RPM) — не сжигай квоту дорогих моделей на мелочь
 5. Выбери модель из таблицы ниже
 
+Важно:
+- это не значит, что provider должен быть жёстко прибит к одной модели
+- наоборот, provider должен мыслиться как pool доступных моделей
+- выбор делается внутри provider pool динамически
+
+Важно #2:
+- этот документ не должен содержать маркетинговую дезинформацию
+- где модель описана как "сильная" или "слабая", это должно пониматься как:
+  - либо проверенный operational вывод
+  - либо явная hypothesis, которую ещё надо подтвердить тестами
+
+Если по модели нет живых внутренних тестов Sonya/runtime, не считать claim окончательной истиной.
+
 ---
 
 ## Провайдеры и API endpoints
@@ -28,8 +41,49 @@
 |-----------|----------|-------------|
 | OpenRouter | `https://openrouter.ai/api/v1` | `sk-or-v1-...` |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta` | `AIza...` (API key) |
-| NVIDIA | через OpenRouter | через OR ключ |
+| Nous Research | `https://inference-api.nousresearch.com/v1` | `sk-nous-...` |
 | Codex Sale | `https://codex.sale/v1` | `sk-clb-...` |
+| agentrouter.org | `https://agentrouter.org/v1` | `sk-r...` |
+
+## Operational reality (2026-06-08)
+
+- Fireworks больше не считать надёжной baseline-основой
+- `nvidia/nemotron-3-ultra:free` через Nous API важен как 1M-context fallback
+- но эта модель туповата и не должна быть основным кодером
+- Gemma / Kimi / Laguna / GLM / Owl остаются основным рабочим free-pool
+- `codexsale` остаётся premium last-resort path
+
+Operational caveat:
+- `nex-agi/nex-n2-pro:free` выглядит очень сильным бесплатным agentic кандидатом
+- по claims он может быть сопоставим с `gpt-5.5` в части coding/reasoning
+- **но это пока hypothesis until tested in our own evaluation harness**
+
+---
+
+## Tier LC — LONG-CONTEXT COORDINATION
+
+### 🧱 NVIDIA Nemotron 3 Ultra (free)
+- **Провайдер:** Nous Research inference API
+- **Base URL:** `https://inference-api.nousresearch.com/v1`
+- **Скорость:** Средняя
+- **Контекст:** 1M
+- **Модальности:** Text → Text
+- **Описание:** Один из немногих реально доступных бесплатных 1M-context вариантов. Хорош как long-context carrier/coordinator, но не как основной coding brain.
+- **Сильные стороны:**
+  - 🔥 1M контекста
+  - 🔥 Бесплатный
+  - Подходит для coarse summarization / context compression / coordination
+- **Слабые стороны:**
+  - ❌ Туповат как coding/review модель
+  - ❌ Не должен быть основным исполнителем инженерных задач
+- **Когда использовать:**
+  - Держать большой контекст
+  - Сжимать/передавать контекст дальше
+  - Грубое planning / coordination
+- **Когда НЕ использовать:**
+  - Сложный coding
+  - Тонкий review
+  - Архитектурные решения, где нужна высокая точность reasoning
 
 ---
 
@@ -130,6 +184,33 @@
 ---
 
 ## Tier 1 — ТЯЖЁЛЫЕ (сложные задачи, длинный контекст, глубокий кодинг)
+
+### 🧭 Nex N2 Pro (`nex-agi/nex-n2-pro:free`)
+- **Провайдер:** OpenRouter (бесплатно)
+- **Контекст:** 262K
+- **Скорость:** Средняя
+- **Модальности:** Text + Image → Text
+- **Архитектура:** agentic mixture-of-experts, 17B active / 397B total, built on Qwen3.5
+- **Описание:** Сильный бесплатный agentic-кандидат для coding, tool use, deep research и long-horizon workflows. Поддерживает reasoning, function calling и structured outputs.
+- **Сильные стороны:**
+  - 🔥 Хорошо подходит для agentic workflows
+  - 🔥 Умеет planning + implementation + debugging + iteration в одном execution loop
+  - 🔥 Поддерживает text+image input
+  - Хороший кандидат для long-horizon coding/research задач
+  - Бесплатная модель с большим weekly token budget (~308M)
+- **Слабые стороны:**
+  - MoE/agentic модель — нужно проверять реальную стабильность в нашем runtime
+  - Может оказаться менее предсказуемой, чем более простые execution-models на мелких задачах
+- **Когда использовать:**
+  - Агентный кодинг с tools
+  - Deep research
+  - Long-horizon project subtasks
+  - Сложные execution loops, где одной классификации/парсинга уже мало
+- **Когда НЕ использовать:**
+  - Мелкие быстрые задачи
+  - Простую нормализацию/cleanup, где хватит Gemma 26B/31B
+
+---
 
 ### 🦉 Owl Alpha (`openrouter/owl-alpha`)
 - **Провайдер:** OpenRouter (бесплатно, 1000 RPD)
@@ -245,8 +326,8 @@
 - **Провайдер:** OpenRouter (бесплатно, ~1500 RPD)
 - **Контекст:** ~128K
 - **Скорость:** Быстрая
-- **Модальности:** Text → Text (IT = instruction-tuned)
-- **Описание:** Google Gemma 4 31B instruction-tuned. Компактная но мощная модель с полноценными 31B активными параметрами.
+- **Модальности:** Multimodal (text + image + video in; text out)
+- **Описание:** Google Gemma 4 31B instruction-tuned. Важно: не считать её чисто text-only моделью. В operational usage её всё ещё часто будут использовать как text/coding worker, но модальности шире.
 - **Сильные стороны:**
   - 🔥 Высокий лимит (1500 RPD)
   - Быстрая (для dense-модели)
@@ -261,7 +342,7 @@
   - Быстрые follow-up вопросы
 - **Когда НЕ использовать:**
   - Сложный многошаговый кодинг (лучше Kimi/Laguna)
-  - Задачи с картинками (нет vision)
+  - Сверхтяжёлые long-horizon задачи, если есть более сильный agentic candidate
 
 ---
 
@@ -269,8 +350,8 @@
 - **Провайдер:** OpenRouter (бесплатно, ~1500 RPD)
 - **Контекст:** ~128K
 - **Скорость:** ⚡ ОЧЕНЬ БЫСТРАЯ (MoE, всего 4B активных параметров)
-- **Модальности:** Text → Text
-- **Описание:** Google Gemma 4 26B MoE с 4B активных параметров. Сверхлёгкая и сверхбыстрая.
+- **Модальности:** Multimodal (text + image + video in; text out)
+- **Описание:** Google Gemma 4 26B MoE с 4B активных параметров. Сверхлёгкая и сверхбыстрая рабочая лошадь.
 - **Сильные стороны:**
   - 🔥 САМАЯ БЫСТРАЯ в реестре (всего 4B active)
   - 🔥 Высокий лимит (1500 RPD)
@@ -286,32 +367,7 @@
   - Любая задача, где latency critical
 - **Когда НЕ использовать:**
   - Что-угодно требующее глубокого reasoning или кодинга
-  - Задачи с картинками (нет vision)
-
----
-
-## Tier G — GOOGLE GEMINI (мультимодальность, аудио/видео, огромный контекст)
-
-### ✨ Gemini 3 Flash
-- **Провайдер:** Google AI (отдельный API key) или OpenRouter (в зависимости от ключей)
-- **Контекст:** 1M+ токенов
-- **Скорость:** Быстрая
-- **Модальности:** Мультимодальная (text, image, video, audio)
-- **Описание:** Google Gemini 3 Flash — быстрая и качественная мультимодальная модель.
-- **Сильные стороны:**
-  - 🔥 Огромный контекст (1M+)
-  - 🔥 Мультимодальная (text+image+video+audio)
-  - Быстрая
-  - Отличное качество для Flash-класса
-- **Слабые стороны:**
-  - Требует отдельного Google API ключа (или доступных OR квот)
-  - Строгие Google safety filters (может выдавать рефьюзы на чувствительных задачах)
-- **Когда использовать:**
-  - Vision-задачи (описание скриншотов, схем, OCR)
-  - Обработка видео и аудио
-  - Задачи с большим контекстом, требующие высокой скорости
-- **Когда НЕ использовать:**
-  - Uncensored / ролевые задачи (из-за фильтров безопасности Google)
+  - Задачи, где нужна глубокая агентная orchestration и сильный review
 
 ---
 

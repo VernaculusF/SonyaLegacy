@@ -99,6 +99,7 @@ Atrium должен стать не только интерфейсом обще
 
 - `docs/atrium/PLAN.md`
 - `docs/atrium/ATRIUM_WORKSPACE_RUNTIME_SPEC.md`
+- `docs/FINAL_STATE_TODO.md`
 
 ### Personality
 

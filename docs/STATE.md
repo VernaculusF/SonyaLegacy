@@ -44,7 +44,7 @@
 - `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md`
 - `docs/core/SUBSTRATE_STANCE.md`
 - `docs/core/ENVIRONMENT_AS_SONYA.md`
-- `docs/core/RUNTIME_LESSONS_FROM_PI.md`
+
 - `docs/personality/SOUL.md`
 
 ## 3. Что реально работает сейчас
