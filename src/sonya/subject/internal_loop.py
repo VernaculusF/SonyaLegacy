@@ -940,6 +940,8 @@ class InternalProcess:
             subagent_tool = SubagentTool(substrate, self._provider, workspace_id=_early_pending_ws or "main")
             from sonya.tools.projects_tool import ProjectsTool
             projects_tool = ProjectsTool(substrate)
+            from sonya.tools.model_eval_tool import ModelsEvalTool
+            model_eval_tool = ModelsEvalTool(substrate, self._provider)
             import os as _os
             _yolo = _os.environ.get("SONYA_YOLO_MODE", "1").lower() in ("1", "true", "yes", "on")
             shell_tool = ShellTool(
@@ -1767,6 +1769,7 @@ class InternalProcess:
                     "browser": browser_tool,
                     "subagent": subagent_tool,
                     "projects": projects_tool,
+                    "model_eval": model_eval_tool,
                 },
                 initial_thought=initial_thought,
                 initial_user_text=initial_user_text,

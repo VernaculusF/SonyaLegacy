@@ -3,7 +3,7 @@ import { settings, feed, activeWorkspaceId, switchWorkspace, createWorkspace, re
 
 const STATUS_LABELS = {
   in_progress: 'в работе',
-  needs_choice: 'жду выбор',
+  waiting_choice: 'жду выбор',
   waiting: 'ожидает',
   completed: 'завершён',
   cancelled: 'отменён',

@@ -681,7 +681,8 @@ async def run_agent_session(
     browser: Any | None = None,  # BrowserTool — browser.* family
     subagent: Any | None = None,  # SubagentTool — subagent.* family
     projects: Any | None = None,  # ProjectsTool — projects.* family
-    initial_thought: str = "",
+    model_eval: Any | None = None,  # ModelsEvalTool — models.evaluate, models.scoreboard, models.set_champion
+
     initial_user_message: list[dict[str, Any]] | None = None,
     initial_user_text: str | None = None,
     prior_messages: list[dict[str, Any]] | None = None,
@@ -1030,6 +1031,7 @@ async def run_agent_session(
                 subagent=subagent,
                 substrate=self_inspect._sub,
                 projects=projects,
+                model_eval=model_eval,
                 workspace_id=workspace_id,
             )
 
@@ -2772,6 +2774,38 @@ def _h_projects_demo_webchat(arg: str, ctx: _ToolContext) -> str:
     )
 
 
+async def _h_model_eval_dispatch(call: dict) -> str:
+    import asyncio
+    tool = call.get("_model_eval_tool")
+    if tool is None:
+        return "[ERROR] model_eval tool not configured"
+    return await tool.execute(call)
+
+
+def _h_model_eval(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.model_eval, "model_eval")
+    if err:
+        return err
+    import json
+    try:
+        call = json.loads(arg) if arg.startswith("{") else {"name": "models.scoreboard", "arguments": {}}
+    except Exception:
+        call = {"name": "models.scoreboard", "arguments": {}}
+    call["_model_eval_tool"] = ctx.model_eval
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _h_model_eval_dispatch(call))
+                return future.result(timeout=300)
+        else:
+            return loop.run_until_complete(_h_model_eval_dispatch(call))
+    except Exception:
+        return asyncio.run(_h_model_eval_dispatch(call))
+
+
 _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     # self_inspect.*
     "self_inspect.identity": _h_si_identity,
@@ -2888,6 +2922,10 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "projects.trace":       _h_projects,
     "projects.pressure":    _h_projects,
     "projects.demo_webchat": _h_projects_demo_webchat,
+    # model_eval suite — models.evaluate, models.scoreboard, models.set_champion
+    "models.evaluate": _h_model_eval,
+    "models.scoreboard": _h_model_eval,
+    "models.set_champion": _h_model_eval,
 }
 
 
@@ -2913,6 +2951,7 @@ def _execute_tool(
     subagent: Any | None = None,
     substrate: Any | None = None,
     projects: Any | None = None,
+    model_eval: Any | None = None,
     workspace_id: str = "",
 ) -> str:
     """Execute a tool by name. Returns observation string.

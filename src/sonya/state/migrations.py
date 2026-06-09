@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 28
+CURRENT_VERSION = 29
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -299,7 +299,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 goal_id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'active',
+                status TEXT NOT NULL DEFAULT 'in_progress',
                 priority INTEGER NOT NULL DEFAULT 0,
                 parent_goal_id TEXT DEFAULT NULL,
                 created_at TEXT NOT NULL,
@@ -632,6 +632,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         version = 26
 
     if version < 27:
+        now = datetime.now(timezone.utc).isoformat()
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS workspace_policy (
                 workspace_id TEXT PRIMARY KEY,
@@ -652,6 +653,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         version = 27
 
     if version == 27:
+        now = datetime.now(timezone.utc).isoformat()
         _add_column_if_missing(
             conn, "subagent_tasks", "workspace_id",
             "TEXT NOT NULL DEFAULT ''"
@@ -662,6 +664,96 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 28
+
+    if version == 28:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS model_scorecards (
+                scorecard_id TEXT PRIMARY KEY,
+                model_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL DEFAULT '',
+                domain TEXT NOT NULL DEFAULT 'general',
+                role TEXT NOT NULL DEFAULT 'auto',
+                avg_score REAL NOT NULL DEFAULT 0.5,
+                confidence REAL NOT NULL DEFAULT 0.0,
+                avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+                avg_tokens_in INTEGER NOT NULL DEFAULT 0,
+                avg_tokens_out INTEGER NOT NULL DEFAULT 0,
+                refusal_rate REAL NOT NULL DEFAULT 0.0,
+                hallucination_rate REAL NOT NULL DEFAULT 0.0,
+                error_rate REAL NOT NULL DEFAULT 0.0,
+                total_runs INTEGER NOT NULL DEFAULT 0,
+                last_evaluated_at TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_msc_model ON model_scorecards(model_id);
+            CREATE INDEX IF NOT EXISTS idx_msc_domain ON model_scorecards(domain);
+            CREATE INDEX IF NOT EXISTS idx_msc_role ON model_scorecards(role);
+            CREATE INDEX IF NOT EXISTS idx_msc_score ON model_scorecards(avg_score);
+
+            CREATE TABLE IF NOT EXISTS evaluation_runs (
+                run_id TEXT PRIMARY KEY,
+                trigger TEXT NOT NULL DEFAULT 'manual',
+                suite_name TEXT NOT NULL DEFAULT '',
+                models_json TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'pending',
+                started_at TEXT NOT NULL DEFAULT '',
+                finished_at TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_er_status ON evaluation_runs(status);
+            CREATE INDEX IF NOT EXISTS idx_er_trigger ON evaluation_runs(trigger);
+
+            CREATE TABLE IF NOT EXISTS evaluation_results (
+                result_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                case_id TEXT NOT NULL,
+                domain TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT 'auto',
+                prompt_summary TEXT NOT NULL DEFAULT '',
+                raw_output TEXT NOT NULL DEFAULT '',
+                normalized_score REAL NOT NULL DEFAULT 0.0,
+                latency_ms INTEGER NOT NULL DEFAULT 0,
+                tokens_in INTEGER NOT NULL DEFAULT 0,
+                tokens_out INTEGER NOT NULL DEFAULT 0,
+                refusal_flag INTEGER NOT NULL DEFAULT 0,
+                hallucination_flag INTEGER NOT NULL DEFAULT 0,
+                error_flag INTEGER NOT NULL DEFAULT 0,
+                passed INTEGER NOT NULL DEFAULT 0,
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES evaluation_runs(run_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_evr_run ON evaluation_results(run_id);
+            CREATE INDEX IF NOT EXISTS idx_evr_model ON evaluation_results(model_id);
+            CREATE INDEX IF NOT EXISTS idx_evr_domain ON evaluation_results(domain);
+            CREATE INDEX IF NOT EXISTS idx_evr_passed ON evaluation_results(passed);
+
+            CREATE TABLE IF NOT EXISTS champion_models (
+                champion_id TEXT PRIMARY KEY,
+                domain TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'auto',
+                model_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL DEFAULT '',
+                scorecard_id TEXT NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.0,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                challengers_json TEXT NOT NULL DEFAULT '[]',
+                last_evaluated_at TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_cm_domain_role ON champion_models(domain, role);
+            CREATE INDEX IF NOT EXISTS idx_cm_model ON champion_models(model_id);
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (29, now),
+        )
+        conn.commit()
+        version = 29
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

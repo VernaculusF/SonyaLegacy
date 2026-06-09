@@ -32,7 +32,7 @@ class ProjectsTool:
                     "properties": {
                         "status": {
                             "type": "string",
-                            "description": "Filter by status: in_progress, needs_choice, waiting, completed, cancelled",
+                            "description": "Filter by status: in_progress, waiting_choice, waiting, completed, cancelled",
                             "default": "",
                         },
                     },
@@ -87,7 +87,7 @@ class ProjectsTool:
                 "name": "projects.update",
                 "description": (
                     "Update project status. Allowed statuses: 'in_progress' (в работе), "
-                    "'needs_choice' (жду выбор), 'waiting' (ожидает), "
+                    "'waiting_choice' (жду выбор), 'waiting' (ожидает), "
                     "'completed' (завершён), 'cancelled' (отменён). "
                     "Use this to mark when you need Ivan to make a decision, "
                     "or when the project is done."
@@ -99,7 +99,7 @@ class ProjectsTool:
                         "project_id": {"type": "string", "description": "Project ID"},
                         "status": {
                             "type": "string",
-                            "description": "in_progress, needs_choice, waiting, completed, cancelled",
+                            "description": "in_progress, waiting_choice, waiting, completed, cancelled",
                         },
                     },
                 },
@@ -227,7 +227,7 @@ class ProjectsTool:
         status = args.get("status", "")
         if not pid or not status:
             return "Ошибка: project_id и status обязательны."
-        valid_statuses = ("in_progress", "needs_choice", "waiting", "completed", "cancelled")
+        valid_statuses = ("in_progress", "waiting_choice", "waiting", "completed", "cancelled")
         if status not in valid_statuses:
             return f"Ошибка: неверный статус. Допустимые: {', '.join(valid_statuses)}"
         
