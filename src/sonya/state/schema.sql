@@ -727,9 +727,9 @@ CREATE INDEX IF NOT EXISTS idx_cm_model ON champion_models(model_id);
 -- llm_provider.py selects from this pool based on role/cost/latency.
 -- ====================================================================
 
-CREATE TABLE IF NOT EXISTS provider_models (
-    model_id TEXT PRIMARY KEY,
-    -- fully qualified ID, e.g. "openrouter/owl-alpha" or "gpt-5.4"
+CREATE TABLE IF NOT EXISTS provider_models (
+    model_id TEXT NOT NULL,
+    -- raw upstream ID, e.g. "openrouter/owl-alpha" or "gpt-5.4"
     provider TEXT NOT NULL,
     -- provider ID, e.g. "openrouter", "codexsale", "google"
     model_name TEXT NOT NULL,
@@ -760,12 +760,14 @@ CREATE TABLE IF NOT EXISTS provider_models (
     -- "manual", "auto-discovered", "config"
     metadata_json TEXT NOT NULL DEFAULT '{}',
     -- extra: rate limits, special flags, notes
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_pm_provider ON provider_models(provider);
-CREATE INDEX IF NOT EXISTS idx_pm_role ON provider_models(role_preference);
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (provider, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pm_provider ON provider_models(provider);
+CREATE INDEX IF NOT EXISTS idx_pm_model ON provider_models(model_id);
+CREATE INDEX IF NOT EXISTS idx_pm_role ON provider_models(role_preference);
 CREATE INDEX IF NOT EXISTS idx_pm_enabled ON provider_models(enabled);
 CREATE INDEX IF NOT EXISTS idx_pm_free ON provider_models(is_free);
 CREATE INDEX IF NOT EXISTS idx_pm_latency ON provider_models(latency_tier);
@@ -814,8 +816,7 @@ CREATE TABLE IF NOT EXISTS provider_account_offerings (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (account_id, model_id),
-    FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id),
-    FOREIGN KEY (model_id) REFERENCES provider_models(model_id)
+    FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id)
 );
 CREATE INDEX IF NOT EXISTS idx_pao_model ON provider_account_offerings(model_id);
 CREATE INDEX IF NOT EXISTS idx_pao_enabled ON provider_account_offerings(enabled);

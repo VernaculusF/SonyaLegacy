@@ -42,6 +42,7 @@ def ensure_critical_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "provider_models", "last_checked_at", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "provider_models", "discovery_source", "TEXT NOT NULL DEFAULT 'manual'")
     _add_column_if_missing(conn, "provider_models", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_provider_models_provider_scoped(conn)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS subagent_tasks (
             subagent_id TEXT PRIMARY KEY,
@@ -803,7 +804,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         now = datetime.now(timezone.utc).isoformat()
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS provider_models (
-                model_id TEXT PRIMARY KEY,
+                model_id TEXT NOT NULL,
                 provider TEXT NOT NULL,
                 model_name TEXT NOT NULL,
                 base_url TEXT NOT NULL DEFAULT '',
@@ -822,9 +823,11 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 discovery_source TEXT NOT NULL DEFAULT 'manual',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (provider, model_id)
             );
             CREATE INDEX IF NOT EXISTS idx_pm_provider ON provider_models(provider);
+            CREATE INDEX IF NOT EXISTS idx_pm_model ON provider_models(model_id);
             CREATE INDEX IF NOT EXISTS idx_pm_role ON provider_models(role_preference);
             CREATE INDEX IF NOT EXISTS idx_pm_enabled ON provider_models(enabled);
             CREATE INDEX IF NOT EXISTS idx_pm_free ON provider_models(is_free);
@@ -952,8 +955,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (account_id, model_id),
-                FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id),
-                FOREIGN KEY (model_id) REFERENCES provider_models(model_id)
+                FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id)
             );
             CREATE INDEX IF NOT EXISTS idx_pao_model ON provider_account_offerings(model_id);
             CREATE INDEX IF NOT EXISTS idx_pao_enabled ON provider_account_offerings(enabled);
@@ -1021,7 +1023,8 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 "INSERT OR IGNORE INTO provider_account_offerings "
                 "(account_id, model_id, enabled, metadata_json, created_at, updated_at) "
                 "SELECT pk.key_id, pk.model, 1, '{\"source\":\"legacy_fixed_model\"}', ?, ? "
-                "FROM provider_keys pk JOIN provider_models pm ON pm.model_id = pk.model "
+                "FROM provider_keys pk JOIN provider_models pm "
+                "ON pm.provider = pk.provider AND pm.model_id = pk.model "
                 "WHERE pk.model != ''",
                 (now, now),
             )
@@ -1094,6 +1097,137 @@ def _add_column_if_missing(
     if column not in existing:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
         conn.commit()
+
+
+def _ensure_provider_models_provider_scoped(conn: sqlite3.Connection) -> None:
+    if not _table_exists(conn, "provider_models"):
+        return
+    rows = conn.execute("PRAGMA table_info(provider_models)").fetchall()
+    if not rows:
+        return
+    pk = {row[1]: int(row[5] or 0) for row in rows}
+    provider_scoped = pk.get("provider", 0) > 0 and pk.get("model_id", 0) > 0
+    offerings_model_fk = _provider_offerings_has_model_fk(conn)
+    if provider_scoped and not offerings_model_fk:
+        _create_provider_model_indexes(conn)
+        conn.commit()
+        return
+
+    foreign_keys_enabled = bool(conn.execute("PRAGMA foreign_keys").fetchone()[0])
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        if not provider_scoped:
+            conn.executescript("""
+                DROP INDEX IF EXISTS idx_pm_provider;
+                DROP INDEX IF EXISTS idx_pm_model;
+                DROP INDEX IF EXISTS idx_pm_role;
+                DROP INDEX IF EXISTS idx_pm_enabled;
+                DROP INDEX IF EXISTS idx_pm_free;
+                DROP INDEX IF EXISTS idx_pm_latency;
+
+                ALTER TABLE provider_models RENAME TO provider_models_old;
+
+                CREATE TABLE provider_models (
+                    model_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    model_name TEXT NOT NULL,
+                    base_url TEXT NOT NULL DEFAULT '',
+                    api_key_ref TEXT NOT NULL DEFAULT '',
+                    context_length INTEGER NOT NULL DEFAULT 131072,
+                    modalities_json TEXT NOT NULL DEFAULT '["text"]',
+                    cost_per_1m_input_tokens REAL NOT NULL DEFAULT 0.0,
+                    cost_per_1m_output_tokens REAL NOT NULL DEFAULT 0.0,
+                    is_free INTEGER NOT NULL DEFAULT 0,
+                    latency_tier TEXT NOT NULL DEFAULT 'medium',
+                    strength_json TEXT NOT NULL DEFAULT '{}',
+                    role_preference TEXT NOT NULL DEFAULT 'auto',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    text_loop_ok INTEGER NOT NULL DEFAULT 1,
+                    last_checked_at TEXT NOT NULL DEFAULT '',
+                    discovery_source TEXT NOT NULL DEFAULT 'manual',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (provider, model_id)
+                );
+
+                INSERT OR REPLACE INTO provider_models (
+                    model_id, provider, model_name, base_url, api_key_ref, context_length,
+                    modalities_json, cost_per_1m_input_tokens, cost_per_1m_output_tokens,
+                    is_free, latency_tier, strength_json, role_preference, enabled,
+                    text_loop_ok, last_checked_at, discovery_source, metadata_json,
+                    created_at, updated_at
+                )
+                SELECT
+                    model_id, provider, model_name, base_url, api_key_ref, context_length,
+                    modalities_json, cost_per_1m_input_tokens, cost_per_1m_output_tokens,
+                    is_free, latency_tier, strength_json, role_preference, enabled,
+                    text_loop_ok, last_checked_at, discovery_source, metadata_json,
+                    created_at, updated_at
+                FROM provider_models_old;
+
+                DROP TABLE provider_models_old;
+            """)
+            _create_provider_model_indexes(conn)
+        if offerings_model_fk:
+            _rebuild_provider_account_offerings_without_model_fk(conn)
+        conn.commit()
+    finally:
+        conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys_enabled else 'OFF'}")
+
+
+def _create_provider_model_indexes(conn: sqlite3.Connection) -> None:
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_pm_provider ON provider_models(provider);
+        CREATE INDEX IF NOT EXISTS idx_pm_model ON provider_models(model_id);
+        CREATE INDEX IF NOT EXISTS idx_pm_role ON provider_models(role_preference);
+        CREATE INDEX IF NOT EXISTS idx_pm_enabled ON provider_models(enabled);
+        CREATE INDEX IF NOT EXISTS idx_pm_free ON provider_models(is_free);
+        CREATE INDEX IF NOT EXISTS idx_pm_latency ON provider_models(latency_tier);
+    """)
+
+
+def _provider_offerings_has_model_fk(conn: sqlite3.Connection) -> bool:
+    if not _table_exists(conn, "provider_account_offerings"):
+        return False
+    try:
+        rows = conn.execute("PRAGMA foreign_key_list(provider_account_offerings)").fetchall()
+    except sqlite3.OperationalError:
+        return False
+    return any(row[2] == "provider_models" and row[4] == "model_id" for row in rows)
+
+
+def _rebuild_provider_account_offerings_without_model_fk(conn: sqlite3.Connection) -> None:
+    if not _table_exists(conn, "provider_account_offerings"):
+        return
+    conn.executescript("""
+        DROP INDEX IF EXISTS idx_pao_model;
+        DROP INDEX IF EXISTS idx_pao_enabled;
+
+        ALTER TABLE provider_account_offerings RENAME TO provider_account_offerings_old;
+
+        CREATE TABLE provider_account_offerings (
+            account_id TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, model_id),
+            FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id)
+        );
+
+        INSERT OR REPLACE INTO provider_account_offerings (
+            account_id, model_id, enabled, metadata_json, created_at, updated_at
+        )
+        SELECT account_id, model_id, enabled, metadata_json, created_at, updated_at
+        FROM provider_account_offerings_old;
+
+        DROP TABLE provider_account_offerings_old;
+
+        CREATE INDEX IF NOT EXISTS idx_pao_model ON provider_account_offerings(model_id);
+        CREATE INDEX IF NOT EXISTS idx_pao_enabled ON provider_account_offerings(enabled);
+    """)
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:

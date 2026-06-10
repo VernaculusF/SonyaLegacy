@@ -683,14 +683,19 @@ class KeyStore:
         ).fetchall()
         return [_row_to_provider_model(r) for r in rows]
 
-    def get_provider_model(self, model_id: str) -> ProviderModel | None:
+    def get_provider_model(self, model_id: str, provider: str | None = None) -> ProviderModel | None:
+        params: list[Any] = [model_id]
+        provider_clause = ""
+        if provider:
+            provider_clause = " AND provider = ?"
+            params.append(provider)
         row = self._sub.connection.execute(
             "SELECT model_id, provider, model_name, base_url, api_key_ref, context_length, "
             "modalities_json, cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free, "
             "latency_tier, strength_json, role_preference, enabled, text_loop_ok, last_checked_at, "
             "discovery_source, metadata_json, created_at, updated_at "
-            "FROM provider_models WHERE model_id = ?",
-            (model_id,),
+            f"FROM provider_models WHERE model_id = ?{provider_clause} ORDER BY provider",
+            params,
         ).fetchone()
         return _row_to_provider_model(row) if row else None
 
@@ -724,7 +729,7 @@ class KeyStore:
             "latency_tier, strength_json, role_preference, enabled, text_loop_ok, last_checked_at, "
             "discovery_source, metadata_json, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(model_id) DO UPDATE SET provider=excluded.provider, model_name=excluded.model_name, "
+            "ON CONFLICT(provider, model_id) DO UPDATE SET model_name=excluded.model_name, "
             "base_url=excluded.base_url, api_key_ref=excluded.api_key_ref, context_length=excluded.context_length, "
             "modalities_json=excluded.modalities_json, cost_per_1m_input_tokens=excluded.cost_per_1m_input_tokens, "
             "cost_per_1m_output_tokens=excluded.cost_per_1m_output_tokens, is_free=excluded.is_free, "
@@ -738,7 +743,7 @@ class KeyStore:
              discovery_source, metadata_json, now, now),
         )
         self._sub.connection.commit()
-        return self.get_provider_model(model_id)  # type: ignore[return-value]
+        return self.get_provider_model(model_id, provider=provider)  # type: ignore[return-value]
 
     # ---------- keys CRUD ----------
 

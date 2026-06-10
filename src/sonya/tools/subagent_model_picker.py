@@ -123,8 +123,8 @@ def _infer_provider_from_model(model: str, store: KeyStore) -> str:
 def is_text_loop_model(model: str, provider: str = "", *, store: KeyStore | None = None) -> bool:
     provider = (provider or "").strip()
     if store is not None:
-        db_model = store.get_provider_model(model)
-        if db_model is not None and (not provider or db_model.provider == provider):
+        db_model = store.get_provider_model(model, provider=provider or None)
+        if db_model is not None:
             return bool(db_model.text_loop_ok)
     if model in {"gpt-image-2", "gpt-4o-transcribe"}:
         return False

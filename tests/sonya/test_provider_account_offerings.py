@@ -64,6 +64,44 @@ def test_model_requires_enabled_eligible_account_offering(tmp_path) -> None:
         sub.close()
 
 
+def test_same_model_id_can_be_available_for_multiple_providers(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "provider-scoped-models.db")
+    try:
+        store = KeyStore(sub)
+        for provider in ("openrouter", "nous"):
+            store.upsert_provider(
+                provider_id=provider,
+                display_name=provider,
+                adapter_kind="openai_compatible",
+            )
+            account = store.add_provider_account(
+                provider_id=provider,
+                name=f"{provider}-primary",
+                secret_ref=f"manual:{provider}",
+            )
+            model = store.upsert_provider_model(
+                model_id="shared/model",
+                provider=provider,
+                model_name=f"{provider} shared",
+                is_free=1 if provider == "openrouter" else 0,
+            )
+            store.set_account_offering(account.account_id, model.model_id, enabled=True)
+
+        openrouter_models = store.list_available_provider_models("openrouter")
+        nous_models = store.list_available_provider_models("nous")
+
+        assert [(m.provider, m.model_id, m.is_free) for m in openrouter_models] == [
+            ("openrouter", "shared/model", 1)
+        ]
+        assert [(m.provider, m.model_id, m.is_free) for m in nous_models] == [
+            ("nous", "shared/model", 0)
+        ]
+        assert store.get_provider_model("shared/model", provider="openrouter").provider == "openrouter"
+        assert store.get_provider_model("shared/model", provider="nous").provider == "nous"
+    finally:
+        sub.close()
+
+
 def test_acquire_for_model_uses_only_accounts_with_enabled_offering(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "offerings.db")
     try:
@@ -230,5 +268,118 @@ def test_v33_legacy_provider_models_table_is_repaired_on_open(tmp_path) -> None:
         }
         assert {"text_loop_ok", "last_checked_at", "discovery_source", "metadata_json"} <= columns
         assert [m.model_id for m in KeyStore(sub).list_available_provider_models("stub")] == ["stub/model"]
+    finally:
+        sub.close()
+
+
+def test_v33_legacy_provider_models_primary_key_is_repaired_to_provider_scope(tmp_path) -> None:
+    db = tmp_path / "legacy-provider-scope.db"
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+        INSERT INTO schema_version VALUES (33, '2026-06-10T00:00:00+00:00');
+
+        CREATE TABLE provider_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            active_provider TEXT NOT NULL DEFAULT 'openrouter',
+            default_model TEXT NOT NULL DEFAULT '',
+            default_base_url TEXT NOT NULL DEFAULT 'https://openrouter.ai/api/v1',
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE providers (
+            provider_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            adapter_kind TEXT NOT NULL DEFAULT 'openai_compatible',
+            status TEXT NOT NULL DEFAULT 'active',
+            base_url TEXT NOT NULL DEFAULT '',
+            capabilities_json TEXT NOT NULL DEFAULT '{}',
+            constraints_json TEXT NOT NULL DEFAULT '{}',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO providers(provider_id, display_name, created_at, updated_at)
+        VALUES
+            ('openrouter', 'OpenRouter', '2026-06-10T00:00:00+00:00', '2026-06-10T00:00:00+00:00'),
+            ('nous', 'Nous', '2026-06-10T00:00:00+00:00', '2026-06-10T00:00:00+00:00');
+
+        CREATE TABLE provider_accounts (
+            account_id TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            secret_ref TEXT NOT NULL,
+            secret_masked TEXT NOT NULL DEFAULT '',
+            legacy_key_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            priority INTEGER NOT NULL DEFAULT 0,
+            constraints_json TEXT NOT NULL DEFAULT '{}',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            default_model TEXT NOT NULL DEFAULT ''
+        );
+        INSERT INTO provider_accounts(account_id, provider_id, name, secret_ref, created_at, updated_at)
+        VALUES
+            ('pa-or', 'openrouter', 'or', 'manual:or', '2026-06-10T00:00:00+00:00', '2026-06-10T00:00:00+00:00'),
+            ('pa-nous', 'nous', 'nous', 'manual:nous', '2026-06-10T00:00:00+00:00', '2026-06-10T00:00:00+00:00');
+
+        CREATE TABLE provider_models (
+            model_id TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            base_url TEXT NOT NULL DEFAULT '',
+            api_key_ref TEXT NOT NULL DEFAULT '',
+            context_length INTEGER NOT NULL DEFAULT 131072,
+            modalities_json TEXT NOT NULL DEFAULT '["text"]',
+            cost_per_1m_input_tokens REAL NOT NULL DEFAULT 0.0,
+            cost_per_1m_output_tokens REAL NOT NULL DEFAULT 0.0,
+            is_free INTEGER NOT NULL DEFAULT 0,
+            latency_tier TEXT NOT NULL DEFAULT 'medium',
+            strength_json TEXT NOT NULL DEFAULT '{}',
+            role_preference TEXT NOT NULL DEFAULT 'auto',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            text_loop_ok INTEGER NOT NULL DEFAULT 1,
+            last_checked_at TEXT NOT NULL DEFAULT '',
+            discovery_source TEXT NOT NULL DEFAULT 'manual',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO provider_models(model_id, provider, model_name, is_free, created_at, updated_at)
+        VALUES ('shared/model', 'openrouter', 'OpenRouter Shared', 1, '2026-06-10T00:00:00+00:00', '2026-06-10T00:00:00+00:00');
+
+        CREATE TABLE provider_account_offerings (
+            account_id TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(account_id, model_id)
+        );
+        INSERT INTO provider_account_offerings(account_id, model_id, created_at, updated_at)
+        VALUES
+            ('pa-or', 'shared/model', '2026-06-10T00:00:00+00:00', '2026-06-10T00:00:00+00:00'),
+            ('pa-nous', 'shared/model', '2026-06-10T00:00:00+00:00', '2026-06-10T00:00:00+00:00');
+    """)
+    conn.close()
+
+    sub = Substrate.open(db)
+    try:
+        store = KeyStore(sub)
+        store.upsert_provider_model(
+            model_id="shared/model",
+            provider="nous",
+            model_name="Nous Shared",
+            is_free=0,
+        )
+
+        assert [(m.provider, m.model_id) for m in store.list_available_provider_models("openrouter")] == [
+            ("openrouter", "shared/model")
+        ]
+        assert [(m.provider, m.model_id) for m in store.list_available_provider_models("nous")] == [
+            ("nous", "shared/model")
+        ]
     finally:
         sub.close()
