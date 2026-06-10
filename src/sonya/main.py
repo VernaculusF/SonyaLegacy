@@ -1051,8 +1051,8 @@ class _RuntimeBundle:
         self.internal_process: InternalProcess | None = None
         self.channel_registry: ChannelRegistry | None = None
         self.thinking_provider: Any = None
-        self._balance_refresher_task: asyncio.Task | None = None
-        self._balance_refresher_stop: asyncio.Event = asyncio.Event()
+        self._provider_refresher_task: asyncio.Task | None = None
+        self._provider_refresher_stop: asyncio.Event = asyncio.Event()
         self._embedding_indexer_task: asyncio.Task | None = None
         self._embedding_indexer_stop: asyncio.Event = asyncio.Event()
 
@@ -1220,11 +1220,10 @@ class _RuntimeBundle:
 
         await self.health.start(schema_version=substrate.schema_version)
 
-        # Provider balance refresher: poll Fireworks accounts/quotas every ~10 min
-        # so admin can show actual remaining credits + monthly spend.
-        self._balance_refresher_stop.clear()
-        self._balance_refresher_task = asyncio.create_task(
-            self._balance_refresher_loop()
+        # Provider lifecycle refresher: periodically check active substrate pools.
+        self._provider_refresher_stop.clear()
+        self._provider_refresher_task = asyncio.create_task(
+            self._provider_refresher_loop()
         )
 
         # Embedding indexer: fill in `embedding` column for episodic events
@@ -1236,14 +1235,14 @@ class _RuntimeBundle:
         )
 
     async def stop(self) -> None:
-        # Stop balance refresher first — it's lowest-priority, easy to interrupt.
-        self._balance_refresher_stop.set()
-        if self._balance_refresher_task is not None:
+        # Stop provider refresher first; it is lowest-priority and easy to interrupt.
+        self._provider_refresher_stop.set()
+        if self._provider_refresher_task is not None:
             try:
-                await asyncio.wait_for(self._balance_refresher_task, timeout=2.0)
+                await asyncio.wait_for(self._provider_refresher_task, timeout=2.0)
             except (asyncio.TimeoutError, asyncio.CancelledError):
-                self._balance_refresher_task.cancel()
-            self._balance_refresher_task = None
+                self._provider_refresher_task.cancel()
+            self._provider_refresher_task = None
 
         self._embedding_indexer_stop.set()
         if self._embedding_indexer_task is not None:
@@ -1274,54 +1273,42 @@ class _RuntimeBundle:
             except Exception as err:
                 _log.warning("lifecycle_stop_error", extra={"error": str(err)})
 
-    async def _balance_refresher_loop(self) -> None:
-        """Refresh fireworks balance every ~10 min for active fireworks keys.
+    async def _provider_refresher_loop(self) -> None:
+        """Refresh due active provider pools without blocking the runtime."""
+        from sonya.providers.keystore import KeyStore
+        from sonya.providers.refresh import ProviderRefreshCoordinator
 
-        Pulls /v1/accounts + /quotas via the same API key, parses
-        monthly-spend-usd usage and limit, stores snapshot on the
-        provider_keys row. Admin reads it from there.
-        """
-        from sonya.providers.fireworks_balance import fetch_fireworks_balance
-        from sonya.providers.keystore import KeyStore, KeyStatus
-
-        store = KeyStore(self.substrate)
-        # Initial delay so we don't hammer right at boot.
+        coordinator = ProviderRefreshCoordinator(KeyStore(self.substrate))
+        # Initial delay so provider endpoints are not hit immediately at boot.
         try:
-            await asyncio.wait_for(self._balance_refresher_stop.wait(), timeout=20.0)
+            await asyncio.wait_for(self._provider_refresher_stop.wait(), timeout=20.0)
             return
         except asyncio.TimeoutError:
             pass
 
-        while not self._balance_refresher_stop.is_set():
-            keys = [
-                k for k in store.list_keys("fireworks")
-                if k.status is KeyStatus.ACTIVE
-            ]
-            for k in keys:
-                if self._balance_refresher_stop.is_set():
-                    break
-                try:
-                    snap = await fetch_fireworks_balance(k.api_key)
-                    store.update_balance(
-                        k.key_id,
-                        account_id=snap.get("account_id", "") or k.account_id,
-                        balance=snap,
+        while not self._provider_refresher_stop.is_set():
+            try:
+                results = await coordinator.refresh_due()
+                for result in results:
+                    log = _log.info if result.ok else _log.warning
+                    log(
+                        "provider_refresh_completed",
+                        extra={
+                            "provider_id": result.provider_id,
+                            "ok": result.ok,
+                            "models_seen": result.models_seen,
+                            "quotas_seen": result.quotas_seen,
+                            "error": result.error,
+                        },
                     )
-                except Exception as err:
-                    _log.warning(
-                        "balance_refresh_failed",
-                        extra={"key_id": k.key_id, "error": str(err)},
-                    )
-                # Small delay between keys to be gentle on the API
-                try:
-                    await asyncio.wait_for(self._balance_refresher_stop.wait(), timeout=2.0)
-                    return
-                except asyncio.TimeoutError:
-                    pass
-            # Wait for next cycle (10 min) or stop signal
+            except Exception as err:
+                _log.warning(
+                    "provider_refresh_cycle_failed",
+                    extra={"error": str(err)},
+                )
             try:
                 await asyncio.wait_for(
-                    self._balance_refresher_stop.wait(), timeout=600.0
+                    self._provider_refresher_stop.wait(), timeout=600.0
                 )
                 return
             except asyncio.TimeoutError:
