@@ -124,6 +124,12 @@
 
 ## Next Slice
 
+The Admin Providers page now presents provider pools, accounts, models, quotas,
+observations, protected secret rotation, and manual refresh/probe controls.
+The refresh endpoint builds lifecycle adapters from substrate-owned
+provider/account state and resolves encrypted credentials only at the adapter
+boundary.
+
 Bootstrap Nous through protected secret ingestion, then add periodic provider
-refresh and measured model scorecards. Task 8 remains incomplete until Nous is
-loaded without credential exposure.
+refresh and measured model scorecards. Authenticated production visual review
+remains open because the operator password was not extracted for automation.

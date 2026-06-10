@@ -32,11 +32,13 @@
 
 ### 1. Admin Provider Console
 
-- replace the legacy key-centric Providers page with provider pool, account,
-  model, quota, and observation views
-- expose existing provider/account/offering CRUD and protected secret rotation
-- keep legacy keys visible only as migration/debug data
-- add provider refresh/probe controls after a typed Admin endpoint exists
+- [x] replace the legacy key-centric Providers page with provider pool,
+  account, model, quota, and observation views
+- [x] expose existing provider/account/offering CRUD and protected secret
+  rotation
+- [x] keep legacy keys visible only as migration/debug data
+- [x] add a typed Admin provider refresh/probe endpoint and control
+- [ ] visually verify the authenticated production page with operator access
 
 ### 2. Provider Import and Operations
 
@@ -60,10 +62,11 @@
 
 ### 4. Memory and Knowledge Migration
 
-- inventory the production substrate using actual tables:
+- [x] inventory the production substrate using actual tables:
   `episodic_events`, `semantic_facts`, `raw_traces`, `procedural_memory`, and
   `continuity_events`
-- inventory `~/.sonya/knowledge/` and all legacy import sources
+- [x] inventory `~/.sonya/knowledge/` and available legacy import sources
+- [ ] build a read-only migration manifest command
 - create backups and an idempotent migration manifest before any write
 - run existing Telegram history and legacy knowledge migrations where needed
 - deduplicate, preserve provenance, and verify retrieval after migration

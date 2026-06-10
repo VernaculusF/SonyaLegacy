@@ -6,21 +6,34 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `a611797`, substrate schema v33, OpenRouter encrypted main
+Deployed baseline: `bae4b33`, substrate schema v33, OpenRouter encrypted main
 account, 339 discovered models, and active `sonya` / `sonya-admin` services.
 
 Current slice:
 
-1. replace the outdated key-centric Admin Providers UI with the existing
-   provider/account/model/quota/observation backend;
-2. verify on VPS, then commit, push, and deploy;
-3. import remaining approved provider accounts through protected secret
+1. import remaining approved provider accounts through protected secret
    ingestion;
-4. add periodic provider refresh and measured scorecards;
-5. complete subagent lifecycle/scope/outcome tracing;
-6. inventory and migrate old memory and knowledge with backups, provenance, and
+2. add periodic provider refresh and measured scorecards;
+3. complete subagent lifecycle/scope/outcome tracing;
+4. inventory and migrate old memory and knowledge with backups, provenance, and
    idempotent manifests;
-7. return to Atrium later.
+5. return to Atrium later.
+
+Completed in the latest slices:
+
+- Admin Providers now renders provider pools, accounts, models, quotas,
+  observations, protected secret rotation, and a collapsed legacy-key view;
+- typed manual refresh/probe endpoint and substrate-backed lifecycle adapter
+  factory added;
+- VPS verification: `48 passed` for the broad provider/Admin/routing slice and
+  `26 passed` for refresh/factory/Admin; compileall passed; both services active;
+- production visual review remains blocked by authenticated Admin access;
+- interactive SSH live refresh correctly refused to resolve encrypted secrets
+  without the systemd-only deployment unlock material.
+- read-only production memory inventory recorded in
+  `docs/operations/MEMORY_KNOWLEDGE_MIGRATION_STATUS.md`: 13,273 episodic
+  events, 3,346 semantic facts, 1 raw trace, 20 procedural memories, 23,238
+  continuity events, 242 tool experiences, and 12 knowledge files.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

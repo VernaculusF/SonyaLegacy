@@ -43,6 +43,8 @@ claims may age; use `STATE.md` for current implementation reality.
   - current provider-runtime implementation status and verification
 - [operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md](operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md)
   - active delivery order for provider import, subagents, and memory migration
+- [operations/MEMORY_KNOWLEDGE_MIGRATION_STATUS.md](operations/MEMORY_KNOWLEDGE_MIGRATION_STATUS.md)
+  - production memory/knowledge inventory and safe migration order
 - [operations/FREEMODEL_BRIDGE.md](operations/FREEMODEL_BRIDGE.md)
   - proposed freemodel bridge; not implemented
 - [skills/SKILL_SYSTEM_PLAN.md](skills/SKILL_SYSTEM_PLAN.md)
