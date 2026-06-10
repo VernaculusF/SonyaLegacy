@@ -164,8 +164,6 @@ class ProjectStore:
             "WHERE project_id = ?",
             (status, now, now, project_id),
         )
-        self._conn.commit()
-        updated = self.get(project_id)
         payload = {
             "project_id": project_id,
             "title": project.title,
@@ -181,11 +179,11 @@ class ProjectStore:
                 "project.status_changed",
                 "worker_log",
                 json.dumps(payload, ensure_ascii=False),
-                datetime.now(timezone.utc).isoformat(),
+                now,
             ),
         )
         self._conn.commit()
-        return updated
+        return self.get(project_id)
 
     def touch(self, project_id: str) -> None:
         now = datetime.now(timezone.utc).isoformat()

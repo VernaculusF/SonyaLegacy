@@ -1,11 +1,15 @@
 # ATRIUM — substrate event schema
 
-**Status:** Active spec для Этапа 0
-**Type:** Spec
-**Last reviewed:** 2026-05-28
+**Status:** Historical reference (implemented schema-v20 foundation)
+**Type:** Historical spec
+**Last reviewed:** 2026-06-10
 **Scope:** Конкретные substrate events которые добавляются для Atrium. ContinuityStream kinds, payload-структуры, schema migrations. Reference при коде Этапов 0-2.
 
 **Governing:** [PLAN.md](PLAN.md). Channel details are now considered legacy if `CHANNELS.md` is absent in the worktree.
+
+> This document describes the schema-v20 Atrium foundation. The repository's
+> current migration target is newer; do not use this file as the global schema
+> source of truth.
 
 ---
 

@@ -23,7 +23,7 @@ from typing import Any
 
 import httpx
 
-from sonya.providers.keystore import KeyStatus, KeyStore
+from sonya.providers.keystore import KeyStatus, KeyStore, ProviderKey
 
 _log = logging.getLogger("sonya.providers.llm_provider")
 
@@ -105,28 +105,7 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# Per-purpose model hints (2026-06-02: replaces slot-based routing).
-#
-# Ivan's directive: no "text-fast" / "text-deep" distinctions. All keys are
-# "text". Sonya/system chooses the model per purpose. The hint below is the
-# *default* model name for each purpose; Sonya can override per-request via
-# the ``_model`` kwarg. If a hint model isn't available, the provider
-# falls back to its default model (provider_settings.default_model).
-
-_PURPOSE_MODEL_HINT: dict[str, str] = {
-    # Interactive, latency-sensitive — use Flash for speed
-    "tg_session": "accounts/fireworks/models/deepseek-v4-flash",
-    "idle_thinking": "accounts/fireworks/models/deepseek-v4-flash",
-    "pre_done_critique": "accounts/fireworks/models/deepseek-v4-flash",
-    # Active session / tasks / research — Pro for quality
-    "active_session": "accounts/fireworks/models/deepseek-v4-pro",
-    "task_worker": "accounts/fireworks/models/deepseek-v4-pro",
-    "active_session_deep": "accounts/fireworks/models/deepseek-v4-pro",
-    "research": "accounts/fireworks/models/deepseek-v4-pro",
-    # Codegen — Pro handles code well
-    "selfmod_codegen": "accounts/fireworks/models/deepseek-v4-pro",
-    "selfmod_propose": "accounts/fireworks/models/deepseek-v4-pro",
-}
+_PURPOSE_MODEL_HINT: dict[str, str] = {}
 
 _PROVIDER_DEFAULT_BASE_URL: dict[str, str] = {
     "codexsale": "https://codex.sale/v1",
@@ -140,17 +119,32 @@ _PROVIDER_DEFAULT_MODEL: dict[str, str] = {
 
 
 def _model_for_purpose(purpose: str) -> str:
-    """Return the preferred model for a given purpose.
+    """Legacy compatibility hook.
 
-    Returns "" if no hint — the provider falls back to its default_model.
+    Purpose names no longer imply fixed models. Model choice comes from the
+    provider/model pool and explicit caller overrides.
     """
-    return _PURPOSE_MODEL_HINT.get(purpose, "")
-    if purpose in _PURPOSE_SLOT_MAP:
-        return _PURPOSE_SLOT_MAP[purpose]
-    # Codegen-shaped purposes that don't fit the explicit map
-    if "code" in purpose.lower() or "_codegen" in purpose.lower() or "selfmod" in purpose.lower():
-        return "code"
-    return "text"
+    return ""
+
+
+def _provider_fallback_chain(store: KeyStore, primary_provider: str, *, explicit_provider: bool) -> list[str]:
+    primary_provider = (primary_provider or "").strip()
+    if explicit_provider:
+        return [primary_provider] if primary_provider else []
+
+    chain: list[str] = []
+    if primary_provider:
+        chain.append(primary_provider)
+
+    for model in store.list_available_provider_models():
+        if model.provider not in chain:
+            chain.append(model.provider)
+
+    for key in sorted(store.list_keys(), key=lambda item: (item.priority, item.provider, item.name)):
+        if key.is_eligible() and key.provider not in chain:
+            chain.append(key.provider)
+
+    return chain
 
 
 def _record_call(
@@ -185,6 +179,14 @@ def _record_call(
         store._sub.connection.commit()
     except Exception:
         pass
+
+
+def _resolve_key_secret(store: KeyStore, key: ProviderKey) -> str:
+    """Resolve encrypted account credentials before legacy plaintext keys."""
+    account = store.get_provider_account(key.key_id)
+    if account is not None and account.secret_ref.startswith("provider-secret:"):
+        return store.resolve_account_secret(account.account_id).get_secret_value()
+    return key.api_key
 
 
 class LLMProvider:
@@ -239,7 +241,7 @@ class LLMProvider:
             role = str(kwargs.get("role", "auto")).strip()
             preferred_model = ""
             if role and role != "auto":
-                pool_models = self._store.list_provider_models(provider=provider, enabled_only=True)
+                pool_models = self._store.list_available_provider_models(provider)
                 role_matches = [m for m in pool_models if m.role_preference == role and m.enabled]
                 if role_matches:
                     free_matches = [m for m in role_matches if m.is_free]
@@ -250,13 +252,7 @@ class LLMProvider:
             if not preferred_model:
                 preferred_model = _model_for_purpose(purpose)
 
-        # Fallback chain: try active_provider first; if no eligible keys
-        # there, fall back to other providers in order.
-        fallback_chain = [provider]
-        if not explicit_provider:
-            for fb in ("kr", "fireworks", "openrouter", "codexsale"):
-                if fb != provider and fb not in fallback_chain:
-                    fallback_chain.append(fb)
+        fallback_chain = _provider_fallback_chain(self._store, provider, explicit_provider=explicit_provider)
 
         last_err: Exception | None = None
 
@@ -293,7 +289,7 @@ class LLMProvider:
             url = f"{base_url.rstrip('/')}/chat/completions"
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {key.api_key}",
+                "Authorization": f"Bearer {_resolve_key_secret(self._store, key)}",
             }
             payload = {
                 "model": model,
@@ -530,7 +526,7 @@ class LLMProvider:
         url = f"{base_url.rstrip('/')}/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {key.api_key}",
+            "Authorization": f"Bearer {_resolve_key_secret(self._store, key)}",
         }
         payload = {
             "model": model,

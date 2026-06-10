@@ -2,9 +2,154 @@
 
 **Status:** Active
 **Type:** Session handoff
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-10
 
 ---
+
+## Immediate continuation — provider/model runtime
+
+Documentation-only design work completed on 2026-06-10:
+
+- created `docs/operations/PROVIDER_SYSTEM_DESIGN.md`;
+- created `docs/operations/PROVIDER_MODEL_CATALOG.md`;
+- rewrote `docs/operations/SUBAGENT_MODELS.md` as selection policy;
+- rewrote `docs/operations/FREEMODEL_BRIDGE.md` as a research-gated adapter plan;
+- created design and implementation plan under `docs/superpowers/`.
+
+No pasted credential was added to Git, substrate, logs, or runtime.
+
+Provider foundation implementation completed after the documentation pass:
+
+- substrate schema advanced from v31 to v33;
+- provider registry, accounts, account offerings, quota windows, and
+  observations added;
+- legacy key writes/migration mirror into accounts without moving raw secrets;
+- typed KeyStore CRUD/read APIs added;
+- existing `provider_models` read bug around omitted `text_loop_ok` fixed.
+- encrypted `provider_secrets` added for new account credentials;
+- `provider_accounts` now expose only `secret_ref` and `secret_masked`;
+- `resolve_account_secret()` is the explicit raw-secret boundary for adapters;
+- legacy `provider_keys` remain compatible until the old inference path is
+  migrated.
+- provider adapter contract added under `src/sonya/providers/adapters/`;
+- OpenAI-compatible and Google-native adapter skeletons implemented with
+  structured discovery, health checks, quota hooks, and generic inference.
+- `ProviderRefreshService` added under `src/sonya/providers/refresh.py`;
+- refresh records health, discovery observations, quota windows, and
+  active-account model offerings;
+- discovery failures preserve the last-good cached model pool;
+- `providers.list_models` now reads substrate provider model pools and account
+  offerings instead of Fireworks live catalog / hardcoded model lists.
+- subagent model picking now scores only active substrate offerings, with role,
+  cost, latency, context, and `ToolExperience` history as soft ranking signals;
+- `_PURPOSE_MODEL_HINT` is empty and no longer forces Fireworks or any fixed
+  model by purpose;
+- `LLMProvider` provider fallback chain is derived from available offerings and
+  eligible keys instead of a fixed provider list;
+- `SubagentTool` checks substrate `text_loop_ok` before spawning text-loop
+  workers;
+- writable open now repairs legacy v33 `provider_models` tables that are
+  missing newer routing columns.
+- `ProvidersTool` now manages provider registry rows, provider accounts,
+  account offerings, and provider quota/health observations;
+- Admin `/api/providers` now exposes providers, accounts, model pools,
+  available models, quota windows, observations, and legacy keys;
+- Admin has POST endpoints for provider registry, accounts, and account
+  offerings;
+- Atrium only treats `provider.*` events as system/status stream entries;
+  detailed provider CRUD remains in Admin.
+- provider/model/account selection is explicitly substrate-owned, not env-owned;
+- legacy `SONYA_LLM_MODEL`, `SONYA_LLM_API_BASE`, and provider-specific env
+  secret loading were removed from `AppConfig`;
+- admin chat now uses the same substrate-backed `LLMProvider` path as the core
+  runtime, rather than a separate env-bound OpenRouter backend.
+- provider-specific environment secret loading was removed; future bootstrap
+  must use a protected secret-ingestion action that writes encrypted account
+  secrets into substrate without argv/continuity/tool-trace exposure.
+- protected secret ingestion is implemented as authenticated Admin
+  `PUT /api/providers/accounts/{account_id}/secret` with an opaque
+  `application/octet-stream` body; it encrypts/rotates immediately and returns
+  only a mask/reference.
+- ordinary provider-account JSON/tool paths and legacy key-add JSON/tool paths
+  reject raw credentials; legacy key reads remain for migration compatibility.
+- current provider-runtime status is summarized in
+  `docs/operations/PROVIDER_RUNTIME_STATUS.md`.
+
+Verification:
+
+- local focused provider suite: `34 passed`
+- local migration/provider suite: `36 passed`
+- local real-substrate-copy migration: v32, provider/account mirror present
+- local provider/migration/secret suite: `66 passed`
+- local v33 real-substrate-copy migration: masked account metadata present
+- full local suite: `847 passed`, `7 skipped`, `11 failed`; remaining failures
+  are in pre-existing dirty memory/visual-recall/purpose-hint areas outside this
+  slice
+- VPS isolated provider/migration suite: `50 passed`
+- VPS real-substrate backup migration: v32 with `4 providers`, `10 accounts`,
+  `10 keys`
+- VPS isolated provider/migration/secret suite: `66 passed`
+- VPS v33 real-substrate backup migration: `4 providers`, `10 accounts`,
+  `10 keys`, `10 masked accounts`
+- local provider adapter/foundation suite: `83 passed`
+- VPS isolated provider adapter/foundation suite: `83 passed`
+- VPS adapter import + real-substrate backup migration smoke passed
+- local provider refresh/foundation suite: `87 passed`
+- local compile smoke passed for provider modules and `providers_tool.py`
+- local secret-prefix scan found no pasted credential prefixes
+- VPS isolated provider refresh/foundation suite: `87 passed`
+- VPS refresh import + real-substrate backup migration smoke passed
+  (`schema_version=33`, `4 providers`, `10 accounts`, `10 keys`,
+  `10 masked_accounts`)
+- local provider/routing suite: `108 passed`
+- local routing compile smoke passed
+- local routing/default grep found no Fireworks DeepSeek or fixed fallback
+  references in routing/default files
+- VPS isolated provider/routing suite: `108 passed`
+- VPS real-substrate backup migration/routing smoke passed after repairing
+  missing legacy `provider_models` columns. Production substrate settings still
+  point at the live configured provider; production DB was not modified.
+- local provider/routing/management suite: `113 passed`
+- local provider management compile smoke passed
+- local Atrium build passed
+- local secret-prefix scan found no pasted credential prefixes
+- VPS isolated provider/routing/management suite: `113 passed`
+- VPS real-substrate backup management smoke passed
+  (`schema_version=33`, `4 providers`, `10 accounts`, `10 keys`,
+  `10 masked_accounts`, `17 models`, `0 available_models`)
+- local substrate-owned provider-binding slice: `65 passed`
+- VPS isolated substrate-owned provider-binding slice: `65 passed`
+- local/VPS runtime grep confirms no env model/provider binding remains
+- local protected-ingestion/provider/routing suite: `122 passed`
+- local compile smoke and known-secret-prefix scan passed
+- isolated VPS protected-ingestion/provider/routing suite: `122 passed`
+- VPS live-substrate-copy protected-ingestion smoke passed; rotation produced
+  `inactive` then `active` and plaintext was absent from the SQLite dump
+- earlier isolated proof did not modify production; the provider runtime was
+  subsequently deployed with the rollback backup listed below
+- production provider runtime deployed on 2026-06-10 with rollback backup:
+  `/home/jester-sonya/backups/sonya-provider-20260610-050736`
+- production substrate migrated to v33
+- main OpenRouter account migrated to encrypted `provider-secret`; legacy
+  plaintext cleared
+- OpenRouter live discovery succeeded (`339` models, `27` observed free)
+- nested OpenRouter pricing normalization and explicit-provider free preference
+  were fixed after live smoke exposed them
+- live Gemma adapter inference and main `LLMProvider` inference both succeeded
+- `sonya` and `sonya-admin` are active; core logs
+  `thinking_provider_ready` for OpenRouter
+- production-source provider verification: `126 passed` (`119 + 7` async)
+
+Next implementation slice:
+
+1. Execute Task 8 from
+   `docs/superpowers/plans/2026-06-10-provider-model-runtime.md`.
+2. Securely bootstrap Nous through provider account metadata plus the protected
+   Admin secret-ingestion endpoint. Do not write raw credentials to
+   Git/logs/docs/prompts.
+3. Add periodic provider refresh and start collecting model scorecards.
+4. Preserve existing dirty-worktree changes and do not revert unrelated work.
+5. Prove every substantial slice locally and on the VPS.
 
 ## Где мы сейчас
 
@@ -85,7 +230,6 @@
 См.:
 - `docs/atrium/ATRIUM_WORKSPACE_RUNTIME_SPEC.md`
 - `docs/atrium/PLAN.md`
-- `docs/FINAL_STATE_TODO.md`
 
 ### 2. Tool experience memory добавлена
 
@@ -220,10 +364,11 @@
 
 ### Runtime / architecture
 
-- Atrium workspace runtime decomposition пока не сделан
-- full-system-access mode пока только на уровне spec
-- project entities (`project`, `workspace_binding`, `subagent_run`, и т.д.) не введены
-- execution trace schema для project mode не спроектирована
+- Atrium workspace runtime decomposition реализован частично
+- full-system-access имеет backend policy/runtime wiring, но live end-to-end
+  режим ещё не доказан
+- `projects`, `project_runs`, `execution_traces` и `workspace_policy` введены
+- project entities/runs/traces ещё не образуют законченный observable runtime
 - tool experience memory добавлена, но ещё не развёрнута в полноценный project telemetry layer
 - continuity-first execution schema ещё не введена как явный core layer
 - subjective experience пока фрагментирован по подсистемам
@@ -232,10 +377,10 @@
 
 ### Security / infra
 
-- в Atrium нужен явный CSP
-- убрать/ограничить `shell:default` capability
-- перенести чувствительные операции из JS в Rust IPC handlers
+- в hosted-web Atrium нужен явный CSP
 - добавить auth/reconnect discipline для WS путей где ещё не доведено до нормы
+- старые Tauri-specific пункты про `shell:default` и Rust IPC больше не
+  относятся к текущей архитектуре
 - старые Atrium docs/mockups удалены из worktree, но ссылки на них ещё живут в коде/docs; это нужно либо восстановить, либо мигрировать ссылки
 
 ### Product / UX
@@ -244,7 +389,8 @@
 - PROVIDERS section слабее админки
 - SELFMOD нуждается в cleanup workflow
 - TASKS нуждается в фильтрах
-- project/workspace UI уже появился, но ещё не стал полноценной оркестрационной средой с project entities и real execution timeline
+- project/workspace UI и substrate entities уже появились, но ещё не стали
+  полноценной оркестрационной средой с real execution timeline
 - project chat должен иметь явные статусы:
   - `в работе`
   - `жду выбор`
@@ -272,11 +418,11 @@
 - Atrium как рабочая среда для проектов
 - видимое orchestration-исполнение субагентов
 - полноценный provider/project console UX
-- full-system-access режим
+- live-proven full-system-access режим и ясный UX
 - execution traces как first-class data layer для будущего RWKV
 - цельный process-wide subjective trace
 - внутренний эволюционный pressure layer
-- real substrate-level projects/runs/bindings instead of frontend-only workspace scaffolding
+- законченный end-to-end runtime поверх существующих projects/runs/traces/policy
 
 Новые жёсткие инварианты:
 - один основной чат
@@ -288,11 +434,11 @@
 ## Если следующая сессия продолжает работу
 
 Читать в таком порядке:
-1. `docs/STATE.md`
-2. `docs/atrium/ATRIUM_WORKSPACE_RUNTIME_SPEC.md`
-3. `docs/ATRIUM_PROJECT_PLAN.md`
-4. `docs/atrium/PLAN.md`
-5. `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md`
+1. `docs/INDEX.md`
+2. `docs/ATRIUM_PROJECT_PLAN.md`
+3. `docs/STATE.md`
+4. `docs/HANDOFF.md`
+5. `docs/atrium/ATRIUM_WORKSPACE_RUNTIME_SPEC.md`
 
 ## Если начинать реализацию Atrium или core changes прямо из этого файла
 
@@ -305,10 +451,110 @@
 5. У Sonya есть частичный subjective experience, но он ещё не собран в единый слой.
 6. Prompt nudges не решают эволюцию среды. Нужен intrinsic dissatisfaction / evolution pressure layer.
 7. Часть следующих изменений должна идти не только в Atrium, но и в core runtime, memory и provider orchestration.
-8. Текущий project mode уже не полностью фейковый: workspace-aware path довязан, но substrate-level project model ещё отсутствует.
+8. Текущий project mode уже имеет substrate-level projects/runs/traces/policy,
+   но их end-to-end operational поведение ещё не закончено и не доказано на VPS.
 
 ## Чего не делать
 
 - не возвращать в эти документы старый длинный session log
 - не смешивать completed changelog с актуальным handoff
 - не считать Atrium закрытым только потому, что dialog UI уже работает
+
+## Последний заход — 2026-06-09, Workstream A answer-first slice
+
+Реализовано:
+
+- добавлен минимальный `_sanitize_explicit_answer`
+- explicit `[DONE: body]` сохраняет Markdown/fenced code и удаляет только
+  `<think>`/protocol noise
+- active/project answer path больше не использует тяжёлый `_scrub()` для
+  явного финального ответа
+- legacy `_extract_reply` со stitching мыслей не удалён: он остаётся fallback
+  для Telegram и не должен становиться основным Atrium parser
+- восстановлен отсутствовавший аргумент `initial_thought` в
+  `run_agent_session`, соответствующий существующему контракту `Window`
+
+Документы реализации:
+
+- `docs/superpowers/specs/2026-06-09-atrium-answer-first-design.md`
+- `docs/superpowers/plans/2026-06-09-atrium-answer-first.md`
+
+Проверка:
+
+- `59 passed` в reply/Atrium focused suite
+- Atrium production build проходит
+- полный suite: `845 passed, 7 skipped, 11 failed`
+- текущие 11 failures вызваны незавершённым параллельным memory/migrations
+  слоем и устаревшими routing expectations; не смешивать их с Workstream A
+- VPS isolated-copy suite: `58 passed`; production checkout не менялся
+
+Не закрыто:
+
+- production deploy + live VPS chat proof
+- замер latency до первого полезного ответа
+- provider-native reasoning/streaming
+
+## Последний заход - 2026-06-10, docs audit + Workstream F upload binding
+
+Документация:
+
+- добавлены `docs/INDEX.md` и `docs/DOCUMENTATION_AUDIT.md`
+- `docs/atrium/PLAN.md` и `docs/atrium/EVENT_SCHEMA.md` помечены historical
+- исправлены ложные claims об отсутствии projects/runs/traces/policy/uploads
+- production checkout и live DB на VPS всё ещё v30; локальный dirty worktree v31
+- live DB уже содержит projects/runs/traces/workspace policy/provider model pool
+
+Реализация:
+
+- frontend upload передаёт активный project `workspace_id`
+- backend проверяет существование project перед возвратом bound upload ref
+- dialog не принимает attachment из другого workspace
+- main-chat upload остаётся без binding
+
+Проверка:
+
+- локально: `40 passed`
+- локально: Atrium `npm run build` проходит
+- полный локальный suite: `843 passed, 7 skipped, 10 failed`; падения относятся
+  к параллельным dirty memory/migrations изменениям и stale purpose routing
+- VPS isolated copy: `22 passed`
+- VPS production checkout не менялся; `sonya` и `sonya-admin` active
+- VPS frontend build не запускался: на сервере отсутствует `npm`
+
+Не закрыто:
+
+- chunked/temp-store/large-file flow
+- полный suite остаётся загрязнён параллельными memory/migrations изменениями
+
+## Последний заход - 2026-06-10, Workstream B project status runtime
+
+Production:
+
+- deployed commit: `83c6afa`
+- `sonya` and `sonya-admin` active
+- VPS focused suite: `36 passed`
+
+Runtime semantics:
+
+- `in_progress` accepts project-chat messages
+- `waiting_choice` resumes to `in_progress` on Ivan's next project message
+- `waiting`, `completed`, `cancelled` reject project-chat work with HTTP 409
+- policy consent block sets `waiting_choice`
+- all explicit transitions use `ProjectStore.set_status()` and record
+  `project.status_changed`
+
+Live proof:
+
+- temporary project `proj-33a3723df0` was created and removed
+- `in_progress=200`
+- `waiting=409`
+- `completed=409`
+- `cancelled=409`
+- `waiting_choice` message returned `200` and resumed to `in_progress`
+- five transition events were recorded
+
+Additional production defects fixed:
+
+- restored missing `initial_thought` argument in `run_agent_session`
+- replaced undefined project policy/trace `substrate` references with the
+  actual session substrate

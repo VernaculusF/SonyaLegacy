@@ -30,6 +30,18 @@ def test_config_uses_defaults_when_env_unset(monkeypatch: pytest.MonkeyPatch) ->
     assert cfg.log_level == "INFO"
 
 
+def test_model_provider_binding_is_not_loaded_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SONYA_LLM_MODEL", "env/model-must-not-bind-sonya")
+    monkeypatch.setenv("SONYA_LLM_API_BASE", "https://env-provider.invalid/v1")
+    monkeypatch.setenv("SONYA_OPENROUTER_API_KEY", "env-secret-must-not-bind-sonya")
+
+    cfg = load_config()
+
+    assert not hasattr(cfg, "llm_model")
+    assert not hasattr(cfg, "llm_api_base")
+    assert not hasattr(cfg, "openrouter_api_key")
+
+
 def test_config_paths_are_path_objects(tmp_path: Path) -> None:
     cfg = AppConfig(
         substrate_path=tmp_path / "x.db",

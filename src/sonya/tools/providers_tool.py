@@ -58,6 +58,12 @@ def _key_balance_amount(k) -> float | None:
     return None
 
 
+def _json_arg(value) -> str:
+    if isinstance(value, str):
+        return value or "{}"
+    return json.dumps(value if value is not None else {}, ensure_ascii=False)
+
+
 def _fmt_key(k) -> str:
     """One-line summary of a provider key."""
     bits = [
@@ -103,6 +109,28 @@ class ProvidersTool:
             f"default_base_url:{s.default_base_url}\n"
             f"updated_at:      {s.updated_at}"
         )
+
+    def list_providers(self, _arg: str = "") -> str:
+        providers = self._store.list_providers()
+        if not providers:
+            return "(no providers registered)"
+        accounts = self._store.list_provider_accounts()
+        models = self._store.list_available_provider_models()
+        account_counts: dict[str, int] = {}
+        model_counts: dict[str, int] = {}
+        for account in accounts:
+            account_counts[account.provider_id] = account_counts.get(account.provider_id, 0) + 1
+        for model in models:
+            model_counts[model.provider] = model_counts.get(model.provider, 0) + 1
+        lines = [f"{len(providers)} providers:"]
+        for provider in providers:
+            lines.append(
+                f"  {provider.provider_id} status={provider.status} adapter={provider.adapter_kind} "
+                f"accounts={account_counts.get(provider.provider_id, 0)} "
+                f"available_models={model_counts.get(provider.provider_id, 0)} "
+                f"base_url={provider.base_url or '-'}"
+            )
+        return "\n".join(lines)
 
     def balance(self, _arg: str = "") -> str:
         """Sum balance across active keys, by provider."""
@@ -180,6 +208,34 @@ class ProvidersTool:
             "  Если CRITICAL — пора регать новый аккаунт или просить Ивана."
         ).format(banned=len(banned), disabled=len(disabled))
 
+    def provider_health(self, provider: str = "") -> str:
+        provider = (provider or "").strip()
+        if not provider:
+            return "[ERROR] providers.health: provider_id required"
+        if self._store.get_provider(provider) is None:
+            return f"[ERROR] unknown provider: {provider}"
+        accounts = self._store.list_provider_accounts(provider)
+        available = self._store.list_available_provider_models(provider)
+        observations = self._store.list_provider_observations(provider_id=provider)
+        lines = [
+            f"{provider}: accounts={len(accounts)} available_models={len(available)}",
+        ]
+        for account in accounts:
+            lines.append(f"  account {account.account_id} name={account.name} status={account.status} prio={account.priority}")
+            for quota in self._store.list_quota_windows(account.account_id)[:5]:
+                remaining = "" if quota.remaining_value is None else f" remaining={quota.remaining_value:g}"
+                limit = "" if quota.limit_value is None else f" limit={quota.limit_value:g}"
+                lines.append(
+                    f"    quota {quota.quota_kind}{remaining}{limit} unit={quota.unit or '-'} resets={quota.resets_at or '-'}"
+                )
+        for observation in observations[:5]:
+            outcome = "ok" if observation.success else "fail"
+            lines.append(
+                f"  {observation.observation_kind} {outcome} latency_ms={observation.latency_ms} "
+                f"model={observation.model_id or '-'}"
+            )
+        return "\n".join(lines)
+
     # ---------- write ----------
 
     def disable_key(self, arg: str) -> str:
@@ -203,126 +259,189 @@ class ProvidersTool:
             return f"[ERROR] {type(e).__name__}: {e}"
 
     def list_models(self, provider: str = "") -> str:
-        """List available models for a provider (or all providers if empty).
-
-        Fireworks models are pulled from the Fireworks live catalog API.
-        Kiro and other providers use hardcoded lists since they don't expose
-        a /models endpoint. Returns one model per line in the format:
-        ``provider | model_id | context_window | pricing (input/output M)``.
-        """
+        """List cached/discovered provider model pool data from substrate."""
         provider = (provider or "").strip().lower()
-        lines: list[str] = []
 
-        # Fireworks — live catalog
-        if not provider or provider == "fireworks":
-            lines.append("--- fireworks (live catalog) ---")
-            fireworks_models = self._fireworks_models()
-            if fireworks_models:
-                for m in fireworks_models:
-                    lines.append(f"fireworks | {m['id']} | ctx={m.get('context_length','?')} | ${m.get('input_price','?')}/${m.get('output_price','?')}/M")
+        available = self._store.list_available_provider_models(provider or None)
+        cached = self._store.list_provider_models(provider or None, enabled_only=True)
+        by_id = {model.model_id: model for model in cached}
+        for model in available:
+            by_id[model.model_id] = model
+
+        if not by_id:
+            suffix = f" for {provider}" if provider else ""
+            return f"(no cached provider models{suffix}; run provider discovery refresh)"
+
+        substrate_lines: list[str] = []
+        current_provider = ""
+        available_ids = {model.model_id for model in available}
+        for model in sorted(by_id.values(), key=lambda item: (item.provider, item.model_name, item.model_id)):
+            if model.provider != current_provider:
+                current_provider = model.provider
+                substrate_lines.append(f"--- {current_provider} ---")
+            if model.is_free:
+                price = "free"
             else:
-                lines.append("  (could not fetch Fireworks catalog)")
-
-        # Kiro — hardcoded
-        if not provider or provider in ("kr", "kiro"):
-            lines.append("--- kr (kiro) ---")
-            lines.append("kr | kr/claude-sonnet-4.5 | ctx=200K | ~$3/$15/M")
-            lines.append("kr | kr/claude-haiku-4.5 | ctx=200K | ~$1/$5/M")
-
-        # OpenRouter
-        if not provider or provider == "openrouter":
-            lines.append("--- openrouter ---")
-            lines.append("openrouter | (query openrouter.ai/models for full list)")
-
-        # Codex Sale
-        if not provider or provider == "codexsale":
-            lines.append("--- codexsale ---")
-            lines.append("codexsale | gpt-5.4 | ctx=? | premium text flagship")
-            lines.append("codexsale | gpt-5.4-mini | ctx=? | premium fast text")
-            lines.append("codexsale | gpt-5.5 | ctx=? | premium text flagship+")
-            lines.append("codexsale | gpt-image-2 | ctx=n/a | image generation (special worker)")
-            lines.append("codexsale | gpt-4o-transcribe | ctx=n/a | audio transcription (special worker)")
-
-        if not lines:
-            return f"[ERROR] unknown provider: {provider}"
-        return "\n".join(lines)
-
-    def _fireworks_models(self) -> list[dict]:
-        """Fetch Fireworks model catalog from their public API.
-
-        Fireworks exposes GET https://api.fireworks.ai/v1/models — no auth
-        needed for the catalog endpoint. Returns list of model dicts with
-        id, context_length, pricing, etc.
-        """
-        import json
-        import urllib.request
-        try:
-            req = urllib.request.Request(
-                "https://api.fireworks.ai/v1/models",
-                headers={"Accept": "application/json"},
+                price = f"${model.cost_per_1m_input_tokens:g}/${model.cost_per_1m_output_tokens:g}/M"
+            availability = "available" if model.model_id in available_ids else "cached"
+            substrate_lines.append(
+                f"{model.provider} | {model.model_id} | ctx={model.context_length} | "
+                f"{price} | {availability} | source={model.discovery_source}"
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
-            models: list[dict] = []
-            if isinstance(data, dict):
-                entries = data.get("data") or data.get("models") or []
-            elif isinstance(data, list):
-                entries = data
-            else:
-                return []
-            for m in entries[:30]:  # cap to avoid flooding
-                if not isinstance(m, dict):
-                    continue
-                mid = m.get("id") or m.get("name") or ""
-                if not mid:
-                    continue
-                # Extract pricing from nested Fireworks response
-                ctx_len = m.get("context_length") or m.get("context_window") or m.get("max_context_length") or ""
-                models.append({
-                    "id": mid,
-                    "context_length": ctx_len,
-                    "input_price": m.get("input_price") or m.get("input_price_per_million") or "",
-                    "output_price": m.get("output_price") or m.get("output_price_per_million") or "",
-                })
-            return models
-        except Exception:
-            return []
+        return "\n".join(substrate_lines)
 
     def add_key(self, arg: str) -> str:
-        """Add a new provider key.
+        """Reject the legacy plaintext-key tool path."""
+        return (
+            "[ERROR] providers.add_key: legacy plaintext key ingestion is disabled; "
+            "create a provider account and use the protected secret-ingestion admin action"
+        )
 
-        JSON: {provider, name, api_key, base_url?, model?, priority?, slot?}.
-        Returns the new key_id.
-        """
+    def upsert_provider(self, arg: str) -> str:
         try:
             data = json.loads(arg or "{}")
         except json.JSONDecodeError as e:
-            return f"[ERROR] providers.add_key: invalid JSON ({e})"
-        provider = str(data.get("provider", "")).strip()
-        name = str(data.get("name", "")).strip()
-        api_key = str(data.get("api_key", "")).strip()
-        if not (provider and name and api_key):
-            return "[ERROR] providers.add_key: provider, name, api_key обязательны"
-        base_url = str(data.get("base_url", "")).strip()
-        model = str(data.get("model", "")).strip()
-        slot = str(data.get("slot", "text")).strip() or "text"
-        if provider == "codexsale":
-            if not base_url:
-                base_url = "https://codex.sale/v1"
-            if not model and slot == "text":
-                model = "gpt-5.4-mini"
-        priority = int(data.get("priority", 0) or 0)
+            return f"[ERROR] providers.upsert_provider: invalid JSON ({e})"
+        provider_id = str(data.get("provider_id") or data.get("provider") or "").strip().lower()
+        display_name = str(data.get("display_name") or provider_id).strip()
+        adapter_kind = str(data.get("adapter_kind") or "openai_compatible").strip()
+        if not provider_id:
+            return "[ERROR] providers.upsert_provider: provider_id required"
+        status = str(data.get("status") or "active").strip().lower()
+        base_url = str(data.get("base_url") or "").strip()
+        capabilities = data.get("capabilities_json", data.get("capabilities", {}))
+        constraints = data.get("constraints_json", data.get("constraints", {}))
+        metadata = data.get("metadata_json", data.get("metadata", {}))
         try:
-            key = self._store.add_key(
-                provider=provider,
-                name=name,
-                api_key=api_key,
+            provider = self._store.upsert_provider(
+                provider_id=provider_id,
+                display_name=display_name,
+                adapter_kind=adapter_kind,
+                status=status,
                 base_url=base_url,
-                model=model,
-                priority=priority,
-                slot=slot,
+                capabilities_json=_json_arg(capabilities),
+                constraints_json=_json_arg(constraints),
+                metadata_json=_json_arg(metadata),
             )
-            return f"[OK] added key_id={key.key_id} ({provider}/{name}, slot={slot})"
+            return f"[OK] provider_id={provider.provider_id} status={provider.status} adapter={provider.adapter_kind}"
+        except Exception as e:
+            return f"[ERROR] {type(e).__name__}: {e}"
+
+    def delete_provider(self, arg: str) -> str:
+        provider_id = (arg or "").strip().lower()
+        if not provider_id:
+            return "[ERROR] providers.delete_provider: provider_id required"
+        if self._store.get_provider(provider_id) is None:
+            return f"[ERROR] unknown provider: {provider_id}"
+        accounts = self._store.list_provider_accounts(provider_id)
+        if accounts:
+            return f"[ERROR] provider {provider_id} accounts still exist: {len(accounts)}"
+        try:
+            self._store.delete_provider(provider_id)
+            return f"[OK] provider {provider_id} deleted"
+        except Exception as e:
+            return f"[ERROR] {type(e).__name__}: {e}"
+
+    def add_account(self, arg: str) -> str:
+        try:
+            data = json.loads(arg or "{}")
+        except json.JSONDecodeError as e:
+            return f"[ERROR] providers.add_account: invalid JSON ({e})"
+        provider_id = str(data.get("provider_id") or data.get("provider") or "").strip().lower()
+        name = str(data.get("name") or "").strip()
+        if not provider_id or not name:
+            return "[ERROR] providers.add_account: provider_id and name required"
+        if data.get("secret_value") or data.get("api_key"):
+            return (
+                "[ERROR] providers.add_account: raw credentials require the protected "
+                "secret-ingestion admin action"
+            )
+        secret_ref = str(data.get("secret_ref") or "").strip()
+        constraints = data.get("constraints_json", data.get("constraints", {}))
+        metadata = data.get("metadata_json", data.get("metadata", {}))
+        try:
+            account = self._store.add_provider_account(
+                provider_id=provider_id,
+                name=name,
+                secret_ref=secret_ref,
+                status=str(data.get("status") or "active").strip().lower(),
+                priority=int(data.get("priority") or 0),
+                constraints_json=_json_arg(constraints),
+                metadata_json=_json_arg(metadata),
+            )
+            return (
+                f"[OK] account_id={account.account_id} provider={account.provider_id} "
+                f"name={account.name} status={account.status} secret={account.masked_secret or account.secret_ref}"
+            )
+        except Exception as e:
+            return f"[ERROR] {type(e).__name__}: {e}"
+
+    def migrate_legacy_secret(self, arg: str) -> str:
+        account_id = (arg or "").strip()
+        if not account_id:
+            return "[ERROR] providers.migrate_legacy_secret: account_id required"
+        try:
+            account = self._store.migrate_legacy_account_secret(account_id)
+            return (
+                f"[OK] account_id={account.account_id} provider={account.provider_id} "
+                f"secret_ref={account.secret_ref} secret_masked={account.masked_secret}"
+            )
+        except Exception as e:
+            return f"[ERROR] {type(e).__name__}: {e}"
+
+    def update_account(self, arg: str) -> str:
+        try:
+            data = json.loads(arg or "{}")
+        except json.JSONDecodeError as e:
+            return f"[ERROR] providers.update_account: invalid JSON ({e})"
+        account_id = str(data.get("account_id") or "").strip()
+        if not account_id:
+            return "[ERROR] providers.update_account: account_id required"
+        try:
+            account = self._store.update_provider_account(
+                account_id,
+                name=str(data["name"]).strip() if "name" in data else None,
+                status=str(data["status"]).strip().lower() if "status" in data else None,
+                priority=int(data["priority"]) if "priority" in data else None,
+                constraints_json=_json_arg(data["constraints"]) if "constraints" in data else data.get("constraints_json"),
+                metadata_json=_json_arg(data["metadata"]) if "metadata" in data else data.get("metadata_json"),
+            )
+            return f"[OK] account_id={account.account_id} provider={account.provider_id} status={account.status}"
+        except Exception as e:
+            return f"[ERROR] {type(e).__name__}: {e}"
+
+    def delete_account(self, arg: str) -> str:
+        account_id = (arg or "").strip()
+        if not account_id:
+            return "[ERROR] providers.delete_account: account_id required"
+        if self._store.get_provider_account(account_id) is None:
+            return f"[ERROR] unknown account: {account_id}"
+        try:
+            self._store.delete_provider_account(account_id)
+            return f"[OK] account {account_id} deleted"
+        except Exception as e:
+            return f"[ERROR] {type(e).__name__}: {e}"
+
+    def set_offering(self, arg: str) -> str:
+        try:
+            data = json.loads(arg or "{}")
+        except json.JSONDecodeError as e:
+            return f"[ERROR] providers.set_offering: invalid JSON ({e})"
+        account_id = str(data.get("account_id") or "").strip()
+        model_id = str(data.get("model_id") or data.get("model") or "").strip()
+        if not account_id or not model_id:
+            return "[ERROR] providers.set_offering: account_id and model_id required"
+        try:
+            enabled = bool(data.get("enabled", True))
+            metadata = data.get("metadata_json", data.get("metadata", {}))
+            self._store.set_account_offering(
+                account_id,
+                model_id,
+                enabled=enabled,
+                metadata_json=_json_arg(metadata),
+            )
+            state = "enabled" if enabled else "disabled"
+            return f"[OK] offering {account_id} -> {model_id} {state}"
         except Exception as e:
             return f"[ERROR] {type(e).__name__}: {e}"
 

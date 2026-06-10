@@ -4,8 +4,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from sonya.providers.secrets import ProviderSecret, load_provider_secret
-
 # Load .env file if exists
 try:
     from dotenv import load_dotenv
@@ -24,9 +22,6 @@ class AppConfig:
     substrate_path: Path
     health_path: Path
     log_level: str = "INFO"
-    openrouter_api_key: ProviderSecret | None = None
-    llm_api_base: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "google/gemma-2-27b-it:free"
     tg_api_id: int = 0
     tg_api_hash: str = ""
     tg_session_path: str = ""
@@ -70,8 +65,6 @@ def load_config() -> AppConfig:
         _DEFAULT_DATA_ROOT / "health.json",
     )
     log_level = os.environ.get("SONYA_LOG_LEVEL", "INFO").upper()
-    llm_api_base = os.environ.get("SONYA_LLM_API_BASE", "https://openrouter.ai/api/v1")
-    llm_model = os.environ.get("SONYA_LLM_MODEL", "google/gemma-2-27b-it:free")
     tg_api_id = int(os.environ.get("SONYA_TG_API_ID", "0"))
     tg_api_hash = os.environ.get("SONYA_TG_API_HASH", "")
     tg_session_path = os.environ.get("SONYA_TG_SESSION_PATH", "")
@@ -95,9 +88,6 @@ def load_config() -> AppConfig:
         substrate_path=substrate_path,
         health_path=health_path,
         log_level=log_level,
-        openrouter_api_key=load_provider_secret("openrouter"),
-        llm_api_base=llm_api_base,
-        llm_model=llm_model,
         tg_api_id=tg_api_id,
         tg_api_hash=tg_api_hash,
         tg_session_path=tg_session_path,

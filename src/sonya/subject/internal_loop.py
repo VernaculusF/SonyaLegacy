@@ -704,6 +704,9 @@ class InternalProcess:
                         channel="internal_idle",
                         actor="sonya",
                         importance_score=0.55,
+                        record_type="idle_thought",
+                        scope="global",
+                        retention_policy="short",
                     )
             except Exception:
                 pass
@@ -3198,37 +3201,39 @@ class InternalProcess:
             pass
 
     def _run_consolidation(self) -> None:
-        """Promote high-importance episodic events to semantic facts.
-
-        Runs once per 24h. Steps:
-          1. Apply Ebbinghaus decay to all episodic events (retention_strength
-             weakens; events below archive_threshold are archived).
-          2. Promote surviving high-importance events to semantic facts.
-
-        Previously decay was defined in EpisodicMemory.apply_decay() but never
-        wired — 12,427 events accumulated with retention_strength=1.0, zero
-        archived (2026-06-02 audit).
-        """
         substrate = self._substrate or getattr(self._stream, "_sub", None)
         if substrate is None:
             return
         try:
-            from sonya.memory.consolidation import ConsolidationPipeline
+            from sonya.memory.compiler import MemoryCompiler
             from sonya.memory.episodic import EpisodicMemory
             from sonya.memory.semantic import SemanticMemory
+            from sonya.memory.procedural import ProceduralMemory
+            from sonya.memory.trace_layer import TraceLayer
 
             episodic = EpisodicMemory(substrate)
+            semantic = SemanticMemory(substrate)
+            procedural = ProceduralMemory(substrate)
+            trace = TraceLayer(substrate)
+
+            compiler = MemoryCompiler(
+                substrate,
+                episodic=episodic,
+                semantic=semantic,
+                procedural=procedural,
+                trace=trace,
+            )
+            results = compiler.run(since_hours=24)
+
             archived = episodic.apply_decay()
             self._stream.append(ContinuityEvent(
                 kind="internal.decay_run",
                 payload={"archived": archived},
             ))
 
-            pipe = ConsolidationPipeline(episodic, SemanticMemory(substrate))
-            created = pipe.run_consolidation()
             self._stream.append(ContinuityEvent(
-                kind="internal.consolidation_run",
-                payload={"facts_created": created, "decayed_archived": archived},
+                kind="internal.memory_compiler_run",
+                payload=results,
             ))
         except Exception:
             pass

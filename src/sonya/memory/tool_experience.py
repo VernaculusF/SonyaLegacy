@@ -30,18 +30,6 @@ class ToolExperienceEntry:
 
 
 class ToolExperience:
-    """Records and queries tool invocation outcomes.
-
-    Every call writes:
-      1. A row in ``tool_experiences`` for fast aggregate queries.
-      2. An ``episodic_events`` entry (event_type=``tool_event``) so
-         Sonya can semantic-recall past tool experience via
-         ``memory.recall "subagent.spawn"`` etc.
-
-    The picker queries aggregate stats from tool_experiences.
-    Sonya's reasoning layer queries episodic for nuanced recall.
-    """
-
     _OUTCOMES = ("success", "error", "blocked", "timeout", "partial")
 
     def __init__(self, substrate: Substrate) -> None:
@@ -79,34 +67,46 @@ class ToolExperience:
         )
         self._sub.connection.commit()
 
-        mirror_summary = (
-            f"[{tool_name}] {outcome}"
-            + (f" — {detail[:120]}" if detail else "")
-            + (f" | provider={provider}" if provider else "")
-            + (f" model={model}" if model else "")
-            + (f" latency={latency_ms}ms" if latency_ms else "")
-        )
-        mirror_raw = (
-            f"Tool: {tool_name}\n"
-            f"Arg: {arg_summary}\n"
-            f"Outcome: {outcome}\n"
-            f"Detail: {detail}\n"
-            f"Provider: {provider}\n"
-            f"Model: {model}\n"
-            f"Latency: {latency_ms}ms\n"
-            f"Session: {session_type}"
-        )
+        from sonya.memory.types import RecordType, Scope
         try:
-            from sonya.memory.episodic import EpisodicMemory
-            EpisodicMemory(self._sub).record(
-                event_type="tool_event",
+            from sonya.memory.trace_layer import TraceLayer
+            trace = TraceLayer(self._sub)
+            rt = RecordType.subagent_trace if session_type == "subagent" else RecordType.tool_observation
+            sc = Scope.subagent if session_type == "subagent" else Scope.global_
+            mirror_summary = (
+                f"[{tool_name}] {outcome}"
+                + (f" — {detail[:120]}" if detail else "")
+                + (f" | provider={provider}" if provider else "")
+                + (f" model={model}" if model else "")
+                + (f" latency={latency_ms}ms" if latency_ms else "")
+            )
+            mirror_raw = (
+                f"Tool: {tool_name}\n"
+                f"Arg: {arg_summary}\n"
+                f"Outcome: {outcome}\n"
+                f"Detail: {detail}\n"
+                f"Provider: {provider}\n"
+                f"Model: {model}\n"
+                f"Latency: {latency_ms}\n"
+                f"Session: {session_type}"
+            )
+            trace.record(
+                record_type=rt,
                 raw_content=mirror_raw,
                 normalized_summary=mirror_summary,
-                source="sonya",
-                channel="tool_experience",
-                actor="sonya",
-                emotion_tags=tags,
-                importance_score=0.6 if outcome == "success" else 0.75,
+                source="tool_experience",
+                scope=sc,
+                importance=0.3 if outcome == "success" else 0.5,
+                tags=tags,
+                session_type=session_type,
+                metadata={
+                    "exp_id": exp_id,
+                    "tool_name": tool_name,
+                    "outcome": outcome,
+                    "provider": provider,
+                    "model": model,
+                    "latency_ms": latency_ms,
+                },
             )
         except Exception:
             pass

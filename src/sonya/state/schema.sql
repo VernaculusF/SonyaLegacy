@@ -350,9 +350,9 @@ CREATE INDEX IF NOT EXISTS idx_provider_keys_status ON provider_keys(status);
 -- Single-row provider_settings
 CREATE TABLE IF NOT EXISTS provider_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
-    active_provider TEXT NOT NULL DEFAULT 'fireworks',
-    default_model TEXT NOT NULL DEFAULT 'accounts/fireworks/models/minimax-m2p7',
-    default_base_url TEXT NOT NULL DEFAULT 'https://api.fireworks.ai/inference/v1',
+    active_provider TEXT NOT NULL DEFAULT 'openrouter',
+    default_model TEXT NOT NULL DEFAULT '',
+    default_base_url TEXT NOT NULL DEFAULT 'https://openrouter.ai/api/v1',
     updated_at TEXT NOT NULL
 );
 
@@ -769,3 +769,108 @@ CREATE INDEX IF NOT EXISTS idx_pm_role ON provider_models(role_preference);
 CREATE INDEX IF NOT EXISTS idx_pm_enabled ON provider_models(enabled);
 CREATE INDEX IF NOT EXISTS idx_pm_free ON provider_models(is_free);
 CREATE INDEX IF NOT EXISTS idx_pm_latency ON provider_models(latency_tier);
+
+-- v32: provider registry, accounts, account-specific offerings and observations.
+CREATE TABLE IF NOT EXISTS providers (
+    provider_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    adapter_kind TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    base_url TEXT NOT NULL DEFAULT '',
+    capabilities_json TEXT NOT NULL DEFAULT '{}',
+    constraints_json TEXT NOT NULL DEFAULT '{}',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_providers_status ON providers(status);
+CREATE INDEX IF NOT EXISTS idx_providers_adapter ON providers(adapter_kind);
+
+CREATE TABLE IF NOT EXISTS provider_accounts (
+    account_id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    secret_ref TEXT NOT NULL DEFAULT '',
+    secret_masked TEXT NOT NULL DEFAULT '',
+    legacy_key_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    priority INTEGER NOT NULL DEFAULT 0,
+    constraints_json TEXT NOT NULL DEFAULT '{}',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pa_legacy_key
+    ON provider_accounts(legacy_key_id) WHERE legacy_key_id != '';
+CREATE INDEX IF NOT EXISTS idx_pa_provider ON provider_accounts(provider_id);
+CREATE INDEX IF NOT EXISTS idx_pa_status ON provider_accounts(status);
+
+CREATE TABLE IF NOT EXISTS provider_account_offerings (
+    account_id TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (account_id, model_id),
+    FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id),
+    FOREIGN KEY (model_id) REFERENCES provider_models(model_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pao_model ON provider_account_offerings(model_id);
+CREATE INDEX IF NOT EXISTS idx_pao_enabled ON provider_account_offerings(enabled);
+
+CREATE TABLE IF NOT EXISTS provider_quota_windows (
+    quota_window_id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    quota_kind TEXT NOT NULL,
+    limit_value REAL,
+    used_value REAL,
+    remaining_value REAL,
+    unit TEXT NOT NULL DEFAULT '',
+    window_started_at TEXT NOT NULL DEFAULT '',
+    resets_at TEXT NOT NULL DEFAULT '',
+    observed_at TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pqw_account ON provider_quota_windows(account_id);
+CREATE INDEX IF NOT EXISTS idx_pqw_resets ON provider_quota_windows(resets_at);
+
+CREATE TABLE IF NOT EXISTS provider_observations (
+    observation_id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    account_id TEXT NOT NULL DEFAULT '',
+    model_id TEXT NOT NULL DEFAULT '',
+    observation_kind TEXT NOT NULL,
+    success INTEGER NOT NULL DEFAULT 1,
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    value_json TEXT NOT NULL DEFAULT '{}',
+    observed_at TEXT NOT NULL,
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+);
+CREATE INDEX IF NOT EXISTS idx_po_provider ON provider_observations(provider_id);
+CREATE INDEX IF NOT EXISTS idx_po_account ON provider_observations(account_id);
+CREATE INDEX IF NOT EXISTS idx_po_model ON provider_observations(model_id);
+CREATE INDEX IF NOT EXISTS idx_po_kind ON provider_observations(observation_kind);
+
+-- v33: encrypted provider secrets, referenced by provider_accounts.secret_ref.
+CREATE TABLE IF NOT EXISTS provider_secrets (
+    secret_id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    secret_kind TEXT NOT NULL DEFAULT 'api_key',
+    encrypted_value TEXT NOT NULL,
+    value_fingerprint TEXT NOT NULL,
+    masked_value TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id),
+    FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ps_provider ON provider_secrets(provider_id);
+CREATE INDEX IF NOT EXISTS idx_ps_account ON provider_secrets(account_id);
+CREATE INDEX IF NOT EXISTS idx_ps_status ON provider_secrets(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ps_fingerprint
+    ON provider_secrets(provider_id, value_fingerprint);

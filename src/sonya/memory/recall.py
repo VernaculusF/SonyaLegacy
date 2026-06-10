@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 
 from sonya.memory.embedder import (
     Embedder,
@@ -112,22 +113,31 @@ class RecallStore:
 
     # ----- recall -----
 
-    def recall(self, query: str, top_k: int = 5, *, min_score: float = 0.25) -> list[RecallHit]:
-        """Return top-k events most similar to `query`.
-
-        Reads ALL indexed embeddings into memory and does one matmul. Fine up
-        to ~100k rows. `min_score` filters away noise (cosine 0 — orthogonal,
-        1 — identical).
-        """
+    def recall(self, query: str, top_k: int = 5, *, min_score: float = 0.25,
+               project_id: str | None = None,
+               exclude_trace_types: bool = True) -> list[RecallHit]:
         if not query.strip():
             return []
-        import numpy as np  # local — keep module import-safe without numpy
+        import numpy as np
+
+        from sonya.memory.types import is_trace_type, RecordType
+
+        clauses = ["archived = 0", "embedding IS NOT NULL", "length(embedding) > 0"]
+        params: list[Any] = []
+        if exclude_trace_types:
+            trace_vals = ",".join(f"'{rt.value}'" for rt in RecordType if is_trace_type(rt))
+            clauses.append(f"(record_type NOT IN ({trace_vals}) OR record_type = '')")
+        if project_id is not None:
+            clauses.append("(project_id = ? OR scope = 'global')")
+            params.append(project_id)
+        where = " AND ".join(clauses)
 
         cursor = self._sub.connection.execute(
-            "SELECT event_id, event_type, timestamp, raw_content, embedding "
-            "FROM episodic_events "
-            "WHERE archived = 0 AND embedding IS NOT NULL AND length(embedding) > 0 "
-            "ORDER BY timestamp DESC"
+            f"SELECT event_id, event_type, timestamp, raw_content, embedding, "
+            f"record_type, scope, project_id "
+            f"FROM episodic_events WHERE {where} "
+            f"ORDER BY timestamp DESC",
+            params,
         )
         rows = cursor.fetchall()
         if not rows:
@@ -136,21 +146,31 @@ class RecallStore:
         types: list[str] = []
         timestamps: list[str] = []
         contents: list[str] = []
+        scopes: list[str] = []
+        pids: list[str] = []
         vecs = []
-        for event_id, ev_type, ts, content, blob in rows:
+        for event_id, ev_type, ts, content, blob, rt, sc, pid in rows:
             v = blob_to_vector(blob)
             if v.shape[0] != self._embedder.dim:
-                continue  # corrupt / wrong-dim row, skip
+                continue
             ids.append(event_id)
             types.append(ev_type)
             timestamps.append(ts)
             contents.append(content or "")
+            scopes.append(sc or "")
+            pids.append(pid or "")
             vecs.append(v)
         if not vecs:
             return []
-        matrix = np.stack(vecs, axis=0)  # (N, 384)
-        q = self._embedder.encode_one(query)  # (384,)
-        scores = matrix @ q  # (N,)
+        matrix = np.stack(vecs, axis=0)
+        q = self._embedder.encode_one(query)
+        scores = matrix @ q
+        if project_id is not None:
+            for i in range(len(scores)):
+                if pids[i] == project_id:
+                    scores[i] += 0.05
+                elif scopes[i] == "identity":
+                    scores[i] += 0.03
         order = np.argsort(-scores)[:top_k]
         hits: list[RecallHit] = []
         for idx in order:

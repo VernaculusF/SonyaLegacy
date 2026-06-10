@@ -4,10 +4,12 @@ Repository for Sonya core, reusable runtime packages, and active implementation 
 
 ## Где начать (для людей и ИИ-моделей)
 
-- **`docs/HANDOFF.md`** — точка входа. Operational cheat-sheet: кто такая Соня, как работать с VPS, с файлами, текущий статус, git flow, чеклисты. Приложи этот файл к любой модели чтобы продолжить разработку.
+- **`docs/INDEX.md`** — карта документации и порядок приоритета источников.
+- **`docs/ATRIUM_PROJECT_PLAN.md`** — главный активный план разработки Atrium.
+- **`docs/HANDOFF.md`** — текущая точка продолжения и результаты последних проверок.
 - **`docs/MASTER.md`** — governing doc, полная картина: что строим, путь до AGI, что делать.
 - `docs/core/*` — identity-critical инварианты (governed-change-only).
-- `docs/atrium/PLAN.md` — Atrium (multichannel UI) roadmap.
+- `docs/atrium/PLAN.md` — исторический Atrium roadmap; не источник текущего состояния.
 
 ## Тесты
 

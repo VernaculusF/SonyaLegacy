@@ -1,84 +1,86 @@
 from __future__ import annotations
 
-import pytest
+import sqlite3
 
-from sonya.providers import (
-    Capability,
-    CompletionRequest,
-    CompletionResult,
-    ProviderRegistry,
-)
+from sonya.providers.keystore import KeyStore
+from sonya.state.substrate import Substrate
 
 
-def _make_stub(name: str, model_id: str, modes: tuple[str, ...]) -> object:
-    class Stub:
-        def capabilities(self) -> Capability:
-            return Capability(
-                provider_name=name,
-                model_id=model_id,
-                input_modes=modes,
-                context_window=1024,
-                max_tokens=256,
-            )
+def test_provider_can_exist_without_credentials(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "providers.db")
+    try:
+        store = KeyStore(sub)
+        provider = store.upsert_provider(
+            provider_id="nous",
+            display_name="Nous Research",
+            adapter_kind="openai_compatible",
+            base_url="https://inference-api.nousresearch.com/v1",
+        )
 
-        async def complete_text(self, request: CompletionRequest) -> CompletionResult:
-            return CompletionResult(content="t")
-
-        async def complete_vision(self, request: CompletionRequest) -> CompletionResult:
-            return CompletionResult(content="v")
-
-        async def complete_image_generation(
-            self, request: CompletionRequest
-        ) -> CompletionResult:
-            return CompletionResult(content="img")
-
-    return Stub()
+        assert provider.provider_id == "nous"
+        assert provider.adapter_kind == "openai_compatible"
+        assert store.list_provider_accounts("nous") == []
+    finally:
+        sub.close()
 
 
-def test_register_and_get() -> None:
-    reg = ProviderRegistry()
-    p = _make_stub("openrouter", "g/m", ("text", "image"))
-    reg.register("openrouter", p)
-    assert reg.get("openrouter") is p
+def test_legacy_key_is_mirrored_into_provider_account(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "providers.db")
+    try:
+        store = KeyStore(sub)
+        key = store.add_key(
+            provider="openrouter",
+            name="main",
+            api_key="test-secret",
+            base_url="https://openrouter.ai/api/v1",
+            model="legacy-fixed-model",
+        )
+
+        provider = store.get_provider("openrouter")
+        account = store.get_provider_account(key.key_id)
+
+        assert provider is not None
+        assert account is not None
+        assert account.provider_id == "openrouter"
+        assert account.legacy_key_id == key.key_id
+        assert account.default_model == ""
+    finally:
+        sub.close()
 
 
-def test_get_missing_raises() -> None:
-    reg = ProviderRegistry()
-    with pytest.raises(KeyError):
-        reg.get("does-not-exist")
+def test_v31_migration_creates_registry_and_mirrors_legacy_key(tmp_path) -> None:
+    db = tmp_path / "legacy.db"
+    sub = Substrate.open(db)
+    sub.close()
+    with sqlite3.connect(db) as conn:
+        conn.execute("DROP TABLE provider_observations")
+        conn.execute("DROP TABLE provider_quota_windows")
+        conn.execute("DROP TABLE provider_account_offerings")
+        conn.execute("DROP TABLE provider_accounts")
+        conn.execute("DROP TABLE providers")
+        conn.execute("DROP TABLE provider_secrets")
+        conn.execute("DELETE FROM schema_version WHERE version >= 32")
+        conn.execute(
+            "INSERT INTO schema_version(version, applied_at) VALUES (31, '2026-06-10')"
+        )
+        conn.execute(
+            "INSERT INTO provider_keys "
+            "(key_id, provider, name, api_key, base_url, model, status, priority, "
+            "cooldown_until, last_used_at, last_error, last_error_at, request_count, "
+            "success_count, error_count, created_at, updated_at, account_id, balance_json, "
+            "balance_checked_at, slot) "
+            "VALUES ('pk-legacy', 'openrouter', 'legacy', 'secret', "
+            "'https://openrouter.ai/api/v1', '', 'active', 0, '', '', '', '', 0, 0, 0, "
+            "'2026-06-10', '2026-06-10', '', '{}', '', 'text')"
+        )
+        conn.commit()
 
-
-def test_register_duplicate_raises() -> None:
-    reg = ProviderRegistry()
-    reg.register("a", _make_stub("a", "m", ("text",)))
-    with pytest.raises(ValueError):
-        reg.register("a", _make_stub("a", "m", ("text",)))
-
-
-def test_list_returns_registered() -> None:
-    reg = ProviderRegistry()
-    reg.register("a", _make_stub("a", "m1", ("text",)))
-    reg.register("b", _make_stub("b", "m2", ("text", "image")))
-    assert sorted(reg.list()) == ["a", "b"]
-
-
-def test_find_by_capability_intersection() -> None:
-    reg = ProviderRegistry()
-    reg.register("text-only", _make_stub("text-only", "m1", ("text",)))
-    reg.register("vision", _make_stub("vision", "m2", ("text", "image")))
-    reg.register("video", _make_stub("video", "m3", ("text", "image", "video")))
-
-    text_capable = reg.find_by_capability(needs_modes={"text"})
-    assert sorted(text_capable) == ["text-only", "video", "vision"]
-
-    image_capable = reg.find_by_capability(needs_modes={"image"})
-    assert sorted(image_capable) == ["video", "vision"]
-
-    video_capable = reg.find_by_capability(needs_modes={"video"})
-    assert video_capable == ["video"]
-
-
-def test_find_by_capability_empty_when_no_match() -> None:
-    reg = ProviderRegistry()
-    reg.register("text-only", _make_stub("text-only", "m", ("text",)))
-    assert reg.find_by_capability(needs_modes={"video"}) == []
+    migrated = Substrate.open(db)
+    try:
+        assert migrated.schema_version == 33
+        account = KeyStore(migrated).get_provider_account("pk-legacy")
+        assert account is not None
+        assert account.secret_ref == "legacy-provider-key:pk-legacy"
+        assert account.default_model == ""
+    finally:
+        migrated.close()

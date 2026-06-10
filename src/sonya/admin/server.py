@@ -157,6 +157,8 @@ async def api_dashboard(request: web.Request) -> web.Response:
     try:
         state = SubjectStateStore(sub).load()
         latest_seq = ContinuityStream(sub).latest_seq()
+        from sonya.providers import KeyStore
+        provider_settings = KeyStore(sub).get_settings()
         return web.json_response({
             "state": {
                 "active_principal": state.active_principal_id,
@@ -165,9 +167,13 @@ async def api_dashboard(request: web.Request) -> web.Response:
                 "pending_intentions": list(state.pending_intentions),
             },
             "latest_seq": latest_seq,
+            "provider_settings": {
+                "active_provider": provider_settings.active_provider,
+                "default_model": provider_settings.default_model,
+                "default_base_url": provider_settings.default_base_url,
+                "updated_at": provider_settings.updated_at,
+            },
             "config": {
-                "llm_api_base": config.llm_api_base,
-                "llm_model": config.llm_model,
                 "substrate_path": str(config.substrate_path),
             },
         })
@@ -270,35 +276,8 @@ async def api_chat_send(request: web.Request) -> web.Response:
     sub = _get_substrate(config)
     try:
         ctx = build_full_context(substrate=sub, user_input=message, principal_id="ivan")
-
-        api_key_secret = config.openrouter_api_key
-        api_key = api_key_secret.get_secret_value() if api_key_secret else ""
-
-        import httpx
-
-        class _Provider:
-            async def complete_text(self, messages, **kwargs):
-                headers: dict[str, str] = {"Content-Type": "application/json"}
-                if api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
-                async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
-                    resp = await client.post(
-                        f"{config.llm_api_base}/chat/completions",
-                        headers=headers,
-                        json={"model": config.llm_model, "messages": messages, "max_tokens": 1000, "temperature": 0.8, "stream": False},
-                    )
-                    resp.raise_for_status()
-                    # Handle potential streaming response (multiple JSON objects)
-                    text = resp.text.strip()
-                    import json as _json
-                    try:
-                        data = _json.loads(text)
-                    except _json.JSONDecodeError:
-                        first_line = text.split("\n", 1)[0].strip()
-                        data = _json.loads(first_line)
-                    return data["choices"][0]["message"]["content"]
-
-        response = await plan_next(ctx, _Provider(), purpose="admin_chat")
+        from sonya.providers import KeyStore, LLMProvider
+        response = await plan_next(ctx, LLMProvider(KeyStore(sub)), purpose="admin_chat")
         record_response_as_memory(sub, message, response, channel="admin")
         return web.json_response({"response": response.text})
     finally:
@@ -792,6 +771,97 @@ def _mask_key(s: str) -> str:
     return s[:6] + "..." + s[-4:]
 
 
+def _json_arg(value: Any) -> str:
+    if isinstance(value, str):
+        return value or "{}"
+    return json.dumps(value if value is not None else {}, ensure_ascii=False)
+
+
+def _provider_payload(provider) -> dict[str, Any]:
+    return {
+        "provider_id": provider.provider_id,
+        "display_name": provider.display_name,
+        "adapter_kind": provider.adapter_kind,
+        "status": provider.status,
+        "base_url": provider.base_url,
+        "capabilities": json.loads(provider.capabilities_json or "{}"),
+        "constraints": json.loads(provider.constraints_json or "{}"),
+        "metadata": json.loads(provider.metadata_json or "{}"),
+        "created_at": provider.created_at,
+        "updated_at": provider.updated_at,
+    }
+
+
+def _account_payload(account) -> dict[str, Any]:
+    return {
+        "account_id": account.account_id,
+        "provider_id": account.provider_id,
+        "name": account.name,
+        "secret_ref": account.secret_ref,
+        "secret_masked": account.masked_secret,
+        "legacy_key_id": account.legacy_key_id,
+        "status": account.status,
+        "priority": account.priority,
+        "constraints": json.loads(account.constraints_json or "{}"),
+        "metadata": json.loads(account.metadata_json or "{}"),
+        "created_at": account.created_at,
+        "updated_at": account.updated_at,
+    }
+
+
+def _model_payload(model) -> dict[str, Any]:
+    return {
+        "model_id": model.model_id,
+        "provider": model.provider,
+        "model_name": model.model_name,
+        "context_length": model.context_length,
+        "modalities": model.modalities(),
+        "cost_per_1m_input_tokens": model.cost_per_1m_input_tokens,
+        "cost_per_1m_output_tokens": model.cost_per_1m_output_tokens,
+        "is_free": bool(model.is_free),
+        "latency_tier": model.latency_tier,
+        "strengths": model.strengths(),
+        "role_preference": model.role_preference,
+        "enabled": bool(model.enabled),
+        "text_loop_ok": bool(model.text_loop_ok),
+        "last_checked_at": model.last_checked_at,
+        "discovery_source": model.discovery_source,
+        "metadata": model.metadata(),
+        "created_at": model.created_at,
+        "updated_at": model.updated_at,
+    }
+
+
+def _quota_payload(quota) -> dict[str, Any]:
+    return {
+        "quota_window_id": quota.quota_window_id,
+        "account_id": quota.account_id,
+        "quota_kind": quota.quota_kind,
+        "limit_value": quota.limit_value,
+        "used_value": quota.used_value,
+        "remaining_value": quota.remaining_value,
+        "unit": quota.unit,
+        "window_started_at": quota.window_started_at,
+        "resets_at": quota.resets_at,
+        "observed_at": quota.observed_at,
+        "metadata": json.loads(quota.metadata_json or "{}"),
+    }
+
+
+def _observation_payload(observation) -> dict[str, Any]:
+    return {
+        "observation_id": observation.observation_id,
+        "provider_id": observation.provider_id,
+        "account_id": observation.account_id,
+        "model_id": observation.model_id,
+        "observation_kind": observation.observation_kind,
+        "success": bool(observation.success),
+        "latency_ms": observation.latency_ms,
+        "value": json.loads(observation.value_json or "{}"),
+        "observed_at": observation.observed_at,
+    }
+
+
 async def api_providers_get(request: web.Request) -> web.Response:
     """List provider settings + all keys (masked)."""
     from sonya.providers import KeyStore
@@ -801,6 +871,7 @@ async def api_providers_get(request: web.Request) -> web.Response:
         store = KeyStore(sub)
         settings = store.get_settings()
         keys = store.list_keys()
+        accounts = store.list_provider_accounts()
         return web.json_response({
             "settings": {
                 "active_provider": settings.active_provider,
@@ -808,6 +879,20 @@ async def api_providers_get(request: web.Request) -> web.Response:
                 "default_base_url": settings.default_base_url,
                 "updated_at": settings.updated_at,
             },
+            "providers": [_provider_payload(p) for p in store.list_providers()],
+            "accounts": [_account_payload(a) for a in accounts],
+            "models": [_model_payload(m) for m in store.list_provider_models(enabled_only=False)],
+            "available_models": [_model_payload(m) for m in store.list_available_provider_models()],
+            "quota_windows": [
+                _quota_payload(q)
+                for account in accounts
+                for q in store.list_quota_windows(account.account_id)
+            ],
+            "observations": [
+                _observation_payload(o)
+                for provider in store.list_providers()
+                for o in store.list_provider_observations(provider_id=provider.provider_id)[:10]
+            ],
             "keys": [
                 {
                     "key_id": k.key_id,
@@ -834,6 +919,199 @@ async def api_providers_get(request: web.Request) -> web.Response:
                 }
                 for k in keys
             ],
+        })
+    finally:
+        sub.close()
+
+
+async def api_providers_registry_upsert(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    data = await _json_body(request)
+    provider_id = str(data.get("provider_id") or data.get("provider") or "").strip().lower()
+    if not provider_id:
+        return web.json_response({"error": "missing required field: provider_id"}, status=400)
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        provider = store.upsert_provider(
+            provider_id=provider_id,
+            display_name=str(data.get("display_name") or provider_id).strip(),
+            adapter_kind=str(data.get("adapter_kind") or "openai_compatible").strip(),
+            status=str(data.get("status") or "active").strip().lower(),
+            base_url=str(data.get("base_url") or "").strip(),
+            capabilities_json=_json_arg(data.get("capabilities_json", data.get("capabilities", {}))),
+            constraints_json=_json_arg(data.get("constraints_json", data.get("constraints", {}))),
+            metadata_json=_json_arg(data.get("metadata_json", data.get("metadata", {}))),
+        )
+        return web.json_response({"status": "upserted", "provider": _provider_payload(provider)})
+    finally:
+        sub.close()
+
+
+async def api_providers_registry_delete(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    provider_id = request.match_info["provider_id"].strip().lower()
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        if store.get_provider(provider_id) is None:
+            return web.json_response({"error": "not found"}, status=404)
+        accounts = store.list_provider_accounts(provider_id)
+        if accounts:
+            return web.json_response({"error": "accounts still exist", "accounts": len(accounts)}, status=409)
+        store.delete_provider(provider_id)
+        return web.json_response({"status": "deleted", "provider_id": provider_id})
+    finally:
+        sub.close()
+
+
+async def api_providers_accounts_add(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    data = await _json_body(request)
+    provider_id = str(data.get("provider_id") or data.get("provider") or "").strip().lower()
+    name = str(data.get("name") or "").strip()
+    if not provider_id or not name:
+        return web.json_response({"error": "provider_id and name are required"}, status=400)
+    if data.get("secret_value") or data.get("api_key"):
+        return web.json_response({
+            "error": "raw credentials require the protected secret-ingestion endpoint",
+        }, status=400)
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        account = store.add_provider_account(
+            provider_id=provider_id,
+            name=name,
+            secret_ref=str(data.get("secret_ref") or "").strip(),
+            status=str(data.get("status") or "active").strip().lower(),
+            priority=int(data.get("priority") or 0),
+            constraints_json=_json_arg(data.get("constraints_json", data.get("constraints", {}))),
+            metadata_json=_json_arg(data.get("metadata_json", data.get("metadata", {}))),
+        )
+        return web.json_response({"status": "added", "account": _account_payload(account)})
+    finally:
+        sub.close()
+
+
+async def api_providers_account_secret_ingest(request: web.Request) -> web.Response:
+    """Rotate an account secret from an opaque authenticated request body.
+
+    Raw secret material is never parsed as JSON, returned, audited, or written
+    to continuity/tool traces.
+    """
+    from sonya.providers import KeyStore
+
+    if not request.app.get("admin_password"):
+        return web.json_response(
+            {"error": "protected secret-ingestion requires SONYA_ADMIN_PASSWORD"},
+            status=503,
+        )
+    if request.content_type != "application/octet-stream":
+        return web.json_response(
+            {"error": "content-type must be application/octet-stream"},
+            status=415,
+        )
+    body = await request.read()
+    if not body:
+        return web.json_response({"error": "secret body is required"}, status=400)
+    if len(body) > 64 * 1024:
+        return web.json_response({"error": "secret body is too large"}, status=413)
+    try:
+        raw_secret = body.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return web.json_response({"error": "secret body must be UTF-8"}, status=400)
+    if not raw_secret:
+        return web.json_response({"error": "secret body is required"}, status=400)
+
+    config = request.app["config"]
+    account_id = request.match_info["account_id"]
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        if store.get_provider_account(account_id) is None:
+            return web.json_response({"error": "not found"}, status=404)
+        account = store.rotate_account_secret(account_id, raw_secret)
+        AuditLog(sub).append(
+            principal_id="ivan",
+            action="provider_secret_ingest",
+            decision="allow",
+            scope=f"provider_account:{account_id}",
+            metadata={
+                "provider_id": account.provider_id,
+                "account_id": account.account_id,
+                "secret_ref": account.secret_ref,
+                "secret_masked": account.masked_secret,
+            },
+        )
+        return web.json_response({"status": "rotated", "account": _account_payload(account)})
+    finally:
+        raw_secret = ""
+        sub.close()
+
+
+async def api_providers_accounts_update(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    account_id = request.match_info["account_id"]
+    data = await _json_body(request)
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        if store.get_provider_account(account_id) is None:
+            return web.json_response({"error": "not found"}, status=404)
+        account = store.update_provider_account(
+            account_id,
+            name=str(data["name"]).strip() if "name" in data else None,
+            status=str(data["status"]).strip().lower() if "status" in data else None,
+            priority=int(data["priority"]) if "priority" in data else None,
+            constraints_json=_json_arg(data["constraints"]) if "constraints" in data else data.get("constraints_json"),
+            metadata_json=_json_arg(data["metadata"]) if "metadata" in data else data.get("metadata_json"),
+        )
+        return web.json_response({"status": "updated", "account": _account_payload(account)})
+    finally:
+        sub.close()
+
+
+async def api_providers_accounts_delete(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    account_id = request.match_info["account_id"]
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        if store.get_provider_account(account_id) is None:
+            return web.json_response({"error": "not found"}, status=404)
+        store.delete_provider_account(account_id)
+        return web.json_response({"status": "deleted", "account_id": account_id})
+    finally:
+        sub.close()
+
+
+async def api_providers_account_offering_set(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    config = request.app["config"]
+    data = await _json_body(request)
+    account_id = str(data.get("account_id") or "").strip()
+    model_id = str(data.get("model_id") or data.get("model") or "").strip()
+    if not account_id or not model_id:
+        return web.json_response({"error": "account_id and model_id are required"}, status=400)
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        store.set_account_offering(
+            account_id,
+            model_id,
+            enabled=bool(data.get("enabled", True)),
+            metadata_json=_json_arg(data.get("metadata_json", data.get("metadata", {}))),
+        )
+        return web.json_response({
+            "status": "updated",
+            "account_id": account_id,
+            "model_id": model_id,
+            "enabled": bool(data.get("enabled", True)),
         })
     finally:
         sub.close()
@@ -978,31 +1256,13 @@ async def api_providers_settings(request: web.Request) -> web.Response:
 
 
 async def api_providers_keys_add(request: web.Request) -> web.Response:
-    """Add a new key. Body: {provider, name, api_key, base_url?, model?, priority?, slot?}"""
-    from sonya.providers import KeyStore
-    config = request.app["config"]
-    data = await _json_body(request)
-    required = ("provider", "name", "api_key")
-    for f in required:
-        if not str(data.get(f, "")).strip():
-            return web.json_response({"error": f"missing required field: {f}"}, status=400)
-    sub = _get_substrate_writable(config)
-    try:
-        store = KeyStore(sub)
-        # Default base_url per provider
-        base_url = data.get("base_url") or _default_base_url(data["provider"])
-        key = store.add_key(
-            provider=data["provider"].strip(),
-            name=data["name"].strip(),
-            api_key=data["api_key"].strip(),
-            base_url=base_url,
-            model=(data.get("model") or "").strip(),
-            priority=int(data.get("priority") or 0),
-            slot=(data.get("slot") or "text").strip(),
-        )
-        return web.json_response({"status": "added", "key_id": key.key_id})
-    finally:
-        sub.close()
+    """Reject the legacy plaintext-key JSON endpoint."""
+    return web.json_response({
+        "error": (
+            "legacy plaintext key ingestion is disabled; create a provider account "
+            "and use the protected secret-ingestion endpoint"
+        ),
+    }, status=400)
 
 
 def _default_base_url(provider: str) -> str:
@@ -2540,6 +2800,14 @@ def create_app() -> web.Application:
     app.router.add_post("/api/selfmod/clear-archived", api_selfmod_clear_archived)
     # Providers (key pool management)
     app.router.add_get("/api/providers", api_providers_get)
+    app.router.add_post("/api/providers/registry", api_providers_registry_upsert)
+    app.router.add_post("/api/providers/registry/{provider_id}", api_providers_registry_upsert)
+    app.router.add_post("/api/providers/registry/{provider_id}/delete", api_providers_registry_delete)
+    app.router.add_post("/api/providers/accounts", api_providers_accounts_add)
+    app.router.add_post("/api/providers/accounts/offerings", api_providers_account_offering_set)
+    app.router.add_put("/api/providers/accounts/{account_id}/secret", api_providers_account_secret_ingest)
+    app.router.add_post("/api/providers/accounts/{account_id}", api_providers_accounts_update)
+    app.router.add_post("/api/providers/accounts/{account_id}/delete", api_providers_accounts_delete)
     app.router.add_post("/api/providers/settings", api_providers_settings)
     app.router.add_post("/api/providers/keys", api_providers_keys_add)
     app.router.add_post("/api/providers/keys/{key_id}", api_providers_keys_update)

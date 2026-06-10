@@ -173,14 +173,14 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 - pip.install [package] — approval-gated
 
 - providers.list — твой LLM-pool: имя, статус, баланс, счётчики
-- providers.models [provider?] — список доступных моделей. Без аргумента — все провайдеры. С аргументом (fireworks/kr/openrouter) — только для одного. Используй чтобы выбрать модель под таск.
+- providers.models [provider?] — список доступных моделей из provider/model pool. Без аргумента — все провайдеры. С аргументом — только для одного. Используй чтобы выбрать модель под таск.
 - providers.balance — суммарный баланс по провайдерам
 - providers.health — синтез: OK / WARNING / CRITICAL. Используй когда видишь LLM errors или хочешь понять надо ли регать новый ключ
 - providers.disable [key_id] / providers.enable [key_id]
 - providers.add — JSON: {"provider","name","api_key","base_url?","model?","priority?"}
 - providers.set_active [provider_name]
 - providers.settings — текущие active_provider / default_model / default_base_url
-- Ты можешь выбрать модель при создании субагента: передай _model=accounts/fireworks/models/deepseek-v4-pro (или любую другую из providers.models) в коде который зовёт complete_text.
+- Ты можешь выбрать модель при создании субагента: передай модель из providers.models в коде который зовёт complete_text.
 
 - browser.open [url] — Playwright headless, persistent profile в ~/.sonya/browser-profile/
 - browser.click [css selector]
@@ -193,7 +193,7 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
   Используй для JS-render, форм, login, captcha (через 2captcha-style), скриншотов, выполнения JS.
   Куки сохраняются между сессиями — логинись один раз.
 
-- subagent.spawn — JSON: {"task": "...", "provider?": "fireworks|kr|openrouter|codexsale", "model?": "model/name", "max_steps?": 8}
+- subagent.spawn — JSON: {"task": "...", "provider?": "provider_id", "model?": "model/name", "max_steps?": 8}
   Создаёт субагента который выполнит задачу в фоне. Субагент имеет доступ к web, code, memory, self_inspect.
   Это НЕ замена твоей работы — используй для параллельных задач (сбор инфы, проверка фактов, research) пока сама занята другим.
   Если provider/model не указаны, система сама выбирает лучший доступный инструмент по задаче и доступным ключам.
@@ -1218,19 +1218,20 @@ async def run_agent_session(
             done_match = _DONE_WITH_BODY_RE.search(response)
             if done_match is not None:
                 done_body = (done_match.group("body") or "").strip()
-                # Sanitize: strip code fences, [TOOL/DONE/PAUSE] markers,
-                # observation echoes, reasoning leaks. Same scrubber the
-                # TG path uses for final replies — without it Иван видит
-                # ```json {...}``` блоки, [Observation from ...], и
-                # leaked reasoning. Lazy import avoids circular dep.
+                # This body is already the explicit answer layer. Remove only
+                # protocol/internal content and preserve useful Markdown/code.
+                # The heavy TG fallback scrubber intentionally does not run
+                # here because it can delete valid answer content.
                 if done_body:
                     try:
-                        from sonya.subject.channel_session import _scrub
-                        done_body = _scrub(done_body)
+                        from sonya.subject.channel_session import _sanitize_explicit_answer
+                        done_body = _sanitize_explicit_answer(done_body)
                     except Exception:
-                        # Fail-safe: drop fences inline if _scrub unreachable.
-                        done_body = re.sub(r"```[a-zA-Z0-9_-]*\n?", "", done_body)
-                        done_body = re.sub(r"\n?```", "", done_body)
+                        # Fail-safe keeps user content intact.
+                        done_body = re.sub(
+                            r"<think>[\s\S]*?</think>", "", done_body,
+                            flags=re.IGNORECASE,
+                        )
                         done_body = done_body.strip()
             done_as_reply_dispatched = False
             if (

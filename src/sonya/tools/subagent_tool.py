@@ -36,7 +36,7 @@ class SubagentTool:
         """Spawn a subagent from a JSON task description.
 
         JSON format::
-            {"task": "...", "provider?": "fireworks|kr|openrouter",
+            {"task": "...", "provider?": "provider_id",
              "model?": "model/name", "max_steps?": 8}
 
         Returns subagent_id. The subagent runs in the background.
@@ -61,9 +61,10 @@ class SubagentTool:
             prefer_low_latency=role in ("executor", "cleanup", "transcribe", "vision", "auto"),
             allow_premium=True,
         )
+        store = KeyStore(self._sub)
         pick = pick_subagent_model(
             task_text,
-            KeyStore(self._sub),
+            store,
             requested_provider=provider,
             requested_model=model,
             substrate=self._sub,
@@ -71,7 +72,7 @@ class SubagentTool:
         )
         provider = pick.provider
         model = pick.model
-        if model and not is_text_loop_model(model, provider):
+        if model and not is_text_loop_model(model, provider, store=store):
             return (
                 "[ERROR] subagent.spawn only supports text-loop models; "
                 f"{provider}/{model} requires a special worker"

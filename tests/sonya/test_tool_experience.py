@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from sonya.memory.tool_experience import (
     ToolExperience,
     classify_outcome,
@@ -140,20 +142,34 @@ def test_picker_uses_experience_bonus(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "pick.db")
     try:
         store = KeyStore(sub)
-        store.add_key(provider="openrouter", name="or-1", api_key="or-key",
-                       base_url="https://openrouter.ai/api/v1", model="")
-        store.add_key(provider="codexsale", name="cx-1", api_key="cx-key",
-                       base_url="https://codex.sale/v1", model="gpt-5.4-mini")
+        store.upsert_provider(
+            provider_id="openrouter",
+            display_name="OpenRouter",
+            adapter_kind="openai_compatible",
+        )
+        account = store.add_provider_account(
+            provider_id="openrouter",
+            name="or-1",
+            secret_ref="manual:or-key",
+        )
+        for model_id in ("poolside/laguna-m.1:free", "openrouter/fresh-coder"):
+            model = store.upsert_provider_model(
+                model_id=model_id,
+                provider="openrouter",
+                model_name=model_id,
+                strength_json=json.dumps({"coding": 0.8}),
+                is_free=1,
+                discovery_source="test",
+            )
+            store.set_account_offering(account.account_id, model.model_id, enabled=True)
 
         tx = ToolExperience(sub)
         for _ in range(5):
             tx.record(tool_name="subagent.spawn", outcome="success",
                        provider="openrouter", model="poolside/laguna-m.1:free", latency_ms=200)
-        for _ in range(5):
-            tx.record(tool_name="subagent.spawn", outcome="error",
-                       provider="codexsale", model="gpt-5.4-mini", latency_ms=8000)
 
         pick = pick_subagent_model("debug this code", store, substrate=sub)
-        assert pick.provider == "openriver" or pick.provider == "openrouter"
+        assert pick.provider == "openrouter"
+        assert pick.model == "poolside/laguna-m.1:free"
     finally:
         sub.close()

@@ -57,8 +57,8 @@ class SubagentTask:
     """A subagent task stored in substrate."""
     subagent_id: str
     task: str
-    provider: str  # e.g. "fireworks", "kr"
-    model: str      # e.g. "accounts/fireworks/models/deepseek-v4-pro"
+    provider: str  # provider_id from the provider/model pool
+    model: str      # model_id from providers.models, or empty for provider default
     max_steps: int
     workspace_id: str = ""
     status: str = "pending"     # pending | running | done | failed
@@ -288,38 +288,62 @@ class SubagentRunner:
 """
 
     def _dispatch_tool(self, tools: dict[str, Any], name: str, arg: str) -> str:
-        fn = tools.get(name)
-        if fn is None:
-            return f"[SKIP] tool '{name}' not available to subagents"
-        _t0 = time.monotonic()
-        try:
-            result = fn(arg)
-            if asyncio.iscoroutine(result):
-                result.close()
-                return f"[SKIP] async tool '{name}' not supported in subagent (use sync)"
-            observation = str(result)
-        except Exception as e:
-            observation = f"[ERROR] {type(e).__name__}: {e}"
+            fn = tools.get(name)
+            if fn is None:
+                return f"[SKIP] tool '{name}' not available to subagents"
+            _t0 = time.monotonic()
+            try:
+                result = fn(arg)
+                if asyncio.iscoroutine(result):
+                    result.close()
+                    return f"[SKIP] async tool '{name}' not supported in subagent (use sync)"
+                observation = str(result)
+            except Exception as e:
+                observation = f"[ERROR] {type(e).__name__}: {e}"
 
-        elapsed_ms = int((time.monotonic() - _t0) * 1000)
-        try:
-            from sonya.memory.tool_experience import ToolExperience, classify_outcome, extract_tool_tags
-            tx = ToolExperience(self._sub)
-            tx.record(
-                tool_name=name,
-                tool_arg_summary=(arg or "")[:200],
-                outcome=classify_outcome(observation),
-                outcome_detail=observation[:500],
-                provider=self._current_task.provider if hasattr(self, "_current_task") else "",
-                model=self._current_task.model if hasattr(self, "_current_task") else "",
-                latency_ms=elapsed_ms,
-                tags=extract_tool_tags(name, arg, observation) + ("subagent_worker",),
-                session_type="subagent",
-            )
-        except Exception:
-            pass
+            elapsed_ms = int((time.monotonic() - _t0) * 1000)
+            try:
+                from sonya.memory.tool_experience import ToolExperience, classify_outcome, extract_tool_tags
+                tx = ToolExperience(self._sub)
+                tx.record(
+                    tool_name=name,
+                    tool_arg_summary=(arg or "")[:200],
+                    outcome=classify_outcome(observation),
+                    outcome_detail=observation[:500],
+                    provider=self._current_task.provider if hasattr(self, "_current_task") else "",
+                    model=self._current_task.model if hasattr(self, "_current_task") else "",
+                    latency_ms=elapsed_ms,
+                    tags=extract_tool_tags(name, arg, observation) + ("subagent_worker",),
+                    session_type="subagent",
+                )
+            except Exception:
+                pass
 
-        return observation
+            try:
+                from sonya.memory.trace_layer import TraceLayer
+                from sonya.memory.types import RecordType, Scope
+                TraceLayer(self._sub).record(
+                    record_type=RecordType.subagent_trace,
+                    raw_content=f"[{name}] {observation[:2000]}",
+                    normalized_summary=f"Subagent tool: {name} → {observation[:80]}",
+                    source="subagent",
+                    scope=Scope.subagent,
+                    importance=0.3,
+                    project_id=self._current_task.workspace_id if hasattr(self, "_current_task") else "",
+                    tags=("subagent_worker", name),
+                    session_type="subagent",
+                    metadata={
+                        "subagent_id": self._current_task.subagent_id if hasattr(self, "_current_task") else "",
+                        "tool_name": name,
+                        "arg": (arg or "")[:200],
+                        "outcome": classify_outcome(observation),
+                        "latency_ms": elapsed_ms,
+                    },
+                )
+            except Exception:
+                pass
+
+            return observation
 
     def _save_task(self, task: SubagentTask) -> None:
         """Persist subagent task to substrate."""

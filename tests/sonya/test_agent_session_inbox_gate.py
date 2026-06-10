@@ -330,6 +330,44 @@ async def test_done_with_body_dispatches_as_reply_short_circuits_gate(
     assert gate_events == 0
 
 
+async def test_done_with_body_preserves_code_and_hides_reasoning(
+    substrate: Substrate, monkeypatch
+) -> None:
+    stream = ContinuityStream(substrate)
+    sent_via_outbound: list[str] = []
+    import sonya.initiative.outbound as outbound_mod
+
+    def _fake_call_outbound_sync(_gate, text, **kw):
+        sent_via_outbound.append(text)
+        return "[OK] dialog"
+
+    monkeypatch.setattr(
+        outbound_mod, "call_outbound_sync", _fake_call_outbound_sync,
+    )
+    provider = _Stub([
+        "[DONE: <think>Need a concise code answer.</think>\n"
+        "Вот код:\n\n```python\nprint('ok')\n```]"
+    ])
+
+    await run_agent_session(
+        provider=provider,
+        stream=stream,
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(),
+        outbound=object(),
+        system_prompt="test",
+        initial_user_text="Покажи код.",
+        require_dialog_reply=True,
+        max_steps=4,
+        max_seconds=10.0,
+        purpose="test",
+    )
+
+    assert len(sent_via_outbound) == 1
+    assert "Need a concise" not in sent_via_outbound[0]
+    assert "```python\nprint('ok')\n```" in sent_via_outbound[0]
+
+
 async def test_bare_done_without_body_still_blocked_by_phase_1(
     substrate: Substrate,
 ) -> None:

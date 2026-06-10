@@ -20,16 +20,15 @@ class _CaptureProvider:
         return "[DONE] ok"
 
 
-def test_providers_add_key_sets_codexsale_defaults(tmp_path) -> None:
+def test_providers_add_key_rejects_legacy_plaintext_path(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "codex.db")
     try:
         out = ProvidersTool(sub).add_key(
             '{"provider":"codexsale","name":"codex-main","api_key":"sk-clb-test"}'
         )
-        assert "[OK]" in out
-        key = KeyStore(sub).list_keys("codexsale")[0]
-        assert key.base_url == "https://codex.sale/v1"
-        assert key.model == "gpt-5.4-mini"
+        assert "[ERROR]" in out
+        assert "protected secret-ingestion" in out
+        assert KeyStore(sub).list_keys("codexsale") == []
     finally:
         sub.close()
 

@@ -30,6 +30,7 @@ from sonya.subject.channel_session import (
     SessionResult,
     _extract_reply,
     _is_tool_result_echo,
+    _sanitize_explicit_answer,
     _stitch_post_action_thoughts,
 )
 
@@ -80,6 +81,21 @@ def test_tool_result_echo_handles_unclosed_fence() -> None:
         '}'
     )
     assert _is_tool_result_echo(text) is True
+
+
+def test_explicit_answer_preserves_code_and_removes_internal_protocol() -> None:
+    text = (
+        "<think>Need to answer with a small example.</think>\n"
+        "Готово:\n\n"
+        "```python\nprint('ok')\n```\n\n"
+        "[Observation from code.exec]: internal result\n\n"
+        "[DONE]"
+    )
+    cleaned = _sanitize_explicit_answer(text)
+    assert "Need to answer" not in cleaned
+    assert "Observation from" not in cleaned
+    assert "[DONE]" not in cleaned
+    assert "```python\nprint('ok')\n```" in cleaned
 
 
 # --- _stitch_post_action_thoughts skips echoes ---

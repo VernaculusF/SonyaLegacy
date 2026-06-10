@@ -744,6 +744,27 @@ def _scrub(text: str) -> str:
     return text.strip()
 
 
+def _sanitize_explicit_answer(text: str) -> str:
+    """Remove protocol-only content from an already explicit user answer.
+
+    Unlike `_scrub`, this must preserve Markdown and fenced code. An explicit
+    `chat.dialog` or `[DONE: body]` is already the answer layer, so rebuilding
+    it with reasoning heuristics only risks deleting valid work.
+    """
+    text = _THINK_BLOCK_RE.sub("", text)
+    text = _THINK_OPEN_RE.sub("", text)
+    text = _OBSERVATION_RE.sub("", text)
+    text = _BUDGET_WARNING_RE.sub("", text)
+    text = _NEW_MESSAGE_INJECT_RE.sub("", text)
+    text = _SYSTEM_REMINDER_RE.sub("", text)
+    text = _INTERNAL_REMINDER_RE.sub("", text)
+    text = _strip_tool_markers(text)
+    text = _DONE_RE.sub("", text)
+    text = _PAUSE_RE.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _looks_like_reasoning_leak(text: str) -> bool:
     """Heuristic: text contains a lot of English meta-reasoning tokens.
 

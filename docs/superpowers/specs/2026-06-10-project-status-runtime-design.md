@@ -1,45 +1,29 @@
 # Project Status Runtime Design
 
-**Status:** Approved
+**Status:** Implemented and live-proven
 **Date:** 2026-06-10
-
-## Goal
-
-Make project statuses affect runtime behavior without turning statuses into a
-hard orchestration rule engine or creating separate Sonya actors.
 
 ## Semantics
 
-- `in_progress`: project chat accepts messages and work can continue.
-- `waiting_choice`: the next user message is treated as the requested choice
-  and automatically resumes the project to `in_progress`.
-- `waiting`: project chat is read-only until an explicit status change.
-- `completed`: project chat is read-only until explicitly reopened.
-- `cancelled`: project chat is read-only until explicitly reopened.
-- A project policy consent block changes an active project to
-  `waiting_choice`.
+- `in_progress`: project chat accepts work.
+- `waiting_choice`: Ivan's next project message resumes to `in_progress`.
+- `waiting`, `completed`, `cancelled`: project chat is read-only until an
+  explicit status transition.
+- A project policy consent block sets `waiting_choice`.
 
 ## Architecture
 
-`ProjectStore` owns the valid status set and status transitions. A transition
-updates the project row and records a `project.status_changed` continuity event.
-The API, project tool, Atrium dialog endpoint, and agent policy gate all call
-the same transition method.
+`ProjectStore.set_status()` validates status transitions and records
+`project.status_changed` in the shared continuity stream. Atrium dialog, the
+project API, `projects.update`, and the agent policy gate use this contract.
+Statuses gate whether work may start or resume; they do not dictate how Sonya
+works or create separate actors.
 
-The status layer only controls whether project work may start or resume. Sonya
-still decides how to perform work, whether to delegate, and which tools or
-models to use.
+## Live Proof
 
-## Error Handling
+Production commit `83c6afa`:
 
-- Unknown status values are rejected.
-- Messages to `waiting`, `completed`, or `cancelled` projects return HTTP 409.
-- Messages to missing projects return HTTP 404.
-- Main chat behavior is unchanged.
-
-## Verification
-
-- Unit tests cover valid/invalid transitions and transition events.
-- Atrium tests cover automatic `waiting_choice` resume and read-only gates.
-- Agent-session tests cover consent block -> `waiting_choice`.
-- Production live proof covers all five statuses and cleanup.
+- `in_progress` dialog: HTTP 200
+- `waiting`, `completed`, `cancelled` dialogs: HTTP 409
+- `waiting_choice` dialog: HTTP 200 and status resumed to `in_progress`
+- five transition events recorded

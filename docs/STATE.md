@@ -2,10 +2,50 @@
 
 **Status:** Active
 **Type:** Current project state
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-10
 **Owner:** Иван + Соня + текущий разработчик
 
 ---
+
+## Provider-system planning update — 2026-06-10
+
+The provider rewrite is partially implemented but not complete:
+
+- substrate v33 now has first-class providers, provider accounts,
+  account-specific offerings, quota windows, observations, and encrypted
+  provider secrets;
+- legacy `provider_keys` still owns a fixed `model` field for compatibility,
+  but new provider accounts do not;
+- existing keys are migrated/mirrored into provider accounts with masked
+  metadata;
+- picker/provider runtime still contains Fireworks and fixed purpose/profile
+  assumptions;
+- provider tools can manage keys and inspect some models, but cannot manage the
+  full provider/account/offering lifecycle.
+
+The approved target design is
+`docs/operations/PROVIDER_SYSTEM_DESIGN.md`. The canonical reference inventory
+is `docs/operations/PROVIDER_MODEL_CATALOG.md`. Newly supplied credentials have
+not been loaded; secure bootstrap follows the schema/routing migration.
+
+Verification for the v32 foundation:
+
+- local provider/migration focused suites: passed
+- local real-substrate-copy migration: passed
+- VPS isolated focused suite: `50 passed`
+- VPS real-substrate backup migration: passed (`4 providers`, `10 accounts`,
+  `10 legacy keys`)
+- production VPS checkout and production substrate were not changed
+
+Verification for the v33 secret boundary:
+
+- local provider/migration/secret focused suite: `66 passed`
+- local real-substrate-copy migration: passed (`masked_accounts: 1` on the
+  local copy)
+- VPS isolated provider/migration/secret suite: `66 passed`
+- VPS real-substrate backup migration: passed (`4 providers`, `10 accounts`,
+  `10 legacy keys`, `10 masked accounts`)
+- production VPS checkout and production substrate were not changed
 
 ## 1. Что мы строим
 
@@ -151,9 +191,11 @@ Atrium как chat/view surface уже недостаточен.
 
 ### Runtime gaps
 
-- project entities ещё не введены
-- project execution trace schema ещё не спроектирована
-- full-system-access mode ещё не реализован
+- project entities, runs, execution traces и workspace policy введены, но ещё
+  не доказаны как законченный end-to-end project runtime
+- project statuses ещё не доведены до полного operational поведения
+- full-system-access policy/runtime wiring существует, но live end-to-end режим
+  и ясное отображение в Atrium ещё требуют проверки
 - параллельная модельная оркестрация по проектам ещё не проверена как целевая архитектура
 - top-level docs больше не должны хранить огромный changelog, но обязаны хранить реальный current-state summary
 - subjective experience пока реализован фрагментами, а не как единый process layer
@@ -167,10 +209,10 @@ Atrium как chat/view surface уже недостаточен.
 
 ### Atrium / security gaps
 
-- нужен явный CSP
-- нужно убрать или сильно ограничить `shell:default`
-- чувствительные операции нужно переносить из JS в Rust IPC handlers
-- часть WS/security discipline ещё требует дожатия
+- нужен явный CSP для hosted-web Atrium
+- часть auth/WS/security discipline ещё требует дожатия
+- старые Tauri-specific требования про `shell:default` и Rust IPC больше не
+  относятся к текущей hosted-web архитектуре
 
 ### Product / operator UX gaps
 
@@ -191,11 +233,12 @@ Atrium как chat/view surface уже недостаточен.
 - access-control model
 
 Ближайший конкретный остаток после текущего захода:
-- substrate-level `project` / `project_run` / `workspace_binding`
+- довести существующие projects/runs/traces/workspace policy до живого
+  end-to-end project flow
 - real multi-workspace mode вместо single-active workspace
-- execution timeline/traces как first-class слой
-- real backend policy for full-system access
-- закрытие Atrium security gaps (CSP / capabilities / IPC)
+- execution timeline/traces как first-class observable слой
+- live proof и ясный UX для full-system-access policy
+- закрытие hosted-web Atrium security gaps (CSP / auth / WS discipline)
 
 ### P1
 
@@ -223,11 +266,11 @@ Atrium как chat/view surface уже недостаточен.
 ## 6. Как читать проект дальше
 
 Если заходить в проект с нуля, читать так:
-1. `docs/STATE.md`
-2. `docs/HANDOFF.md`
-3. `docs/atrium/ATRIUM_WORKSPACE_RUNTIME_SPEC.md`
-4. `docs/atrium/PLAN.md`
-5. `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md`
+1. `docs/INDEX.md`
+2. `docs/ATRIUM_PROJECT_PLAN.md`
+3. `docs/STATE.md`
+4. `docs/HANDOFF.md`
+5. `docs/atrium/ATRIUM_WORKSPACE_RUNTIME_SPEC.md`
 
 ## 7. Что считается регрессией
 
@@ -236,3 +279,80 @@ Atrium как chat/view surface уже недостаточен.
 - tool usage knowledge уходит обратно в prompt hacks вместо experiential memory
 - subagents остаются скрытым black box без наблюдаемого project runtime
 - security fixes Atrium игнорируются ради скорости
+
+## 8. Последние реализованные срезы
+
+### 2026-06-10 - project status runtime
+
+- deployed production commit `83c6afa`
+- centralized project status transitions in `ProjectStore.set_status()`
+- transition events persist in the shared continuity stream
+- `waiting_choice` resumes from Ivan's next project-chat message
+- `waiting`, `completed`, and `cancelled` make project chat read-only
+- project policy consent blocks set `waiting_choice`
+- restored production `initial_thought` contract and repaired project
+  policy/trace substrate references
+- clean-branch focused suite: `61 passed`
+- clean-branch full suite: `855 passed, 7 skipped, 3 failed`; remaining
+  failures are stale fixed-model expectations incompatible with model pools
+- VPS focused suite: `36 passed`
+- live five-status proof passed
+
+### 2026-06-10 - documentation audit and project-aware upload binding
+
+- added `docs/INDEX.md` and `docs/DOCUMENTATION_AUDIT.md`
+- separated canonical current docs from governing and historical references
+- corrected stale claims about projects/runs/traces/policy/model pools/uploads
+- confirmed production checkout and live DB are schema v30 while the local
+  dirty worktree targets v31; live DB already contains project/run/trace/policy
+  and provider-model-pool tables
+- project uploads now carry a validated `workspace_id`
+- dialog rejects attachments from a different workspace
+- local focused suite: `40 passed`
+- local Atrium production build passes
+- full local suite: `843 passed, 7 skipped, 10 failed`; failures remain in the
+  parallel dirty memory/migrations work and stale purpose-routing expectations
+- VPS isolated-copy Atrium backend suite: `22 passed`
+- production checkout was not changed; both VPS services remained active
+
+### 2026-06-09 - Workstream A answer-first
+
+Workstream A получил первый answer-first вертикальный срез:
+
+- explicit `chat.dialog` и `[DONE: body]` считаются answer layer
+- `[DONE: body]` проходит только минимальную очистку служебного протокола
+- Markdown и fenced code в явном ответе больше не удаляются
+- `<think>` не попадает в видимый диалог
+- тяжёлый heuristic scrubber и stitching из `thoughts` оставлены только как
+  legacy Telegram fallback
+- восстановлен параметр `initial_thought` в `run_agent_session`; без него
+  unified Window path падал до выполнения active/project session
+
+Проверка:
+
+- профильные reply/Atrium тесты: `59 passed`
+- Atrium frontend: production build проходит
+- полный pytest: `845 passed, 7 skipped, 11 failed`
+- 11 падений относятся к незавершённым локальным memory/migrations изменениям
+  и старым ожиданиям purpose routing, а не к reply-срезу
+- VPS isolated-copy reply/Atrium suite: `58 passed`; production checkout и
+  substrate не изменялись
+
+Следующий шаг Workstream A:
+
+- безопасно задеплоить answer-first slice в production
+- проверить answer-first поведение в живом Atrium чате
+- измерить живую задержку до первого полезного ответа
+- затем решить provider-native reasoning/streaming без нового brittle parser
+## 2026-06-10 Provider Runtime Production Bootstrap
+
+- VPS production substrate migrated to schema v33 with rollback backup at
+  `/home/jester-sonya/backups/sonya-provider-20260610-050736`.
+- Main OpenRouter account migrated to encrypted `provider-secret`; legacy
+  plaintext removed.
+- OpenRouter discovery observed `339` models and `27` free offerings.
+- Live Gemma adapter inference and substrate-backed `LLMProvider` inference
+  succeeded.
+- Production services are active and core reports `thinking_provider_ready`
+  for OpenRouter.
+- Nous bootstrap remains pending protected secret ingestion.

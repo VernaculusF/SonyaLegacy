@@ -1,15 +1,21 @@
 # ATRIUM — план реализации
 
-**Status:** Active (partially implemented; plan now spans existing UI/runtime plus the next workspace layer)
-**Type:** Implementation plan
-**Last reviewed:** 2026-06-06
+**Status:** Historical reference (partially implemented)
+**Type:** Historical implementation plan
+**Last reviewed:** 2026-06-10
 **Scope:** Конкретный план реализации Atrium — пакета multichannel-вывода/UI внутри Sonya. Что строится, в каком порядке, и как каждый этап самодостаточен.
 
 **Governing doc:** [ENVIRONMENT_AS_SONYA.md](../core/ENVIRONMENT_AS_SONYA.md)
 **UX & visuals:** legacy visual docs/mockups may be absent from the current worktree; treat in-file references as historical unless restored.
 **Channel spec:** legacy `CHANNELS.md` references may need restoration/migration.
 **Substrate events:** [EVENT_SCHEMA.md](EVENT_SCHEMA.md)
+**Current active plan:** [../ATRIUM_PROJECT_PLAN.md](../ATRIUM_PROJECT_PLAN.md)
 **Next product layer:** [ATRIUM_WORKSPACE_RUNTIME_SPEC.md](ATRIUM_WORKSPACE_RUNTIME_SPEC.md)
+
+> This document preserves the original staged Atrium roadmap. Statements about
+> the current surface, schema version, missing UI, Tauri, Live2D, or Telegram as
+> the only channel are historical. Use `docs/STATE.md` and
+> `docs/ATRIUM_PROJECT_PLAN.md` for current implementation reality.
 
 ---
 

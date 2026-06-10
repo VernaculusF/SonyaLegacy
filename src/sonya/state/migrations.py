@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 30
+CURRENT_VERSION = 33
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -20,23 +20,28 @@ def apply_initial_schema(conn: sqlite3.Connection) -> None:
     # v8: seed provider_settings single row if missing
     conn.execute(
         "INSERT OR IGNORE INTO provider_settings(id, active_provider, default_model, default_base_url, updated_at) "
-        "VALUES (1, 'fireworks', 'accounts/fireworks/models/minimax-m2p7', 'https://api.fireworks.ai/inference/v1', ?)",
+        "VALUES (1, 'openrouter', '', 'https://openrouter.ai/api/v1', ?)",
         (now,),
     )
     conn.commit()
 
 
 def ensure_critical_schema(conn: sqlite3.Connection) -> None:
-    """Repair columns that current runtime assumes even on stamped DBs.
-
-    Production once reached the current schema_version while missing columns
-    that were added by ALTER migrations. A stamped DB skips forward migrations,
-    so these idempotent guards run on every writable open.
-    """
     _add_column_if_missing(conn, "provider_keys", "slot", "TEXT NOT NULL DEFAULT 'text'")
     _add_column_if_missing(conn, "provider_settings", "vision_provider", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "provider_settings", "vision_model", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "provider_settings", "vision_base_url", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "episodic_events", "record_type", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "episodic_events", "scope", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "episodic_events", "project_id", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "episodic_events", "retention_policy", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "semantic_facts", "scope", "TEXT NOT NULL DEFAULT 'global'")
+    _add_column_if_missing(conn, "semantic_facts", "project_id", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "semantic_facts", "retention_policy", "TEXT NOT NULL DEFAULT 'long'")
+    _add_column_if_missing(conn, "provider_models", "text_loop_ok", "INTEGER NOT NULL DEFAULT 1")
+    _add_column_if_missing(conn, "provider_models", "last_checked_at", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "provider_models", "discovery_source", "TEXT NOT NULL DEFAULT 'manual'")
+    _add_column_if_missing(conn, "provider_models", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS subagent_tasks (
             subagent_id TEXT PRIMARY KEY,
@@ -51,6 +56,45 @@ def ensure_critical_schema(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             completed_at TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE IF NOT EXISTS raw_traces (
+            trace_id TEXT PRIMARY KEY,
+            record_type TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            raw_content TEXT NOT NULL,
+            normalized_summary TEXT NOT NULL DEFAULT '',
+            importance REAL NOT NULL DEFAULT 0.3,
+            stability REAL NOT NULL DEFAULT 0.2,
+            project_id TEXT NOT NULL DEFAULT '',
+            retention_policy TEXT NOT NULL DEFAULT 'archive_only',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            session_type TEXT NOT NULL DEFAULT '',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_rt_record_type ON raw_traces(record_type);
+        CREATE INDEX IF NOT EXISTS idx_rt_scope ON raw_traces(scope);
+        CREATE INDEX IF NOT EXISTS idx_rt_project_id ON raw_traces(project_id);
+        CREATE INDEX IF NOT EXISTS idx_rt_created ON raw_traces(created_at);
+        CREATE INDEX IF NOT EXISTS idx_rt_session_type ON raw_traces(session_type);
+        CREATE TABLE IF NOT EXISTS procedural_memory (
+            lesson_id TEXT PRIMARY KEY,
+            record_type TEXT NOT NULL DEFAULT 'operational_lesson',
+            scope TEXT NOT NULL DEFAULT 'global',
+            statement TEXT NOT NULL,
+            domain TEXT NOT NULL DEFAULT '',
+            pattern TEXT NOT NULL DEFAULT '',
+            project_id TEXT NOT NULL DEFAULT '',
+            source_trace_ids_json TEXT NOT NULL DEFAULT '[]',
+            confidence REAL NOT NULL DEFAULT 0.5,
+            last_reinforced_at TEXT NOT NULL DEFAULT '',
+            retention_policy TEXT NOT NULL DEFAULT 'long',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_pm_lesson_domain ON procedural_memory(domain);
+        CREATE INDEX IF NOT EXISTS idx_pm_lesson_scope ON procedural_memory(scope);
+        CREATE INDEX IF NOT EXISTS idx_pm_lesson_project ON procedural_memory(project_id);
+        CREATE INDEX IF NOT EXISTS idx_pm_lesson_confidence ON procedural_memory(confidence);
     """)
     conn.commit()
 
@@ -142,7 +186,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         # Seed provider_settings single row
         conn.execute(
             "INSERT OR IGNORE INTO provider_settings(id, active_provider, default_model, default_base_url, updated_at) "
-            "VALUES (1, 'fireworks', 'accounts/fireworks/models/minimax-m2p7', 'https://api.fireworks.ai/inference/v1', ?)",
+            "VALUES (1, 'openrouter', '', 'https://openrouter.ai/api/v1', ?)",
             (now,),
         )
         conn.execute(
@@ -787,42 +831,6 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
             CREATE INDEX IF NOT EXISTS idx_pm_latency ON provider_models(latency_tier);
 
         """)
-        # Seed known models — separate executes for each INSERT OR IGNORE
-        # Also add text_loop_ok column if not exists (for DBs that already have v29 provider_models)
-        _add_column_if_missing(conn, "provider_models", "text_loop_ok", "INTEGER NOT NULL DEFAULT 1")
-
-        seed_models = [
-            # OpenRouter free models
-            ('openrouter/owl-alpha', 'openrouter', 'owl-alpha', 1048576, '["text"]', 0, 0, 1, 'very_slow', 'coordinator', 1),
-            ('openrouter/nex-n2-pro', 'openrouter', 'nex-n2-pro', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor', 1),
-            ('openrouter/kimi-k2.6', 'openrouter', 'kimi-k2.6', 262144, '["text","image"]', 0, 0, 1, 'medium', 'executor', 1),
-            ('openrouter/laguna-m.1', 'openrouter', 'laguna-m.1', 262144, '["text"]', 0, 0, 1, 'medium', 'executor', 1),
-            ('openrouter/glm-4.5-air', 'openrouter', 'glm-4.5-air', 131072, '["text"]', 0, 0, 1, 'fast', 'executor', 1),
-            ('openrouter/hermes-3-405b', 'openrouter', 'hermes-3-405b', 131072, '["text"]', 0, 0, 1, 'slow', 'planner', 1),
-            ('openrouter/gemma-4-31b', 'openrouter', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor', 1),
-            ('openrouter/gemma-4-26b-a4b', 'openrouter', 'gemma-4-26b-a4b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup', 1),
-            # Nous Research
-            ('nous/nemotron-3-ultra', 'nous', 'nemotron-3-ultra', 1048576, '["text"]', 0, 0, 1, 'medium', 'coordinator', 1),
-            # Google AI Studio
-            ('google/gemma-4-26b', 'google', 'gemma-4-26b', 262144, '["text","image","video"]', 0, 0, 1, 'very_fast', 'cleanup', 1),
-            ('google/gemma-4-31b', 'google', 'gemma-4-31b', 262144, '["text","image","video"]', 0, 0, 1, 'medium', 'executor', 1),
-            ('google/gemini-3-flash', 'google', 'gemini-3-flash', 1048576, '["text","image","video","audio"]', 0, 0, 1, 'fast', 'planner', 1),
-            # Codex Sale (premium)
-            ('codexsale/gpt-5.4', 'codexsale', 'gpt-5.4', 131072, '["text"]', 15.0, 60.0, 0, 'medium', 'planner', 1),
-            ('codexsale/gpt-5.4-mini', 'codexsale', 'gpt-5.4-mini', 131072, '["text"]', 2.0, 8.0, 0, 'fast', 'executor', 1),
-            ('codexsale/gpt-5.5', 'codexsale', 'gpt-5.5', 131072, '["text"]', 25.0, 100.0, 0, 'medium', 'reviewer', 1),
-            ('codexsale/gpt-image-2', 'codexsale', 'gpt-image-2', 0, '["image"]', 0, 0, 0, 'slow', 'auto', 0),
-            ('codexsale/gpt-4o-transcribe', 'codexsale', 'gpt-4o-transcribe', 0, '["audio"]', 0, 0, 0, 'fast', 'auto', 0),
-        ]
-        for m in seed_models:
-            conn.execute(
-                "INSERT OR IGNORE INTO provider_models "
-                "(model_id, provider, model_name, context_length, modalities_json, "
-                "cost_per_1m_input_tokens, cost_per_1m_output_tokens, is_free, "
-                "latency_tier, role_preference, text_loop_ok, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (*m, now, now),
-            )
 
         conn.execute(
             "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
@@ -830,6 +838,239 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 30
+
+    if version == 30:
+        now = datetime.now(timezone.utc).isoformat()
+        _add_column_if_missing(conn, "episodic_events", "record_type", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "episodic_events", "scope", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "episodic_events", "project_id", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "episodic_events", "retention_policy", "TEXT NOT NULL DEFAULT ''")
+        if _table_exists(conn, "episodic_events"):
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_episodic_record_type ON episodic_events(record_type)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_episodic_scope ON episodic_events(scope)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_episodic_project_id ON episodic_events(project_id)")
+
+        _add_column_if_missing(conn, "semantic_facts", "scope", "TEXT NOT NULL DEFAULT 'global'")
+        _add_column_if_missing(conn, "semantic_facts", "project_id", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "semantic_facts", "retention_policy", "TEXT NOT NULL DEFAULT 'long'")
+        if _table_exists(conn, "semantic_facts"):
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_scope ON semantic_facts(scope)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_project_id ON semantic_facts(project_id)")
+
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS raw_traces (
+                trace_id TEXT PRIMARY KEY,
+                record_type TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT '',
+                raw_content TEXT NOT NULL,
+                normalized_summary TEXT NOT NULL DEFAULT '',
+                importance REAL NOT NULL DEFAULT 0.3,
+                stability REAL NOT NULL DEFAULT 0.2,
+                project_id TEXT NOT NULL DEFAULT '',
+                retention_policy TEXT NOT NULL DEFAULT 'archive_only',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                session_type TEXT NOT NULL DEFAULT '',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_rt_record_type ON raw_traces(record_type);
+            CREATE INDEX IF NOT EXISTS idx_rt_scope ON raw_traces(scope);
+            CREATE INDEX IF NOT EXISTS idx_rt_project_id ON raw_traces(project_id);
+            CREATE INDEX IF NOT EXISTS idx_rt_created ON raw_traces(created_at);
+            CREATE INDEX IF NOT EXISTS idx_rt_session_type ON raw_traces(session_type);
+
+            CREATE TABLE IF NOT EXISTS procedural_memory (
+                lesson_id TEXT PRIMARY KEY,
+                record_type TEXT NOT NULL DEFAULT 'operational_lesson',
+                scope TEXT NOT NULL DEFAULT 'global',
+                statement TEXT NOT NULL,
+                domain TEXT NOT NULL DEFAULT '',
+                pattern TEXT NOT NULL DEFAULT '',
+                project_id TEXT NOT NULL DEFAULT '',
+                source_trace_ids_json TEXT NOT NULL DEFAULT '[]',
+                confidence REAL NOT NULL DEFAULT 0.5,
+                last_reinforced_at TEXT NOT NULL DEFAULT '',
+                retention_policy TEXT NOT NULL DEFAULT 'long',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_pm_lesson_domain ON procedural_memory(domain);
+            CREATE INDEX IF NOT EXISTS idx_pm_lesson_scope ON procedural_memory(scope);
+            CREATE INDEX IF NOT EXISTS idx_pm_lesson_project ON procedural_memory(project_id);
+            CREATE INDEX IF NOT EXISTS idx_pm_lesson_confidence ON procedural_memory(confidence);
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (31, now),
+        )
+        conn.commit()
+        version = 31
+
+    if version == 31:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS providers (
+                provider_id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                adapter_kind TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                base_url TEXT NOT NULL DEFAULT '',
+                capabilities_json TEXT NOT NULL DEFAULT '{}',
+                constraints_json TEXT NOT NULL DEFAULT '{}',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_providers_status ON providers(status);
+            CREATE INDEX IF NOT EXISTS idx_providers_adapter ON providers(adapter_kind);
+
+            CREATE TABLE IF NOT EXISTS provider_accounts (
+                account_id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                secret_ref TEXT NOT NULL DEFAULT '',
+                secret_masked TEXT NOT NULL DEFAULT '',
+                legacy_key_id TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                priority INTEGER NOT NULL DEFAULT 0,
+                constraints_json TEXT NOT NULL DEFAULT '{}',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_pa_legacy_key
+                ON provider_accounts(legacy_key_id) WHERE legacy_key_id != '';
+            CREATE INDEX IF NOT EXISTS idx_pa_provider ON provider_accounts(provider_id);
+            CREATE INDEX IF NOT EXISTS idx_pa_status ON provider_accounts(status);
+
+            CREATE TABLE IF NOT EXISTS provider_account_offerings (
+                account_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (account_id, model_id),
+                FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id),
+                FOREIGN KEY (model_id) REFERENCES provider_models(model_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pao_model ON provider_account_offerings(model_id);
+            CREATE INDEX IF NOT EXISTS idx_pao_enabled ON provider_account_offerings(enabled);
+
+            CREATE TABLE IF NOT EXISTS provider_quota_windows (
+                quota_window_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                quota_kind TEXT NOT NULL,
+                limit_value REAL,
+                used_value REAL,
+                remaining_value REAL,
+                unit TEXT NOT NULL DEFAULT '',
+                window_started_at TEXT NOT NULL DEFAULT '',
+                resets_at TEXT NOT NULL DEFAULT '',
+                observed_at TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pqw_account ON provider_quota_windows(account_id);
+            CREATE INDEX IF NOT EXISTS idx_pqw_resets ON provider_quota_windows(resets_at);
+
+            CREATE TABLE IF NOT EXISTS provider_observations (
+                observation_id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                account_id TEXT NOT NULL DEFAULT '',
+                model_id TEXT NOT NULL DEFAULT '',
+                observation_kind TEXT NOT NULL,
+                success INTEGER NOT NULL DEFAULT 1,
+                latency_ms INTEGER NOT NULL DEFAULT 0,
+                value_json TEXT NOT NULL DEFAULT '{}',
+                observed_at TEXT NOT NULL,
+                FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_po_provider ON provider_observations(provider_id);
+            CREATE INDEX IF NOT EXISTS idx_po_account ON provider_observations(account_id);
+            CREATE INDEX IF NOT EXISTS idx_po_model ON provider_observations(model_id);
+            CREATE INDEX IF NOT EXISTS idx_po_kind ON provider_observations(observation_kind);
+        """)
+        if _table_exists(conn, "provider_keys"):
+            conn.execute(
+                "INSERT OR IGNORE INTO providers "
+                "(provider_id, display_name, adapter_kind, status, base_url, created_at, updated_at) "
+                "SELECT provider, provider, 'openai_compatible', 'active', MAX(base_url), ?, ? "
+                "FROM provider_keys GROUP BY provider",
+                (now, now),
+            )
+        if _table_exists(conn, "provider_models"):
+            conn.execute(
+                "INSERT OR IGNORE INTO providers "
+                "(provider_id, display_name, adapter_kind, status, base_url, created_at, updated_at) "
+                "SELECT provider, provider, 'openai_compatible', 'active', MAX(base_url), ?, ? "
+                "FROM provider_models GROUP BY provider",
+                (now, now),
+            )
+        if _table_exists(conn, "provider_keys"):
+            conn.execute(
+                "INSERT OR IGNORE INTO provider_accounts "
+                "(account_id, provider_id, name, secret_ref, legacy_key_id, status, priority, "
+                "constraints_json, metadata_json, created_at, updated_at) "
+                "SELECT key_id, provider, name, 'legacy-provider-key:' || key_id, key_id, status, "
+                "priority, '{}', '{}', created_at, updated_at FROM provider_keys"
+            )
+        if _table_exists(conn, "provider_keys") and _table_exists(conn, "provider_models"):
+            conn.execute(
+                "INSERT OR IGNORE INTO provider_account_offerings "
+                "(account_id, model_id, enabled, metadata_json, created_at, updated_at) "
+                "SELECT pk.key_id, pk.model, 1, '{\"source\":\"legacy_fixed_model\"}', ?, ? "
+                "FROM provider_keys pk JOIN provider_models pm ON pm.model_id = pk.model "
+                "WHERE pk.model != ''",
+                (now, now),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (32, now),
+        )
+        conn.commit()
+        version = 32
+
+    if version == 32:
+        now = datetime.now(timezone.utc).isoformat()
+        _add_column_if_missing(conn, "provider_accounts", "secret_masked", "TEXT NOT NULL DEFAULT ''")
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS provider_secrets (
+                secret_id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                secret_kind TEXT NOT NULL DEFAULT 'api_key',
+                encrypted_value TEXT NOT NULL,
+                value_fingerprint TEXT NOT NULL,
+                masked_value TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (provider_id) REFERENCES providers(provider_id),
+                FOREIGN KEY (account_id) REFERENCES provider_accounts(account_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ps_provider ON provider_secrets(provider_id);
+            CREATE INDEX IF NOT EXISTS idx_ps_account ON provider_secrets(account_id);
+            CREATE INDEX IF NOT EXISTS idx_ps_status ON provider_secrets(status);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_ps_fingerprint
+                ON provider_secrets(provider_id, value_fingerprint);
+        """)
+        if _table_exists(conn, "provider_accounts") and _table_exists(conn, "provider_keys"):
+            conn.execute(
+                "UPDATE provider_accounts SET secret_masked = "
+                "CASE WHEN LENGTH(provider_keys.api_key) > 12 "
+                "THEN SUBSTR(provider_keys.api_key, 1, 6) || '...' || SUBSTR(provider_keys.api_key, -4) "
+                "ELSE '***' END "
+                "FROM provider_keys WHERE provider_accounts.legacy_key_id = provider_keys.key_id "
+                "AND provider_accounts.secret_masked = ''"
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (33, now),
+        )
+        conn.commit()
+        version = 33
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
@@ -853,6 +1094,14 @@ def _add_column_if_missing(
     if column not in existing:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
         conn.commit()
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
 
 
 def read_current_version(conn: sqlite3.Connection) -> int:

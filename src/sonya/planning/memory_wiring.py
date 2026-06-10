@@ -25,17 +25,11 @@ def record_response_as_memory(
     response: CanonicalResponse,
     channel: str = "telegram",
     media_path: str | None = None,
+    project_id: str = "",
 ) -> None:
-    """Record a planner response as an episodic memory event.
-
-    Called after every successful plan_next → response cycle.
-    This is the memory wiring: responses become part of Sonya's biography.
-    If media_path is provided, compute perceptual hash for visual dedup.
-    """
     episodic = EpisodicMemory(substrate)
     phash = _compute_phash(media_path) if media_path else ""
 
-    # Record user message
     if user_input:
         episodic.record(
             event_type="dialogue_event",
@@ -45,8 +39,11 @@ def record_response_as_memory(
             channel=channel,
             actor=response.principal_id or "ivan",
             importance_score=0.5,
+            record_type="dialogue_event",
+            scope="main_chat",
+            project_id=project_id,
+            retention_policy="medium",
         )
-        # If there's a phash, attach it to the user's event
         if phash:
             try:
                 substrate.connection.execute(
@@ -59,7 +56,6 @@ def record_response_as_memory(
             except Exception:
                 pass
 
-    # Record Sonya's response
     if response.text:
         episodic.record(
             event_type="dialogue_event",
@@ -69,6 +65,10 @@ def record_response_as_memory(
             channel=channel,
             actor="sonya",
             importance_score=0.6,
+            record_type="dialogue_event",
+            scope="main_chat",
+            project_id=project_id,
+            retention_policy="medium",
         )
 
 
@@ -78,13 +78,8 @@ def record_initiative_as_memory(
     *,
     reason: str = "idle_thought",
     channel: str = "telegram_initiative",
+    project_id: str = "",
 ) -> None:
-    """Record an initiative message Sonya sent first into episodic memory.
-
-    Without this, initiative-only messages live only in continuity_events
-    and are invisible to memory.recall / consolidation. Sonya forgets her
-    own outreach attempts.
-    """
     episodic = EpisodicMemory(substrate)
     if not text or not text.strip():
         return
@@ -95,7 +90,11 @@ def record_initiative_as_memory(
         source="sonya",
         channel=channel,
         actor="sonya",
-        importance_score=0.7,  # initiative is rarer + more meaningful than reply
+        importance_score=0.7,
+        record_type="initiative_event",
+        scope="main_chat",
+        project_id=project_id,
+        retention_policy="medium",
     )
 
 
@@ -108,14 +107,8 @@ def record_session_outcome_as_memory(
     summary: str,
     channel: str = "internal_session",
     importance_score: float = 0.6,
+    project_id: str = "",
 ) -> None:
-    """Record an active session / task worker outcome into episodic memory.
-
-    Sessions appear step-by-step in continuity_events but never as a single
-    memorable event ('today I fixed bug X, learned Y, decided Z'). Without
-    this Sonya can't recall her own deliberate work — only the dialogue
-    around it.
-    """
     if steps <= 0 and not summary:
         return
     episodic = EpisodicMemory(substrate)
@@ -136,4 +129,8 @@ def record_session_outcome_as_memory(
         channel=channel,
         actor="sonya",
         importance_score=importance_score,
+        record_type="session_outcome",
+        scope="global",
+        project_id=project_id,
+        retention_policy="medium",
     )

@@ -48,6 +48,9 @@ function classifySrc(kind, payload) {
   if (kind.startsWith('skill.') || kind.includes('capability_gap')) return 'skill';
   // selfmod
   if (kind.startsWith('self_mod') || kind.startsWith('selfmod')) return 'skill';
+  // Provider lifecycle/status is observability for Atrium. Detailed provider
+  // management stays on the admin surface.
+  if (kind.startsWith('provider.')) return 'system';
   // system: schedulers, lifecycle, initiative gating, nudges
   return 'system';
 }
@@ -230,6 +233,8 @@ function handleEvent(msg) {
       body = `tool=${payload.tool} ${payload.arg ? '· ' + String(payload.arg).slice(0, 100) : ''}`;
     } else if (payload.summary) {
       body = payload.summary;
+    } else if (kind.startsWith('provider.') && payload.provider_id) {
+      body = `provider=${payload.provider_id} status=${payload.status || ''}`.trim();
     } else if (payload.next_step) {
       body = `next: ${payload.next_step}`;
     } else if (kind.startsWith('internal.scheduler')) {

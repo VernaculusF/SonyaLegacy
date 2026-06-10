@@ -1,461 +1,97 @@
-# SUBAGENT_MODELS.md — Реестр моделей для субагентов Сони
-
-**Status:** Active (обновляется при добавлении/удалении моделей)
-**Type:** Operational — справочник инструментов
-**Last updated:** 2026-06-08
-**Назначение:** Соня читает этот документ чтобы выбрать правильную модель под конкретную задачу субагента.
-
----
-
-## Как пользоваться этим документом
-
-Соня при создании субагента (`subagent.spawn`) ДОЛЖНА выбрать модель
-исходя из характера задачи. Не использовать одну модель для всего.
-Каждая модель — инструмент с конкретными сильными и слабыми сторонами.
-
-**Принцип выбора:**
-1. Определи тип задачи (кодинг, ресерч, математика, диалог, vision и тд)
-2. Оцени требуемую скорость (реактивная vs фоновая)
-3. Учти контекст (маленький запрос vs огромная кодовая база)
-4. Учти лимиты (RPD/RPM) — не сжигай квоту дорогих моделей на мелочь
-5. Выбери модель из таблицы ниже
-
-Важно:
-- это не значит, что provider должен быть жёстко прибит к одной модели
-- наоборот, provider должен мыслиться как pool доступных моделей
-- выбор делается внутри provider pool динамически
-
-Важно #2:
-- этот документ не должен содержать маркетинговую дезинформацию
-- где модель описана как "сильная" или "слабая", это должно пониматься как:
-  - либо проверенный operational вывод
-  - либо явная hypothesis, которую ещё надо подтвердить тестами
-
-Если по модели нет живых внутренних тестов Sonya/runtime, не считать claim окончательной истиной.
-
----
-
-## Провайдеры и API endpoints
-
-| Провайдер | Base URL | Формат ключа |
-|-----------|----------|-------------|
-| OpenRouter | `https://openrouter.ai/api/v1` | `sk-or-v1-...` |
-| Google Gemini | `https://generativelanguage.googleapis.com/v1beta` | `AIza...` (API key) |
-| Nous Research | `https://inference-api.nousresearch.com/v1` | `sk-nous-...` |
-| Codex Sale | `https://codex.sale/v1` | `sk-clb-...` |
-| agentrouter.org | `https://agentrouter.org/v1` | `sk-r...` |
-
-## Operational reality (2026-06-08)
-
-- Fireworks больше не считать надёжной baseline-основой
-- `nvidia/nemotron-3-ultra:free` через Nous API важен как 1M-context fallback
-- но эта модель туповата и не должна быть основным кодером
-- Gemma / Kimi / Laguna / GLM / Owl остаются основным рабочим free-pool
-- `codexsale` остаётся premium last-resort path
-
-Operational caveat:
-- `nex-agi/nex-n2-pro:free` выглядит очень сильным бесплатным agentic кандидатом
-- по claims он может быть сопоставим с `gpt-5.5` в части coding/reasoning
-- **но это пока hypothesis until tested in our own evaluation harness**
-
----
-
-## Tier LC — LONG-CONTEXT COORDINATION
-
-### 🧱 NVIDIA Nemotron 3 Ultra (free)
-- **Провайдер:** Nous Research inference API
-- **Base URL:** `https://inference-api.nousresearch.com/v1`
-- **Скорость:** Средняя
-- **Контекст:** 1M
-- **Модальности:** Text → Text
-- **Описание:** Один из немногих реально доступных бесплатных 1M-context вариантов. Хорош как long-context carrier/coordinator, но не как основной coding brain.
-- **Сильные стороны:**
-  - 🔥 1M контекста
-  - 🔥 Бесплатный
-  - Подходит для coarse summarization / context compression / coordination
-- **Слабые стороны:**
-  - ❌ Туповат как coding/review модель
-  - ❌ Не должен быть основным исполнителем инженерных задач
-- **Когда использовать:**
-  - Держать большой контекст
-  - Сжимать/передавать контекст дальше
-  - Грубое planning / coordination
-- **Когда НЕ использовать:**
-  - Сложный coding
-  - Тонкий review
-  - Архитектурные решения, где нужна высокая точность reasoning
-
----
-
-## Tier 0 — ПЛАТНЫЕ/ФЛАГМАНСКИЕ (максимальное качество, использовать экономно)
-
-### 🧠 GPT-5.5 (`gpt-5.5`)
-- **Провайдер:** Codex Sale
-- **Base URL:** `https://codex.sale/v1`
-- **Скорость:** Средняя / ниже средней
-- **Модальности:** Text → Text
-- **Описание:** Самая сильная текстовая модель в текущем premium-пуле Codex Sale. Использовать как тяжёлый субагент для задач, где реально нужен флагманский reasoning.
-- **Сильные стороны:**
-  - 🔥 Максимальное качество reasoning в этом провайдере
-  - 🔥 Подходит для сложного code review, multi-file дизайна, архитектурных решений
-  - Хороший выбор для research и проверки сложных гипотез
-- **Слабые стороны:**
-  - ❌ Дороже и дефицитнее free-tier моделей
-  - ❌ Не использовать на рутинном parsing/cleanup
-- **Когда использовать:**
-  - Критический code review
-  - Сложный multi-file рефакторинг
-  - Research / strategy задачи, где free-tier уже не хватает
-- **Когда НЕ использовать:**
-  - Мелкие follow-up вопросы
-  - Простую классификацию / extraction
-
----
-
-### ⚙️ GPT-5.4 (`gpt-5.4`)
-- **Провайдер:** Codex Sale
-- **Base URL:** `https://codex.sale/v1`
-- **Скорость:** Средняя
-- **Модальности:** Text → Text
-- **Описание:** Сильная универсальная флагманская модель. Хороший default для premium-субагента, когда нужен высокий уровень качества, но без обязательного вызова самого дорогого варианта.
-- **Сильные стороны:**
-  - 🔥 Сильный баланс coding / reasoning / analysis
-  - Лучше подходит для everyday hard tasks, чем GPT-5.5 overkill path
-  - Хороший основной premium fallback для Sonya subagents
-- **Слабые стороны:**
-  - ❌ Всё ещё слишком дорогая для рутины
-  - ❌ Нет смысла использовать там, где справится Kimi/Laguna/Gemma
-- **Когда использовать:**
-  - Сложные coding задачи
-  - Deep analysis по нескольким файлам
-  - Проверка tricky багов и regressions
-- **Когда НЕ использовать:**
-  - Pre-processing, extraction, быстрые мелкие задачи
-
----
-
-## Tier 2 — ЛЁГКИЕ/БЫСТРЫЕ (парсинг, классификация, минимальная задержка)
-
-### ✂️ GPT-5.4 Mini (`gpt-5.4-mini`)
-- **Провайдер:** Codex Sale
-- **Base URL:** `https://codex.sale/v1`
-- **Скорость:** Быстрая
-- **Модальности:** Text → Text
-- **Описание:** Облегчённая версия GPT-5.4 для быстрых субагентных проходов: extraction, summarization, cleaning, pre-check перед эскалацией в более тяжёлую модель.
-- **Сильные стороны:**
-  - 🔥 Быстрее и дешевле старших GPT-моделей
-  - Хороша для pipeline-задач и кратких инструментальных вызовов
-  - Может быть premium-альтернативой Gemma 31B там, где нужно лучшее instruction-following
-- **Слабые стороны:**
-  - ❌ Не для сверхсложного многошагового reasoning
-  - ❌ Не для тяжёлого автономного кодинга
-- **Когда использовать:**
-  - Быстрый summarization
-  - Нормализация/очистка вывода tools
-  - First-pass analysis перед передачей в GPT-5.4 / GPT-5.5
-- **Когда НЕ использовать:**
-  - Full-scale refactor planning
-  - Сложный research с большим количеством неизвестных
-
----
-
-## Tier M — СПЕЦИАЛИЗИРОВАННЫЕ МОДАЛЬНОСТИ (не стандартный text-subagent loop)
-
-### 🖼️ GPT Image 2 (`gpt-image-2`)
-- **Провайдер:** Codex Sale
-- **Endpoint:** `https://codex.sale/v1/responses` или provider-specific image path when implemented
-- **Модальности:** Text → Image / image generation
-- **Описание:** Генеративная image-модель провайдера. Это не обычный текстовый субагент для `chat/completions`, а отдельный специализированный worker для генерации изображений.
-- **Статус для Сони:** доступно у провайдера, но в текущем runtime не должно выбираться обычным `subagent.spawn` пока не появится image-worker surface.
-- **Когда использовать:**
-  - Генерация изображений / concept art / mockups после отдельной интеграции
-
----
-
-### 🎙️ GPT-4o Transcribe (`gpt-4o-transcribe`)
-- **Провайдер:** Codex Sale
-- **Endpoint:** `https://codex.sale/v1/responses` или отдельный audio path when implemented
-- **Модальности:** Audio → Text
-- **Описание:** Специализированная модель для транскрипции. Это не текстовый ReAct-субагент, а будущий ASR worker для голосовых/аудио задач.
-- **Статус для Сони:** доступно у провайдера, но не должно использоваться текущим текстовым subagent loop без audio adapter.
-- **Когда использовать:**
-  - Транскрипция голосовых сообщений, заметок и аудиофайлов после отдельной интеграции
-
----
-
-## Tier 1 — ТЯЖЁЛЫЕ (сложные задачи, длинный контекст, глубокий кодинг)
-
-### 🧭 Nex N2 Pro (`nex-agi/nex-n2-pro:free`)
-- **Провайдер:** OpenRouter (бесплатно)
-- **Контекст:** 262K
-- **Скорость:** Средняя
-- **Модальности:** Text + Image → Text
-- **Архитектура:** agentic mixture-of-experts, 17B active / 397B total, built on Qwen3.5
-- **Описание:** Сильный бесплатный agentic-кандидат для coding, tool use, deep research и long-horizon workflows. Поддерживает reasoning, function calling и structured outputs.
-- **Сильные стороны:**
-  - 🔥 Хорошо подходит для agentic workflows
-  - 🔥 Умеет planning + implementation + debugging + iteration в одном execution loop
-  - 🔥 Поддерживает text+image input
-  - Хороший кандидат для long-horizon coding/research задач
-  - Бесплатная модель с большим weekly token budget (~308M)
-- **Слабые стороны:**
-  - MoE/agentic модель — нужно проверять реальную стабильность в нашем runtime
-  - Может оказаться менее предсказуемой, чем более простые execution-models на мелких задачах
-- **Когда использовать:**
-  - Агентный кодинг с tools
-  - Deep research
-  - Long-horizon project subtasks
-  - Сложные execution loops, где одной классификации/парсинга уже мало
-- **Когда НЕ использовать:**
-  - Мелкие быстрые задачи
-  - Простую нормализацию/cleanup, где хватит Gemma 26B/31B
-
----
-
-### 🦉 Owl Alpha (`openrouter/owl-alpha`)
-- **Провайдер:** OpenRouter (бесплатно, 1000 RPD)
-- **Контекст:** 1M токенов in / 262K out
-- **Скорость:** ⚠️ ОЧЕНЬ МЕДЛЕННАЯ (десятки секунд на ответ)
-- **Модальности:** Text → Text
-- **Описание:** High-performance foundation model для агентных задач. Нативная поддержка tool use и long-context. Совместима с Claude Code и OpenClaw.
-- **Сильные стороны:**
-  - 🔥 Огромный контекст (1M) — идеально для анализа больших кодовых баз
-  - 🔥 Нативный tool use — хорошо следует ReAct формату
-  - 🔥 Агентные задачи — проектировалась под автономные workflows
-  - Хорошая математика (~95% на бенчмарках)
-  - Отличный ролевой отыгрыш
-  - Качество на уровне Opus 4.5-4.6
-- **Слабые стороны:**
-  - ❌ Очень медленная — не для реактивных задач
-  - ❌ Промпты и ответы могут логироваться провайдером
-- **Лимиты:** 1000 RPD (OpenRouter free tier)
-- **Когда использовать:**
-  - Фоновый глубокий кодинг (selfmod-like задачи, рефакторинг)
-  - Анализ большого контекста (целый файл/модуль)
-  - Сложные задачи где качество важнее скорости
-  - Как "фоновый мозг" для длинных исследовательских задач
-- **Когда НЕ использовать:**
-  - Реактивный диалог с Иваном
-  - Мелкие однострочные запросы
-  - Любые задачи где важна скорость ответа < 5 сек
-
----
-
-### 🌊 Kimi K2.6 (`moonshotai/kimi-k2.6:free`)
-- **Провайдер:** OpenRouter (бесплатно)
-- **Контекст:** 262K in / max output varies
-- **Скорость:** Средняя
-- **Модальности:** Text + Image → Text (мультимодальная)
-- **Описание:** Moonshot AI. Модель нового поколения для long-horizon кодинга, UI/UX генерации из промптов, и мульти-агентной оркестрации. Поддерживает Python, Rust, Go. Agent swarm архитектура — масштабируется до сотен параллельных субагентов.
-- **Сильные стороны:**
-  - 🔥 Агентный кодинг — проектировалась именно для этого
-  - 🔥 Мульти-агентная оркестрация — декомпозиция задач
-  - 🔥 UI/UX генерация — конвертирует промпты и визуальные инпуты в production-ready интерфейсы
-  - Мультимодальная (принимает картинки)
-  - End-to-end кодинг (Python, Rust, Go)
-  - 20+ провайдеров на OpenRouter = хороший аптайм
-- **Слабые стороны:**
-  - Менее точна в чистой математике vs Owl Alpha
-  - Может быть verbose (многословна)
-- **Когда использовать:**
-  - Агентный кодинг — задачи с tool calls
-  - Анализ скриншотов/интерфейсов (vision)
-  - Генерация UI компонентов
-  - Задачи требующие декомпозиции
-- **Когда НЕ использовать:**
-  - Чистая математика / формальная логика
-  - Очень короткие задачи (overkill)
-
----
-
-### 🏊 Laguna M.1 (`poolside/laguna-m.1:free`)
-- **Провайдер:** OpenRouter (бесплатно)
-- **Контекст:** 262K in / 32K out
-- **Скорость:** Средняя
-- **Модальности:** Text → Text
-- **Описание:** Флагманская coding-agent модель от Poolside. Оптимизирована для сложных software engineering задач. Поддерживает tool calling и reasoning. Квантизирована до fp8.
-- **Сильные стороны:**
-  - 🔥 Software engineering — основная специализация
-  - 🔥 Tool calling — нативная поддержка
-  - Reasoning цепочки
-  - Хороший выход до 32K токенов
-- **Слабые стороны:**
-  - Только текст (нет vision)
-  - Не лучшая для creative writing / roleplay
-  - fp8 квантизация может снижать точность на edge cases
-- **Когда использовать:**
-  - Кодинг — рефакторинг, дебаг, написание модулей
-  - Code review
-  - Сложные programming задачи
-- **Когда НЕ использовать:**
-  - Диалог / creative
-  - Задачи с картинками
-
----
-
-### 🐑 Hermes 3 LLaMA 3.1 405B (`nousresearch/hermes-3-llama-3.1-405b:free`)
-- **Провайдер:** OpenRouter (бесплатно)
-- **Контекст:** 128K (standard LLaMA 3.1 405B)
-- **Скорость:** Медленная (405B параметров)
-- **Модальности:** Text → Text
-- **Описание:** NousResearch fine-tune LLaMA 3.1 405B. Hermes — одна из лучших uncensored open-source моделей. Excellent instruction following и chat.
-- **Сильные стороны:**
-  - 🔥 Uncensored — нет корпоративных refusals, близко к идеологии проекта
-  - 🔥 405B параметров — огромная модель, хорошее качество reasoning
-  - Отличное следование инструкциям
-  - Хорош в creative / roleplay / unconstrained tasks
-  - Сильный general purpose reasoner
-- **Слабые стороны:**
-  - Медленная (405B)
-  - Контекст 128K (vs 262K у Kimi / 1M у Owl)
-  - Может быть less precise в code generation vs специализированных coding моделей
-- **Когда использовать:**
-  - Задачи где нужна свобода от цензуры
-  - Сложный reasoning
-  - Creative / personality-related задачи
-  - Research задачи где нужен open-ended thinking
-- **Когда НЕ использовать:**
-  - Мелкие быстрые задачи (слишком тяжёлая)
-  - Pure coding (есть специализированные альтернативы)
-
----
-
-## Tier 2 — ЛЁГКИЕ/БЫСТРЫЕ (парсинг, классификация, минимальная задержка)
-
-### 💎 Gemma 4 31B IT (`google/gemma-4-31b-it:free`)
-- **Провайдер:** OpenRouter (бесплатно, ~1500 RPD)
-- **Контекст:** ~128K
-- **Скорость:** Быстрая
-- **Модальности:** Multimodal (text + image + video in; text out)
-- **Описание:** Google Gemma 4 31B instruction-tuned. Важно: не считать её чисто text-only моделью. В operational usage её всё ещё часто будут использовать как text/coding worker, но модальности шире.
-- **Сильные стороны:**
-  - 🔥 Высокий лимит (1500 RPD)
-  - Быстрая (для dense-модели)
-  - Отличный баланс качества следования сложным инструкциям и скорости
-  - Полноценная 31B dense-архитектура (выше точность на пограничных случаях по сравнению с MoE 4B active)
-- **Слабые стороны:**
-  - 31B — не потянет сверхсложный многошаговый кодинг
-  - Нет vision
-- **Когда использовать:**
-  - Классификация, сложный парсинг, извлечение данных
-  - Суммаризация документов средней длины
-  - Быстрые follow-up вопросы
-- **Когда НЕ использовать:**
-  - Сложный многошаговый кодинг (лучше Kimi/Laguna)
-  - Сверхтяжёлые long-horizon задачи, если есть более сильный agentic candidate
-
----
-
-### 🪶 Gemma 4 26B A4B IT (`google/gemma-4-26b-a4b-it:free`)
-- **Провайдер:** OpenRouter (бесплатно, ~1500 RPD)
-- **Контекст:** ~128K
-- **Скорость:** ⚡ ОЧЕНЬ БЫСТРАЯ (MoE, всего 4B активных параметров)
-- **Модальности:** Multimodal (text + image + video in; text out)
-- **Описание:** Google Gemma 4 26B MoE с 4B активных параметров. Сверхлёгкая и сверхбыстрая рабочая лошадь.
-- **Сильные стороны:**
-  - 🔥 САМАЯ БЫСТРАЯ в реестре (всего 4B active)
-  - 🔥 Высокий лимит (1500 RPD)
-  - Мгновенные ответы
-  - Отлично для pipelining (много мелких запросов)
-- **Слабые стороны:**
-  - 4B active = ограниченная глубина reasoning
-  - Не для сложных задач
-- **Когда использовать:**
-  - Мгновенная классификация / extraction
-  - Быстрый parsing/cleaning вывода инструментов
-  - Pre-processing перед отправкой в тяжёлую модель
-  - Любая задача, где latency critical
-- **Когда НЕ использовать:**
-  - Что-угодно требующее глубокого reasoning или кодинга
-  - Задачи, где нужна глубокая агентная orchestration и сильный review
-
----
-
-## Исключённые и убранные из реестра модели (объяснение)
-
-В реестр не включены или были исключены следующие модели из-за наличия лучших бесплатных аналогов или несоответствия архитектурным требованиям субагента:
-
-1. **Nemotron Nano 12B V2 VL** (`nvidia/nemotron-nano-12b-v2-vl:free`):
-   - *Почему убрана:* Крайне слабая точность vision и reasoning по сравнению с `Kimi K2.6` (free, 262K context) и `Gemini 3 Flash` (free, 1M+ context). Использование 12B VL не имеет практического смысла при наличии лучших бесплатных мультимодальных альтернатив.
-2. **Gemini 3.1 Flash Lite**:
-   - *Почему убрана:* `Gemini 3 Flash` полностью бесплатна, имеет больший контекст и более высокое качество на всех бенчмарках. Разница в стоимости отсутствует (обе бесплатны), поэтому использование Flash Lite нецелесообразно.
-3. **Nemotron 3 Nano Omni 30B** (`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`):
-   - *Почему убрана:* Слишком ограниченный размер (всего 3B активных параметров). Для быстрых и легких задач `Gemma 4 26B A4B IT` (MoE с 4B активных параметров) предоставляет значительно лучшее качество следования инструкциям и 1500 RPD лимит.
-4. **Nemotron 3 Super 120B** (`nvidia/nemotron-3-super-120b-a12b:free`):
-   - *Почему убрана:* Для работы с длинным контекстом (1M токенов) `Owl Alpha` предлагает полноценное Claude-level качество рассуждений и нативную поддержку tool calling. Для более простых длиннотекстовых задач `Gemini 3 Flash` (1M+ контекст) работает быстрее и качественнее. В итоге Nemotron 120B (с 12B активных) оказывается бесполезным компромиссом.
-5. **GLM-4.5 Air** (`z-ai/glm-4.5-air:free`):
-   - *Почему убрана:* Дублирует задачи других моделей. Сложный reasoning покрывают Tier 1 модели (Kimi, Laguna, Hermes 405B), а быстрый легкий парсинг — Gemma 4 26B.
-6. **Gemini 2.5 Flash Native Audio Dialog** & **Gemini 3 Flash Live**:
-   - *Почему убраны:* Специализированные стриминговые и аудио-модели. Не поддерживают стандартный текстовый API (`complete_text`) и ReAct-цикл выполнения инструментов субагента. Зарезервированы для будущих голосовых функций (Этап 2).
-7. **Gemini Embedding 2**:
-   - *Почему убрана:* Это не генеративная LLM, а модель эмбеддингов для семантического поиска и RAG. Не способна вести диалог и выполнять задачи субагента.
-
----
-
-## Матрица выбора — QUICK REFERENCE
-
-| Задача | Первый выбор | Альтернатива | НЕ использовать |
-|--------|-------------|-------------|----------------|
-| **Глубокий кодинг (рефакторинг, модули)** | Laguna M.1 | Kimi K2.6 | Gemma 4 26B A4B |
-| **Premium code review / hardest reasoning** | GPT-5.5 | GPT-5.4 | GPT-5.4 Mini |
-| **Premium hard coding** | GPT-5.4 | Laguna M.1 | GPT-5.4 Mini |
-| **Агентный кодинг (с tools)** | Kimi K2.6 | Gemma 4 26B A4B |
-| **Фоновый research** | Hermes 3 405B | Gemma 4 26B A4B |
-| **Анализ большого контекста** | Gemini 3 Flash | Gemma 4 26B A4B |
-| **Быстрая classification/parsing** | Gemma 4 26B A4B | Gemma 4 31B IT | Hermes 3 405B |
-| **Premium quick pass / cleanup** | GPT-5.4 Mini | Gemma 4 31B IT | GPT-5.5 |
-| **Vision (описать картинку)** | Gemini 3 Flash | Kimi K2.6 | Laguna M.1 |
-| **Транскрипция аудио** | GPT-4o Transcribe* | Gemini 3 Flash | GPT-5.5 |
-| **Генерация картинок** | GPT Image 2* | — | текстовые модели |
-| **Математика/логика** | Hermes 3 405B | Gemma 4 26B A4B |
-| **Uncensored задачи** | Hermes 3 405B |  Gemini 3 Flash |
-| **Суммаризация документов** | Gemini 3 Flash | Gemma 4 31B IT | Gemma 4 26B A4B |
-| **UI/UX генерация** | Kimi K2.6 | Laguna M.1 | Gemma 4 26B A4B |
-| **Мультимодальные задачи** | Kimi K2.6 | Gemini 3 Flash | Laguna M.1 |
-| **Быстрый pre-processing** | Gemma 4 26B A4B | Gemma 4 31B IT | 
-
----
-
-## Rate Limits по провайдерам
-
-| Провайдер | Лимит | Примечания |
-|-----------|-------|-----------|
-| OpenRouter (free tier) | ~200 RPD per model (default) | Некоторые модели до 1000 RPD |
-| Google Gemma 4 (via OR) | ~1500 RPD | Очень щедрый лимит |
-| Google Gemini (direct) | По API key, varies | Отдельный провайдер, отдельные лимиты |
-| Codex Sale | По балансу/аккаунту | Платный премиум-пул; беречь для тяжёлых задач |
-
----
-
-## Как Соня добавляет новую модель
-
-1. Иван даёт API ключ + провайдер + model name
-2. Через `providers.add_key` ключ добавляется в keystore
-3. Этот документ обновляется с описанием модели
-4. Соня может сразу использовать модель через `subagent.spawn` с `{"model": "..."}`
-
-### Codex Sale provider snapshot
-
-- **Provider ID:** `codexsale`
-- **Display name:** `Codex Sale`
-- **API key:** `sk-clb-iYjqOCN8-IYoJPxFylBhS4eD9fACjEMHWHOq85K7UYU`
-- **Base endpoint:** `https://codex.sale/v1`
-- **Models endpoint:** `https://codex.sale/v1/models`
-- **Chat endpoint:** `https://codex.sale/v1/chat/completions`
-- **Responses endpoint:** `https://codex.sale/v1/responses`
-- **Codex endpoint:** `https://codex.sale/backend-api/codex`
-- **Разрешённые модели:** `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`, `gpt-image-2`, `gpt-4o-transcribe`
-
-## Как Соня убирает модель
-
-Если модель показывает плохие результаты или ключ истёк:
-1. `providers.disable_key` если проблема с ключом
-2. Обновить этот документ — пометить модель как неактивную
-3. НЕ удалять из документа — оставить для истории
-
----
-
-## Changelog
-
-- **2026-06-03** — Первая версия. Собрано из OpenRouter metadata + web research. Предварительный список от Ивана отфильтрован.
-- **2026-06-05** — Добавлен provider `codexsale` (Codex Sale) и 5 разрешённых моделей: `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`, `gpt-image-2`, `gpt-4o-transcribe`. Текстовые GPT добавлены как premium subagent tier; image/transcribe помечены как специальные modality-workers, не для текущего text-only ReAct loop.
+# Subagent Model Selection
+
+**Status:** Active policy
+**Last updated:** 2026-06-10
+**Runtime truth:** substrate observations, not this file
+
+This document defines how Sonya chooses models for one-shot internal subagents.
+The provider inventory lives in
+[`PROVIDER_MODEL_CATALOG.md`](PROVIDER_MODEL_CATALOG.md). The target data model
+lives in [`PROVIDER_SYSTEM_DESIGN.md`](PROVIDER_SYSTEM_DESIGN.md).
+
+## Invariants
+
+- A subagent is an internal one-shot tool, not another Sonya and not a UI actor.
+- Sonya decides whether to delegate, how many workers to create, their model,
+  task, and filesystem scope.
+- Provider and model are separate choices. A provider exposes accounts and a
+  pool of model offerings.
+- No fixed provider-to-model binding and no permanent keyword rule engine.
+- Explicit model selection is an override, not the default architecture.
+- Raw subagent traces may be visible, but only summaries and lessons enter
+  Sonya's durable memory.
+
+## Selection Inputs
+
+Before `subagent.spawn`, Sonya should express a small task requirement object:
+
+- role: planner, executor, reviewer, researcher, cleanup, multimodal
+- required modalities and tool support
+- estimated context and output size
+- quality/risk level
+- latency tolerance and deadline
+- budget ceiling
+- filesystem scope
+- known provider constraints that matter for this task
+
+The runtime then filters unavailable offerings and ranks the rest using:
+
+- current account/provider/model health
+- remaining quota and budget windows
+- context fit and supported modalities
+- measured success for similar tasks
+- measured latency, error rate, and refusal/constraint rate
+- marginal cost
+
+Hard filters protect capability and availability. Ranking is soft and
+evidence-driven. Sonya retains judgment and may override the recommendation.
+
+## Evidence Levels
+
+Model claims must carry one of these evidence levels:
+
+1. `advertised`: provider metadata only
+2. `user_observed`: reported by Ivan, not reproduced
+3. `benchmarked`: measured by Sonya's evaluation harness
+4. `production_observed`: measured during real work
+
+Do not encode advertised or anecdotal strengths as permanent routing truth.
+
+## Long-Context Carrier Experiment
+
+`nvidia/nemotron-3-ultra:free` through Nous is a candidate carrier/coordinator
+because it advertises a very large context window. Ivan reports that it is weak
+at coding. Treat this as a hypothesis:
+
+- carrier reads and compresses broad context;
+- stronger coding worker receives a minimal scoped packet;
+- optional reviewer checks risky output;
+- Sonya remains the only orchestrator.
+
+Nested planner/worker execution is allowed only when evaluation shows better
+quality or lower total token/cost use. It must not become mandatory recursion.
+
+## Premium Escalation
+
+Premium and last-resort providers are selected only when one of these is true:
+
+- free/low-cost candidates failed or lack required capability;
+- task risk justifies a stronger reviewer;
+- deadline makes slower free candidates unsuitable;
+- Ivan explicitly requests a premium model.
+
+The trace must record why escalation happened.
+
+## Current Runtime Gap
+
+The current picker still contains hard-coded profiles, Fireworks entries,
+keyword traits, and fixed purpose hints. It also can consider a discovered model
+available without an eligible account. These are migration targets, not policy.
+
+## Acceptance Criteria
+
+- Adding a provider/model/account does not require editing the picker.
+- A model is selectable only through an eligible account offering.
+- Provider outages and quota exhaustion remove affected offerings immediately.
+- Model choices and overrides are traceable.
+- Scorecards improve future choices without turning into rigid rules.

@@ -15,6 +15,7 @@ class ModelProfile:
     latency: str
     premium: bool = False
     text_loop_ok: bool = True
+    role_preference: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -42,23 +43,7 @@ class PickPolicy:
     # auto | small | medium | large
 
 
-_PROFILES: tuple[ModelProfile, ...] = (
-    ModelProfile("openrouter", "openrouter/owl-alpha", "Owl Alpha", ("research", "math", "large_context", "general_reasoning"), "slow"),
-    ModelProfile("openrouter", "poolside/laguna-m.1:free", "Laguna M.1", ("coding", "code_review", "tools"), "medium"),
-    ModelProfile("openrouter", "moonshotai/kimi-k2.6:free", "Kimi K2.6", ("coding", "agentic", "ui_ux", "vision_planning"), "medium"),
-    ModelProfile("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free", "Hermes 3 405B", ("uncensored", "creative", "open_ended", "reasoning"), "slow"),
-    ModelProfile("openrouter", "google/gemma-4-31b-it:free", "Gemma 4 31B", ("summary", "classification", "general_fast"), "fast"),
-    ModelProfile("openrouter", "google/gemma-4-26b-a4b-it:free", "Gemma 4 26B A4B", ("summary", "classification", "cleanup", "fastest"), "very_fast"),
-    ModelProfile("codexsale", "gpt-5.5", "GPT-5.5", ("critical_review", "research", "hard_reasoning"), "medium", premium=True),
-    ModelProfile("codexsale", "gpt-5.4", "GPT-5.4", ("coding", "hard_reasoning", "analysis"), "medium", premium=True),
-    ModelProfile("codexsale", "gpt-5.4-mini", "GPT-5.4 Mini", ("summary", "cleanup", "general_fast"), "fast", premium=True),
-    ModelProfile("codexsale", "gpt-image-2", "GPT Image 2", ("image_generation",), "n/a", premium=True, text_loop_ok=False),
-    ModelProfile("codexsale", "gpt-4o-transcribe", "GPT-4o Transcribe", ("transcribe",), "n/a", premium=True, text_loop_ok=False),
-    ModelProfile("fireworks", "accounts/fireworks/models/deepseek-v4-pro", "DeepSeek V4 Pro", ("coding", "general_reasoning"), "medium"),
-    ModelProfile("fireworks", "accounts/fireworks/models/deepseek-v4-flash", "DeepSeek V4 Flash", ("summary", "general_fast"), "fast"),
-    ModelProfile("kr", "kr/claude-sonnet-4.5", "Claude Sonnet 4.5", ("coding", "writing", "analysis"), "medium", premium=True),
-    ModelProfile("kr", "kr/claude-haiku-4.5", "Claude Haiku 4.5", ("summary", "cleanup", "general_fast"), "fast", premium=True),
-)
+_PROFILES: tuple[ModelProfile, ...] = ()
 
 
 def _task_traits(task: str) -> set[str]:
@@ -92,21 +77,10 @@ def _task_traits(task: str) -> set[str]:
     return traits
 
 
-def _available_providers(store: KeyStore) -> set[str]:
-    out: set[str] = set()
-    for key in store.list_keys():
-        if key.is_eligible():
-            out.add(key.provider)
-    # Also add providers from provider_models pool
-    for pm in store.list_provider_models(enabled_only=True):
-        out.add(pm.provider)
-    return out
-
-
-def _db_model_profiles(store: KeyStore) -> list[ModelProfile]:
-    """Load provider_models from DB and convert to ModelProfile list."""
+def _db_model_profiles(store: KeyStore, provider: str = "") -> list[ModelProfile]:
+    """Load currently available provider model offerings as picker candidates."""
     profiles: list[ModelProfile] = []
-    for pm in store.list_provider_models(enabled_only=True):
+    for pm in store.list_available_provider_models(provider or None):
         if not pm.text_loop_ok:
             continue
         strengths = pm.strengths()
@@ -134,33 +108,26 @@ def _db_model_profiles(store: KeyStore) -> list[ModelProfile]:
             latency=pm.latency_tier,
             premium=not bool(pm.is_free),
             text_loop_ok=True,
+            role_preference=pm.role_preference,
         ))
     return profiles
 
 
-def _profiles_for_provider(provider: str) -> list[ModelProfile]:
-    return [p for p in _PROFILES if p.provider == provider and p.text_loop_ok]
-
-
-def _infer_provider_from_model(model: str) -> str:
-    for profile in _PROFILES:
-        if profile.model == model:
-            return profile.provider
-    if model.startswith("accounts/fireworks/models/"):
-        return "fireworks"
-    if model.startswith("kr/"):
-        return "kr"
+def _infer_provider_from_model(model: str, store: KeyStore) -> str:
+    db_model = store.get_provider_model(model)
+    if db_model is not None:
+        return db_model.provider
     return ""
 
 
-def is_text_loop_model(model: str, provider: str = "") -> bool:
+def is_text_loop_model(model: str, provider: str = "", *, store: KeyStore | None = None) -> bool:
     provider = (provider or "").strip()
-    for profile in _PROFILES:
-        if profile.model != model:
-            continue
-        if provider and profile.provider != provider:
-            continue
-        return profile.text_loop_ok
+    if store is not None:
+        db_model = store.get_provider_model(model)
+        if db_model is not None and (not provider or db_model.provider == provider):
+            return bool(db_model.text_loop_ok)
+    if model in {"gpt-image-2", "gpt-4o-transcribe"}:
+        return False
     return True
 
 
@@ -261,6 +228,10 @@ def _cost_bias(profile: ModelProfile, policy: PickPolicy, traits: set[str]) -> i
     """
     score = 0
     role = policy.role.lower().strip()
+    if profile.role_preference == role:
+        score += 6
+    elif profile.role_preference not in ("", "auto") and role not in ("", "auto"):
+        score -= 1
     if role in ("executor", "cleanup"):
         if profile.latency == "very_fast":
             score += 4
@@ -306,19 +277,21 @@ def pick_subagent_model(
     requested_model = (requested_model or "").strip()
 
     if requested_model and not requested_provider:
-        requested_provider = _infer_provider_from_model(requested_model)
+        requested_provider = _infer_provider_from_model(requested_model, store)
 
     if requested_provider and requested_model:
         return PickResult(requested_provider, requested_model, "explicit provider+model", auto_selected=False)
 
     policy = policy or PickPolicy()
     traits = _task_traits(task) | _role_traits(policy.role)
-    available = _available_providers(store)
-    if not available:
+    all_candidates = _db_model_profiles(store)
+    if policy.allow_premium is False:
+        all_candidates = [candidate for candidate in all_candidates if not candidate.premium]
+    if not all_candidates:
         settings = store.get_settings()
-        return PickResult(settings.active_provider, settings.default_model, "fallback to active provider (no eligible key scan result)")
+        return PickResult(settings.active_provider, settings.default_model, "fallback to active provider (no available substrate offerings)")
 
-    free_available = any(p in available for p in ("openrouter", "fireworks"))
+    free_available = any(not candidate.premium for candidate in all_candidates)
     premium_needed = bool({"critical_review", "hard_reasoning", "large_context"} & traits)
     prefer_free = policy.prefer_free and free_available and not premium_needed and policy.allow_premium
 
@@ -342,20 +315,17 @@ def pick_subagent_model(
             pass
 
     if requested_provider:
-        candidates = _profiles_for_provider(requested_provider)
+        candidates = [candidate for candidate in all_candidates if candidate.provider == requested_provider]
         if not candidates:
             settings = store.get_settings()
-            return PickResult(requested_provider, settings.default_model, f"provider {requested_provider} has no known profile; using provider default")
+            return PickResult(requested_provider, settings.default_model, f"provider {requested_provider} has no available substrate offering; using provider default")
         chosen = max(candidates, key=lambda p: (
-            _score(p, traits, prefer_free=False, exp_bonus=exp_map.get((p.provider, p.model), 0))
+            _score(p, traits, prefer_free=prefer_free, exp_bonus=exp_map.get((p.provider, p.model), 0))
             + _cost_bias(p, policy, traits)
         ))
-        return PickResult(chosen.provider, chosen.model, f"auto-picked within explicit provider {requested_provider} from traits={sorted(traits) or ['default']}")
+        return PickResult(chosen.provider, chosen.model, f"auto-picked substrate offering within explicit provider {requested_provider} from traits={sorted(traits) or ['default']}")
 
-    candidates = [p for p in _PROFILES if p.provider in available and p.text_loop_ok]
-    if not candidates:
-        settings = store.get_settings()
-        return PickResult(settings.active_provider, settings.default_model, "fallback to active provider (no catalog candidate available)")
+    candidates = all_candidates
 
     chosen = max(candidates, key=lambda p: (
         _score(p, traits, prefer_free=prefer_free, exp_bonus=exp_map.get((p.provider, p.model), 0))
@@ -364,7 +334,7 @@ def pick_subagent_model(
     return PickResult(
         chosen.provider,
         chosen.model,
-        f"auto-picked {chosen.label} from traits={sorted(traits) or ['default']}, role={policy.role}, prefer_free={prefer_free}",
+        f"auto-picked substrate offering {chosen.label} from traits={sorted(traits) or ['default']}, role={policy.role}, prefer_free={prefer_free}",
     )
 
 

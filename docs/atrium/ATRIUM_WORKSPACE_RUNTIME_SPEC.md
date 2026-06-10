@@ -1,6 +1,6 @@
 # ATRIUM WORKSPACE RUNTIME SPEC
 
-**Status:** Draft (mandate from Ivan, not implemented)
+**Status:** Active target spec (partially implemented)
 **Type:** Product / architecture spec
 **Last updated:** 2026-06-09
 **Scope:** Что Atrium должен стать не просто окном чата, а реальной рабочей средой для проектов, субагентов, управляемого выполнения задач и накопления данных для будущего RWKV-слоя.
@@ -11,7 +11,6 @@
 - `docs/core/ENVIRONMENT_AS_SONYA.md`
 - `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md`
 - `docs/operations/SUBAGENT_MODELS.md`
-- `docs/ATRIUM_PROJECT_PLAN.md`
 
 ---
 
@@ -33,6 +32,10 @@
 - появились project/workspace UI surfaces
 - non-main workspace path стал runtime-aware через `workspace_id`
 - history и active-session continuity начали разделяться по workspace
+- substrate-level `projects`, `project_runs`, `execution_traces`, and
+  `workspace_policy`
+- project CRUD, run/trace endpoints, and workspace policy API
+- backend/runtime wiring for the optional full-system-access policy
 
 Но это ещё не полный project runtime в смысле этого документа.
 
@@ -119,7 +122,8 @@ Atrium должен стать:
 
 Текущее состояние:
 - UI-scaffolding под workspace/project уже началась
-- но substrate-level project entities ещё не введены
+- substrate-level project entities, runs, traces, and workspace policy уже введены
+- статусы и observable execution ещё не доказаны end-to-end как законченный runtime
 
 Это не отменяет фоновые задачи Сони. Наоборот:
 - фоновая работа остаётся
@@ -411,5 +415,3 @@ Atrium должен стать:
 Важно: этот документ **не является планом реализации по задачам и срокам**.
 Это фиксация мандата и продуктовых требований, из которых потом должен родиться
 отдельный implementation plan.
-
-

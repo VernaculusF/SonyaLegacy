@@ -147,6 +147,23 @@ Sonya должна стать:
 
 ### 2.1.1 Provider model pools
 
+Target design and execution plan:
+
+- `docs/operations/PROVIDER_SYSTEM_DESIGN.md`
+- `docs/operations/PROVIDER_MODEL_CATALOG.md`
+- `docs/superpowers/plans/2026-06-10-provider-model-runtime.md`
+
+Additional required outcomes:
+
+- [x] first-class provider registry exists
+- [x] provider accounts do not own one fixed model
+- [x] account-specific model access is represented explicitly
+- [x] rolling quota windows and reset timestamps are structured observations
+- [x] secrets are encrypted/referenced and masked on provider-account read surfaces
+- [ ] Sonya can create/update/disable/delete providers and accounts through typed capabilities
+- [ ] Fireworks is absent from defaults and active routing assumptions
+- [ ] Nous + one OpenRouter account pass local and VPS bootstrap proof
+
 Нужно переделать саму модель провайдеров:
 
 - [ ] убрать assumption, что у провайдера одна жёстко закреплённая модель

@@ -282,6 +282,7 @@ def build_full_context(
     session_messages: list[dict[str, Any]] | None = None,
     drives: DriveCounters | None = None,
     initiative_signals: tuple[str, ...] = (),
+    project_id: str | None = None,
 ) -> PlannerContext:
     """Assemble full planner context from all available sources.
 
@@ -318,13 +319,16 @@ def build_full_context(
             if Embedder.is_available():
                 from sonya.memory.recall import RecallStore
                 store = RecallStore(substrate)
-                hits = store.recall(user_input.strip(), top_k=5, min_score=0.3)
-                relevant_events = hits  # RecallHit objects
+                hits = store.recall(
+                    user_input.strip(), top_k=5, min_score=0.3,
+                    project_id=project_id, exclude_trace_types=True,
+                )
+                relevant_events = hits
         except Exception:
             pass
 
-    # Recency-based (always, as fallback + context anchor)
-    recent_events = episodic.get_recent(limit=5)
+    # Recency-based (always, as fallback + context anchor) — exclude trace types
+    recent_events = episodic.get_recent(limit=5, project_id=project_id, exclude_trace_types=True)
 
     # Build memory block
     memory_block = ""
@@ -469,9 +473,9 @@ def build_full_context(
     except Exception:
         pass
 
-    # Semantic facts
+    # Semantic facts — project-priority retrieval
     semantic = SemanticMemory(substrate)
-    facts = semantic.get_all(limit=10)
+    facts = semantic.get_for_context(project_id=project_id, limit=10)
     if facts:
         facts_block = "\n\n## Что я знаю (семантическая память):\n"
         for f in facts:

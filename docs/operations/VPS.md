@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Operations
-**Last updated:** 2026-05-29
+**Last updated:** 2026-06-10
 
 ## 1. Где хостится
 
@@ -57,7 +57,7 @@ Single user account (`jester-sonya`) с sudo. Sonya сервисы тоже ра
 │   └── .venv/                      — Python virtual environment (Python 3.11)
 │
 └── .sonya/                         — runtime data root
-    ├── sonya_substrate.db          — substrate (schema v20, SQLite WAL)
+    ├── sonya_substrate.db          — substrate (SQLite WAL; verify live schema after each deploy)
     ├── sonya_substrate.db-wal      — WAL file (live writes)
     ├── sonya_substrate.db-shm      — shared memory
     ├── knowledge/                  — её факт-база (markdown). pentest/*.md, wp/*.md и т.д.

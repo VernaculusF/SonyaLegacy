@@ -15,13 +15,8 @@ def _utc_now_iso() -> str:
 
 @dataclass(frozen=True, slots=True)
 class EpisodicEvent:
-    """One episodic memory event.
-
-    See: docs/cognition/COGNITION.md §11 (episodic memory).
-    """
-
     event_id: str
-    event_type: str  # dialogue_event, initiative_event, tool_event, etc.
+    event_type: str
     timestamp: str
     source: str = ""
     channel: str = ""
@@ -34,6 +29,10 @@ class EpisodicEvent:
     last_accessed_at: str = ""
     access_count: int = 0
     archived: bool = False
+    record_type: str = ""
+    scope: str = ""
+    project_id: str = ""
+    retention_policy: str = ""
 
 
 class EpisodicMemory:
@@ -58,19 +57,28 @@ class EpisodicMemory:
         actor: str = "",
         emotion_tags: tuple[str, ...] = (),
         importance_score: float = 0.5,
+        record_type: str = "",
+        scope: str = "",
+        project_id: str = "",
+        retention_policy: str = "",
     ) -> EpisodicEvent:
+        from sonya.memory.types import classify_event_type, default_scope, default_retention, RecordType
+        rt = record_type or classify_event_type(event_type).value
+        sc = scope or default_scope(RecordType(rt)).value
+        rp = retention_policy or default_retention(RecordType(rt)).value
         event_id = f"ep-{uuid4().hex[:12]}"
         now = _utc_now_iso()
         self._sub.connection.execute(
             "INSERT INTO episodic_events"
             "(event_id, event_type, timestamp, source, channel, actor, "
             "raw_content, normalized_summary, emotion_tags_json, "
-            "importance_score, retention_strength, last_accessed_at, access_count, archived) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, ?, 0, 0)",
+            "importance_score, retention_strength, last_accessed_at, access_count, archived, "
+            "record_type, scope, project_id, retention_policy) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, ?, 0, 0, ?, ?, ?, ?)",
             (event_id, event_type, now, source, channel, actor,
              raw_content, normalized_summary,
              json.dumps(list(emotion_tags), ensure_ascii=False),
-             importance_score, now),
+             importance_score, now, rt, sc, project_id, rp),
         )
         self._sub.connection.commit()
         return EpisodicEvent(
@@ -79,16 +87,29 @@ class EpisodicMemory:
             raw_content=raw_content, normalized_summary=normalized_summary,
             emotion_tags=emotion_tags, importance_score=importance_score,
             retention_strength=1.0, last_accessed_at=now,
+            record_type=rt, scope=sc, project_id=project_id,
+            retention_policy=rp,
         )
 
-    def get_recent(self, limit: int = 20, *, mark_accessed: bool = True) -> list[EpisodicEvent]:
+    def get_recent(self, limit: int = 20, *, mark_accessed: bool = True, project_id: str | None = None, exclude_trace_types: bool = True) -> list[EpisodicEvent]:
+        from sonya.memory.types import is_trace_type, RecordType
+        clauses = ["archived = 0"]
+        if exclude_trace_types:
+            trace_vals = ",".join(f"'{rt.value}'" for rt in RecordType if is_trace_type(rt))
+            clauses.append(f"record_type NOT IN ({trace_vals}) OR record_type = ''")
+        params: list[Any] = []
+        if project_id is not None:
+            clauses.append("(project_id = ? OR scope = 'global')")
+            params.append(project_id)
+        where = " AND ".join(clauses)
         cursor = self._sub.connection.execute(
-            "SELECT event_id, event_type, timestamp, source, channel, actor, "
-            "raw_content, normalized_summary, emotion_tags_json, importance_score, "
-            "retention_strength, last_accessed_at, access_count, archived "
-            "FROM episodic_events WHERE archived = 0 "
-            "ORDER BY timestamp DESC LIMIT ?",
-            (limit,),
+            f"SELECT event_id, event_type, timestamp, source, channel, actor, "
+            f"raw_content, normalized_summary, emotion_tags_json, importance_score, "
+            f"retention_strength, last_accessed_at, access_count, archived, "
+            f"record_type, scope, project_id, retention_policy "
+            f"FROM episodic_events WHERE {where} "
+            f"ORDER BY timestamp DESC LIMIT ?",
+            (*params, limit),
         )
         events = [_row_to_event(r) for r in cursor.fetchall()]
         if mark_accessed and events:
@@ -118,7 +139,8 @@ class EpisodicMemory:
         cursor = self._sub.connection.execute(
             f"SELECT event_id, event_type, timestamp, source, channel, actor, "
             f"raw_content, normalized_summary, emotion_tags_json, importance_score, "
-            f"retention_strength, last_accessed_at, access_count, archived "
+            f"retention_strength, last_accessed_at, access_count, archived, "
+            f"record_type, scope, project_id, retention_policy "
             f"FROM episodic_events WHERE {where} "
             f"ORDER BY timestamp DESC LIMIT ?",
             (*params, limit),
@@ -132,7 +154,8 @@ class EpisodicMemory:
         cursor = self._sub.connection.execute(
             "SELECT event_id, event_type, timestamp, source, channel, actor, "
             "raw_content, normalized_summary, emotion_tags_json, importance_score, "
-            "retention_strength, last_accessed_at, access_count, archived "
+            "retention_strength, last_accessed_at, access_count, archived, "
+            "record_type, scope, project_id, retention_policy "
             "FROM episodic_events WHERE event_type = ? AND archived = 0 "
             "ORDER BY timestamp DESC LIMIT ?",
             (event_type, limit),
@@ -193,6 +216,10 @@ def _row_to_event(row) -> EpisodicEvent:
         emotion_tags = tuple(json.loads(raw_tags))
     except (json.JSONDecodeError, TypeError):
         emotion_tags = ()
+    rt = row[14] if len(row) > 14 else ""
+    sc = row[15] if len(row) > 15 else ""
+    pid = row[16] if len(row) > 16 else ""
+    rp = row[17] if len(row) > 17 else ""
     return EpisodicEvent(
         event_id=row[0], event_type=row[1], timestamp=row[2],
         source=row[3], channel=row[4], actor=row[5],
@@ -200,4 +227,5 @@ def _row_to_event(row) -> EpisodicEvent:
         emotion_tags=emotion_tags,
         importance_score=row[9], retention_strength=row[10],
         last_accessed_at=row[11], access_count=row[12], archived=bool(row[13]),
+        record_type=rt, scope=sc, project_id=pid, retention_policy=rp,
     )
