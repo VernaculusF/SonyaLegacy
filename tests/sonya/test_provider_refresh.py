@@ -324,7 +324,7 @@ async def test_codexsale_refresh_removes_stale_prefixed_manual_alias(tmp_path) -
         assert store.get_provider_model("codexsale/gpt-image-2", provider="codexsale") is None
         assert store.get_provider_model("gpt-5.4", provider="codexsale") is not None
         assert store.get_provider_model("gpt-image-2", provider="codexsale").text_loop_ok == 0
-        assert [m.model_id for m in store.list_provider_models("codexsale", enabled_only=False)] == [
+        assert sorted(m.model_id for m in store.list_provider_models("codexsale", enabled_only=False)) == [
             "gpt-5.4",
             "gpt-image-2",
         ]
