@@ -892,7 +892,7 @@ renderers.providers = function(d) {
   if (!providersSelectedId || !ps.some(p=>p.provider_id===providersSelectedId)) providersSelectedId=s.active_provider||ps[0]?.provider_id||null;
   const available=new Set((d.available_models||[]).map(x=>x.model_id)), q=providersModelQuery.toLowerCase();
   const p=ps.find(x=>x.provider_id===providersSelectedId), pa=as.filter(x=>x.provider_id===providersSelectedId), rawPm=ms.filter(x=>x.provider===providersSelectedId);
-  const pm=(p?.provider_id==='openrouter'&&!q)?rawPm.filter(x=>x.is_free||available.has(x.model_id)):rawPm;
+  const pm=(p?.provider_id==='openrouter'&&!q)?rawPm.filter(x=>available.has(x.model_id)||(x.is_free&&x.discovery_source!=='manual')):rawPm;
   const shown=pm.filter(x=>!q||`${x.model_name} ${x.model_id} ${(x.strengths||[]).join(' ')}`.toLowerCase().includes(q));
   const badge=v=>`<span class="provider-badge ${escapeHtml(String(v||''))}">${escapeHtml(String(v||'unknown'))}</span>`;
   const summary=`<div class="provider-summary">

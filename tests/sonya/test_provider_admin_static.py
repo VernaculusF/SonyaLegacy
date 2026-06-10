@@ -17,3 +17,10 @@ def test_provider_admin_does_not_render_legacy_add_key_form() -> None:
 
     assert "<h3>Add key</h3>" not in override
     assert "providersAddKey()" not in override
+
+
+def test_provider_admin_hides_stale_openrouter_manual_aliases_by_default() -> None:
+    assert (
+        "rawPm.filter(x=>available.has(x.model_id)||(x.is_free&&x.discovery_source!=='manual'))"
+        in ADMIN_HTML
+    )
