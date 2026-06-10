@@ -6,14 +6,14 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `bae4b33`, substrate schema v33, OpenRouter encrypted main
-account, 339 discovered models, and active `sonya` / `sonya-admin` services.
+Deployed baseline: `37e8e72`, substrate schema v33, generic periodic provider
+refresh, and active `sonya` / `sonya-admin` services.
 
 Current slice:
 
 1. import remaining approved provider accounts through protected secret
    ingestion;
-2. add periodic provider refresh and measured scorecards;
+2. add measured scorecards and provider/account cooldowns;
 3. complete subagent lifecycle/scope/outcome tracing;
 4. inventory and migrate old memory and knowledge with backups, provenance, and
    idempotent manifests;
@@ -51,6 +51,16 @@ Completed in the latest slices:
 - backup-copy semantic dedup proof passed: `3,396 -> 1,864` facts,
   `quick_check=ok`, repeated plan empty, and context retrieval returned 50
   unique facts. Production dedup was not applied.
+- generic provider refresh coordinator replaced the Fireworks-only balance
+  loop; provider metadata may set `refresh_ttl_seconds`, default is six hours,
+  and only the last successful model discovery marks a pool fresh.
+- pools without active first-class accounts are skipped quietly. The first
+  production cycle exposed that current registry pools are not yet eligible
+  for lifecycle refresh, so secure account import is the immediate provider
+  operation.
+- deployed commits `11dbc04` and `37e8e72`; focused production-source provider
+  suite passed (`18 passed`), both services remained active, and the corrected
+  cycle emitted no provider-refresh failures.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See
@@ -199,7 +209,8 @@ Next implementation slice:
 2. Securely bootstrap Nous through provider account metadata plus the protected
    Admin secret-ingestion endpoint. Do not write raw credentials to
    Git/logs/docs/prompts.
-3. Add periodic provider refresh and start collecting model scorecards.
+3. Confirm periodic refresh observations after active account import, then
+   start collecting model scorecards.
 4. Preserve existing dirty-worktree changes and do not revert unrelated work.
 5. Prove every substantial slice locally and on the VPS.
 

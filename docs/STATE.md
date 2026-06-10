@@ -14,9 +14,13 @@
 - OpenRouter production discovery and routed inference are live;
 - the existing Admin Providers backend supports registry, account, offering,
   defaults, and protected-secret operations;
-- active work is the Admin Providers visual refresh, safe import of remaining
-  provider accounts, periodic refresh/scorecards, subagent lifecycle
-  completion, and migration/audit of old memory and knowledge.
+- generic periodic provider discovery/health/quota refresh is deployed and
+  reads provider-level TTL from substrate metadata;
+- pools without active first-class accounts are skipped quietly until secure
+  account import, rather than producing false runtime failures;
+- active work is safe import of remaining provider accounts, measured
+  scorecards/cooldowns, subagent lifecycle completion, and migration/audit of
+  old memory and knowledge.
 
 The authoritative execution order is
 `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Older provider sections

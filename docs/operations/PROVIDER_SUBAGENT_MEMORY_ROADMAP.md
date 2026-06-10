@@ -20,6 +20,8 @@
   windows, observations, and encrypted provider secrets
 - protected account-secret ingestion and masked read surfaces
 - provider lifecycle adapters and discovery refresh service
+- generic runtime refresh coordinator with provider-level TTL, last-good
+  discovery freshness, and quiet skip for pools without active accounts
 - substrate-backed provider/model/account routing without fixed
   provider-to-model or environment binding
 - evidence-driven subagent picker over eligible account offerings
@@ -46,7 +48,8 @@
   approved accounts through protected ingestion
 - support many accounts per provider without embedding credentials in Git,
   docs, prompts, argv, or continuity
-- add periodic discovery/health/quota refresh with last-good-cache behavior
+- [x] add periodic discovery/health/quota refresh with last-good-cache behavior
+- import active first-class accounts so the coordinator can refresh real pools
 - add measured model scorecards and provider/account cooldown handling
 - research Freemodel and browser bridges separately; do not pretend they are
   ordinary OpenAI-compatible providers until proven

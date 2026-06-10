@@ -32,6 +32,11 @@
 
 - `src/sonya/providers/refresh.py` implements `ProviderRefreshService` over
   the adapter contract.
+- `ProviderRefreshCoordinator` runs from the core runtime every ten minutes and
+  refreshes only active pools whose last successful discovery is older than
+  `metadata.refresh_ttl_seconds` (six hours by default).
+- Pools without active first-class accounts are skipped quietly until secure
+  account import makes them lifecycle-ready.
 - Refresh records provider health, model discovery observations, and quota
   windows.
 - Successful discovery upserts `provider_models` and enables offerings for
@@ -121,6 +126,10 @@
   `thinking_provider_ready` for the OpenRouter pool
 - production-source provider verification: `126 passed` (`119` regular plus
   `7` async tests rerun with explicit `asyncio_mode=auto`)
+- periodic refresh commits `11dbc04` and `37e8e72` deployed; focused
+  production-source suite passed (`18 passed`), both services active, and the
+  corrected first cycle emitted no false failures for pools without active
+  accounts
 
 ## Next Slice
 
@@ -130,6 +139,7 @@ The refresh endpoint builds lifecycle adapters from substrate-owned
 provider/account state and resolves encrypted credentials only at the adapter
 boundary.
 
-Bootstrap Nous through protected secret ingestion, then add periodic provider
-refresh and measured model scorecards. Authenticated production visual review
+Bootstrap Nous and the remaining approved providers through protected secret
+ingestion, confirm periodic lifecycle observations, then add measured model
+scorecards and cooldown handling. Authenticated production visual review
 remains open because the operator password was not extracted for automation.

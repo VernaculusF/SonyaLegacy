@@ -310,6 +310,10 @@ not turn Atrium into an admin surface.
 ### Progress 2026-06-10 — provider refresh service
 
 - [x] `ProviderRefreshService` records health, model discovery observations, and quota windows
+- [x] core runtime uses a generic TTL-based `ProviderRefreshCoordinator`
+- [x] only successful discovery marks a pool fresh; failed discovery remains retryable
+- [x] pools without active first-class accounts are skipped until secure import
+- [x] Fireworks-only runtime balance loop removed
 - [x] successful discovery upserts provider model pools and active-account offerings
 - [x] discovery failure preserves last-good cached models
 - [x] `providers.list_models` reads substrate provider model pools and offering availability
