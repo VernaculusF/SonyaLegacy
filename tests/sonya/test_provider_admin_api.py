@@ -5,6 +5,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from sonya.admin.server import create_app
 from sonya.providers.keystore import KeyStore
+from sonya.providers.adapters.base import AdapterHealth
 from sonya.state.substrate import Substrate
 
 
@@ -81,6 +82,44 @@ async def test_admin_provider_registry_payload_and_create_flow(tmp_path, monkeyp
         assert data["accounts"][0]["account_id"] == account_id
         assert data["models"][0]["model_id"] == "nvidia/nemotron-3-ultra:free"
         assert raw_secret not in str(data)
+    finally:
+        await client.close()
+
+
+async def test_admin_provider_refresh_runs_lifecycle_service(tmp_path, monkeypatch) -> None:
+    class RefreshAdapter:
+        async def health_check(self):
+            return AdapterHealth(ok=True, status="ok", latency_ms=12)
+
+        async def discover_models(self):
+            return []
+
+        async def fetch_quota(self):
+            return []
+
+    client = await _client(tmp_path, monkeypatch)
+    try:
+        await client.post("/api/providers/registry", json={
+            "provider_id": "nous",
+            "display_name": "Nous",
+            "adapter_kind": "openai_compatible",
+        })
+        monkeypatch.setattr(
+            "sonya.providers.adapters.factory.build_lifecycle_adapter",
+            lambda store, provider_id: RefreshAdapter(),
+        )
+
+        response = await client.post("/api/providers/registry/nous/refresh")
+
+        assert response.status == 200
+        payload = await response.json()
+        assert payload == {
+            "provider_id": "nous",
+            "ok": True,
+            "models_seen": 0,
+            "quotas_seen": 0,
+            "error": "",
+        }
     finally:
         await client.close()
 

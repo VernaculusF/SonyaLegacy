@@ -11,6 +11,7 @@ from sonya.providers.adapters.base import (
 )
 from sonya.providers.adapters.google_native import GoogleNativeAdapter
 from sonya.providers.adapters.openai_compatible import OpenAICompatibleAdapter
+from sonya.providers.adapters.factory import build_lifecycle_adapter
 
 __all__ = [
     "AdapterCapabilities",
@@ -20,6 +21,7 @@ __all__ = [
     "DiscoveredModel",
     "GoogleNativeAdapter",
     "OpenAICompatibleAdapter",
+    "build_lifecycle_adapter",
     "ProviderAdapter",
     "QuotaSnapshot",
 ]

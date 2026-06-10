@@ -5,6 +5,7 @@ def test_provider_admin_uses_pool_console_and_protected_secrets() -> None:
     assert "Provider pools" in ADMIN_HTML
     assert "Model pool" in ADMIN_HTML
     assert "Rotate secret" in ADMIN_HTML
+    assert "Refresh / probe" in ADMIN_HTML
     assert "/api/providers/accounts/${id}/secret" in ADMIN_HTML
     assert "New credentials use protected provider-account secrets." in ADMIN_HTML
 

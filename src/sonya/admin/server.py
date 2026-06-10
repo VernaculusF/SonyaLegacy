@@ -967,6 +967,37 @@ async def api_providers_registry_delete(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def api_providers_registry_refresh(request: web.Request) -> web.Response:
+    from sonya.providers import KeyStore
+    from sonya.providers.adapters.factory import build_lifecycle_adapter
+    from sonya.providers.refresh import ProviderRefreshService
+
+    config = request.app["config"]
+    provider_id = request.match_info["provider_id"].strip().lower()
+    sub = _get_substrate_writable(config)
+    try:
+        store = KeyStore(sub)
+        if store.get_provider(provider_id) is None:
+            return web.json_response({"error": "not found"}, status=404)
+        try:
+            adapter = build_lifecycle_adapter(store, provider_id)
+            result = await ProviderRefreshService(
+                store,
+                {provider_id: adapter},
+            ).refresh_provider(provider_id)
+        except (KeyError, RuntimeError, ValueError) as exc:
+            return web.json_response({"error": str(exc)}, status=409)
+        return web.json_response({
+            "provider_id": result.provider_id,
+            "ok": result.ok,
+            "models_seen": result.models_seen,
+            "quotas_seen": result.quotas_seen,
+            "error": result.error,
+        })
+    finally:
+        sub.close()
+
+
 async def api_providers_accounts_add(request: web.Request) -> web.Response:
     from sonya.providers import KeyStore
     config = request.app["config"]
@@ -2802,6 +2833,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/providers", api_providers_get)
     app.router.add_post("/api/providers/registry", api_providers_registry_upsert)
     app.router.add_post("/api/providers/registry/{provider_id}", api_providers_registry_upsert)
+    app.router.add_post("/api/providers/registry/{provider_id}/refresh", api_providers_registry_refresh)
     app.router.add_post("/api/providers/registry/{provider_id}/delete", api_providers_registry_delete)
     app.router.add_post("/api/providers/accounts", api_providers_accounts_add)
     app.router.add_post("/api/providers/accounts/offerings", api_providers_account_offering_set)
