@@ -31,13 +31,15 @@
   live refresh succeeds: Google 2 accounts / 50 available models, Nous 2
   accounts / 265 available models after provider-scoped repair, CodexSale
   1 account / 3 available models;
-- project execution now has a first end-to-end substrate slice:
-  `projects.execute` creates a `project_executor` run, spawns an internal
-  disposable subagent scoped to the project, records task/action traces, and
-  `projects.harvest` records the outcome trace and completes/fails the run;
+- project execution accepts one task or an explicit list of independent tasks,
+  spawns project-scoped disposable subagents, retries failed workers within a
+  bounded budget, persists progress checkpoints, and aggregates outcomes;
+- Atrium project runtime reads project runs/traces from the project API and
+  shows aggregate progress, internal worker subthreads, retries, and outcomes
+  without presenting subagents as separate chat actors;
 - active work is measured scorecards/cooldowns, stronger project executor
-  planning/retry/progress behavior, and migration/audit of old memory and
-  knowledge.
+  autonomous planning/dependency behavior, and migration/audit of old memory
+  and knowledge.
 
 The authoritative execution order is
 `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Older provider sections

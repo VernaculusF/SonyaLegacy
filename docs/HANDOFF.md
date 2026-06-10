@@ -9,15 +9,16 @@
 Deployed baseline: `aab8eea`, substrate schema v33, account-scoped periodic
 provider refresh, safe provider account importer, Kimchi/Google/Nous/CodexSale
 imported, OpenRouter free-model probe deployed, provider-scoped model identity
-repaired, project executor subagent lifecycle slice deployed, and active
+repaired, multi-worker project executor and Atrium runtime visibility deployed,
+and active
 `sonya` / `sonya-admin` services.
 
 Current slice:
 
 1. add measured scorecards and provider/account cooldowns;
-2. extend project executor from one-subagent proof to multi-subagent
-   planning/retries/progress checkpoints;
-3. wire Atrium project runtime UI to `project_executor` runs/traces/outcomes;
+2. extend project executor from explicit independent tasks to autonomous
+   decomposition, dependency-aware execution, and result synthesis;
+3. add project runtime controls for pause/cancel/approval decisions;
 4. inventory and migrate old memory and knowledge with backups, provenance, and
    idempotent manifests;
 5. continue remaining approved provider imports if Ivan supplies more keys.
@@ -42,6 +43,12 @@ Completed in the latest slices:
   executor e2e substrate slice: Sonya can create a project run, spawn an
   internal project-scoped disposable subagent, record task/action/outcome
   traces, complete/fail the run, and record `ToolExperience`;
+- `projects.execute` now accepts explicit independent task lists, spawns
+  multiple internal workers, retries failed workers independently, and writes
+  aggregate progress checkpoints;
+- Atrium project workspace now polls project runs/traces and renders aggregate
+  progress, retry state, internal worker subthreads, and outcomes; subagents
+  remain internal tools rather than separate UI actors;
 - VPS verification for the new slices: provider-focused suite `32 passed`,
   project/subagent/provider suite `29 passed`, both services active, and
   system journal error scans were empty;

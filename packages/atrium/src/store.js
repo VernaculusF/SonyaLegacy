@@ -506,6 +506,15 @@ export async function fetchProjectTraces(projectId) {
   } catch { return []; }
 }
 
+export async function fetchProjectRuns(projectId) {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects/' + projectId + '/runs', { headers: _apiHeaders() });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.runs || [];
+  } catch { return []; }
+}
+
 export async function createProject(title, description, workspacePath) {
   try {
     const res = await fetch(_apiBase() + '/api/projects', {

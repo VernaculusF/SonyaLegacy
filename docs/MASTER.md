@@ -54,8 +54,10 @@
 - provider pools are substrate-owned and provider-scoped:
   `(provider, model_id)` prevents OpenRouter/Nous-style model ID collisions
 - subagents с model routing
-- first project executor substrate slice: `projects.execute` starts a project
-  run and internal subagent, `projects.harvest` writes outcome traces/results
+- project executor runtime: `projects.execute` can start one or several
+  internal project-scoped workers, `projects.harvest` retries and aggregates
+  outcomes, and Atrium exposes their progress as traces/subthreads rather than
+  separate actors
 - Atrium как multichannel UI surface
 - Atrium workspace path partially started: non-main workspaces, workspace-aware dialog/history/runtime routing
 

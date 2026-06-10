@@ -268,8 +268,14 @@ detailed current roadmap is
 - [x] `ToolExperience` records project executor outcomes for future routing
   and learning
 - [x] VPS focused project/subagent/provider suite passes (`29 passed`)
-- [ ] multi-subagent planning, retries, progress checkpoints, and Atrium live
-  progress UI remain next work
+- [x] explicit independent task lists can spawn multiple project-scoped
+  disposable subagents
+- [x] failed workers retry independently within a bounded retry budget
+- [x] aggregate runs persist worker state and progress checkpoints
+- [x] Atrium project surface reads `project_executor` runs/traces and shows
+  progress, retries, internal worker subthreads, and outcomes
+- [ ] autonomous task decomposition/planning and dependency-aware execution
+  remain next work
 
 ---
 

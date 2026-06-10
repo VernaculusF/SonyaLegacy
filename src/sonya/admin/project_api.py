@@ -34,6 +34,37 @@ def _cors(response: web.Response) -> web.Response:
     return response
 
 
+def _project_run_payload(run: Any) -> dict[str, Any]:
+    steps = [step for step in run.steps if isinstance(step, dict)]
+    completed = sum(1 for step in steps if step.get("status") == "done")
+    failed = sum(1 for step in steps if step.get("status") == "failed")
+    running = max(0, len(steps) - completed - failed)
+    terminal = completed + failed
+    percent = round((terminal / len(steps)) * 100) if steps else (
+        100 if run.status in ("completed", "failed") else 0
+    )
+    return {
+        "run_id": run.run_id,
+        "kind": run.kind,
+        "status": run.status,
+        "agent_type": run.agent_type,
+        "summary": run.summary,
+        "steps": steps,
+        "progress": {
+            "total": len(steps),
+            "completed": completed,
+            "failed": failed,
+            "running": running,
+            "percent": percent,
+        },
+        "result": run.result[:2000] if run.result else "",
+        "error": run.error[:2000] if run.error else "",
+        "started_at": run.started_at,
+        "completed_at": run.completed_at,
+        "created_at": run.created_at,
+    }
+
+
 async def api_project_list(request: web.Request) -> web.Response:
     config = request.app["config"]
     status_filter = request.query.get("status", "")
@@ -189,21 +220,7 @@ async def api_project_runs(request: web.Request) -> web.Response:
         runs = store.list_by_project(project_id, kind=kind)
         return _cors(web.json_response({
             "project_id": project_id,
-            "runs": [
-                {
-                    "run_id": r.run_id,
-                    "kind": r.kind,
-                    "status": r.status,
-                    "agent_type": r.agent_type,
-                    "summary": r.summary,
-                    "result": r.result[:500] if r.result else "",
-                    "error": r.error[:500] if r.error else "",
-                    "started_at": r.started_at,
-                    "completed_at": r.completed_at,
-                    "created_at": r.created_at,
-                }
-                for r in runs
-            ],
+            "runs": [_project_run_payload(run) for run in runs],
         }))
     finally:
         sub.close()

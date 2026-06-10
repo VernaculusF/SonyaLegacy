@@ -140,3 +140,38 @@ def test_project_api_rejects_invalid_status(substrate, tmp_path: Path, monkeypat
 
     response = asyncio.run(api_project_update(_Req()))
     assert response.status == 400
+
+
+def test_project_runs_api_exposes_worker_progress(substrate, tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "runs-api.db"))
+    from sonya.admin.project_api import api_project_runs
+    from sonya.config import load_config
+
+    api_substrate = Substrate.open(tmp_path / "runs-api.db")
+    project = ProjectStore(api_substrate).create("runtime progress proof")
+    run_store = ProjectRunStore(api_substrate)
+    run = run_store.create(project.project_id, kind="project_executor")
+    run_store.start(run.run_id)
+    run_store.update(run.run_id, steps=[
+        {"subagent_id": "sub-done", "task": "inspect", "status": "done"},
+        {"subagent_id": "sub-retry", "task": "fix", "status": "running", "retry_count": 1},
+        {"subagent_id": "sub-failed", "task": "verify", "status": "failed"},
+    ])
+    api_substrate.close()
+
+    class _Req:
+        app = {"config": load_config()}
+        match_info = {"project_id": project.project_id}
+        query = {}
+
+    response = asyncio.run(api_project_runs(_Req()))
+    payload = __import__("json").loads(response.text)
+    exposed = payload["runs"][0]
+    assert exposed["steps"][1]["retry_count"] == 1
+    assert exposed["progress"] == {
+        "total": 3,
+        "completed": 1,
+        "failed": 1,
+        "running": 1,
+        "percent": 67,
+    }
