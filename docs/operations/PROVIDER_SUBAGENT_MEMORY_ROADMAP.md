@@ -66,8 +66,8 @@
   `episodic_events`, `semantic_facts`, `raw_traces`, `procedural_memory`, and
   `continuity_events`
 - [x] inventory `~/.sonya/knowledge/` and available legacy import sources
-- [ ] build a read-only migration manifest command
-- create backups and an idempotent migration manifest before any write
+- [x] build a read-only migration manifest command
+- [ ] create backups and an idempotent migration manifest before any write
 - run existing Telegram history and legacy knowledge migrations where needed
 - deduplicate, preserve provenance, and verify retrieval after migration
 - prove that project work and summarized subagent outcomes enter the one shared

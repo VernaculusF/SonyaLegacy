@@ -55,6 +55,18 @@ derived lessons should enter those layers.
 
 ## Next Implementation Slice
 
-Build a read-only migration manifest command first. It must not dump private
-memory content into logs; counts, schemas, hashes, paths, and provenance
-metadata are sufficient for the initial audit.
+The read-only migration manifest command is implemented:
+
+```bash
+python -m sonya.tools.memory_migration_manifest \
+  --substrate ~/.sonya/sonya_substrate.db \
+  --knowledge-root ~/.sonya/knowledge \
+  --project-root ~/Sonya \
+  --output /tmp/sonya-memory-manifest.json
+```
+
+It opens SQLite with `mode=ro` and emits only counts, schemas, paths, sizes,
+hashes, and source categories. It does not emit memory or knowledge content.
+
+Next, create the WAL-safe backup and run migration-source/deduplication analysis
+against the backup copy before any production write.
