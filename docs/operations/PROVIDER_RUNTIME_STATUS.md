@@ -164,9 +164,12 @@
   unavailable. Account-aware legacy key acquire is deployed, so runtime chooses
   only keys whose mirrored account offers the selected model.
 - Google, Nous, and CodexSale protected imports completed from ignored workspace
-  files. Refresh results: Google `2/2` ok, `50` available models; Nous `2/2`
-  ok, `265` available models (`3` free); CodexSale `1/1` ok, `3` available
-  models. Temporary import files were removed.
+  files. Refresh results: Google `2/2` ok, `50` available models; CodexSale
+  `1/1` ok, `3` available models. Nous `2/2` ok and wrote `265` offerings per
+  account, but only `29` are currently visible as available because `236`
+  offering model IDs collide with OpenRouter-owned `provider_models` rows. This
+  is the next provider-schema fix: model identity must be scoped by provider or
+  mapped through provider-specific aliases. Temporary import files were removed.
 - `nvidia/llama-nemotron-rerank-vl-1b-v2:free` was requested but is not in the
   current live OpenRouter catalog on the VPS; rerank-related catalog searches
   returned zero rows after refresh.

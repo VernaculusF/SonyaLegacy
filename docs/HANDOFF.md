@@ -108,9 +108,12 @@ Completed in the latest slices:
   models; account enabled-offering counts ranged from 13 to 19.
 - Google, Nous, and CodexSale were imported from ignored workspace files via
   protected ingestion: Google 2 accounts, Nous 2 accounts, CodexSale 1 account.
-  Live refresh results: Google `2/2` ok with 50 available models; Nous `2/2`
-  ok with 265 available models and 3 free; CodexSale `1/1` ok with 3 available
-  models. Temporary VPS import files were removed.
+  Live refresh results: Google `2/2` ok with 50 available models; CodexSale
+  `1/1` ok with 3 available models. Nous `2/2` refresh saw 265 account
+  offerings, but only 29 currently appear available because 236 returned model
+  IDs collide with OpenRouter rows in the global `provider_models(model_id)`
+  schema. Fix requires provider-scoped model identity. Temporary VPS import
+  files were removed.
 - `nvidia/llama-nemotron-rerank-vl-1b-v2:free` is not present in the current
   live OpenRouter `/models` catalog on the VPS; searches for rerank/nemotron
   rerank returned zero cached rows after refresh.

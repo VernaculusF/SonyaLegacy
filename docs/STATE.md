@@ -27,7 +27,9 @@
   acquire is constrained by model offering;
 - Google, Nous, and CodexSale are imported as protected provider accounts and
   live refresh succeeds: Google 2 accounts / 50 available models, Nous 2
-  accounts / 265 available models, CodexSale 1 account / 3 available models;
+  accounts / 29 currently available models, CodexSale 1 account / 3 available
+  models; Nous exposed the next schema bug: model identity must become
+  provider-scoped because many returned model IDs collide with OpenRouter;
 - active work is safe import of remaining provider accounts, measured
   scorecards/cooldowns, subagent lifecycle completion, and migration/audit of
   old memory and knowledge.

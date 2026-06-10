@@ -377,6 +377,8 @@ not turn Atrium into an admin surface.
 - [x] protected Google bootstrap
 - [x] protected Nous bootstrap
 - [x] protected CodexSale bootstrap
+- [ ] provider-scoped model identity / aliases so providers can expose the same
+  raw model id without overwriting each other
 
 ### Цель
 Переделать provider layer в `provider -> model pool`.
