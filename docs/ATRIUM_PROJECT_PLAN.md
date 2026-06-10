@@ -274,6 +274,8 @@ detailed current roadmap is
 - [x] aggregate runs persist worker state and progress checkpoints
 - [x] Atrium project surface reads `project_executor` runs/traces and shows
   progress, retries, internal worker subthreads, and outcomes
+- [x] project runs can be honestly cancelled through persisted cross-process
+  lifecycle state plus immediate core-process task cancellation
 - [ ] autonomous task decomposition/planning and dependency-aware execution
   remain next work
 

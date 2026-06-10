@@ -171,6 +171,22 @@ class ProjectsTool:
                 },
             },
             {
+                "name": "projects.cancel",
+                "description": (
+                    "Cancel a running project executor run and its internal "
+                    "workers. This is a real lifecycle cancellation, not only "
+                    "a display status change."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["project_id", "run_id"],
+                    "properties": {
+                        "project_id": {"type": "string", "description": "Project ID"},
+                        "run_id": {"type": "string", "description": "Project executor run ID"},
+                    },
+                },
+            },
+            {
                 "name": "projects.pressure",
                 "description": (
                     "Read or update evolution pressure dimensions. "
@@ -214,6 +230,8 @@ class ProjectsTool:
             return self._execute_project(args)
         if name == "projects.harvest":
             return self._harvest_project(args)
+        if name == "projects.cancel":
+            return self._cancel_project(args)
         if name == "projects.pressure":
             return self._pressure(args)
         return f"[unknown tool: {name}]"
@@ -437,7 +455,7 @@ class ProjectsTool:
                 continue
             changed = False
             for step in run.steps:
-                if not isinstance(step, dict) or step.get("status") in ("done", "failed"):
+                if not isinstance(step, dict) or step.get("status") in ("done", "failed", "cancelled"):
                     continue
                 subagent_id = str(step.get("subagent_id", ""))
                 row = self._sub.connection.execute(
@@ -447,7 +465,7 @@ class ProjectsTool:
                 if row is None:
                     row = ("failed", f"subagent {subagent_id or '(missing id)'} missing", "", "")
                 status, result, provider, model = row
-                if status not in ("done", "failed"):
+                if status not in ("done", "failed", "cancelled"):
                     continue
                 if status == "failed" and int(step.get("retry_count", 0)) < int(step.get("max_retries", 0)):
                     spawned = self._spawn_project_subagent(
@@ -491,7 +509,7 @@ class ProjectsTool:
             if changed:
                 run_store.update(run.run_id, steps=run.steps)
             statuses = [str(step.get("status", "")) for step in run.steps if isinstance(step, dict)]
-            pending_count = sum(1 for status in statuses if status not in ("done", "failed"))
+            pending_count = sum(1 for status in statuses if status not in ("done", "failed", "cancelled"))
             if pending_count:
                 pending += pending_count
                 if not changed:
@@ -512,6 +530,48 @@ class ProjectsTool:
         if completed or failed:
             ProjectStore(self._sub).touch(pid)
         return f"[OK] project harvest: completed={completed}, failed={failed}, pending={pending}"
+
+    def _cancel_project(self, args: dict) -> str:
+        from sonya.project import ExecutionTraceStore, ProjectRunStore
+        from sonya.project.model import RunNotFoundError
+        from sonya.subject.subagent_lifecycle import cancel_subagent
+
+        pid = str(args.get("project_id", "")).strip()
+        run_id = str(args.get("run_id", "")).strip()
+        if not pid or not run_id:
+            return "[ERROR] projects.cancel: project_id and run_id are required"
+        run_store = ProjectRunStore(self._sub)
+        try:
+            run = run_store.get(run_id)
+        except RunNotFoundError:
+            return f"[ERROR] projects.cancel: run {run_id} not found"
+        if run.project_id != pid:
+            return f"[ERROR] projects.cancel: run {run_id} does not belong to project {pid}"
+        if run.status not in ("pending", "running"):
+            return f"[OK] project run already terminal: {run.status}"
+
+        cancelled = 0
+        for step in run.steps:
+            if not isinstance(step, dict) or step.get("status") in ("done", "failed", "cancelled"):
+                continue
+            if cancel_subagent(
+                self._sub,
+                str(step.get("subagent_id", "")),
+                reason="project run cancelled",
+            ):
+                cancelled += 1
+            step["status"] = "cancelled"
+            step["result"] = "[CANCELLED] project run cancelled"
+        run_store.update(run_id, status="cancelled", steps=run.steps, error="[CANCELLED] project run cancelled")
+        self._append_run_trace(
+            ExecutionTraceStore(self._sub),
+            run_id,
+            pid,
+            "checkpoint",
+            f"project run cancelled; workers={cancelled}",
+            outcome="cancelled",
+        )
+        return f"[OK] project run cancelled: cancelled={cancelled}"
 
     def _spawn_project_subagent(
         self,

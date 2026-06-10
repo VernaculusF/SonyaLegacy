@@ -37,6 +37,9 @@
 - Atrium project runtime reads project runs/traces from the project API and
   shows aggregate progress, internal worker subthreads, retries, and outcomes
   without presenting subagents as separate chat actors;
+- project executor cancellation is lifecycle-backed: cancellation is persisted
+  for cross-process visibility and immediately cancels a running worker task
+  when core owns its asyncio handle;
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;

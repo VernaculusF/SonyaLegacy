@@ -8,9 +8,10 @@ import {
   activeWorkspaceId,
   fetchProjectRuns,
   fetchProjectTraces,
+  cancelProjectRun,
 } from '../store.js';
 
-const terminalStatuses = new Set(['done', 'failed']);
+const terminalStatuses = new Set(['done', 'failed', 'cancelled']);
 
 export default function ProjectWorkspace(props) {
   const [runs, setRuns] = createSignal([]);
@@ -67,6 +68,9 @@ export default function ProjectWorkspace(props) {
   const traceTitle = (trace) => trace.step_type === 'checkpoint'
     ? 'checkpoint'
     : trace.step_type === 'outcome' ? 'результат' : trace.step_type;
+  const cancelRun = async (runId) => {
+    if (await cancelProjectRun(projectId(), runId)) await refreshRuntime();
+  };
 
   return (
     <div class="pane workspace-pane">
@@ -120,6 +124,10 @@ export default function ProjectWorkspace(props) {
                           <span>{run.progress?.completed || 0} готово</span>
                           <span>{run.progress?.running || 0} в работе</span>
                           <Show when={run.progress?.failed}><span class="ws-error">{run.progress.failed} ошибок</span></Show>
+                          <Show when={run.progress?.cancelled}><span>{run.progress.cancelled} отменено</span></Show>
+                          <Show when={['pending', 'running'].includes(run.status)}>
+                            <button class="btn ghost ws-cancel-run" onClick={() => cancelRun(run.run_id)}>Отменить</button>
+                          </Show>
                         </div>
                         <Show when={run.result || run.error}>
                           <div classList={{ 'ws-run-result': true, error: Boolean(run.error) }}>

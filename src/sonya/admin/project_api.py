@@ -38,10 +38,11 @@ def _project_run_payload(run: Any) -> dict[str, Any]:
     steps = [step for step in run.steps if isinstance(step, dict)]
     completed = sum(1 for step in steps if step.get("status") == "done")
     failed = sum(1 for step in steps if step.get("status") == "failed")
-    running = max(0, len(steps) - completed - failed)
-    terminal = completed + failed
+    cancelled = sum(1 for step in steps if step.get("status") == "cancelled")
+    running = max(0, len(steps) - completed - failed - cancelled)
+    terminal = completed + failed + cancelled
     percent = round((terminal / len(steps)) * 100) if steps else (
-        100 if run.status in ("completed", "failed") else 0
+        100 if run.status in ("completed", "failed", "cancelled") else 0
     )
     return {
         "run_id": run.run_id,
@@ -54,6 +55,7 @@ def _project_run_payload(run: Any) -> dict[str, Any]:
             "total": len(steps),
             "completed": completed,
             "failed": failed,
+            "cancelled": cancelled,
             "running": running,
             "percent": percent,
         },
@@ -257,6 +259,50 @@ async def api_project_traces(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def api_project_run_cancel(request: web.Request) -> web.Response:
+    config = request.app["config"]
+    project_id = request.match_info["project_id"]
+    run_id = request.match_info["run_id"]
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.project import ExecutionTraceStore, ProjectRunStore
+        from sonya.project.model import RunNotFoundError
+        from sonya.subject.subagent_lifecycle import cancel_subagent
+
+        run_store = ProjectRunStore(sub)
+        try:
+            run = run_store.get(run_id)
+        except RunNotFoundError:
+            return _cors(web.json_response({"error": "run not found"}, status=404))
+        if run.project_id != project_id:
+            return _cors(web.json_response({"error": "run not found"}, status=404))
+        cancelled = 0
+        for step in run.steps:
+            if not isinstance(step, dict) or step.get("status") in ("done", "failed", "cancelled"):
+                continue
+            if cancel_subagent(sub, str(step.get("subagent_id", "")), reason="project run cancelled"):
+                cancelled += 1
+            step["status"] = "cancelled"
+            step["result"] = "[CANCELLED] project run cancelled"
+        run_store.update(run_id, status="cancelled", steps=run.steps, error="[CANCELLED] project run cancelled")
+        traces = ExecutionTraceStore(sub).list_by_run(run_id)
+        ExecutionTraceStore(sub).append(
+            run_id,
+            project_id,
+            step_seq=(max(trace.step_seq for trace in traces) + 1) if traces else 0,
+            step_type="checkpoint",
+            content=f"project run cancelled; workers={cancelled}",
+            outcome="cancelled",
+        )
+        return _cors(web.json_response({
+            "status": "cancelled",
+            "run_id": run_id,
+            "cancelled_workers": cancelled,
+        }))
+    finally:
+        sub.close()
+
+
 async def api_project_check_policy(request: web.Request) -> web.Response:
     config = request.app["config"]
     project_id = request.match_info["project_id"]
@@ -371,6 +417,7 @@ def register_project_routes(app: web.Application) -> None:
     app.router.add_post("/api/projects/{project_id}", api_project_update)
     app.router.add_delete("/api/projects/{project_id}", api_project_delete)
     app.router.add_get("/api/projects/{project_id}/runs", api_project_runs)
+    app.router.add_post("/api/projects/{project_id}/runs/{run_id}/cancel", api_project_run_cancel)
     app.router.add_get("/api/projects/{project_id}/traces", api_project_traces)
     app.router.add_post("/api/projects/{project_id}/check-policy", api_project_check_policy)
     app.router.add_get("/api/evolution-pressure", api_evolution_pressure)

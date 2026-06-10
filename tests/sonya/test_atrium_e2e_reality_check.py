@@ -172,6 +172,45 @@ def test_project_runs_api_exposes_worker_progress(substrate, tmp_path: Path, mon
         "total": 3,
         "completed": 1,
         "failed": 1,
+        "cancelled": 0,
         "running": 1,
         "percent": 67,
     }
+
+
+def test_project_run_cancel_api_marks_run_and_workers(substrate, tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "cancel-api.db"))
+    from sonya.admin.project_api import api_project_run_cancel
+    from sonya.config import load_config
+
+    api_substrate = Substrate.open(tmp_path / "cancel-api.db")
+    project = ProjectStore(api_substrate).create("cancel api proof")
+    run_store = ProjectRunStore(api_substrate)
+    run = run_store.create(project.project_id, kind="project_executor")
+    run_store.start(run.run_id)
+    run_store.update(run.run_id, steps=[{"subagent_id": "sub-cancel", "status": "running"}])
+    api_substrate.connection.execute(
+        "INSERT INTO subagent_tasks "
+        "(subagent_id, workspace_id, task, provider, model, max_steps, status, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("sub-cancel", project.project_id, "wait", "mock", "mock", 1, "running", "now"),
+    )
+    api_substrate.connection.commit()
+    api_substrate.close()
+
+    class _Req:
+        app = {"config": load_config()}
+        match_info = {"project_id": project.project_id, "run_id": run.run_id}
+
+    response = asyncio.run(api_project_run_cancel(_Req()))
+    payload = __import__("json").loads(response.text)
+    assert payload["cancelled_workers"] == 1
+
+    checked = Substrate.open(tmp_path / "cancel-api.db")
+    try:
+        assert ProjectRunStore(checked).get(run.run_id).status == "cancelled"
+        assert checked.connection.execute(
+            "SELECT status FROM subagent_tasks WHERE subagent_id = 'sub-cancel'"
+        ).fetchone()[0] == "cancelled"
+    finally:
+        checked.close()

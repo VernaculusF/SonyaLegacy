@@ -25,6 +25,12 @@ class _FailThenSucceedProvider:
         return "[DONE] recovered result"
 
 
+class _BlockingProvider:
+    async def complete_text(self, messages, **kwargs):
+        await asyncio.sleep(30)
+        return "[DONE] should have been cancelled"
+
+
 @pytest.mark.asyncio
 async def test_project_execute_spawns_subagent_and_harvests_result(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "project-executor.db")
@@ -149,5 +155,43 @@ async def test_project_harvest_retries_failed_subagent(tmp_path) -> None:
         assert len(run.steps[0]["attempts"]) == 2
         assert "recovered result" in run.result
         assert "checkpoint" in [trace.step_type for trace in ExecutionTraceStore(sub).list_by_run(run.run_id)]
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_project_cancel_stops_workers_across_tool_instances(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-cancel-executor.db")
+    try:
+        project = ProjectStore(sub).create(
+            "Cancel executor proof",
+            workspace_path=str(tmp_path),
+            policy={"subagent_spawn": "allowed"},
+        )
+        starter = ProjectsTool(sub, subagent_provider=_BlockingProvider())
+        started = await starter.execute({
+            "name": "projects.execute",
+            "arguments": {"project_id": project.project_id, "task": "wait forever"},
+        })
+        assert "[OK]" in started
+        run = ProjectRunStore(sub).list_by_project(project.project_id, kind="project_executor", limit=1)[0]
+
+        canceller = ProjectsTool(sub)
+        cancelled = await canceller.execute({
+            "name": "projects.cancel",
+            "arguments": {"project_id": project.project_id, "run_id": run.run_id},
+        })
+        assert "cancelled=1" in cancelled
+        await asyncio.sleep(0.05)
+
+        run = ProjectRunStore(sub).get(run.run_id)
+        assert run.status == "cancelled"
+        assert run.steps[0]["status"] == "cancelled"
+        subagent = sub.connection.execute(
+            "SELECT status, result FROM subagent_tasks WHERE subagent_id = ?",
+            (run.steps[0]["subagent_id"],),
+        ).fetchone()
+        assert subagent == ("cancelled", "[CANCELLED] project run cancelled")
+        assert ExecutionTraceStore(sub).list_by_run(run.run_id)[-1].step_type == "checkpoint"
     finally:
         sub.close()

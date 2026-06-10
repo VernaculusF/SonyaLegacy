@@ -515,6 +515,16 @@ export async function fetchProjectRuns(projectId) {
   } catch { return []; }
 }
 
+export async function cancelProjectRun(projectId, runId) {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects/' + projectId + '/runs/' + runId + '/cancel', {
+      method: 'POST',
+      headers: _apiHeaders(),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 export async function createProject(title, description, workspacePath) {
   try {
     const res = await fetch(_apiBase() + '/api/projects', {

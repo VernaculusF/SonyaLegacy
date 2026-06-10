@@ -85,6 +85,10 @@ class SubagentRunner:
 
     async def run(self, task: SubagentTask) -> str:
         """Execute a subagent task and return the result string."""
+        from sonya.subject.subagent_lifecycle import subagent_cancel_requested
+
+        if subagent_cancel_requested(self._sub, task.subagent_id):
+            return "[CANCELLED] cancellation requested before start"
         task.status = "running"
         self._current_task = task
         self._save_task(task)
@@ -152,6 +156,8 @@ class SubagentRunner:
                 pass
 
         for step in range(task.max_steps):
+            if subagent_cancel_requested(self._sub, task.subagent_id):
+                return "[CANCELLED] cancellation requested"
             if time.time() - t_start > _MAX_SECONDS:
                 result = "[TIMEOUT] Subagent exceeded time limit."
                 break
@@ -165,6 +171,8 @@ class SubagentRunner:
                     _model=task.model,
                     max_tokens=2000,
                 )
+                if subagent_cancel_requested(self._sub, task.subagent_id):
+                    return "[CANCELLED] cancellation requested"
             except Exception as e:
                 result = f"[ERROR] LLM call failed: {type(e).__name__}: {e}"
                 break

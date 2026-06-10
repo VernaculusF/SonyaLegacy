@@ -18,7 +18,8 @@ Current slice:
 1. add measured scorecards and provider/account cooldowns;
 2. extend project executor from explicit independent tasks to autonomous
    decomposition, dependency-aware execution, and result synthesis;
-3. add project runtime controls for pause/cancel/approval decisions;
+3. add project runtime controls for pause/approval decisions; honest cancel is
+   now implemented;
 4. inventory and migrate old memory and knowledge with backups, provenance, and
    idempotent manifests;
 5. continue remaining approved provider imports if Ivan supplies more keys.
@@ -49,6 +50,10 @@ Completed in the latest slices:
 - Atrium project workspace now polls project runs/traces and renders aggregate
   progress, retry state, internal worker subthreads, and outcomes; subagents
   remain internal tools rather than separate UI actors;
+- project runs have honest cancel controls in both `projects.cancel` and
+  Atrium: a persisted cancellation signal crosses Admin/core process
+  boundaries, while a shared core registry immediately cancels owned asyncio
+  workers;
 - deployed project runtime UI commits `8bb2408` and `4cc7228`; VPS focused
   project/provider/Admin suite passed (`42 passed`), both services are active,
   and the recent error journal is empty;

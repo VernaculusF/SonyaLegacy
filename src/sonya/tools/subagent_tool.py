@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from sonya.state.substrate import Substrate
 from sonya.subject.subagent_runner import SubagentTask, SubagentRunner
+from sonya.subject.subagent_lifecycle import register_subagent_task
 from sonya.providers.llm_provider import LLMProvider
 from sonya.providers.keystore import KeyStore
 from sonya.tools.subagent_model_picker import PickPolicy, infer_role, is_text_loop_model, pick_subagent_model
@@ -109,6 +110,7 @@ class SubagentTool:
         runner = SubagentRunner(self._sub, self._provider)
         t = loop.create_task(runner.run(task))
         self._running[task.subagent_id] = t
+        register_subagent_task(task.subagent_id, t)
 
         return (
             f"[OK] Subagent spawned: {task.subagent_id}\n"
