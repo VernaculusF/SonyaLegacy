@@ -45,6 +45,9 @@ Completed in the latest slices:
   distributions without content fields.
 - exact duplicate counting is explicit `--analyze-duplicates` backup-only
   analysis; it reports group/extra-row counts without values.
+- semantic exact-dedup tool added: dry-run by default, backup-confirmation
+  required for apply, preserves provenance, and never deduplicates episodic
+  events by content.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

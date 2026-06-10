@@ -92,5 +92,19 @@ On 2026-06-10 the VPS backup path was repaired and proven:
 Next, inspect provenance distributions and design explicit deduplication rules
 against the backup copy before any production write.
 
+## Deduplication Policy
+
+- Never deduplicate episodic events by content alone. Repeated messages and
+  observations are distinct events.
+- Exact semantic duplicates may merge only when `fact_type`, `statement`,
+  `scope`, `project_id`, and `retention_policy` all match.
+- Semantic merge keeps the strongest/newest fact and unions source event IDs
+  and contradiction flags.
+- Procedural, raw trace, and knowledge deduplication remain manual until their
+  evidence justifies an automated rule.
+
+`sonya.tools.memory_semantic_dedup` is dry-run by default. Apply requires
+`--apply --target-is-backup-copy`; production apply is not approved.
+
 Operational note: `deploy/backup.sh` must use SQLite Backup API even when the
 `sqlite3` CLI is absent. Plain `cp` of the live WAL database is forbidden.
