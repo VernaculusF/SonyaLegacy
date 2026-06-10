@@ -2,13 +2,13 @@
 
 **Status:** Active
 **Type:** Session handoff
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
 ## Immediate continuation - current
 
-Deployed baseline: `2fe185a`, substrate schema v33, account-scoped periodic
-provider refresh, safe provider account importer, Kimchi imported, and active
-`sonya` / `sonya-admin` services.
+Deployed baseline: `64c1bfc`, substrate schema v33, account-scoped periodic
+provider refresh, safe provider account importer, Kimchi imported, OpenRouter
+free-only availability repaired, and active `sonya` / `sonya-admin` services.
 
 Current slice:
 
@@ -78,6 +78,20 @@ Completed in the latest slices:
 - production-source importer/provider suite passed (`72 passed`), both services
   remained active, and `journalctl -u sonya -p err --since '5 minutes ago'`
   had no entries.
+- deployed commit `64c1bfc`; OpenRouter unavailable-model root cause was a
+  legacy mirror mismatch: `provider_keys` had returned the main key to
+  `active`, while the mirrored `provider_accounts` row stayed `cooldown`, so
+  account-scoped `available_models` was empty. `acquire()` now reactivates the
+  mirrored account, `sync_legacy_account_statuses_from_keys()` can repair
+  mismatches, and OpenRouter discovery only auto-enables free offerings.
+- production OpenRouter repair on the VPS synced 1 account and disabled 312 old
+  non-free offerings. Current OpenRouter counters: 1 active account, 9 disabled
+  legacy accounts, 346 cached models, 34 advertised free models, 27 available
+  models, all available free. Live OpenRouter refresh returned `ok=True`,
+  `models_seen=338`, and did not re-enable non-free offerings.
+- VPS focused provider/Admin/picker suite passed (`35 passed`), both services
+  remained active, and `journalctl -u sonya/sonya-admin -p err --since
+  '10 minutes ago'` had no entries.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

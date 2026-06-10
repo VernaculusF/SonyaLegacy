@@ -142,6 +142,16 @@
 - Kimchi was imported from the ignored workspace key file on the VPS:
   `15` encrypted active accounts, `0` full plaintext leaks in SQLite dump,
   account-scoped refresh `15/15` ok, `8` cached/available models, `0` failed
+- OpenRouter availability repair commit `64c1bfc` deployed. Root cause:
+  expired legacy key cooldown was reactivated in `provider_keys` but not in the
+  mirrored `provider_accounts` row, so the account-scoped availability join
+  returned zero models. Production repair synced `1` account and disabled
+  `312` stale non-free offerings. Current OpenRouter state: `1` active account,
+  `9` disabled legacy accounts, `346` cached models, `34` advertised free
+  models, `27` available models, all available free.
+- Live OpenRouter refresh on the VPS returned `ok=True`, `models_seen=338`,
+  `quotas_seen=0`, and non-free offerings stayed disabled. Focused VPS suite:
+  `35 passed`; `sonya` and `sonya-admin` were active with empty error journals.
 
 ## Next Slice
 
@@ -150,6 +160,9 @@ observations, protected secret rotation, and manual refresh/probe controls.
 The refresh endpoint builds one lifecycle adapter per active account from
 substrate-owned provider/account state and resolves encrypted credentials only
 at that account adapter boundary.
+For OpenRouter, the Admin model pool hides paid cached models by default and
+shows free/requested models; searching still scans the full cached catalog so a
+specific paid model can be enabled deliberately.
 
 Bootstrap Nous, Google, AgentRouter, CodexSale, and remaining approved
 providers through protected secret ingestion/import files, confirm periodic

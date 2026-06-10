@@ -370,6 +370,9 @@ not turn Atrium into an admin surface.
 - [x] production substrate v33 deploy with rollback backup
 - [x] safe ignored-file account importer added
 - [x] production Kimchi pool imported: 15 encrypted accounts, 8 discovered models
+- [x] production OpenRouter availability repaired: legacy account status synced,
+  old non-free offerings disabled, and Admin shows free/requested models by
+  default
 - [ ] protected Nous bootstrap
 
 ### Цель
@@ -391,7 +394,7 @@ not turn Atrium into an admin surface.
 - [x] UI/provider management показывают model pools, а не single model
 
 ### Must-cover providers
-- [ ] OpenRouter
+- [x] OpenRouter free-model availability and discovery
 - [ ] Google AI Studio
 - [ ] Nous Research
 - [ ] agentrouter.org

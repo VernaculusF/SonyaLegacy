@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Current project state
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
 ## Current execution state - 2026-06-10
 
@@ -21,6 +21,9 @@
   account import, rather than producing false runtime failures;
 - Kimchi is imported as the first bulk multi-account provider pool: 15
   encrypted active accounts and 8 discovered/available models;
+- OpenRouter availability is repaired after the legacy key/account mirror
+  mismatch: 1 active account, 27 available free models, old non-free offerings
+  disabled, and refresh no longer auto-enables paid OpenRouter models;
 - active work is safe import of remaining provider accounts, measured
   scorecards/cooldowns, subagent lifecycle completion, and migration/audit of
   old memory and knowledge.
