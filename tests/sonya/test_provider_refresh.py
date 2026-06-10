@@ -25,6 +25,7 @@ class StubAdapter:
     quotas: list[QuotaSnapshot] = field(default_factory=list)
     health: AdapterHealth = AdapterHealth(ok=True, status="ok")
     fail_discovery: bool = False
+    failing_infer_models: set[str] = field(default_factory=set)
 
     def capabilities(self) -> AdapterCapabilities:
         return AdapterCapabilities(
@@ -48,6 +49,8 @@ class StubAdapter:
         return self.quotas
 
     async def infer(self, request: AdapterInferenceRequest) -> AdapterInferenceResult:
+        if request.model_id in self.failing_infer_models:
+            raise RuntimeError("model unavailable")
         return AdapterInferenceResult(content="ok")
 
 
@@ -189,6 +192,52 @@ async def test_openrouter_refresh_auto_enables_only_free_models(tmp_path) -> Non
             "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY model_id"
         ).fetchall()
         assert offerings == [(account_id, "openrouter/free-model:free", 1)]
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_openrouter_refresh_probes_free_models_before_enabling(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, provider_id="openrouter")
+        adapter = StubAdapter(
+            provider_id="openrouter",
+            models=[
+                DiscoveredModel(
+                    provider_id="openrouter",
+                    model_id="qwen/qwen3-coder:free",
+                    display_name="Qwen Coder",
+                    context_length=131072,
+                    metadata={"free": True},
+                ),
+                DiscoveredModel(
+                    provider_id="openrouter",
+                    model_id="google/gemma-4-31b-it:free",
+                    display_name="Gemma",
+                    context_length=262144,
+                    metadata={"free": True},
+                ),
+            ],
+            failing_infer_models={"qwen/qwen3-coder:free"},
+        )
+
+        await ProviderRefreshService(store, {"openrouter": adapter}).refresh_provider("openrouter")
+
+        assert [m.model_id for m in store.list_available_provider_models("openrouter")] == [
+            "google/gemma-4-31b-it:free"
+        ]
+        offerings = sub.connection.execute(
+            "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY model_id"
+        ).fetchall()
+        assert offerings == [(account_id, "google/gemma-4-31b-it:free", 1)]
+        observations = store.list_provider_observations(provider_id="openrouter")
+        failed_probe = next(
+            item for item in observations
+            if item.observation_kind == "model_probe" and item.model_id == "qwen/qwen3-coder:free"
+        )
+        assert failed_probe.success == 0
     finally:
         sub.close()
 

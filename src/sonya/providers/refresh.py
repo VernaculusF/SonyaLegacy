@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Mapping
 
-from sonya.providers.adapters.base import ProviderAdapter
+from sonya.providers.adapters.base import AdapterInferenceRequest, ProviderAdapter
 from sonya.providers.keystore import KeyStore
 
 
@@ -137,7 +137,21 @@ class ProviderRefreshService:
                     metadata_json=json.dumps(metadata, ensure_ascii=False),
                 )
                 if _should_auto_enable_offering(provider_id, model.model_id, metadata):
-                    self._store.set_account_offering(account_id, model.model_id, enabled=True)
+                    probe_ok = await self._probe_model(provider_id, account_id, adapter, model.model_id)
+                    if probe_ok:
+                        self._store.set_account_offering(
+                            account_id,
+                            model.model_id,
+                            enabled=True,
+                            metadata_json=json.dumps({"source": "auto_probe"}, ensure_ascii=False),
+                        )
+                    else:
+                        self._store.set_account_offering(
+                            account_id,
+                            model.model_id,
+                            enabled=False,
+                            metadata_json=json.dumps({"source": "auto_probe", "disabled_reason": "probe_failed"}, ensure_ascii=False),
+                        )
                 models_seen += 1
             self._store.record_provider_observation(
                 provider_id=provider_id,
@@ -169,6 +183,55 @@ class ProviderRefreshService:
             error=error,
             account_id=account_id,
         )
+
+    async def _probe_model(
+        self,
+        provider_id: str,
+        account_id: str,
+        adapter: ProviderAdapter,
+        model_id: str,
+    ) -> bool:
+        if provider_id != "openrouter":
+            return True
+        try:
+            result = await adapter.infer(
+                AdapterInferenceRequest(
+                    model_id=model_id,
+                    messages=[{"role": "user", "content": "x"}],
+                    max_tokens=1,
+                    temperature=0.0,
+                )
+            )
+        except Exception as exc:
+            self._store.record_provider_observation(
+                provider_id=provider_id,
+                account_id=account_id,
+                model_id=model_id,
+                observation_kind="model_probe",
+                success=False,
+                value_json=json.dumps(
+                    {"error": f"{type(exc).__name__}: {exc}"},
+                    ensure_ascii=False,
+                ),
+            )
+            return False
+        ok = bool(result.content.strip() or result.finish_reason or result.usage)
+        self._store.record_provider_observation(
+            provider_id=provider_id,
+            account_id=account_id,
+            model_id=model_id,
+            observation_kind="model_probe",
+            success=ok,
+            value_json=json.dumps(
+                {
+                    "finish_reason": result.finish_reason,
+                    "usage": dict(result.usage),
+                    "content_seen": bool(result.content.strip()),
+                },
+                ensure_ascii=False,
+            ),
+        )
+        return ok
 
 
 def _should_auto_enable_offering(provider_id: str, model_id: str, metadata: Mapping[str, object]) -> bool:

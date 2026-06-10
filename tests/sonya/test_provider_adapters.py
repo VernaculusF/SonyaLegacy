@@ -162,6 +162,39 @@ async def test_openai_compatible_adapter_normalizes_nested_pricing_and_free_stat
 
 
 @pytest.mark.asyncio
+async def test_openai_compatible_adapter_does_not_mark_audio_models_free() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "google/lyria-3-clip-preview",
+                        "pricing": {"prompt": "0", "completion": "0"},
+                        "architecture": {
+                            "modality": "text+image->text+audio",
+                            "output_modalities": ["text", "audio"],
+                        },
+                    }
+                ]
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = OpenAICompatibleAdapter(
+        provider_id="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key=ProviderSecret("sk-test-secret"),
+        client=client,
+    )
+
+    model = (await adapter.discover_models())[0]
+
+    assert model.metadata["free"] is False
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_openai_compatible_health_and_quota_are_structured() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/models"):

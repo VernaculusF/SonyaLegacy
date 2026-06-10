@@ -180,7 +180,23 @@ def _pricing_from_openai_entry(
         free = (input_cost or 0.0) == 0.0 and (output_cost or 0.0) == 0.0
     elif model_id.endswith(":free"):
         free = True
+    if free is True and not model_id.endswith(":free") and not _is_text_output_model(item):
+        free = False
     return input_cost or 0.0, output_cost or 0.0, free
+
+
+def _is_text_output_model(item: dict[str, Any]) -> bool:
+    architecture = item.get("architecture")
+    if not isinstance(architecture, dict):
+        return True
+    output_modalities = architecture.get("output_modalities")
+    if isinstance(output_modalities, list):
+        return set(str(item).lower() for item in output_modalities) <= {"text"}
+    modality = str(architecture.get("modality") or "").lower()
+    if "->" not in modality:
+        return True
+    output = modality.split("->", 1)[1]
+    return all(part.strip() == "text" for part in output.split("+") if part.strip())
 
 
 def _float_or_none(value: Any) -> float | None:
