@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 
 from sonya.providers.keystore import KeyStore
@@ -59,6 +60,41 @@ def test_model_requires_enabled_eligible_account_offering(tmp_path) -> None:
 
         store.update_provider_account_status(account.account_id, "disabled")
         assert store.list_available_provider_models("nous") == []
+    finally:
+        sub.close()
+
+
+def test_acquire_for_model_uses_only_accounts_with_enabled_offering(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "offerings.db")
+    try:
+        store = KeyStore(sub)
+        first = store.add_key(
+            provider="openrouter",
+            name="first",
+            api_key="sk-first",
+            base_url="https://openrouter.ai/api/v1",
+            priority=10,
+        )
+        second = store.add_key(
+            provider="openrouter",
+            name="second",
+            api_key="sk-second",
+            base_url="https://openrouter.ai/api/v1",
+            priority=0,
+        )
+        model = store.upsert_provider_model(
+            model_id="google/gemma-4-31b-it:free",
+            provider="openrouter",
+            model_name="Gemma",
+            is_free=1,
+        )
+        store.set_account_offering(second.key_id, model.model_id, enabled=True)
+
+        acquired = asyncio.run(store.acquire_for_model("openrouter", model.model_id))
+
+        assert acquired is not None
+        assert acquired.key_id == second.key_id
+        assert acquired.key_id != first.key_id
     finally:
         sub.close()
 

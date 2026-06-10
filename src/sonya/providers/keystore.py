@@ -936,25 +936,30 @@ class KeyStore:
             # Sort: priority desc, then last_used_at asc (LRU)
             all_keys.sort(key=lambda k: (-k.priority, k.last_used_at or ""))
             chosen = all_keys[0]
-            now = _utc_now_iso()
-            self._sub.connection.execute(
-                "UPDATE provider_keys SET last_used_at = ?, request_count = request_count + 1, "
-                "updated_at = ? "
-                "WHERE key_id = ?",
-                (now, now, chosen.key_id),
-            )
-            # If it was cooldown but expired, flip back to active
-            if chosen.status is KeyStatus.COOLDOWN:
-                self._sub.connection.execute(
-                    "UPDATE provider_keys SET status = 'active', cooldown_until = '' WHERE key_id = ?",
-                    (chosen.key_id,),
-                )
-            self._sub.connection.execute(
-                "UPDATE provider_accounts SET status = 'active', updated_at = ? WHERE legacy_key_id = ?",
-                (now, chosen.key_id),
-            )
-            self._sub.connection.commit()
-            return self.get_key(chosen.key_id)
+            return self._touch_acquired_key_locked(chosen)
+
+    async def acquire_for_model(self, provider: str, model_id: str) -> ProviderKey | None:
+        """Pick an eligible legacy key whose mirrored account offers model_id."""
+        async with self._lock:
+            rows = self._sub.connection.execute(
+                "SELECT DISTINCT pa.legacy_key_id "
+                "FROM provider_accounts pa "
+                "JOIN provider_account_offerings pao ON pao.account_id = pa.account_id "
+                "WHERE pa.provider_id = ? AND pa.status = 'active' "
+                "AND pa.legacy_key_id != '' AND pao.model_id = ? AND pao.enabled = 1",
+                (provider, model_id),
+            ).fetchall()
+            eligible_key_ids = {row[0] for row in rows if row[0]}
+            if not eligible_key_ids:
+                return None
+            all_keys = [
+                key for key in self.list_keys(provider)
+                if key.key_id in eligible_key_ids and key.is_eligible()
+            ]
+            if not all_keys:
+                return None
+            all_keys.sort(key=lambda k: (-k.priority, k.last_used_at or ""))
+            return self._touch_acquired_key_locked(all_keys[0])
 
     async def acquire_strict(self, provider: str) -> ProviderKey | None:
         """Like acquire() — pick the best eligible key for `provider`.
@@ -978,24 +983,27 @@ class KeyStore:
                 return None
             slot_keys.sort(key=lambda k: (-k.priority, k.last_used_at or ""))
             chosen = slot_keys[0]
-            now = _utc_now_iso()
+            return self._touch_acquired_key_locked(chosen)
+
+    def _touch_acquired_key_locked(self, chosen: ProviderKey) -> ProviderKey | None:
+        now = _utc_now_iso()
+        self._sub.connection.execute(
+            "UPDATE provider_keys SET last_used_at = ?, request_count = request_count + 1, "
+            "updated_at = ? "
+            "WHERE key_id = ?",
+            (now, now, chosen.key_id),
+        )
+        if chosen.status is KeyStatus.COOLDOWN:
             self._sub.connection.execute(
-                "UPDATE provider_keys SET last_used_at = ?, request_count = request_count + 1, "
-                "updated_at = ? "
-                "WHERE key_id = ?",
-                (now, now, chosen.key_id),
+                "UPDATE provider_keys SET status = 'active', cooldown_until = '' WHERE key_id = ?",
+                (chosen.key_id,),
             )
-            if chosen.status is KeyStatus.COOLDOWN:
-                self._sub.connection.execute(
-                    "UPDATE provider_keys SET status = 'active', cooldown_until = '' WHERE key_id = ?",
-                    (chosen.key_id,),
-                )
-            self._sub.connection.execute(
-                "UPDATE provider_accounts SET status = 'active', updated_at = ? WHERE legacy_key_id = ?",
-                (now, chosen.key_id),
-            )
-            self._sub.connection.commit()
-            return self.get_key(chosen.key_id)
+        self._sub.connection.execute(
+            "UPDATE provider_accounts SET status = 'active', updated_at = ? WHERE legacy_key_id = ?",
+            (now, chosen.key_id),
+        )
+        self._sub.connection.commit()
+        return self.get_key(chosen.key_id)
 
     async def report_success(self, key_id: str) -> None:
         async with self._lock:

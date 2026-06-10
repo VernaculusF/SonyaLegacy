@@ -260,9 +260,13 @@ class LLMProvider:
             key = None
             picked_provider = provider
             # 2026-06-02: no slot filtering. All keys are "text".
-            # Just pick any eligible key from the chain.
+            # If a concrete model is selected, pick only accounts that offer it.
             for prov in fallback_chain:
-                key = await self._store.acquire(prov)
+                key = (
+                    await self._store.acquire_for_model(prov, preferred_model)
+                    if preferred_model else
+                    await self._store.acquire(prov)
+                )
                 if key is not None:
                     picked_provider = prov
                     if prov != provider and attempt == 0:
