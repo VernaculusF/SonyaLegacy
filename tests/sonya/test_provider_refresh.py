@@ -191,7 +191,10 @@ async def test_openrouter_refresh_auto_enables_only_free_models(tmp_path) -> Non
         offerings = sub.connection.execute(
             "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY model_id"
         ).fetchall()
-        assert offerings == [(account_id, "openrouter/free-model:free", 1)]
+        assert offerings == [
+            (account_id, "openrouter/free-model:free", 1),
+            (account_id, "openrouter/paid-model", 0),
+        ]
     finally:
         sub.close()
 
