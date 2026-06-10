@@ -37,6 +37,9 @@
 - Atrium project runtime reads project runs/traces from the project API and
   shows aggregate progress, internal worker subthreads, retries, and outcomes
   without presenting subagents as separate chat actors;
+- project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
+  verification passed (`42 passed`), services are active, and recent service
+  journals are clean;
 - active work is measured scorecards/cooldowns, stronger project executor
   autonomous planning/dependency behavior, and migration/audit of old memory
   and knowledge.

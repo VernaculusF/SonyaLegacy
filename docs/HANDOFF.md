@@ -49,6 +49,13 @@ Completed in the latest slices:
 - Atrium project workspace now polls project runs/traces and renders aggregate
   progress, retry state, internal worker subthreads, and outcomes; subagents
   remain internal tools rather than separate UI actors;
+- deployed project runtime UI commits `8bb2408` and `4cc7228`; VPS focused
+  project/provider/Admin suite passed (`42 passed`), both services are active,
+  and the recent error journal is empty;
+- Atrium frontend build could not be run on the VPS because Node/npm is not
+  installed. VPS `compileall` exposed an old tracked null-byte corruption in
+  `src/sonya/tools/plugins/__init__.py`; it was replaced with a valid package
+  initializer in the following cleanup slice;
 - VPS verification for the new slices: provider-focused suite `32 passed`,
   project/subagent/provider suite `29 passed`, both services active, and
   system journal error scans were empty;
