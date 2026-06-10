@@ -21,6 +21,15 @@ MEMORY_TABLES = (
     "tool_experiences",
 )
 
+PROVENANCE_COLUMNS = {
+    "episodic_events": ("event_type", "source", "channel", "record_type", "scope", "retention_policy"),
+    "semantic_facts": ("fact_type", "scope", "retention_policy"),
+    "raw_traces": ("record_type", "scope", "source", "retention_policy", "session_type"),
+    "procedural_memory": ("record_type", "scope", "domain", "retention_policy"),
+    "continuity_events": ("kind", "channel", "private"),
+    "tool_experiences": ("tool_name", "outcome", "provider", "model", "session_type"),
+}
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -49,11 +58,29 @@ def _substrate_manifest(path: Path, *, hash_substrate: bool = False) -> dict[str
             tables[table] = {"exists": True, "rows": rows, "columns": columns}
 
         version = connection.execute("PRAGMA user_version").fetchone()[0]
+        provenance: dict[str, dict[str, dict[str, int]]] = {}
+        for table, columns in PROVENANCE_COLUMNS.items():
+            if not tables.get(table, {}).get("exists"):
+                continue
+            available = set(tables[table]["columns"])
+            table_provenance: dict[str, dict[str, int]] = {}
+            for column in columns:
+                if column not in available:
+                    continue
+                rows = connection.execute(
+                    f"SELECT {column}, count(*) FROM {table} "
+                    f"WHERE {column} IS NOT NULL AND CAST({column} AS TEXT) != '' "
+                    f"GROUP BY {column} ORDER BY count(*) DESC LIMIT 100"
+                ).fetchall()
+                table_provenance[column] = {str(value): int(count) for value, count in rows}
+            provenance[table] = table_provenance
+
         result = {
             "path": str(path.resolve()),
             "bytes": path.stat().st_size,
             "user_version": int(version),
             "tables": tables,
+            "provenance": provenance,
         }
         fingerprint = json.dumps(
             {"user_version": result["user_version"], "tables": tables},

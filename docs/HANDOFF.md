@@ -40,6 +40,9 @@ Completed in the latest slices:
   opt-in for offline/backup copies.
 - unsafe plain-copy fallback in `deploy/backup.sh` was replaced with Python's
   SQLite Backup API fallback for VPS installations without the `sqlite3` CLI.
+- production WAL-safe backup, gzip integrity, offline full hash, and
+  `PRAGMA quick_check=ok` were proven; manifest now includes safe provenance
+  distributions without content fields.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

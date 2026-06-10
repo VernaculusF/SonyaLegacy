@@ -67,7 +67,8 @@
   `continuity_events`
 - [x] inventory `~/.sonya/knowledge/` and available legacy import sources
 - [x] build a read-only migration manifest command
-- [ ] create backups and an idempotent migration manifest before any write
+- [x] create a WAL-safe backup and idempotent migration manifest before any write
+- [ ] define deduplication rules from backup provenance analysis
 - run existing Telegram history and legacy knowledge migrations where needed
 - deduplicate, preserve provenance, and verify retrieval after migration
 - prove that project work and summarized subagent outcomes enter the one shared

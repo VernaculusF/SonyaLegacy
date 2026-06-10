@@ -71,7 +71,22 @@ emit memory or knowledge content. Full SQLite file hashing is disabled by
 default because a live WAL database is not a stable file snapshot; use
 `--hash-substrate` only against an offline or backup copy.
 
-Next, create the WAL-safe backup and run migration-source/deduplication analysis
+The manifest also records capped distributions for explicitly allowed
+provenance fields such as event/source/type/scope, continuity kind, trace type,
+tool outcome, provider, and model. It never reads content fields into output.
+
+## Backup Proof
+
+On 2026-06-10 the VPS backup path was repaired and proven:
+
+- Python SQLite Backup API fallback used because the `sqlite3` CLI is absent;
+- gzip integrity check passed;
+- unpacked backup `PRAGMA quick_check` returned `ok`;
+- full backup SHA-256 recorded in the offline manifest;
+- memory-layer row counts matched the live inventory except expected new
+  continuity events written between snapshots.
+
+Next, inspect provenance distributions and design explicit deduplication rules
 against the backup copy before any production write.
 
 Operational note: `deploy/backup.sh` must use SQLite Backup API even when the

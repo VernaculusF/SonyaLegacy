@@ -17,6 +17,14 @@ def test_manifest_reports_counts_schema_hashes_and_sources_without_content(tmp_p
             "last_reinforced_at, contradiction_flags_json) "
             "VALUES ('fact-1', 'private', 'do not leak this statement', '[]', 1.0, '', '[]')"
         )
+        sub.connection.execute(
+            "INSERT INTO episodic_events "
+            "(event_id, event_type, timestamp, source, channel, actor, raw_content, "
+            "normalized_summary, emotion_tags_json, importance_score, retention_strength, "
+            "last_accessed_at, access_count, archived) "
+            "VALUES ('event-1', 'dialogue_event', '', 'legacy_import', 'telegram', "
+            "'ivan', 'private raw event', 'private summary', '[]', 1.0, 1.0, '', 0, 0)"
+        )
         sub.connection.commit()
     finally:
         sub.close()
@@ -46,8 +54,13 @@ def test_manifest_reports_counts_schema_hashes_and_sources_without_content(tmp_p
         "knowledge_dir",
         "telegram_desktop_export",
     }
+    assert manifest["substrate"]["provenance"]["episodic_events"]["source"] == {
+        "legacy_import": 1
+    }
     assert "do not leak this statement" not in rendered
     assert "do not leak this knowledge" not in rendered
+    assert "private raw event" not in rendered
+    assert "private summary" not in rendered
 
 
 def test_manifest_cli_writes_json_without_modifying_substrate(tmp_path, capsys) -> None:
