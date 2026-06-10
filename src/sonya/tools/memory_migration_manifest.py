@@ -30,6 +30,13 @@ PROVENANCE_COLUMNS = {
     "tool_experiences": ("tool_name", "outcome", "provider", "model", "session_type"),
 }
 
+DUPLICATE_COLUMNS = {
+    "episodic_events": ("raw_content",),
+    "semantic_facts": ("statement",),
+    "raw_traces": ("raw_content",),
+    "procedural_memory": ("statement",),
+}
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -39,7 +46,12 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _substrate_manifest(path: Path, *, hash_substrate: bool = False) -> dict[str, Any]:
+def _substrate_manifest(
+    path: Path,
+    *,
+    hash_substrate: bool = False,
+    analyze_duplicates: bool = False,
+) -> dict[str, Any]:
     connection = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
     try:
         tables: dict[str, Any] = {}
@@ -75,6 +87,29 @@ def _substrate_manifest(path: Path, *, hash_substrate: bool = False) -> dict[str
                 table_provenance[column] = {str(value): int(count) for value, count in rows}
             provenance[table] = table_provenance
 
+        duplicates: dict[str, dict[str, dict[str, int]]] = {}
+        if analyze_duplicates:
+            for table, columns in DUPLICATE_COLUMNS.items():
+                if not tables.get(table, {}).get("exists"):
+                    continue
+                available = set(tables[table]["columns"])
+                table_duplicates: dict[str, dict[str, int]] = {}
+                for column in columns:
+                    if column not in available:
+                        continue
+                    groups, extra_rows = connection.execute(
+                        "SELECT count(*), coalesce(sum(n - 1), 0) FROM ("
+                        f"SELECT count(*) AS n FROM {table} "
+                        f"WHERE {column} IS NOT NULL AND {column} != '' "
+                        f"GROUP BY {column} HAVING count(*) > 1"
+                        ")"
+                    ).fetchone()
+                    table_duplicates[column] = {
+                        "groups": int(groups),
+                        "extra_rows": int(extra_rows),
+                    }
+                duplicates[table] = table_duplicates
+
         result = {
             "path": str(path.resolve()),
             "bytes": path.stat().st_size,
@@ -82,6 +117,8 @@ def _substrate_manifest(path: Path, *, hash_substrate: bool = False) -> dict[str
             "tables": tables,
             "provenance": provenance,
         }
+        if analyze_duplicates:
+            result["duplicates"] = duplicates
         fingerprint = json.dumps(
             {"user_version": result["user_version"], "tables": tables},
             ensure_ascii=False,
@@ -104,11 +141,19 @@ def _knowledge_manifest(root: Path) -> dict[str, Any]:
                 "bytes": path.stat().st_size,
                 "sha256": _sha256(path),
             })
+    by_hash: dict[str, int] = {}
+    for item in files:
+        by_hash[item["sha256"]] = by_hash.get(item["sha256"], 0) + 1
+    duplicate_counts = [count for count in by_hash.values() if count > 1]
     return {
         "root": str(root.resolve()),
         "files_count": len(files),
         "bytes": sum(item["bytes"] for item in files),
         "files": files,
+        "duplicates": {
+            "groups": len(duplicate_counts),
+            "extra_files": sum(count - 1 for count in duplicate_counts),
+        },
     }
 
 
@@ -134,12 +179,17 @@ def build_manifest(
     knowledge_root: Path,
     project_root: Path,
     hash_substrate: bool = False,
+    analyze_duplicates: bool = False,
 ) -> dict[str, Any]:
     return {
         "format": "sonya-memory-knowledge-manifest-v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "read_only": True,
-        "substrate": _substrate_manifest(substrate_path, hash_substrate=hash_substrate),
+        "substrate": _substrate_manifest(
+            substrate_path,
+            hash_substrate=hash_substrate,
+            analyze_duplicates=analyze_duplicates,
+        ),
         "knowledge": _knowledge_manifest(knowledge_root),
         "legacy_sources": _legacy_sources(project_root),
     }
@@ -156,6 +206,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Hash the SQLite file; use only for an offline or backup copy",
     )
+    parser.add_argument(
+        "--analyze-duplicates",
+        action="store_true",
+        help="Count exact duplicate content groups; use only for a backup copy",
+    )
     args = parser.parse_args(argv)
 
     manifest = build_manifest(
@@ -163,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         knowledge_root=args.knowledge_root,
         project_root=args.project_root,
         hash_substrate=args.hash_substrate,
+        analyze_duplicates=args.analyze_duplicates,
     )
     rendered = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output:

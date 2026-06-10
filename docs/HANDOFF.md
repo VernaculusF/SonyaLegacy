@@ -43,6 +43,8 @@ Completed in the latest slices:
 - production WAL-safe backup, gzip integrity, offline full hash, and
   `PRAGMA quick_check=ok` were proven; manifest now includes safe provenance
   distributions without content fields.
+- exact duplicate counting is explicit `--analyze-duplicates` backup-only
+  analysis; it reports group/extra-row counts without values.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

@@ -74,6 +74,9 @@ default because a live WAL database is not a stable file snapshot; use
 The manifest also records capped distributions for explicitly allowed
 provenance fields such as event/source/type/scope, continuity kind, trace type,
 tool outcome, provider, and model. It never reads content fields into output.
+Exact duplicate group counts are available through `--analyze-duplicates` and
+must be run only against a backup copy. The output contains counts, never the
+duplicate values.
 
 ## Backup Proof
 
