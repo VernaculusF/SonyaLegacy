@@ -31,6 +31,11 @@
   live refresh succeeds: Google 2 accounts / 50 available models, Nous 2
   accounts / 265 available models after provider-scoped repair, CodexSale
   1 account / 3 available models;
+- NVIDIA NIM is live with 3 encrypted active accounts, 121 discovered models,
+  and 103 ordinary text-loop models available; 18 embedding/guard/safety/
+  retrieval models remain catalogued but disabled for ordinary subagents;
+- `nvidia/nemotron-3-ultra-550b-a55b` passed account-specific inference probes
+  on all 3 NVIDIA accounts;
 - project execution accepts one task or an explicit list of independent tasks,
   spawns project-scoped disposable subagents, retries failed workers within a
   bounded budget, persists progress checkpoints, and aggregates outcomes;

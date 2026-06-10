@@ -5,6 +5,12 @@
 
 ## Completed Foundation
 
+- NVIDIA NIM onboarding completed on 2026-06-11: 3 encrypted active accounts,
+  121 discovered models, 103 ordinary text-loop offerings, and successful
+  account-specific probes for `nvidia/nemotron-3-ultra-550b-a55b`.
+- NVIDIA embedding/rerank/guard/safety/retrieval models stay in the catalog as
+  future special-worker capacity but are disabled for ordinary text-loop
+  subagents.
 - substrate v32: providers, provider accounts, account offerings, quota windows,
   and observations.
 - substrate v33: encrypted provider secrets and masked account metadata.

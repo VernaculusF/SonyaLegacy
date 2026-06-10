@@ -54,6 +54,14 @@ Completed in the latest slices:
   Atrium: a persisted cancellation signal crosses Admin/core process
   boundaries, while a shared core registry immediately cancels owned asyncio
   workers;
+- imported `workspace/nvidia.txt` through protected ingestion: 3 encrypted
+  active NVIDIA NIM accounts, temporary VPS key file removed;
+- NVIDIA live discovery returned 121 models per account. Runtime exposes 103
+  ordinary text-loop models and keeps 18 embedding/guard/safety/retrieval
+  special-worker models unavailable to ordinary subagents;
+- `nvidia/nemotron-3-ultra-550b-a55b` passed a minimal inference probe on all
+  3 accounts. The requested rerank model is not present in the official NVIDIA
+  NIM `/models` response and was not removed by filtering;
 - deployed project runtime UI commits `8bb2408` and `4cc7228`; VPS focused
   project/provider/Admin suite passed (`42 passed`), both services are active,
   and the recent error journal is empty;
