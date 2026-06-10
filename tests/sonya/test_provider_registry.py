@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
-from sonya.providers.keystore import KeyStore
+import pytest
+
+from sonya.providers.keystore import KeyStatus, KeyStore
 from sonya.state.substrate import Substrate
 
 
@@ -44,6 +47,39 @@ def test_legacy_key_is_mirrored_into_provider_account(tmp_path) -> None:
         assert account.provider_id == "openrouter"
         assert account.legacy_key_id == key.key_id
         assert account.default_model == ""
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_expired_legacy_key_cooldown_reactivates_mirrored_account(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "providers.db")
+    try:
+        store = KeyStore(sub)
+        key = store.add_key(
+            provider="openrouter",
+            name="main",
+            api_key="test-secret",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        past = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
+        sub.connection.execute(
+            "UPDATE provider_keys SET status = 'cooldown', cooldown_until = ? WHERE key_id = ?",
+            (past, key.key_id),
+        )
+        sub.connection.execute(
+            "UPDATE provider_accounts SET status = 'cooldown' WHERE legacy_key_id = ?",
+            (key.key_id,),
+        )
+        sub.connection.commit()
+
+        acquired = await store.acquire("openrouter")
+
+        assert acquired is not None
+        assert acquired.status is KeyStatus.ACTIVE
+        account = store.get_provider_account(key.key_id)
+        assert account is not None
+        assert account.status == "active"
     finally:
         sub.close()
 

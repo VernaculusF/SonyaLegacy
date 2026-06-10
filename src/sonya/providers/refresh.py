@@ -136,7 +136,8 @@ class ProviderRefreshService:
                     discovery_source="adapter",
                     metadata_json=json.dumps(metadata, ensure_ascii=False),
                 )
-                self._store.set_account_offering(account_id, model.model_id, enabled=True)
+                if _should_auto_enable_offering(provider_id, model.model_id, metadata):
+                    self._store.set_account_offering(account_id, model.model_id, enabled=True)
                 models_seen += 1
             self._store.record_provider_observation(
                 provider_id=provider_id,
@@ -168,6 +169,12 @@ class ProviderRefreshService:
             error=error,
             account_id=account_id,
         )
+
+
+def _should_auto_enable_offering(provider_id: str, model_id: str, metadata: Mapping[str, object]) -> bool:
+    if provider_id == "openrouter":
+        return metadata.get("free") is True or model_id.endswith(":free")
+    return True
 
 
 class ProviderRefreshCoordinator:

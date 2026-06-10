@@ -51,15 +51,15 @@ class StubAdapter:
         return AdapterInferenceResult(content="ok")
 
 
-def _seed_provider_and_account(store: KeyStore) -> str:
+def _seed_provider_and_account(store: KeyStore, provider_id: str = "stub") -> str:
     store.upsert_provider(
-        provider_id="stub",
-        display_name="Stub",
+        provider_id=provider_id,
+        display_name=provider_id,
         adapter_kind="openai_compatible",
         base_url="https://example.test/v1",
     )
     account = store.add_provider_account(
-        provider_id="stub",
+        provider_id=provider_id,
         name="primary",
         secret_ref="manual:test",
     )
@@ -147,6 +147,48 @@ async def test_refresh_preserves_last_good_models_on_discovery_failure(tmp_path)
         assert observations[0].observation_kind == "model_discovery"
         assert observations[0].success == 0
         assert "catalog down" in observations[0].value_json
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_openrouter_refresh_auto_enables_only_free_models(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, provider_id="openrouter")
+        adapter = StubAdapter(
+            provider_id="openrouter",
+            models=[
+                DiscoveredModel(
+                    provider_id="openrouter",
+                    model_id="openrouter/free-model:free",
+                    display_name="Free Model",
+                    context_length=131072,
+                    metadata={"free": True},
+                ),
+                DiscoveredModel(
+                    provider_id="openrouter",
+                    model_id="openrouter/paid-model",
+                    display_name="Paid Model",
+                    context_length=131072,
+                    metadata={"free": False},
+                ),
+            ],
+        )
+
+        result = await ProviderRefreshService(store, {"openrouter": adapter}).refresh_provider("openrouter")
+
+        assert result.models_seen == 2
+        assert store.get_provider_model("openrouter/free-model:free") is not None
+        assert store.get_provider_model("openrouter/paid-model") is not None
+        assert [m.model_id for m in store.list_available_provider_models("openrouter")] == [
+            "openrouter/free-model:free"
+        ]
+        offerings = sub.connection.execute(
+            "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY model_id"
+        ).fetchall()
+        assert offerings == [(account_id, "openrouter/free-model:free", 1)]
     finally:
         sub.close()
 

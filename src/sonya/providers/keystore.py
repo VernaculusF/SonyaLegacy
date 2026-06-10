@@ -827,6 +827,26 @@ class KeyStore:
         )
         self._sub.connection.commit()
 
+    def sync_legacy_account_statuses_from_keys(self, provider: str | None = None) -> int:
+        """Repair mirrored account status for legacy provider_keys rows."""
+        params: list[Any] = []
+        where = "WHERE legacy_key_id != ''"
+        if provider:
+            where += " AND provider_id = ?"
+            params.append(provider)
+        now = _utc_now_iso()
+        cur = self._sub.connection.execute(
+            "UPDATE provider_accounts "
+            "SET status = (SELECT status FROM provider_keys WHERE provider_keys.key_id = provider_accounts.legacy_key_id), "
+            "updated_at = ? "
+            f"{where} "
+            "AND EXISTS (SELECT 1 FROM provider_keys WHERE provider_keys.key_id = provider_accounts.legacy_key_id) "
+            "AND status != (SELECT status FROM provider_keys WHERE provider_keys.key_id = provider_accounts.legacy_key_id)",
+            (now, *params),
+        )
+        self._sub.connection.commit()
+        return int(cur.rowcount or 0)
+
     def set_status(self, key_id: str, status: KeyStatus, *, last_error: str = "", cooldown_seconds: int = 0) -> None:
         """Compatibility alias used by provider management tools."""
         self.update_status(
@@ -915,6 +935,10 @@ class KeyStore:
                     "UPDATE provider_keys SET status = 'active', cooldown_until = '' WHERE key_id = ?",
                     (chosen.key_id,),
                 )
+            self._sub.connection.execute(
+                "UPDATE provider_accounts SET status = 'active', updated_at = ? WHERE legacy_key_id = ?",
+                (now, chosen.key_id),
+            )
             self._sub.connection.commit()
             return self.get_key(chosen.key_id)
 
@@ -952,6 +976,10 @@ class KeyStore:
                     "UPDATE provider_keys SET status = 'active', cooldown_until = '' WHERE key_id = ?",
                     (chosen.key_id,),
                 )
+            self._sub.connection.execute(
+                "UPDATE provider_accounts SET status = 'active', updated_at = ? WHERE legacy_key_id = ?",
+                (now, chosen.key_id),
+            )
             self._sub.connection.commit()
             return self.get_key(chosen.key_id)
 
