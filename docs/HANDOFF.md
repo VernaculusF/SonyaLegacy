@@ -6,7 +6,7 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `76bf009`, substrate schema v33, account-scoped periodic
+Deployed baseline: `447091b`, substrate schema v33, account-scoped periodic
 provider refresh, safe provider account importer, Kimchi/Google/Nous/CodexSale
 imported, OpenRouter free-model probe deployed, and active `sonya` /
 `sonya-admin` services.
@@ -20,6 +20,11 @@ Current slice:
 4. inventory and migrate old memory and knowledge with backups, provenance, and
    idempotent manifests;
 5. return to Atrium later.
+
+Parked new workstream: `docs/operations/WEB_PROXY_MODEL_BRIDGE.md` describes a
+future localhost-only web-proxy model tier. It replaces the old
+freemodel-only bridge note and covers FreeQwenApi first, then GLM/Kimi and
+DeepSeek browser-backed bridges behind one Sonya-owned provider surface.
 
 Completed in the latest slices:
 
@@ -131,7 +136,10 @@ Documentation-only design work completed on 2026-06-10:
 - created `docs/operations/PROVIDER_SYSTEM_DESIGN.md`;
 - created `docs/operations/PROVIDER_MODEL_CATALOG.md`;
 - rewrote `docs/operations/SUBAGENT_MODELS.md` as selection policy;
-- rewrote `docs/operations/FREEMODEL_BRIDGE.md` as a research-gated adapter plan;
+- replaced the old freemodel-only bridge note with
+  `docs/operations/WEB_PROXY_MODEL_BRIDGE.md`, a parked design for a unified
+  localhost-only web-proxy model tier over FreeQwenApi, FreeGLMKimiAPI,
+  FreeDeepseekAPI, and future browser-backed web accounts;
 - created design and implementation plan under `docs/superpowers/`.
 
 No pasted credential was added to Git, substrate, logs, or runtime.

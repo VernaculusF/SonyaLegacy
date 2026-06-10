@@ -46,6 +46,11 @@
 - memory layers
 - tool ecosystem
 - selfmod pipeline
+- provider/runtime rewrite now includes a parked web-proxy model bridge design:
+  `docs/operations/WEB_PROXY_MODEL_BRIDGE.md`. This is future cheap
+  worker/subagent capacity through localhost-only browser-backed bridges such
+  as FreeQwenApi, FreeGLMKimiAPI, and FreeDeepseekAPI, not a main-Sonya model
+  binding.
 - subagents с model routing
 - Atrium как multichannel UI surface
 - Atrium workspace path partially started: non-main workspaces, workspace-aware dialog/history/runtime routing
@@ -94,6 +99,12 @@ Atrium должен стать не только интерфейсом обще
 - `docs/core/UNCENSORED_ENVIRONMENT_STANCE.md`
 - `docs/core/SUBSTRATE_STANCE.md`
 - `docs/core/ENVIRONMENT_AS_SONYA.md`
+
+### Runtime / Providers
+
+- `docs/operations/PROVIDER_RUNTIME_STATUS.md`
+- `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`
+- `docs/operations/WEB_PROXY_MODEL_BRIDGE.md`
 
 ### Atrium
 

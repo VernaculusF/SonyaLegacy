@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Documentation map
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
 This file is the entry point for project documentation. When documents disagree,
 prefer the sources listed earlier within the same category.
@@ -45,8 +45,8 @@ claims may age; use `STATE.md` for current implementation reality.
   - active delivery order for provider import, subagents, and memory migration
 - [operations/MEMORY_KNOWLEDGE_MIGRATION_STATUS.md](operations/MEMORY_KNOWLEDGE_MIGRATION_STATUS.md)
   - production memory/knowledge inventory and safe migration order
-- [operations/FREEMODEL_BRIDGE.md](operations/FREEMODEL_BRIDGE.md)
-  - proposed freemodel bridge; not implemented
+- [operations/WEB_PROXY_MODEL_BRIDGE.md](operations/WEB_PROXY_MODEL_BRIDGE.md)
+  - proposed localhost-only web model bridge tier; not implemented
 - [skills/SKILL_SYSTEM_PLAN.md](skills/SKILL_SYSTEM_PLAN.md)
 
 ## Historical And Research References

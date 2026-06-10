@@ -115,7 +115,7 @@ detailed current roadmap is
 - базовый Atrium upload path реализован; project-scoped storage, large-file flow
   и live end-to-end proof ещё не закрыты
 - provider system ещё не доведён до полного pool/discovery runtime
-- freemodel bridge не реализован
+- web-proxy model bridge не реализован
 - evaluation harness есть только частично, не доведён до реального использования
 
 ---
@@ -404,7 +404,7 @@ not turn Atrium into an admin surface.
 - [x] Nous Research
 - [ ] agentrouter.org
 - [x] codexsale
-- [ ] future freemodel bridge
+- [ ] future web-proxy model bridge
 
 ### Done criteria
 - [x] Sonya выбирает модели из pool, а не из fixed binding
@@ -489,7 +489,20 @@ not turn Atrium into an admin surface.
 
 ---
 
-## Workstream H — Bridges / external premium paths
+## Workstream H — Web proxy bridges / external premium paths
+
+See `docs/operations/WEB_PROXY_MODEL_BRIDGE.md`. The old freemodel-only bridge
+note was removed because the target is now a unified web-proxy tier over
+FreeQwenApi, FreeGLMKimiAPI, FreeDeepseekAPI, and later browser-backed model
+accounts.
+
+### Web proxy bridge
+- [ ] FreeQwenApi localhost-only VPS service
+- [ ] Sonya-owned unified gateway
+- [ ] GLM/Kimi bridge research and fork/vendor decision
+- [ ] DeepSeek bridge research and fork/vendor decision
+- [ ] synthetic progress / streaming normalization
+- [ ] integration as `web_proxy` provider tier for cheap subagent work
 
 ### freemodel.dev
 - [ ] research
