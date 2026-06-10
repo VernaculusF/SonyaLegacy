@@ -510,6 +510,11 @@ class KeyStore:
         enabled: bool = True,
         metadata_json: str = "{}",
     ) -> None:
+        account = self.get_provider_account(account_id)
+        if account is None:
+            raise KeyError(account_id)
+        if self.get_provider_model(model_id, provider=account.provider_id) is None:
+            raise KeyError(f"{account.provider_id}::{model_id}")
         now = _utc_now_iso()
         self._sub.connection.execute(
             "INSERT INTO provider_account_offerings "
@@ -533,6 +538,37 @@ class KeyStore:
             return payload if isinstance(payload, dict) else {}
         except Exception:
             return {}
+
+    def list_account_offerings(self, provider_id: str | None = None) -> list[dict[str, Any]]:
+        params: list[Any] = []
+        provider_clause = ""
+        if provider_id:
+            provider_clause = "WHERE pa.provider_id = ?"
+            params.append(provider_id)
+        rows = self._sub.connection.execute(
+            "SELECT pa.provider_id, pao.account_id, pao.model_id, pao.enabled, "
+            "pao.metadata_json, pao.created_at, pao.updated_at "
+            "FROM provider_account_offerings pao "
+            "JOIN provider_accounts pa ON pa.account_id = pao.account_id "
+            f"{provider_clause} ORDER BY pa.provider_id, pao.account_id, pao.model_id",
+            params,
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                metadata = json.loads(row[4] or "{}")
+            except Exception:
+                metadata = {}
+            out.append({
+                "provider_id": row[0],
+                "account_id": row[1],
+                "model_id": row[2],
+                "enabled": bool(row[3]),
+                "metadata": metadata if isinstance(metadata, dict) else {},
+                "created_at": row[5],
+                "updated_at": row[6],
+            })
+        return out
 
     def list_available_provider_models(self, provider_id: str | None = None) -> list[ProviderModel]:
         params: list[Any] = []
@@ -698,6 +734,25 @@ class KeyStore:
             params,
         ).fetchone()
         return _row_to_provider_model(row) if row else None
+
+    def delete_provider_model(self, *, provider: str, model_id: str) -> None:
+        account_ids = [
+            row[0] for row in self._sub.connection.execute(
+                "SELECT account_id FROM provider_accounts WHERE provider_id = ?",
+                (provider,),
+            ).fetchall()
+        ]
+        if account_ids:
+            placeholders = ",".join("?" for _ in account_ids)
+            self._sub.connection.execute(
+                f"DELETE FROM provider_account_offerings WHERE model_id = ? AND account_id IN ({placeholders})",
+                [model_id, *account_ids],
+            )
+        self._sub.connection.execute(
+            "DELETE FROM provider_models WHERE provider = ? AND model_id = ?",
+            (provider, model_id),
+        )
+        self._sub.connection.commit()
 
     def upsert_provider_model(
         self,

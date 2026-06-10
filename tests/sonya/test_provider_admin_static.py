@@ -19,8 +19,8 @@ def test_provider_admin_does_not_render_legacy_add_key_form() -> None:
     assert "providersAddKey()" not in override
 
 
-def test_provider_admin_hides_stale_openrouter_manual_aliases_by_default() -> None:
-    assert (
-        "rawPm.filter(x=>available.has(x.model_id)||(x.is_free&&x.discovery_source!=='manual'))"
-        in ADMIN_HTML
-    )
+def test_provider_admin_uses_provider_scoped_availability_and_keeps_search_focus() -> None:
+    assert "x.provider_model_key||`${x.provider}::${x.model_id}`" in ADMIN_HTML
+    assert "freeOnlyProvider=p?.provider_id==='openrouter'||p?.provider_id==='nous'" in ADMIN_HTML
+    assert "providersFilterModels(this)" in ADMIN_HTML
+    assert "next.focus()" in ADMIN_HTML

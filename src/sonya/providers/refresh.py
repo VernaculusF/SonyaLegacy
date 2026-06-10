@@ -124,6 +124,7 @@ class ProviderRefreshService:
         else:
             for model in discovered:
                 metadata = dict(model.metadata)
+                text_loop_ok = _is_text_loop_discovered_model(provider_id, model.modalities, metadata)
                 self._store.upsert_provider_model(
                     model_id=model.model_id,
                     provider=provider_id,
@@ -133,10 +134,11 @@ class ProviderRefreshService:
                     cost_per_1m_input_tokens=model.input_cost_per_1m,
                     cost_per_1m_output_tokens=model.output_cost_per_1m,
                     is_free=1 if metadata.get("free") is True else 0,
+                    text_loop_ok=1 if text_loop_ok else 0,
                     discovery_source="adapter",
                     metadata_json=json.dumps(metadata, ensure_ascii=False),
                 )
-                if _should_auto_enable_offering(provider_id, model.model_id, metadata):
+                if _should_auto_enable_offering(provider_id, model.model_id, metadata, text_loop_ok=text_loop_ok):
                     probe_ok = await self._probe_model(provider_id, account_id, adapter, model.model_id)
                     if probe_ok:
                         self._store.set_account_offering(
@@ -152,7 +154,7 @@ class ProviderRefreshService:
                             enabled=False,
                             metadata_json=json.dumps({"source": "auto_probe", "disabled_reason": "probe_failed"}, ensure_ascii=False),
                         )
-                elif provider_id == "openrouter" and not self._is_requested_offering(account_id, model.model_id):
+                elif provider_id in ("openrouter", "nous", "google") and not self._is_requested_offering(account_id, model.model_id):
                     self._store.set_account_offering(
                         account_id,
                         model.model_id,
@@ -163,6 +165,8 @@ class ProviderRefreshService:
                         ),
                     )
                 models_seen += 1
+            if provider_id == "codexsale":
+                self._remove_codexsale_manual_aliases(discovered)
             self._store.record_provider_observation(
                 provider_id=provider_id,
                 account_id=account_id,
@@ -246,10 +250,43 @@ class ProviderRefreshService:
     def _is_requested_offering(self, account_id: str, model_id: str) -> bool:
         return self._store.get_account_offering_metadata(account_id, model_id).get("requested") is True
 
+    def _remove_codexsale_manual_aliases(self, discovered) -> None:
+        discovered_ids = {model.model_id for model in discovered}
+        for model in self._store.list_provider_models("codexsale", enabled_only=False):
+            if (
+                model.discovery_source == "manual"
+                and model.model_id.startswith("codexsale/")
+                and model.model_id.removeprefix("codexsale/") in discovered_ids
+            ):
+                self._store.delete_provider_model(provider="codexsale", model_id=model.model_id)
 
-def _should_auto_enable_offering(provider_id: str, model_id: str, metadata: Mapping[str, object]) -> bool:
-    if provider_id == "openrouter":
+
+def _should_auto_enable_offering(
+    provider_id: str,
+    model_id: str,
+    metadata: Mapping[str, object],
+    *,
+    text_loop_ok: bool = True,
+) -> bool:
+    if not text_loop_ok:
+        return False
+    if provider_id in ("openrouter", "nous"):
         return metadata.get("free") is True or model_id.endswith(":free")
+    return True
+
+
+def _is_text_loop_discovered_model(
+    provider_id: str,
+    modalities: tuple[str, ...],
+    metadata: Mapping[str, object],
+) -> bool:
+    if "text" not in modalities:
+        return False
+    if provider_id == "google":
+        raw = metadata.get("raw")
+        if isinstance(raw, dict):
+            methods = raw.get("supportedGenerationMethods")
+            return isinstance(methods, list) and "generateContent" in methods
     return True
 
 

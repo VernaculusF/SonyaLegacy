@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
+import pytest
+
 from sonya.providers.keystore import KeyStore
 from sonya.state.substrate import Substrate
 
@@ -98,6 +100,33 @@ def test_same_model_id_can_be_available_for_multiple_providers(tmp_path) -> None
         ]
         assert store.get_provider_model("shared/model", provider="openrouter").provider == "openrouter"
         assert store.get_provider_model("shared/model", provider="nous").provider == "nous"
+    finally:
+        sub.close()
+
+
+def test_account_offering_rejects_model_from_another_provider(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "provider-scoped-offering.db")
+    try:
+        store = KeyStore(sub)
+        for provider in ("openrouter", "nous"):
+            store.upsert_provider(
+                provider_id=provider,
+                display_name=provider,
+                adapter_kind="openai_compatible",
+            )
+        nous_account = store.add_provider_account(
+            provider_id="nous",
+            name="nous-primary",
+            secret_ref="manual:nous",
+        )
+        store.upsert_provider_model(
+            model_id="openrouter-only/model",
+            provider="openrouter",
+            model_name="OpenRouter only",
+        )
+
+        with pytest.raises(KeyError, match="nous::openrouter-only/model"):
+            store.set_account_offering(nous_account.account_id, "openrouter-only/model")
     finally:
         sub.close()
 

@@ -813,6 +813,7 @@ def _model_payload(model) -> dict[str, Any]:
     return {
         "model_id": model.model_id,
         "provider": model.provider,
+        "provider_model_key": f"{model.provider}::{model.model_id}",
         "model_name": model.model_name,
         "context_length": model.context_length,
         "modalities": model.modalities(),
@@ -883,6 +884,15 @@ async def api_providers_get(request: web.Request) -> web.Response:
             "accounts": [_account_payload(a) for a in accounts],
             "models": [_model_payload(m) for m in store.list_provider_models(enabled_only=False)],
             "available_models": [_model_payload(m) for m in store.list_available_provider_models()],
+            "account_offerings": [
+                {
+                    **offering,
+                    "provider_model_key": (
+                        f"{offering['provider_id']}::{offering['model_id']}"
+                    ),
+                }
+                for offering in store.list_account_offerings()
+            ],
             "quota_windows": [
                 _quota_payload(q)
                 for account in accounts

@@ -200,6 +200,128 @@ async def test_openrouter_refresh_auto_enables_only_free_models(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_nous_refresh_auto_enables_only_free_models(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, provider_id="nous")
+        adapter = StubAdapter(
+            provider_id="nous",
+            models=[
+                DiscoveredModel(
+                    provider_id="nous",
+                    model_id="nous/free-model",
+                    display_name="Free Model",
+                    context_length=1_000_000,
+                    metadata={"free": True},
+                ),
+                DiscoveredModel(
+                    provider_id="nous",
+                    model_id="nous/paid-model",
+                    display_name="Paid Model",
+                    context_length=131072,
+                    metadata={"free": False},
+                ),
+            ],
+        )
+
+        result = await ProviderRefreshService(store, {"nous": adapter}).refresh_provider("nous")
+
+        assert result.models_seen == 2
+        assert [m.model_id for m in store.list_available_provider_models("nous")] == [
+            "nous/free-model"
+        ]
+        offerings = sub.connection.execute(
+            "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY model_id"
+        ).fetchall()
+        assert offerings == [
+            (account_id, "nous/free-model", 1),
+            (account_id, "nous/paid-model", 0),
+        ]
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_google_refresh_disables_models_without_text_generation(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, provider_id="google")
+        adapter = StubAdapter(
+            provider_id="google",
+            models=[
+                DiscoveredModel(
+                    provider_id="google",
+                    model_id="gemini-text",
+                    display_name="Gemini Text",
+                    context_length=250000,
+                    modalities=("text",),
+                    metadata={"raw": {"supportedGenerationMethods": ["generateContent"]}},
+                ),
+                DiscoveredModel(
+                    provider_id="google",
+                    model_id="imagen-only",
+                    display_name="Imagen",
+                    context_length=0,
+                    modalities=(),
+                    metadata={"raw": {"supportedGenerationMethods": ["predict"]}},
+                ),
+            ],
+        )
+
+        await ProviderRefreshService(store, {"google": adapter}).refresh_provider("google")
+
+        assert [m.model_id for m in store.list_available_provider_models("google")] == [
+            "gemini-text"
+        ]
+        assert store.get_provider_model("imagen-only", provider="google").text_loop_ok == 0
+        offerings = sub.connection.execute(
+            "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY model_id"
+        ).fetchall()
+        assert offerings == [
+            (account_id, "gemini-text", 1),
+            (account_id, "imagen-only", 0),
+        ]
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_codexsale_refresh_removes_stale_prefixed_manual_alias(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        _seed_provider_and_account(store, provider_id="codexsale")
+        store.upsert_provider_model(
+            model_id="codexsale/gpt-5.4",
+            provider="codexsale",
+            model_name="Legacy prefixed GPT-5.4",
+            discovery_source="manual",
+        )
+        adapter = StubAdapter(
+            provider_id="codexsale",
+            models=[
+                DiscoveredModel(
+                    provider_id="codexsale",
+                    model_id="gpt-5.4",
+                    display_name="GPT-5.4",
+                    context_length=131072,
+                    modalities=("text",),
+                )
+            ],
+        )
+
+        await ProviderRefreshService(store, {"codexsale": adapter}).refresh_provider("codexsale")
+
+        assert store.get_provider_model("codexsale/gpt-5.4", provider="codexsale") is None
+        assert store.get_provider_model("gpt-5.4", provider="codexsale") is not None
+        assert [m.model_id for m in store.list_provider_models("codexsale", enabled_only=False)] == ["gpt-5.4"]
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
 async def test_openrouter_refresh_probes_free_models_before_enabling(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "refresh.db")
     try:

@@ -57,6 +57,16 @@ _PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://generativelanguage.googleapis.com/v1beta",
         "metadata": {"source": "operator_import"},
     },
+    "nvidia": {
+        "display_name": "NVIDIA NIM",
+        "adapter_kind": "openai_compatible",
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "metadata": {
+            "source": "operator_import",
+            "free_pool": True,
+            "preferred_models": ["nvidia/nemotron-3-ultra-550b-a55b"],
+        },
+    },
 }
 
 

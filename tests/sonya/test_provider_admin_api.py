@@ -89,6 +89,55 @@ async def test_admin_provider_registry_payload_and_create_flow(tmp_path, monkeyp
         await client.close()
 
 
+async def test_admin_provider_payload_scopes_availability_by_provider(tmp_path, monkeypatch) -> None:
+    client = await _client(tmp_path, monkeypatch)
+    db = tmp_path / "admin-providers.db"
+    try:
+        sub = Substrate.open(db)
+        try:
+            store = KeyStore(sub)
+            for provider in ("openrouter", "nous"):
+                store.upsert_provider(
+                    provider_id=provider,
+                    display_name=provider,
+                    adapter_kind="openai_compatible",
+                )
+                account = store.add_provider_account(
+                    provider_id=provider,
+                    name=f"{provider}-main",
+                    secret_ref=f"manual:{provider}",
+                )
+                store.upsert_provider_model(
+                    model_id="shared/model",
+                    provider=provider,
+                    model_name=f"{provider} shared",
+                    is_free=1,
+                )
+                store.set_account_offering(account.account_id, "shared/model", enabled=True)
+        finally:
+            sub.close()
+
+        resp = await client.get("/api/providers")
+        assert resp.status == 200
+        data = await resp.json()
+
+        assert {m["provider_model_key"] for m in data["available_models"]} == {
+            "openrouter::shared/model",
+            "nous::shared/model",
+        }
+        shared_models = [m for m in data["models"] if m["model_id"] == "shared/model"]
+        assert {m["provider_model_key"] for m in shared_models} == {
+            "openrouter::shared/model",
+            "nous::shared/model",
+        }
+        assert {o["provider_model_key"] for o in data["account_offerings"]} == {
+            "openrouter::shared/model",
+            "nous::shared/model",
+        }
+    finally:
+        await client.close()
+
+
 async def test_admin_provider_refresh_runs_lifecycle_service(tmp_path, monkeypatch) -> None:
     async def health_check(self):
         return AdapterHealth(ok=True, status="ok", latency_ms=12)
