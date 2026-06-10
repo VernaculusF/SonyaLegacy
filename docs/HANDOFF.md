@@ -6,8 +6,8 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `37e8e72`, substrate schema v33, generic periodic provider
-refresh, and active `sonya` / `sonya-admin` services.
+Deployed baseline: `9066eed`, substrate schema v33, account-scoped periodic
+provider refresh, and active `sonya` / `sonya-admin` services.
 
 Current slice:
 
@@ -61,6 +61,12 @@ Completed in the latest slices:
 - deployed commits `11dbc04` and `37e8e72`; focused production-source provider
   suite passed (`18 passed`), both services remained active, and the corrected
   cycle emitted no provider-refresh failures.
+- deployed commit `9066eed`; refresh is account-scoped now. A model discovered
+  through one key enables an offering only for that account, quota windows are
+  written only for that account, and model-discovery freshness is checked per
+  account. Production-source provider suite passed (`68 passed`), both services
+  remained active, and `journalctl -u sonya -p err --since '5 minutes ago'`
+  had no entries.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

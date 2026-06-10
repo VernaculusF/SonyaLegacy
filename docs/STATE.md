@@ -14,8 +14,9 @@
 - OpenRouter production discovery and routed inference are live;
 - the existing Admin Providers backend supports registry, account, offering,
   defaults, and protected-secret operations;
-- generic periodic provider discovery/health/quota refresh is deployed and
-  reads provider-level TTL from substrate metadata;
+- generic periodic provider discovery/health/quota refresh is deployed,
+  reads provider-level TTL from substrate metadata, and scopes freshness,
+  observations, offerings, and quotas to the concrete account being probed;
 - pools without active first-class accounts are skipped quietly until secure
   account import, rather than producing false runtime failures;
 - active work is safe import of remaining provider accounts, measured

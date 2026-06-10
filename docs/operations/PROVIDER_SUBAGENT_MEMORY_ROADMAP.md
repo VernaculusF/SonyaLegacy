@@ -20,8 +20,12 @@
   windows, observations, and encrypted provider secrets
 - protected account-secret ingestion and masked read surfaces
 - provider lifecycle adapters and discovery refresh service
-- generic runtime refresh coordinator with provider-level TTL, last-good
-  discovery freshness, and quiet skip for pools without active accounts
+- generic runtime refresh coordinator with provider-level TTL, account-scoped
+  last-good discovery freshness, and quiet skip for pools without active
+  accounts
+- account-scoped lifecycle refresh: health/model discovery observations,
+  offerings, and quota windows are tied to the account that was actually
+  probed
 - substrate-backed provider/model/account routing without fixed
   provider-to-model or environment binding
 - evidence-driven subagent picker over eligible account offerings

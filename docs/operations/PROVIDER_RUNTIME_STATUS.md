@@ -33,14 +33,15 @@
 - `src/sonya/providers/refresh.py` implements `ProviderRefreshService` over
   the adapter contract.
 - `ProviderRefreshCoordinator` runs from the core runtime every ten minutes and
-  refreshes only active pools whose last successful discovery is older than
-  `metadata.refresh_ttl_seconds` (six hours by default).
+  refreshes active accounts whose last successful discovery is older than
+  provider `metadata.refresh_ttl_seconds` (six hours by default).
 - Pools without active first-class accounts are skipped quietly until secure
   account import makes them lifecycle-ready.
 - Refresh records provider health, model discovery observations, and quota
-  windows.
+  windows with `account_id` on the observation.
 - Successful discovery upserts `provider_models` and enables offerings for
-  active accounts on that provider.
+  the refreshed account only. One working key no longer marks models available
+  for every account in the provider pool.
 - Discovery failure preserves the last-good cached model pool.
 - `providers.list_models` now reads substrate model pools and account
   offerings. It no longer uses Fireworks live catalog calls or hardcoded
@@ -130,14 +131,17 @@
   production-source suite passed (`18 passed`), both services active, and the
   corrected first cycle emitted no false failures for pools without active
   accounts
+- account-scoped refresh commit `9066eed` deployed; production-source provider
+  suite passed (`68 passed`), both services active, and journal error scan was
+  empty
 
 ## Next Slice
 
 The Admin Providers page now presents provider pools, accounts, models, quotas,
 observations, protected secret rotation, and manual refresh/probe controls.
-The refresh endpoint builds lifecycle adapters from substrate-owned
-provider/account state and resolves encrypted credentials only at the adapter
-boundary.
+The refresh endpoint builds one lifecycle adapter per active account from
+substrate-owned provider/account state and resolves encrypted credentials only
+at that account adapter boundary.
 
 Bootstrap Nous and the remaining approved providers through protected secret
 ingestion, confirm periodic lifecycle observations, then add measured model

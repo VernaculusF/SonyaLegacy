@@ -314,7 +314,8 @@ not turn Atrium into an admin surface.
 - [x] only successful discovery marks a pool fresh; failed discovery remains retryable
 - [x] pools without active first-class accounts are skipped until secure import
 - [x] Fireworks-only runtime balance loop removed
-- [x] successful discovery upserts provider model pools and active-account offerings
+- [x] successful discovery upserts provider model pools and offerings only for the probed account
+- [x] health/discovery observations and quota windows are account-scoped
 - [x] discovery failure preserves last-good cached models
 - [x] `providers.list_models` reads substrate provider model pools and offering availability
 - [x] Fireworks live catalog and Kiro/OpenRouter/CodexSale hardcoded list branches removed from listing
