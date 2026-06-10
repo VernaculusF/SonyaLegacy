@@ -15,7 +15,7 @@ documentation is `advertised`; neither is benchmark truth.
 | OpenRouter | OpenAI-compatible | production active | main encrypted account + legacy disabled pool | Live `/api/v1/models`; offerings change frequently |
 | Nous Research | OpenAI-compatible | bootstrap priority | credential available | Base `https://inference-api.nousresearch.com/v1`; user reports 50 RPM / 500k TPM |
 | Google AI Studio | Google native | bootstrap priority | project credential available | Native model discovery; quota is per project/model and dynamic |
-| kimchi.dev | OpenAI-compatible | candidate fallback | user reports 15 keys | Base `https://llm.kimchi.dev/openai/v1`; account budgets must be observed |
+| kimchi.dev | OpenAI-compatible | production imported fallback | 15 encrypted accounts | Base `https://llm.kimchi.dev/openai/v1`; account budgets must be observed |
 | agentrouter.org | Anthropic/bridge candidate | experimental | test credential available | Official docs show Claude Code/Anthropic setup; latency and content constraints reported |
 | FreeQwenApi | browser bridge with local OpenAI API | experimental | browser sessions | Local endpoint `http://localhost:3264/api`; must prove on VPS |
 | freemodel.dev | CLI bridge candidate | research | account available | Transport/model/quota contract must be verified |
@@ -56,6 +56,16 @@ availability, context, and free status must come from live discovery.
 - Nominal aggregate credits are not usable balance until each account passes
   health, access, and policy checks.
 
+## Measured Production Observations 2026-06-11
+
+- Kimchi was imported from an ignored workspace key file into encrypted
+  provider accounts: 15 active accounts.
+- Kimchi account-scoped discovery/health refresh succeeded for 15/15 accounts.
+- Kimchi currently exposes 8 cached/available model offerings in substrate.
+- Full raw Kimchi secret values were checked against the SQLite dump after
+  import; leak count was 0. Stored masks still intentionally include short
+  prefixes/suffixes.
+
 ## Measured Production Observations 2026-06-10
 
 - OpenRouter `/models` discovery succeeded on the VPS and returned `339`
@@ -90,9 +100,9 @@ After the runtime migration:
 
 1. Nous + one OpenRouter account for minimum viable text routing.
 2. Google AI Studio with native adapter.
-3. kimchi account pool.
+3. Google AI Studio with native adapter.
 4. FreeQwenApi VPS experiment.
-5. freemodel and agentrouter bridge research.
+5. freemodel and agentrouter bridge research/import.
 6. codex.sale only as explicit premium fallback.
 
 Do not load every credential before account/offering/quota modeling exists.

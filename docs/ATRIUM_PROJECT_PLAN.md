@@ -368,6 +368,8 @@ not turn Atrium into an admin surface.
 - [x] production OpenRouter account migrated to encrypted secret storage
 - [x] production OpenRouter discovery/health/live inference proof
 - [x] production substrate v33 deploy with rollback backup
+- [x] safe ignored-file account importer added
+- [x] production Kimchi pool imported: 15 encrypted accounts, 8 discovered models
 - [ ] protected Nous bootstrap
 
 ### Цель

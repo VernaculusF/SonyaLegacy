@@ -6,8 +6,9 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `9066eed`, substrate schema v33, account-scoped periodic
-provider refresh, and active `sonya` / `sonya-admin` services.
+Deployed baseline: `2fe185a`, substrate schema v33, account-scoped periodic
+provider refresh, safe provider account importer, Kimchi imported, and active
+`sonya` / `sonya-admin` services.
 
 Current slice:
 
@@ -65,6 +66,16 @@ Completed in the latest slices:
   through one key enables an offering only for that account, quota windows are
   written only for that account, and model-discovery freshness is checked per
   account. Production-source provider suite passed (`68 passed`), both services
+  remained active, and `journalctl -u sonya -p err --since '5 minutes ago'`
+  had no entries.
+- deployed commit `2fe185a`; `sonya.tools.import_provider_accounts` can import
+  ignored local key files into encrypted provider accounts without putting raw
+  keys in argv, Git, docs, or logs.
+- Kimchi import completed on the VPS from `workspace/kimchi.txt`: dry-run saw
+  15 new accounts, apply imported 15 encrypted active accounts, temporary VPS
+  key file was removed, full plaintext leak check returned 0, and lifecycle
+  refresh returned 15 ok / 0 failed with 8 cached/available models.
+- production-source importer/provider suite passed (`72 passed`), both services
   remained active, and `journalctl -u sonya -p err --since '5 minutes ago'`
   had no entries.
 

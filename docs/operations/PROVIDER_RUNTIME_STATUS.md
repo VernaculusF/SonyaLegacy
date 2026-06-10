@@ -91,6 +91,9 @@
 - Nous and other newly supplied accounts have not been bootstrapped yet.
 - Production OpenRouter main account is now bootstrapped through a
   `provider-secret` reference; its legacy plaintext value was cleared.
+- `sonya.tools.import_provider_accounts` imports ignored local key files into
+  encrypted provider accounts. It prints only counts and masks; raw keys are
+  read from file/stdin and never from argv.
 
 ## Latest Verification
 
@@ -134,6 +137,11 @@
 - account-scoped refresh commit `9066eed` deployed; production-source provider
   suite passed (`68 passed`), both services active, and journal error scan was
   empty
+- safe importer commit `2fe185a` deployed; production-source importer/provider
+  suite passed (`72 passed`) and journal error scan was empty
+- Kimchi was imported from the ignored workspace key file on the VPS:
+  `15` encrypted active accounts, `0` full plaintext leaks in SQLite dump,
+  account-scoped refresh `15/15` ok, `8` cached/available models, `0` failed
 
 ## Next Slice
 
@@ -143,7 +151,8 @@ The refresh endpoint builds one lifecycle adapter per active account from
 substrate-owned provider/account state and resolves encrypted credentials only
 at that account adapter boundary.
 
-Bootstrap Nous and the remaining approved providers through protected secret
-ingestion, confirm periodic lifecycle observations, then add measured model
-scorecards and cooldown handling. Authenticated production visual review
-remains open because the operator password was not extracted for automation.
+Bootstrap Nous, Google, AgentRouter, CodexSale, and remaining approved
+providers through protected secret ingestion/import files, confirm periodic
+lifecycle observations, then add measured model scorecards and cooldown
+handling. Authenticated production visual review remains open because the
+operator password was not extracted for automation.

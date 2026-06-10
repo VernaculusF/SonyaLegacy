@@ -19,6 +19,8 @@
   observations, offerings, and quotas to the concrete account being probed;
 - pools without active first-class accounts are skipped quietly until secure
   account import, rather than producing false runtime failures;
+- Kimchi is imported as the first bulk multi-account provider pool: 15
+  encrypted active accounts and 8 discovered/available models;
 - active work is safe import of remaining provider accounts, measured
   scorecards/cooldowns, subagent lifecycle completion, and migration/audit of
   old memory and knowledge.

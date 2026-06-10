@@ -26,6 +26,10 @@
 - account-scoped lifecycle refresh: health/model discovery observations,
   offerings, and quota windows are tied to the account that was actually
   probed
+- safe ignored-file provider account importer for bulk encrypted account
+  bootstrap
+- Kimchi production pool: 15 encrypted accounts and 8 discovered/available
+  account-scoped model offerings
 - substrate-backed provider/model/account routing without fixed
   provider-to-model or environment binding
 - evidence-driven subagent picker over eligible account offerings
@@ -48,12 +52,13 @@
 
 ### 2. Provider Import and Operations
 
-- bootstrap Nous, Google AI Studio, AgentRouter, CodexSale, Kimchi, and other
+- bootstrap Nous, Google AI Studio, AgentRouter, CodexSale, and other
   approved accounts through protected ingestion
 - support many accounts per provider without embedding credentials in Git,
   docs, prompts, argv, or continuity
 - [x] add periodic discovery/health/quota refresh with last-good-cache behavior
 - import active first-class accounts so the coordinator can refresh real pools
+- [x] import Kimchi as the first bulk multi-account provider pool
 - add measured model scorecards and provider/account cooldown handling
 - research Freemodel and browser bridges separately; do not pretend they are
   ordinary OpenAI-compatible providers until proven
