@@ -4,7 +4,7 @@
 **Type:** Current project state
 **Last updated:** 2026-06-11
 
-## Current execution state - 2026-06-10
+## Current execution state - 2026-06-11
 
 - production and repository substrate are at schema v33;
 - provider registry, many accounts per provider, many model offerings per
@@ -25,14 +25,19 @@
   enabled offerings, 19 distinct available free models after live one-token
   probes, stale non-text/non-free offerings disabled, and legacy runtime key
   acquire is constrained by model offering;
+- provider model identity is provider-scoped: `provider_models` is keyed by
+  `(provider, model_id)`, while raw `model_id` remains the upstream API value;
 - Google, Nous, and CodexSale are imported as protected provider accounts and
   live refresh succeeds: Google 2 accounts / 50 available models, Nous 2
-  accounts / 29 currently available models, CodexSale 1 account / 3 available
-  models; Nous exposed the next schema bug: model identity must become
-  provider-scoped because many returned model IDs collide with OpenRouter;
-- active work is safe import of remaining provider accounts, measured
-  scorecards/cooldowns, subagent lifecycle completion, and migration/audit of
-  old memory and knowledge.
+  accounts / 265 available models after provider-scoped repair, CodexSale
+  1 account / 3 available models;
+- project execution now has a first end-to-end substrate slice:
+  `projects.execute` creates a `project_executor` run, spawns an internal
+  disposable subagent scoped to the project, records task/action traces, and
+  `projects.harvest` records the outcome trace and completes/fails the run;
+- active work is measured scorecards/cooldowns, stronger project executor
+  planning/retry/progress behavior, and migration/audit of old memory and
+  knowledge.
 
 The authoritative execution order is
 `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Older provider sections
@@ -176,6 +181,9 @@ Verification for the v33 secret boundary:
 - deterministic model auto-pick
 - free-tier first, premium for harder/critical cases
 - historical experience начинает влиять на picker
+- project-scoped execution proof exists through `projects.execute` plus
+  `projects.harvest`: subagents stay internal, their results surface as
+  project runs/traces, and `ToolExperience` records project executor outcomes
 
 ### Atrium
 
@@ -193,7 +201,8 @@ Verification for the v33 secret boundary:
 - Sonya умеет пользоваться tools, selfmod, browser и subagent path
 - tool experience memory уже добавлена как база для experiential learning
 - проектные чаты больше не purely-frontend illusion: `workspace_id` проходит через dialog/history/active-session path
-- главный текущий разрыв не в отсутствии UI вообще, а в том, что Atrium ещё не стал project/workspace runtime
+- project executor substrate loop now exists, but Atrium has not yet been
+  wired to present it as a full live workspace runtime with progress/retry UI
 
 Project инварианты:
 - один основной чат
@@ -389,4 +398,5 @@ Workstream A получил первый answer-first вертикальный �
   succeeded.
 - Production services are active and core reports `thinking_provider_ready`
   for OpenRouter.
-- Nous bootstrap remains pending protected secret ingestion.
+- Nous bootstrap is complete through protected ingestion; provider-scoped model
+  identity repair restored the full live Nous pool to 265 available models.

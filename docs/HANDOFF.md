@@ -6,20 +6,21 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `447091b`, substrate schema v33, account-scoped periodic
+Deployed baseline: `aab8eea`, substrate schema v33, account-scoped periodic
 provider refresh, safe provider account importer, Kimchi/Google/Nous/CodexSale
-imported, OpenRouter free-model probe deployed, and active `sonya` /
-`sonya-admin` services.
+imported, OpenRouter free-model probe deployed, provider-scoped model identity
+repaired, project executor subagent lifecycle slice deployed, and active
+`sonya` / `sonya-admin` services.
 
 Current slice:
 
-1. import remaining approved provider accounts through protected secret
-   ingestion;
-2. add measured scorecards and provider/account cooldowns;
-3. complete subagent lifecycle/scope/outcome tracing;
+1. add measured scorecards and provider/account cooldowns;
+2. extend project executor from one-subagent proof to multi-subagent
+   planning/retries/progress checkpoints;
+3. wire Atrium project runtime UI to `project_executor` runs/traces/outcomes;
 4. inventory and migrate old memory and knowledge with backups, provenance, and
    idempotent manifests;
-5. return to Atrium later.
+5. continue remaining approved provider imports if Ivan supplies more keys.
 
 Parked new workstream: `docs/operations/WEB_PROXY_MODEL_BRIDGE.md` describes a
 future localhost-only web-proxy model tier. It replaces the old
@@ -30,6 +31,20 @@ Completed in the latest slices:
 
 - Admin Providers now renders provider pools, accounts, models, quotas,
   observations, protected secret rotation, and a collapsed legacy-key view;
+- provider model identity is now provider-scoped: live v33 databases repair
+  old `provider_models(model_id PRIMARY KEY)` tables to
+  `PRIMARY KEY(provider, model_id)`, while raw upstream `model_id` remains
+  unchanged for API calls;
+- Nous/OpenRouter collision is fixed on production: after live Nous refresh,
+  Nous availability is `265` models instead of `29`, OpenRouter remains `19`,
+  and `provider_account_offerings` no longer has the invalid raw-model FK;
+- `projects.execute` / `projects.harvest` deployed as the first project
+  executor e2e substrate slice: Sonya can create a project run, spawn an
+  internal project-scoped disposable subagent, record task/action/outcome
+  traces, complete/fail the run, and record `ToolExperience`;
+- VPS verification for the new slices: provider-focused suite `32 passed`,
+  project/subagent/provider suite `29 passed`, both services active, and
+  system journal error scans were empty;
 - typed manual refresh/probe endpoint and substrate-backed lifecycle adapter
   factory added;
 - VPS verification: `48 passed` for the broad provider/Admin/routing slice and
@@ -113,12 +128,9 @@ Completed in the latest slices:
   models; account enabled-offering counts ranged from 13 to 19.
 - Google, Nous, and CodexSale were imported from ignored workspace files via
   protected ingestion: Google 2 accounts, Nous 2 accounts, CodexSale 1 account.
-  Live refresh results: Google `2/2` ok with 50 available models; CodexSale
-  `1/1` ok with 3 available models. Nous `2/2` refresh saw 265 account
-  offerings, but only 29 currently appear available because 236 returned model
-  IDs collide with OpenRouter rows in the global `provider_models(model_id)`
-  schema. Fix requires provider-scoped model identity. Temporary VPS import
-  files were removed.
+  Live refresh results after provider-scoped repair: Google `2/2` ok with
+  50 available models; Nous `2/2` ok with 265 available models; CodexSale
+  `1/1` ok with 3 available models. Temporary VPS import files were removed.
 - `nvidia/llama-nemotron-rerank-vl-1b-v2:free` is not present in the current
   live OpenRouter `/models` catalog on the VPS; searches for rerank/nemotron
   rerank returned zero cached rows after refresh.
@@ -268,13 +280,13 @@ Verification:
 
 Next implementation slice:
 
-1. Execute Task 8 from
-   `docs/superpowers/plans/2026-06-10-provider-model-runtime.md`.
-2. Securely bootstrap Nous through provider account metadata plus the protected
-   Admin secret-ingestion endpoint. Do not write raw credentials to
-   Git/logs/docs/prompts.
-3. Confirm periodic refresh observations after active account import, then
-   start collecting model scorecards.
+1. Add measured provider/model scorecards and cooldown handling on top of the
+   provider-scoped account/offering data.
+2. Extend `projects.execute` beyond one-subagent proof: planning, multiple
+   disposable subagents, retries, progress checkpoints, and clearer failure
+   recovery.
+3. Wire Atrium project runtime UI to show `project_executor` runs, traces,
+   pending work, and completed outcomes.
 4. Preserve existing dirty-worktree changes and do not revert unrelated work.
 5. Prove every substantial slice locally and on the VPS.
 

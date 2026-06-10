@@ -1,7 +1,7 @@
 # Provider Runtime Status
 
 **Status:** Active slice status
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
 ## Completed Foundation
 
@@ -42,6 +42,12 @@
 - Successful discovery upserts `provider_models` and enables offerings for
   the refreshed account only. One working key no longer marks models available
   for every account in the provider pool.
+- `provider_models` identity is scoped by `(provider, model_id)`. Raw
+  `model_id` stays the upstream API value sent to the provider, so providers
+  can expose the same model IDs without overwriting each other.
+- Legacy v33 databases are repaired on writable open: old
+  `provider_models(model_id PRIMARY KEY)` tables are rebuilt to the composite
+  key, and `provider_account_offerings` drops the invalid raw-model FK.
 - Discovery failure preserves the last-good cached model pool.
 - `providers.list_models` now reads substrate model pools and account
   offerings. It no longer uses Fireworks live catalog calls or hardcoded
@@ -61,6 +67,9 @@
 - `ensure_critical_schema()` repairs legacy v33 `provider_models` tables that
   missed `text_loop_ok`, `last_checked_at`, `discovery_source`, or
   `metadata_json`.
+- `ensure_critical_schema()` also repairs legacy provider-model primary keys
+  to provider scope, so `get_provider_model()` and text-loop checks can reason
+  about a concrete provider/model pair.
 
 ## Management Surfaces
 
@@ -88,7 +97,9 @@
   and mask.
 - Ordinary account JSON/tool actions and legacy key-add JSON/tool actions
   reject plaintext credentials.
-- Nous and other newly supplied accounts have not been bootstrapped yet.
+- Google, Nous, CodexSale, Kimchi, and OpenRouter accounts are bootstrapped
+  through protected ingestion/import paths; future providers should use the
+  same boundary.
 - Production OpenRouter main account is now bootstrapped through a
   `provider-secret` reference; its legacy plaintext value was cleared.
 - `sonya.tools.import_provider_accounts` imports ignored local key files into
@@ -164,12 +175,16 @@
   unavailable. Account-aware legacy key acquire is deployed, so runtime chooses
   only keys whose mirrored account offers the selected model.
 - Google, Nous, and CodexSale protected imports completed from ignored workspace
-  files. Refresh results: Google `2/2` ok, `50` available models; CodexSale
-  `1/1` ok, `3` available models. Nous `2/2` ok and wrote `265` offerings per
-  account, but only `29` are currently visible as available because `236`
-  offering model IDs collide with OpenRouter-owned `provider_models` rows. This
-  is the next provider-schema fix: model identity must be scoped by provider or
-  mapped through provider-specific aliases. Temporary import files were removed.
+  files. Refresh results after provider-scoped identity repair: Google `2/2`
+  ok, `50` available models; Nous `2/2` ok, `265` available models; CodexSale
+  `1/1` ok, `3` available models. The previous Nous/OpenRouter collision bug
+  is fixed by the `(provider, model_id)` key.
+- Provider-scoped model identity commit `d8c2f3b` deployed. VPS verification:
+  provider-focused suite `32 passed`; live schema showed
+  `provider_models_pk=[('model_id', 2), ('provider', 1)]`,
+  `provider_account_offerings` only references `provider_accounts`, Nous
+  refresh returned `265` models per account, and `sonya` / `sonya-admin`
+  stayed active with empty error journals.
 - `nvidia/llama-nemotron-rerank-vl-1b-v2:free` was requested but is not in the
   current live OpenRouter catalog on the VPS; rerank-related catalog searches
   returned zero rows after refresh.
@@ -185,8 +200,6 @@ For OpenRouter, the Admin model pool hides paid cached models by default and
 shows free/requested models; searching still scans the full cached catalog so a
 specific paid model can be enabled deliberately.
 
-Bootstrap Nous, Google, AgentRouter, CodexSale, and remaining approved
-providers through protected secret ingestion/import files, confirm periodic
-lifecycle observations, then add measured model scorecards and cooldown
-handling. Authenticated production visual review remains open because the
-operator password was not extracted for automation.
+Next provider work is measured model scorecards, cooldown handling, and any
+remaining approved provider imports. Authenticated production visual review
+remains open because the operator password was not extracted for automation.

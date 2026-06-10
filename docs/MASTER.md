@@ -51,7 +51,11 @@
   worker/subagent capacity through localhost-only browser-backed bridges such
   as FreeQwenApi, FreeGLMKimiAPI, and FreeDeepseekAPI, not a main-Sonya model
   binding.
+- provider pools are substrate-owned and provider-scoped:
+  `(provider, model_id)` prevents OpenRouter/Nous-style model ID collisions
 - subagents с model routing
+- first project executor substrate slice: `projects.execute` starts a project
+  run and internal subagent, `projects.harvest` writes outcome traces/results
 - Atrium как multichannel UI surface
 - Atrium workspace path partially started: non-main workspaces, workspace-aware dialog/history/runtime routing
 

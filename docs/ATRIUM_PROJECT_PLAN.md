@@ -242,20 +242,34 @@ detailed current roadmap is
 Сделать субагентов корректной внутренней системой исполнения.
 
 ### TODO
-- [ ] пользователь не пишет субагентам
-- [ ] пользователь видит только traces / subthreads
-- [ ] субагенты одноразовые
+- [x] пользователь не пишет субагентам
+- [x] пользователь видит только traces / subthreads
+- [x] субагенты одноразовые
 - [ ] пустой контекст на старт
-- [ ] Sonya сама решает, создавать ли субагентов
+- [x] Sonya сама решает, создавать ли субагентов
 - [ ] Sonya сама решает, сколько субагентов нужно
-- [ ] Sonya сама решает, какой scope и модель дать субагенту
+- [x] Sonya сама решает, какой scope и модель дать субагенту
 - [ ] Sonya может сама делать мелкие правки без делегирования
-- [ ] traces субагента попадают в общую память Sonya как summary/lessons, а не как raw long-term behavior memory
+- [x] traces субагента попадают в общую память Sonya как summary/lessons, а не как raw long-term behavior memory
 
 ### Done criteria
-- [ ] project work реально оркестрируется через субагентов
-- [ ] пользователь не видит их как отдельных собеседников
-- [ ] Sonya остаётся orchestrator
+- [x] project work реально оркестрируется через субагентов
+- [x] пользователь не видит их как отдельных собеседников
+- [x] Sonya остаётся orchestrator
+
+### Progress 2026-06-11 - project executor substrate slice
+
+- [x] `projects.execute` creates a `project_executor` run
+- [x] execution spawns an internal disposable subagent with project
+  `workspace_id` scope
+- [x] task/action/outcome traces are written to `execution_traces`
+- [x] `projects.harvest` completes or fails the project run from subagent
+  outcome
+- [x] `ToolExperience` records project executor outcomes for future routing
+  and learning
+- [x] VPS focused project/subagent/provider suite passes (`29 passed`)
+- [ ] multi-subagent planning, retries, progress checkpoints, and Atrium live
+  progress UI remain next work
 
 ---
 
@@ -377,7 +391,7 @@ not turn Atrium into an admin surface.
 - [x] protected Google bootstrap
 - [x] protected Nous bootstrap
 - [x] protected CodexSale bootstrap
-- [ ] provider-scoped model identity / aliases so providers can expose the same
+- [x] provider-scoped model identity / aliases so providers can expose the same
   raw model id without overwriting each other
 
 ### Цель
