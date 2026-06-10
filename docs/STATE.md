@@ -21,9 +21,13 @@
   account import, rather than producing false runtime failures;
 - Kimchi is imported as the first bulk multi-account provider pool: 15
   encrypted active accounts and 8 discovered/available models;
-- OpenRouter availability is repaired after the legacy key/account mirror
-  mismatch: 1 active account, 27 available free models, old non-free offerings
-  disabled, and refresh no longer auto-enables paid OpenRouter models;
+- OpenRouter availability is probe-backed: 10 active accounts, account-specific
+  enabled offerings, 19 distinct available free models after live one-token
+  probes, stale non-text/non-free offerings disabled, and legacy runtime key
+  acquire is constrained by model offering;
+- Google, Nous, and CodexSale are imported as protected provider accounts and
+  live refresh succeeds: Google 2 accounts / 50 available models, Nous 2
+  accounts / 265 available models, CodexSale 1 account / 3 available models;
 - active work is safe import of remaining provider accounts, measured
   scorecards/cooldowns, subagent lifecycle completion, and migration/audit of
   old memory and knowledge.

@@ -6,9 +6,10 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `64c1bfc`, substrate schema v33, account-scoped periodic
-provider refresh, safe provider account importer, Kimchi imported, OpenRouter
-free-only availability repaired, and active `sonya` / `sonya-admin` services.
+Deployed baseline: `76bf009`, substrate schema v33, account-scoped periodic
+provider refresh, safe provider account importer, Kimchi/Google/Nous/CodexSale
+imported, OpenRouter free-model probe deployed, and active `sonya` /
+`sonya-admin` services.
 
 Current slice:
 
@@ -92,6 +93,27 @@ Completed in the latest slices:
 - VPS focused provider/Admin/picker suite passed (`35 passed`), both services
   remained active, and `journalctl -u sonya/sonya-admin -p err --since
   '10 minutes ago'` had no entries.
+- deployed commits `beab199`, `d5d9163`, and `76bf009`; OpenRouter no longer
+  trusts catalog `free` blindly. Adapter pricing now refuses non-text-loop
+  audio outputs such as `google/lyria-3-clip-preview`, refresh probes every
+  OpenRouter free candidate with a one-token chat request before enabling an
+  account offering, and stale non-requested offerings are disabled with
+  observation/metadata evidence. `qwen/qwen3-coder:free` is now disabled on
+  probe failure; Lyria preview models are `free=False` and unavailable.
+- legacy OpenRouter accounts were reactivated after account-aware key acquire
+  was deployed. Runtime now acquires legacy keys by `(provider, model offering)`
+  when a concrete model is selected, so free accounts can stay active without
+  being chosen for models they did not pass. Production OpenRouter state:
+  10 active accounts, 338 models seen per account, 19 distinct available free
+  models; account enabled-offering counts ranged from 13 to 19.
+- Google, Nous, and CodexSale were imported from ignored workspace files via
+  protected ingestion: Google 2 accounts, Nous 2 accounts, CodexSale 1 account.
+  Live refresh results: Google `2/2` ok with 50 available models; Nous `2/2`
+  ok with 265 available models and 3 free; CodexSale `1/1` ok with 3 available
+  models. Temporary VPS import files were removed.
+- `nvidia/llama-nemotron-rerank-vl-1b-v2:free` is not present in the current
+  live OpenRouter `/models` catalog on the VPS; searches for rerank/nemotron
+  rerank returned zero cached rows after refresh.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

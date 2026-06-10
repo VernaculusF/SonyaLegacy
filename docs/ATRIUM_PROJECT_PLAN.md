@@ -373,7 +373,10 @@ not turn Atrium into an admin surface.
 - [x] production OpenRouter availability repaired: legacy account status synced,
   old non-free offerings disabled, and Admin shows free/requested models by
   default
-- [ ] protected Nous bootstrap
+- [x] OpenRouter free candidates are live-probed per account before enablement
+- [x] protected Google bootstrap
+- [x] protected Nous bootstrap
+- [x] protected CodexSale bootstrap
 
 ### Цель
 Переделать provider layer в `provider -> model pool`.
@@ -395,10 +398,10 @@ not turn Atrium into an admin surface.
 
 ### Must-cover providers
 - [x] OpenRouter free-model availability and discovery
-- [ ] Google AI Studio
-- [ ] Nous Research
+- [x] Google AI Studio
+- [x] Nous Research
 - [ ] agentrouter.org
-- [ ] codexsale
+- [x] codexsale
 - [ ] future freemodel bridge
 
 ### Done criteria

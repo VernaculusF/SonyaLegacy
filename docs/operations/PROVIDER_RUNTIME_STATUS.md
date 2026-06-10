@@ -152,6 +152,24 @@
 - Live OpenRouter refresh on the VPS returned `ok=True`, `models_seen=338`,
   `quotas_seen=0`, and non-free offerings stayed disabled. Focused VPS suite:
   `35 passed`; `sonya` and `sonya-admin` were active with empty error journals.
+- OpenRouter probe-backed refresh commits `beab199`, `d5d9163`, and `76bf009`
+  deployed. Free candidates now require a successful one-token chat probe per
+  account before offering enablement; failed probes write `model_probe`
+  observations and disabled offering metadata. Non-text-loop/audio outputs such
+  as `google/lyria-3-clip-preview` are no longer treated as free candidates.
+  Requested paid/manual offerings are preserved by `metadata.requested=true`.
+- Production OpenRouter after probe: `10` active accounts, `338` models seen
+  per account, `19` distinct available free models. `qwen/qwen3-coder:free`
+  failed probe and is disabled; Lyria preview models are `free=False` and
+  unavailable. Account-aware legacy key acquire is deployed, so runtime chooses
+  only keys whose mirrored account offers the selected model.
+- Google, Nous, and CodexSale protected imports completed from ignored workspace
+  files. Refresh results: Google `2/2` ok, `50` available models; Nous `2/2`
+  ok, `265` available models (`3` free); CodexSale `1/1` ok, `3` available
+  models. Temporary import files were removed.
+- `nvidia/llama-nemotron-rerank-vl-1b-v2:free` was requested but is not in the
+  current live OpenRouter catalog on the VPS; rerank-related catalog searches
+  returned zero rows after refresh.
 
 ## Next Slice
 
