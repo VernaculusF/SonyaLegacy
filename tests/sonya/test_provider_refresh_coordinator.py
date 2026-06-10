@@ -16,6 +16,7 @@ def _seed_provider(
     provider_id: str,
     *,
     status: str = "active",
+    account_status: str = "active",
     refresh_ttl_seconds: int | None = None,
 ) -> None:
     metadata = {}
@@ -33,6 +34,7 @@ def _seed_provider(
         provider_id=provider_id,
         name="primary",
         secret_ref="manual:test",
+        status=account_status,
     )
 
 
@@ -143,5 +145,22 @@ async def test_coordinator_continues_after_adapter_factory_failure(tmp_path) -> 
         assert results[0].provider_id == "broken"
         assert results[0].ok is False
         assert results[0].error == "RuntimeError: broken unavailable"
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_skips_provider_without_active_accounts(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "coordinator.db")
+    try:
+        store = KeyStore(sub)
+        _seed_provider(store, "not-ready", account_status="disabled")
+
+        coordinator = ProviderRefreshCoordinator(
+            store,
+            adapter_factory=lambda _store, _provider_id: pytest.fail("must not build adapter"),
+        )
+
+        assert await coordinator.refresh_due() == []
     finally:
         sub.close()

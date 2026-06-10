@@ -146,6 +146,11 @@ class ProviderRefreshCoordinator:
         for provider in self._store.list_providers():
             if provider.status != "active" or not self._is_due(provider.provider_id, now):
                 continue
+            if not any(
+                account.status == "active"
+                for account in self._store.list_provider_accounts(provider.provider_id)
+            ):
+                continue
             try:
                 if self._refresh_provider is not None:
                     result = await self._refresh_provider(provider.provider_id)
