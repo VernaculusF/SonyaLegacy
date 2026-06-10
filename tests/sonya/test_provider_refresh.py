@@ -299,6 +299,12 @@ async def test_codexsale_refresh_removes_stale_prefixed_manual_alias(tmp_path) -
             model_name="Legacy prefixed GPT-5.4",
             discovery_source="manual",
         )
+        store.upsert_provider_model(
+            model_id="codexsale/gpt-image-2",
+            provider="codexsale",
+            model_name="GPT Image 2",
+            discovery_source="manual",
+        )
         adapter = StubAdapter(
             provider_id="codexsale",
             models=[
@@ -315,8 +321,13 @@ async def test_codexsale_refresh_removes_stale_prefixed_manual_alias(tmp_path) -
         await ProviderRefreshService(store, {"codexsale": adapter}).refresh_provider("codexsale")
 
         assert store.get_provider_model("codexsale/gpt-5.4", provider="codexsale") is None
+        assert store.get_provider_model("codexsale/gpt-image-2", provider="codexsale") is None
         assert store.get_provider_model("gpt-5.4", provider="codexsale") is not None
-        assert [m.model_id for m in store.list_provider_models("codexsale", enabled_only=False)] == ["gpt-5.4"]
+        assert store.get_provider_model("gpt-image-2", provider="codexsale").text_loop_ok == 0
+        assert [m.model_id for m in store.list_provider_models("codexsale", enabled_only=False)] == [
+            "gpt-5.4",
+            "gpt-image-2",
+        ]
     finally:
         sub.close()
 

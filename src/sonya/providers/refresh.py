@@ -252,12 +252,32 @@ class ProviderRefreshService:
 
     def _remove_codexsale_manual_aliases(self, discovered) -> None:
         discovered_ids = {model.model_id for model in discovered}
+        special_ids = {"gpt-image-2", "gpt-4o-transcribe"}
         for model in self._store.list_provider_models("codexsale", enabled_only=False):
+            canonical_id = model.model_id.removeprefix("codexsale/")
             if (
                 model.discovery_source == "manual"
                 and model.model_id.startswith("codexsale/")
-                and model.model_id.removeprefix("codexsale/") in discovered_ids
+                and canonical_id in discovered_ids | special_ids
             ):
+                if canonical_id in special_ids:
+                    self._store.upsert_provider_model(
+                        model_id=canonical_id,
+                        provider="codexsale",
+                        model_name=model.model_name,
+                        context_length=model.context_length,
+                        modalities_json=model.modalities_json,
+                        cost_per_1m_input_tokens=model.cost_per_1m_input_tokens,
+                        cost_per_1m_output_tokens=model.cost_per_1m_output_tokens,
+                        is_free=model.is_free,
+                        latency_tier=model.latency_tier,
+                        strength_json=model.strength_json,
+                        role_preference=model.role_preference,
+                        enabled=model.enabled,
+                        text_loop_ok=0,
+                        discovery_source="manual",
+                        metadata_json=model.metadata_json,
+                    )
                 self._store.delete_provider_model(provider="codexsale", model_id=model.model_id)
 
 
