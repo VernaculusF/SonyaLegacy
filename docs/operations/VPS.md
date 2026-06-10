@@ -179,6 +179,10 @@ docker logs sonya-searxng | tail -30
 
 ## 8. Backup substrate
 
+`deploy/backup.sh` uses the SQLite Backup API. If the `sqlite3` CLI is absent,
+it falls back to Python's `sqlite3.Connection.backup()`, never to plain `cp` of
+the live WAL database.
+
 Автоматический ежедневный backup через cron в `~/.sonya/backups/daily/`. Ручной:
 
 ```bash

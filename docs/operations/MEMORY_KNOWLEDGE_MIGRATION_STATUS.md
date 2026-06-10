@@ -73,3 +73,6 @@ default because a live WAL database is not a stable file snapshot; use
 
 Next, create the WAL-safe backup and run migration-source/deduplication analysis
 against the backup copy before any production write.
+
+Operational note: `deploy/backup.sh` must use SQLite Backup API even when the
+`sqlite3` CLI is absent. Plain `cp` of the live WAL database is forbidden.

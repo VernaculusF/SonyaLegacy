@@ -21,12 +21,23 @@ fi
 
 DAILY="$BACKUP_DIR/daily/sonya_$DATE.db"
 
-# Use sqlite3 .backup which is atomic and works while DB is in WAL mode.
-# Falls back to plain copy if sqlite3 is missing.
+# Use SQLite Backup API, which is atomic and works while DB is in WAL mode.
 if command -v sqlite3 >/dev/null; then
     sqlite3 "$SUBSTRATE" ".backup '$DAILY'"
 else
-    cp -p "$SUBSTRATE" "$DAILY"
+    python3 - "$SUBSTRATE" "$DAILY" <<'PY'
+import sqlite3
+import sys
+
+source_path, backup_path = sys.argv[1:3]
+src = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True)
+dst = sqlite3.connect(backup_path)
+try:
+    src.backup(dst)
+finally:
+    dst.close()
+    src.close()
+PY
 fi
 
 gzip -f "$DAILY"
