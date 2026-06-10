@@ -37,6 +37,7 @@ def test_manifest_reports_counts_schema_hashes_and_sources_without_content(tmp_p
     rendered = json.dumps(manifest, sort_keys=True)
 
     assert manifest["read_only"] is True
+    assert "sha256" not in manifest["substrate"]
     assert manifest["substrate"]["tables"]["semantic_facts"]["rows"] == 1
     assert "statement" in manifest["substrate"]["tables"]["semantic_facts"]["columns"]
     assert manifest["knowledge"]["files"][0]["path"] == "private.md"
@@ -69,3 +70,22 @@ def test_manifest_cli_writes_json_without_modifying_substrate(tmp_path, capsys) 
 
     assert hashlib.sha256(db_path.read_bytes()).hexdigest() == before
     assert payload["read_only"] is True
+
+
+def test_manifest_hashes_substrate_only_when_explicitly_requested(tmp_path) -> None:
+    db_path = tmp_path / "sonya.db"
+    sub = Substrate.open(db_path)
+    sub.close()
+    knowledge_root = tmp_path / "knowledge"
+    knowledge_root.mkdir()
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    manifest = build_manifest(
+        substrate_path=db_path,
+        knowledge_root=knowledge_root,
+        project_root=project_root,
+        hash_substrate=True,
+    )
+
+    assert len(manifest["substrate"]["sha256"]) == 64

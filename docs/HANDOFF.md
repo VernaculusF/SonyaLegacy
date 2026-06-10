@@ -36,6 +36,8 @@ Completed in the latest slices:
   continuity events, 242 tool experiences, and 12 knowledge files.
 - read-only `sonya.tools.memory_migration_manifest` implemented; it emits only
   row counts, schemas, paths, sizes, hashes, and legacy-source categories.
+  Live substrate manifests use a fast inventory fingerprint; full DB hashing is
+  opt-in for offline/backup copies.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See

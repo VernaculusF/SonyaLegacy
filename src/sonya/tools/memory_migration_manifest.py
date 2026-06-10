@@ -30,7 +30,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _substrate_manifest(path: Path) -> dict[str, Any]:
+def _substrate_manifest(path: Path, *, hash_substrate: bool = False) -> dict[str, Any]:
     connection = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
     try:
         tables: dict[str, Any] = {}
@@ -49,13 +49,21 @@ def _substrate_manifest(path: Path) -> dict[str, Any]:
             tables[table] = {"exists": True, "rows": rows, "columns": columns}
 
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        return {
+        result = {
             "path": str(path.resolve()),
             "bytes": path.stat().st_size,
-            "sha256": _sha256(path),
             "user_version": int(version),
             "tables": tables,
         }
+        fingerprint = json.dumps(
+            {"user_version": result["user_version"], "tables": tables},
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8")
+        result["inventory_sha256"] = hashlib.sha256(fingerprint).hexdigest()
+        if hash_substrate:
+            result["sha256"] = _sha256(path)
+        return result
     finally:
         connection.close()
 
@@ -98,12 +106,13 @@ def build_manifest(
     substrate_path: Path,
     knowledge_root: Path,
     project_root: Path,
+    hash_substrate: bool = False,
 ) -> dict[str, Any]:
     return {
         "format": "sonya-memory-knowledge-manifest-v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "read_only": True,
-        "substrate": _substrate_manifest(substrate_path),
+        "substrate": _substrate_manifest(substrate_path, hash_substrate=hash_substrate),
         "knowledge": _knowledge_manifest(knowledge_root),
         "legacy_sources": _legacy_sources(project_root),
     }
@@ -115,12 +124,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--knowledge-root", type=Path, required=True)
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--hash-substrate",
+        action="store_true",
+        help="Hash the SQLite file; use only for an offline or backup copy",
+    )
     args = parser.parse_args(argv)
 
     manifest = build_manifest(
         substrate_path=args.substrate,
         knowledge_root=args.knowledge_root,
         project_root=args.project_root,
+        hash_substrate=args.hash_substrate,
     )
     rendered = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output:

@@ -66,7 +66,10 @@ python -m sonya.tools.memory_migration_manifest \
 ```
 
 It opens SQLite with `mode=ro` and emits only counts, schemas, paths, sizes,
-hashes, and source categories. It does not emit memory or knowledge content.
+knowledge hashes, an inventory fingerprint, and source categories. It does not
+emit memory or knowledge content. Full SQLite file hashing is disabled by
+default because a live WAL database is not a stable file snapshot; use
+`--hash-substrate` only against an offline or backup copy.
 
 Next, create the WAL-safe backup and run migration-source/deduplication analysis
 against the backup copy before any production write.
