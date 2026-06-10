@@ -10,14 +10,16 @@ Sonya uses these tools to:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from sonya.state.substrate import Substrate
 
 
 class ProjectsTool:
-    def __init__(self, substrate: Substrate) -> None:
+    def __init__(self, substrate: Substrate, subagent_provider: Any | None = None) -> None:
         self._sub = substrate
+        self._subagent_provider = subagent_provider
 
     def spec(self) -> list[dict[str, Any]]:
         return [
@@ -129,6 +131,40 @@ class ProjectsTool:
                 },
             },
             {
+                "name": "projects.execute",
+                "description": (
+                    "Start a project execution run. This creates a project run, "
+                    "spawns an internal disposable subagent scoped to the project, "
+                    "and records the start trace. The user does not talk to the "
+                    "subagent directly; they only see the run/traces/result."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["project_id", "task"],
+                    "properties": {
+                        "project_id": {"type": "string", "description": "Project ID"},
+                        "task": {"type": "string", "description": "Concrete work request"},
+                        "provider": {"type": "string", "description": "Optional provider override"},
+                        "model": {"type": "string", "description": "Optional model override"},
+                        "max_steps": {"type": "integer", "description": "Max subagent steps", "default": 6},
+                    },
+                },
+            },
+            {
+                "name": "projects.harvest",
+                "description": (
+                    "Harvest completed internal subagents for a project, append "
+                    "outcome traces, and complete/fail their project runs."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["project_id"],
+                    "properties": {
+                        "project_id": {"type": "string", "description": "Project ID"},
+                    },
+                },
+            },
+            {
                 "name": "projects.pressure",
                 "description": (
                     "Read or update evolution pressure dimensions. "
@@ -168,6 +204,10 @@ class ProjectsTool:
             return self._update(args)
         if name == "projects.trace":
             return self._trace(args)
+        if name == "projects.execute":
+            return self._execute_project(args)
+        if name == "projects.harvest":
+            return self._harvest_project(args)
         if name == "projects.pressure":
             return self._pressure(args)
         return f"[unknown tool: {name}]"
@@ -270,6 +310,169 @@ class ProjectsTool:
         ProjectStore(self._sub).touch(pid)
         return f"Trace #{t.trace_id} recorded (seq={t.step_seq}, type={t.step_type})."
 
+    def _execute_project(self, args: dict) -> str:
+        from sonya.project import ExecutionTraceStore, ProjectRunStore, ProjectStore
+        from sonya.project.model import ProjectNotFoundError
+        from sonya.tools.subagent_tool import SubagentTool
+
+        pid = str(args.get("project_id", "")).strip()
+        task = str(args.get("task", "")).strip()
+        if not pid or not task:
+            return "[ERROR] projects.execute: project_id and task are required"
+        try:
+            project = ProjectStore(self._sub).get(pid)
+        except ProjectNotFoundError:
+            return f"[ERROR] projects.execute: project {pid} not found"
+        if project.status != "in_progress":
+            return f"[BLOCKED] projects.execute: project status is {project.status}"
+        if project.policy_forbids("subagent_spawn"):
+            return "[BLOCKED] projects.execute: subagent_spawn is forbidden by project policy"
+        if project.policy_requires_consent("subagent_spawn"):
+            ProjectStore(self._sub).set_status(
+                pid,
+                "waiting_choice",
+                reason="subagent_spawn requires consent",
+                source="project_executor",
+            )
+            return "[BLOCKED] projects.execute: subagent_spawn requires consent"
+
+        run_store = ProjectRunStore(self._sub)
+        trace_store = ExecutionTraceStore(self._sub)
+        run = run_store.create(pid, kind="project_executor", agent_type="subagent_orchestrator")
+        run_store.start(run.run_id)
+        trace_store.append(
+            run.run_id,
+            pid,
+            step_seq=0,
+            step_type="task",
+            content=task,
+            outcome="accepted",
+        )
+
+        payload = {
+            "task": task,
+            "provider": str(args.get("provider", "")).strip(),
+            "model": str(args.get("model", "")).strip(),
+            "max_steps": int(args.get("max_steps", 6) or 6),
+        }
+        spawn_result = SubagentTool(
+            self._sub,
+            provider=self._subagent_provider,
+            workspace_id=pid,
+        ).spawn(json.dumps(payload, ensure_ascii=False))
+        subagent_id = _extract_subagent_id(spawn_result)
+        row = self._sub.connection.execute(
+            "SELECT provider, model FROM subagent_tasks WHERE subagent_id = ?",
+            (subagent_id,),
+        ).fetchone() if subagent_id else None
+        provider = row[0] if row else ""
+        model = row[1] if row else ""
+        trace_store.append(
+            run.run_id,
+            pid,
+            step_seq=1,
+            step_type="action" if subagent_id else "error",
+            content="spawn internal project subagent",
+            tool_name="subagent.spawn",
+            tool_arg_summary=task[:500],
+            outcome=spawn_result[:2000],
+            provider=provider,
+            model=model,
+        )
+        if not subagent_id:
+            run_store.complete(run.run_id, error=spawn_result)
+            return spawn_result
+
+        run_store.update(
+            run.run_id,
+            steps=[{
+                "subagent_id": subagent_id,
+                "task": task,
+                "provider": provider,
+                "model": model,
+            }],
+            summary=f"Project executor spawned {subagent_id}",
+        )
+        ProjectStore(self._sub).touch(pid)
+        return (
+            f"[OK] project execution started\n"
+            f"run_id: {run.run_id}\n"
+            f"subagent_id: {subagent_id}\n"
+            f"provider: {provider or '(auto)'}\n"
+            f"model: {model or '(provider default)'}"
+        )
+
+    def _harvest_project(self, args: dict) -> str:
+        from sonya.memory.tool_experience import ToolExperience
+        from sonya.project import ExecutionTraceStore, ProjectRunStore, ProjectStore
+        from sonya.project.model import ProjectNotFoundError
+
+        pid = str(args.get("project_id", "")).strip()
+        if not pid:
+            return "[ERROR] projects.harvest: project_id is required"
+        try:
+            ProjectStore(self._sub).get(pid)
+        except ProjectNotFoundError:
+            return f"[ERROR] projects.harvest: project {pid} not found"
+        run_store = ProjectRunStore(self._sub)
+        trace_store = ExecutionTraceStore(self._sub)
+        completed = 0
+        failed = 0
+        pending = 0
+        for run in run_store.list_by_project(pid, kind="project_executor", limit=50):
+            if run.status not in ("pending", "running"):
+                continue
+            subagent_id = ""
+            if run.steps and isinstance(run.steps[0], dict):
+                subagent_id = str(run.steps[0].get("subagent_id", ""))
+            if not subagent_id:
+                continue
+            row = self._sub.connection.execute(
+                "SELECT status, result, provider, model FROM subagent_tasks WHERE subagent_id = ?",
+                (subagent_id,),
+            ).fetchone()
+            if row is None:
+                run_store.complete(run.run_id, error=f"subagent {subagent_id} missing")
+                failed += 1
+                continue
+            status, result, provider, model = row
+            if status not in ("done", "failed"):
+                pending += 1
+                continue
+            traces = trace_store.list_by_run(run.run_id, limit=200)
+            step_seq = (max(t.step_seq for t in traces) + 1) if traces else 0
+            outcome = "done" if status == "done" else "failed"
+            trace_store.append(
+                run.run_id,
+                pid,
+                step_seq=step_seq,
+                step_type="outcome",
+                content=result or "",
+                tool_name="subagent.result",
+                tool_arg_summary=subagent_id,
+                outcome=outcome,
+                provider=provider or "",
+                model=model or "",
+            )
+            ToolExperience(self._sub).record(
+                tool_name="projects.execute",
+                tool_arg_summary=subagent_id,
+                outcome="success" if status == "done" else "error",
+                outcome_detail=(result or "")[:1000],
+                provider=provider or "",
+                model=model or "",
+                session_type="project",
+            )
+            if status == "done":
+                run_store.complete(run.run_id, result=result or "")
+                completed += 1
+            else:
+                run_store.complete(run.run_id, error=result or "subagent failed")
+                failed += 1
+        if completed or failed:
+            ProjectStore(self._sub).touch(pid)
+        return f"[OK] project harvest: completed={completed}, failed={failed}, pending={pending}"
+
     def _pressure(self, args: dict) -> str:
         action = args.get("action", "list")
         conn = self._sub.connection
@@ -325,3 +528,8 @@ class ProjectsTool:
             conn.commit()
             return f"Pressure {dim}: {cur_score:.2f}→{tgt_score:.2f} (gap={gap:.2f})"
         return f"Unknown action: {action}"
+
+
+def _extract_subagent_id(text: str) -> str:
+    match = re.search(r"\bsa-[0-9a-f]{12}\b", text or "")
+    return match.group(0) if match else ""
