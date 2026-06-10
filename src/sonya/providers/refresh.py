@@ -152,6 +152,16 @@ class ProviderRefreshService:
                             enabled=False,
                             metadata_json=json.dumps({"source": "auto_probe", "disabled_reason": "probe_failed"}, ensure_ascii=False),
                         )
+                elif provider_id == "openrouter" and not self._is_requested_offering(account_id, model.model_id):
+                    self._store.set_account_offering(
+                        account_id,
+                        model.model_id,
+                        enabled=False,
+                        metadata_json=json.dumps(
+                            {"source": "auto_probe", "disabled_reason": "not_free_or_not_text_loop"},
+                            ensure_ascii=False,
+                        ),
+                    )
                 models_seen += 1
             self._store.record_provider_observation(
                 provider_id=provider_id,
@@ -232,6 +242,9 @@ class ProviderRefreshService:
             ),
         )
         return ok
+
+    def _is_requested_offering(self, account_id: str, model_id: str) -> bool:
+        return self._store.get_account_offering_metadata(account_id, model_id).get("requested") is True
 
 
 def _should_auto_enable_offering(provider_id: str, model_id: str, metadata: Mapping[str, object]) -> bool:

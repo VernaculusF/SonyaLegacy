@@ -955,7 +955,7 @@ async function providersRotateSecret(id) {
 async function providersSetOffering(model_id,enabled) {
   const candidates=(providersSnapshot.accounts||[]).filter(x=>x.provider_id===providersSelectedId); if(!candidates.length){alert('Create an account first.');return;}
   const account_id=prompt(`Account ID for ${enabled?'enable':'disable'}:`,candidates[0].account_id); if(!account_id)return;
-  try{await providersJson('/api/providers/accounts/offerings',{account_id,model_id,enabled});loadPage('providers');}catch(e){alert(e.message);}
+  try{await providersJson('/api/providers/accounts/offerings',{account_id,model_id,enabled,metadata:{source:'manual_admin',requested:enabled}});loadPage('providers');}catch(e){alert(e.message);}
 }
 
 async function providersSaveSettings() {

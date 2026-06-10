@@ -15,6 +15,7 @@ LEAST-RECENTLY-USED one whose cooldown has expired. Round-robin balanced.
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -519,6 +520,19 @@ class KeyStore:
             (account_id, model_id, int(enabled), metadata_json, now, now),
         )
         self._sub.connection.commit()
+
+    def get_account_offering_metadata(self, account_id: str, model_id: str) -> dict[str, Any]:
+        row = self._sub.connection.execute(
+            "SELECT metadata_json FROM provider_account_offerings WHERE account_id = ? AND model_id = ?",
+            (account_id, model_id),
+        ).fetchone()
+        if row is None:
+            return {}
+        try:
+            payload = json.loads(row[0] or "{}")
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
 
     def list_available_provider_models(self, provider_id: str | None = None) -> list[ProviderModel]:
         params: list[Any] = []

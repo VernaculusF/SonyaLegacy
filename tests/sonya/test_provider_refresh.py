@@ -246,6 +246,69 @@ async def test_openrouter_refresh_probes_free_models_before_enabling(tmp_path) -
 
 
 @pytest.mark.asyncio
+async def test_openrouter_refresh_disables_stale_non_requested_offerings(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, provider_id="openrouter")
+        store.upsert_provider_model(
+            model_id="google/lyria-3-clip-preview",
+            provider="openrouter",
+            model_name="Lyria",
+            is_free=1,
+            discovery_source="adapter",
+        )
+        store.upsert_provider_model(
+            model_id="vendor/requested-paid",
+            provider="openrouter",
+            model_name="Requested Paid",
+            is_free=0,
+            discovery_source="adapter",
+        )
+        store.set_account_offering(account_id, "google/lyria-3-clip-preview", enabled=True)
+        store.set_account_offering(
+            account_id,
+            "vendor/requested-paid",
+            enabled=True,
+            metadata_json='{"source":"manual_admin","requested":true}',
+        )
+        adapter = StubAdapter(
+            provider_id="openrouter",
+            models=[
+                DiscoveredModel(
+                    provider_id="openrouter",
+                    model_id="google/lyria-3-clip-preview",
+                    display_name="Lyria",
+                    context_length=131072,
+                    metadata={"free": False},
+                ),
+                DiscoveredModel(
+                    provider_id="openrouter",
+                    model_id="vendor/requested-paid",
+                    display_name="Requested Paid",
+                    context_length=131072,
+                    metadata={"free": False},
+                ),
+            ],
+        )
+
+        await ProviderRefreshService(store, {"openrouter": adapter}).refresh_provider("openrouter")
+
+        offerings = sub.connection.execute(
+            "SELECT model_id, enabled FROM provider_account_offerings ORDER BY model_id"
+        ).fetchall()
+        assert offerings == [
+            ("google/lyria-3-clip-preview", 0),
+            ("vendor/requested-paid", 1),
+        ]
+        assert [m.model_id for m in store.list_available_provider_models("openrouter")] == [
+            "vendor/requested-paid"
+        ]
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
 async def test_refresh_records_health_and_quota_windows(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "refresh.db")
     try:
