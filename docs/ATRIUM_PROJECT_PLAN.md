@@ -3,6 +3,24 @@
 **Status:** Active
 **Type:** Unified implementation plan
 **Last updated:** 2026-06-10
+
+## Current priority override - 2026-06-10
+
+Atrium remains the final product goal, but its next UI slice is intentionally
+deferred. The immediate execution order is:
+
+1. finish the existing Admin Providers operator console;
+2. safely import approved provider accounts and operationalize refresh, health,
+   quotas, and scorecards;
+3. finish disposable subagent lifecycle, scope, traces, and outcome learning;
+4. audit and migrate legacy memory and knowledge into the one shared Sonya
+   substrate;
+5. resume Atrium project/workspace UX.
+
+Provider pools, account offerings, encrypted secrets, substrate-backed routing,
+and removal of fixed provider-to-model assumptions are already complete. The
+detailed current roadmap is
+`docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`.
 **Scope:** Единый проработанный план по доведению Atrium до целевого состояния: рабочие проекты, корректные ответы Сони, провайдеры как model pools, субагенты как внутренние инструменты Сони, без поломки остального runtime.
 
 ---

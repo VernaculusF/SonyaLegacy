@@ -84,9 +84,11 @@ The trace must record why escalation happened.
 
 ## Current Runtime Gap
 
-The current picker still contains hard-coded profiles, Fireworks entries,
-keyword traits, and fixed purpose hints. It also can consider a discovered model
-available without an eligible account. These are migration targets, not policy.
+The picker now ranks only currently eligible substrate account offerings.
+Hard-coded provider/model candidates and fixed purpose hints have been removed.
+The remaining gap is operational evidence: most providers are not bootstrapped,
+quota observations and scorecards are sparse, and the subagent lifecycle does
+not yet record enough requirement/scope/outcome data for strong routing.
 
 ## Acceptance Criteria
 

@@ -13,12 +13,14 @@ No historical document was deleted.
 
 ## Verified Implementation Reality
 
-Verified against the local codebase on 2026-06-10:
+Verified against the deployed codebase on 2026-06-10:
 
-- local migration target is schema v31
+- production and repository migration target are schema v33
 - `projects`, `project_runs`, `execution_traces`, and `workspace_policy` exist
 - project CRUD, run/trace APIs, and workspace policy APIs exist
-- `provider_models` implements the provider-to-model-pool foundation
+- provider registry, accounts, account offerings, encrypted secrets,
+  observations, lifecycle adapters, discovery refresh, and evidence-driven
+  routing implement the provider-to-model-pool foundation
 - Atrium has an upload endpoint and frontend upload path
 - full-system-access has backend policy/runtime wiring and tests
 - Atrium is a hosted web surface; old Tauri/Rust IPC requirements are stale
@@ -63,11 +65,9 @@ discovery/refresh, and live VPS behavior still require completion or proof.
 - Some governing/personality documents contain target-state language mixed with
   implementation claims. They should be corrected only when a claim materially
   misleads current development.
-- VPS schema/runtime truth must be checked after production deployment; local
-  schema v31 does not imply the live database is already migrated.
-- On 2026-06-10 the VPS production checkout and live database both reported
-  schema v30. The live database contains `projects`, `project_runs`,
-  `execution_traces`, `workspace_policy`, and `provider_models`; both Sonya
-  services were active.
+- Older active documents still contain completed session logs and stale
+  unchecked items. Current execution order is maintained in
+  `operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`; historical slice plans are
+  retained only as evidence.
 - The complete Markdown link audit still needs a small repository script or CI
   check that distinguishes real links from inline-code examples.

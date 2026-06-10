@@ -4,6 +4,28 @@
 **Type:** Session handoff
 **Last updated:** 2026-06-10
 
+## Immediate continuation - current
+
+Deployed baseline: `a611797`, substrate schema v33, OpenRouter encrypted main
+account, 339 discovered models, and active `sonya` / `sonya-admin` services.
+
+Current slice:
+
+1. replace the outdated key-centric Admin Providers UI with the existing
+   provider/account/model/quota/observation backend;
+2. verify on VPS, then commit, push, and deploy;
+3. import remaining approved provider accounts through protected secret
+   ingestion;
+4. add periodic provider refresh and measured scorecards;
+5. complete subagent lifecycle/scope/outcome tracing;
+6. inventory and migrate old memory and knowledge with backups, provenance, and
+   idempotent manifests;
+7. return to Atrium later.
+
+Do not run the application locally. Do not expose credentials in Git, docs,
+prompts, commands, logs, or continuity. See
+`docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`.
+
 ---
 
 ## Immediate continuation — provider/model runtime

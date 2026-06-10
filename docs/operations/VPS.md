@@ -4,6 +4,15 @@
 **Type:** Operations
 **Last updated:** 2026-06-10
 
+## Current provider operations
+
+LLM calls use the substrate-owned provider registry, accounts, account
+offerings, and model pools. Provider-account credentials are encrypted and must
+be added or rotated only through Admin Providers protected secret ingestion.
+Legacy `provider_keys` references later in this file describe compatibility
+data, not the current management path. Environment configuration must not bind
+Sonya to a provider or model.
+
 ## 1. Где хостится
 
 - **Provider:** Google Cloud Platform (GCE)

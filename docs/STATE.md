@@ -3,6 +3,24 @@
 **Status:** Active
 **Type:** Current project state
 **Last updated:** 2026-06-10
+
+## Current execution state - 2026-06-10
+
+- production and repository substrate are at schema v33;
+- provider registry, many accounts per provider, many model offerings per
+  account, quota windows, observations, and encrypted secrets are implemented;
+- runtime provider/model/account selection is substrate-owned and no longer
+  bound through model/provider environment variables;
+- OpenRouter production discovery and routed inference are live;
+- the existing Admin Providers backend supports registry, account, offering,
+  defaults, and protected-secret operations;
+- active work is the Admin Providers visual refresh, safe import of remaining
+  provider accounts, periodic refresh/scorecards, subagent lifecycle
+  completion, and migration/audit of old memory and knowledge.
+
+The authoritative execution order is
+`docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Older provider sections
+below are historical evidence and must not override this section.
 **Owner:** Иван + Соня + текущий разработчик
 
 ---

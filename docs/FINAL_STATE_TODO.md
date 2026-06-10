@@ -1,5 +1,11 @@
 # FINAL STATE TODO
 
+> Current execution order is maintained in
+> `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Provider registry,
+> many-account/many-model pools, encrypted secrets, discovery refresh
+> foundation, and substrate-backed routing are completed foundations, not open
+> TODOs. This file remains the broad final-state backlog.
+
 **Status:** Active
 **Type:** Project completion roadmap
 **Last updated:** 2026-06-09

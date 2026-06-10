@@ -34,6 +34,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .card pre { font-size: 12px; color: #7ee787; white-space: pre-wrap; word-break: break-all; }
 .stat { display: inline-block; background: #1c2128; border-radius: 6px; padding: 8px 14px; margin: 4px; font-size: 13px; }
 .stat b { color: #f0f; }
+.provider-grid { display:grid; grid-template-columns:minmax(240px,.75fr) minmax(420px,2fr); gap:15px; align-items:start; }
+.provider-stack { display:flex; flex-direction:column; gap:8px; }
+.provider-row { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; }
+.provider-row.selected { border-color:#f0f; }
+.provider-head, .provider-actions { display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap; }
+.provider-actions { justify-content:flex-start; }
+.provider-meta { color:#8b949e; font-size:11px; margin-top:4px; overflow-wrap:anywhere; }
+.provider-form { display:grid; grid-template-columns:130px minmax(0,1fr); gap:8px; align-items:center; }
+.provider-form input, .provider-form select, .provider-filter { background:#0d1117; border:1px solid #30363d; border-radius:4px; padding:7px; color:#c9d1d9; min-width:0; }
+.provider-button { background:#30363d; color:#c9d1d9; border:0; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:11px; }
+.provider-button.primary { background:#238636; color:white; }
+.provider-button.danger { background:#da363322; color:#f85149; }
+.provider-badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; background:#30363d; color:#c9d1d9; }
+.provider-badge.active, .provider-badge.free, .provider-badge.available { background:#23863633; color:#7ee787; }
+.provider-badge.error, .provider-badge.banned { background:#da363322; color:#f85149; }
+.provider-models { max-height:540px; overflow:auto; }
+.provider-summary { display:grid; grid-template-columns:repeat(5,minmax(100px,1fr)); gap:8px; margin-bottom:15px; }
+.provider-summary .card { margin:0; padding:12px; }
+.provider-summary strong { display:block; color:#f0f; font-size:20px; }
+details.provider-legacy summary { cursor:pointer; color:#8b949e; }
+@media (max-width:1050px) { .provider-grid { grid-template-columns:1fr; } .provider-summary { grid-template-columns:repeat(2,minmax(100px,1fr)); } }
 
 /* Events */
 .event { border-left: 3px solid #30363d; padding: 10px 15px; margin: 8px 0; font-size: 13px; }
@@ -110,6 +131,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <script>
 const API = '';
 let chatHistory = [];
+let providersSnapshot = null;
+let providersSelectedId = null;
+let providersModelQuery = '';
 
 document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', () => {
@@ -860,6 +884,75 @@ async function selfmodAction(proposalId, action) {
     alert(JSON.stringify(data, null, 2));
     setTimeout(() => loadPage('selfmod'), 500);
   } catch(e) { alert('Error: ' + e.message); }
+}
+
+renderers.providers = function(d) {
+  const s=d.settings||{}, ps=d.providers||[], as=d.accounts||[], ms=d.models||[], qs=d.quota_windows||[], os=d.observations||[], ks=d.keys||[];
+  providersSnapshot=d;
+  if (!providersSelectedId || !ps.some(p=>p.provider_id===providersSelectedId)) providersSelectedId=s.active_provider||ps[0]?.provider_id||null;
+  const p=ps.find(x=>x.provider_id===providersSelectedId), pa=as.filter(x=>x.provider_id===providersSelectedId), pm=ms.filter(x=>x.provider===providersSelectedId);
+  const available=new Set((d.available_models||[]).map(x=>x.model_id)), q=providersModelQuery.toLowerCase();
+  const shown=pm.filter(x=>!q||`${x.model_name} ${x.model_id} ${(x.strengths||[]).join(' ')}`.toLowerCase().includes(q));
+  const badge=v=>`<span class="provider-badge ${escapeHtml(String(v||''))}">${escapeHtml(String(v||'unknown'))}</span>`;
+  const summary=`<div class="provider-summary">
+    <div class="card"><h3>Providers</h3><strong>${ps.length}</strong><span class="provider-meta">${ps.filter(x=>x.status==='active').length} active</span></div>
+    <div class="card"><h3>Accounts</h3><strong>${as.length}</strong><span class="provider-meta">${as.filter(x=>x.status==='active').length} active</span></div>
+    <div class="card"><h3>Model pool</h3><strong>${ms.length}</strong><span class="provider-meta">${available.size} available</span></div>
+    <div class="card"><h3>Free models</h3><strong>${ms.filter(x=>x.is_free).length}</strong><span class="provider-meta">advertised</span></div>
+    <div class="card"><h3>Observations</h3><strong>${os.length}</strong><span class="provider-meta">${qs.length} quota windows</span></div></div>`;
+  const settings=`<div class="card"><h3>Runtime defaults</h3><div class="provider-form">
+    <label>Active provider</label><select id="prov-active">${ps.map(x=>`<option value="${escapeHtml(x.provider_id)}" ${x.provider_id===s.active_provider?'selected':''}>${escapeHtml(x.display_name)} (${escapeHtml(x.provider_id)})</option>`).join('')}</select>
+    <label>Default model</label><input id="prov-model" value="${escapeHtml(s.default_model||'')}" placeholder="provider/model">
+    <label>Recovery base URL</label><input id="prov-base" value="${escapeHtml(s.default_base_url||'')}" placeholder="normally empty"></div>
+    <div class="provider-actions" style="margin-top:10px"><button class="provider-button primary" onclick="providersSaveSettings()">Save defaults</button><span class="provider-meta">Substrate-owned; this does not define Sonya.</span></div></div>`;
+  const pools=`<div class="card"><div class="provider-head"><h3>Provider pools</h3><button class="provider-button primary" onclick="providersCreateRegistry()">Add provider</button></div><div class="provider-stack">${ps.map(x=>{
+    const ac=as.filter(a=>a.provider_id===x.provider_id).length, mc=ms.filter(m=>m.provider===x.provider_id).length;
+    return `<div class="provider-row ${x.provider_id===providersSelectedId?'selected':''}" onclick="providersSelect('${x.provider_id}')"><div class="provider-head"><strong>${escapeHtml(x.display_name)}</strong>${badge(x.status)}</div><div class="provider-meta">${escapeHtml(x.provider_id)} · ${escapeHtml(x.adapter_kind)} · ${ac} accounts · ${mc} models</div></div>`;
+  }).join('')||'<div class="provider-meta">No providers.</div>'}</div></div>`;
+  const registry=p?`<div class="card"><div class="provider-head"><h3>Registry · ${escapeHtml(p.provider_id)}</h3><div class="provider-actions"><button class="provider-button" onclick="providersEditRegistry('${p.provider_id}')">Edit</button><button class="provider-button danger" onclick="providersDeleteRegistry('${p.provider_id}')">Delete</button></div></div><div class="provider-form"><label>Name</label><span>${escapeHtml(p.display_name)}</span><label>Adapter</label><span>${escapeHtml(p.adapter_kind)}</span><label>Status</label><span>${badge(p.status)}</span><label>Base URL</label><span class="provider-meta">${escapeHtml(p.base_url||'not set')}</span></div></div>`:'';
+  const accounts=p?`<div class="card"><div class="provider-head"><h3>Accounts · ${pa.length}</h3><button class="provider-button primary" onclick="providersAddAccount('${p.provider_id}')">Add account</button></div><div class="provider-stack">${pa.map(a=>`<div class="provider-row"><div class="provider-head"><div><strong>${escapeHtml(a.name)}</strong> ${badge(a.status)} ${badge('priority '+a.priority)}</div><div class="provider-actions"><button class="provider-button" onclick="providersRotateSecret('${a.account_id}')">Rotate secret</button><button class="provider-button" onclick="providersEditAccount('${a.account_id}')">Edit</button><button class="provider-button danger" onclick="providersDeleteAccount('${a.account_id}')">Delete</button></div></div><div class="provider-meta">${escapeHtml(a.account_id)} · ${escapeHtml(a.secret_masked||'no protected secret')} · ${escapeHtml(a.secret_ref||'no secret ref')}</div>${qs.filter(x=>x.account_id===a.account_id).map(x=>`<div class="provider-meta">${escapeHtml(x.quota_kind)}: ${x.remaining_value??'?'} / ${x.limit_value??'?'} ${escapeHtml(x.unit||'')} · reset ${escapeHtml(x.resets_at||'unknown')}</div>`).join('')}</div>`).join('')||'<div class="provider-meta">Create account metadata, then rotate its protected secret.</div>'}</div></div>`:'';
+  const models=p?`<div class="card"><div class="provider-head"><h3>Model pool · ${pm.length}</h3><input class="provider-filter" value="${escapeHtml(providersModelQuery)}" oninput="providersFilterModels(this.value)" placeholder="Filter models"></div><div class="provider-stack provider-models">${shown.map(m=>`<div class="provider-row"><div class="provider-head"><strong>${escapeHtml(m.model_name)}</strong><div>${m.is_free?badge('free'):''} ${badge(available.has(m.model_id)?'available':'unavailable')} ${m.text_loop_ok?'':badge('special worker')}</div></div><div class="provider-meta">${escapeHtml(m.model_id)} · context ${Number(m.context_length||0).toLocaleString()} · ${(m.modalities||[]).map(escapeHtml).join(', ')||'text'} · ${escapeHtml(m.discovery_source||'manual')}</div><div class="provider-actions" style="margin-top:6px"><button class="provider-button" onclick="providersSetOffering('${m.model_id}',true)">Enable for account</button><button class="provider-button" onclick="providersSetOffering('${m.model_id}',false)">Disable for account</button></div></div>`).join('')||'<div class="provider-meta">No matching models.</div>'}</div></div>`:'';
+  const observations=p?`<div class="card"><h3>Recent observations</h3><div class="provider-stack">${os.filter(x=>x.provider_id===p.provider_id).map(x=>`<div class="provider-row"><div class="provider-head"><strong>${escapeHtml(x.observation_kind)}</strong>${badge(x.success?'active':'error')}</div><div class="provider-meta">${escapeHtml(x.observed_at||'')} · ${x.latency_ms??'?'} ms · ${escapeHtml(x.account_id||'provider-wide')} · ${escapeHtml(x.model_id||'n/a')}</div></div>`).join('')||'<div class="provider-meta">No observations yet.</div>'}</div></div>`:'';
+  const legacy=`<details class="card provider-legacy"><summary>Legacy key compatibility (${ks.length})</summary><div class="provider-meta" style="margin:10px 0">Read-only migration/debug view. New credentials use protected provider-account secrets.</div>${ks.map(k=>`<div class="provider-row"><strong>${escapeHtml(k.provider)} / ${escapeHtml(k.name)}</strong><div class="provider-meta">${escapeHtml(k.key_masked)} · ${escapeHtml(k.status)} · legacy model ${escapeHtml(k.model||'none')}</div></div>`).join('')}</details>`;
+  return summary+`<div class="provider-grid"><div>${settings}${pools}${legacy}</div><div>${registry}${accounts}${models}${observations}</div></div>`;
+};
+
+function providersRerender() { if (providersSnapshot) document.getElementById('content').innerHTML=renderers.providers(providersSnapshot); }
+function providersSelect(id) { providersSelectedId=id; providersRerender(); }
+function providersFilterModels(value) { providersModelQuery=value; providersRerender(); }
+async function providersJson(url, body) {
+  const resp=await fetch(`${API}${url}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const data=await resp.json(); if(!resp.ok) throw new Error(`${resp.status}: ${JSON.stringify(data)}`); return data;
+}
+async function providersCreateRegistry() {
+  const provider_id=prompt('Provider ID:'); if(!provider_id)return; const display_name=prompt('Display name:',provider_id)||provider_id;
+  const adapter_kind=prompt('Adapter kind:','openai_compatible')||'openai_compatible'; const base_url=prompt('Base URL:','')||'';
+  try{await providersJson('/api/providers/registry',{provider_id,display_name,adapter_kind,base_url,status:'active'});providersSelectedId=provider_id.toLowerCase();loadPage('providers');}catch(e){alert(e.message);}
+}
+async function providersEditRegistry(id) {
+  const p=providersSnapshot.providers.find(x=>x.provider_id===id); const display_name=prompt('Display name:',p.display_name); if(display_name===null)return;
+  const status=prompt('Status:',p.status); if(status===null)return; const base_url=prompt('Base URL:',p.base_url||''); if(base_url===null)return;
+  try{await providersJson(`/api/providers/registry/${id}`,{provider_id:id,display_name,adapter_kind:p.adapter_kind,status,base_url,capabilities:p.capabilities,constraints:p.constraints,metadata:p.metadata});loadPage('providers');}catch(e){alert(e.message);}
+}
+async function providersDeleteRegistry(id) { if(!confirm(`Delete provider ${id}?`))return; try{await providersJson(`/api/providers/registry/${id}/delete`,{});loadPage('providers');}catch(e){alert(e.message);} }
+async function providersAddAccount(provider_id) {
+  const name=prompt('Account name:'); if(!name)return; const priority=parseInt(prompt('Priority:','0')||'0');
+  try{await providersJson('/api/providers/accounts',{provider_id,name,priority,status:'active'});loadPage('providers');}catch(e){alert(e.message);}
+}
+async function providersEditAccount(id) {
+  const a=providersSnapshot.accounts.find(x=>x.account_id===id); const name=prompt('Account name:',a.name); if(name===null)return;
+  const status=prompt('Status:',a.status); if(status===null)return; const priority=parseInt(prompt('Priority:',String(a.priority))||'0');
+  try{await providersJson(`/api/providers/accounts/${id}`,{name,status,priority,constraints:a.constraints,metadata:a.metadata});loadPage('providers');}catch(e){alert(e.message);}
+}
+async function providersDeleteAccount(id) { if(!confirm(`Delete account ${id}?`))return; try{await providersJson(`/api/providers/accounts/${id}/delete`,{});loadPage('providers');}catch(e){alert(e.message);} }
+async function providersRotateSecret(id) {
+  const secret=prompt('New credential (sent only to protected ingestion endpoint):'); if(!secret)return;
+  try{const resp=await fetch(`${API}/api/providers/accounts/${id}/secret`,{method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:secret});const data=await resp.json();if(!resp.ok)throw new Error(`${resp.status}: ${JSON.stringify(data)}`);loadPage('providers');}catch(e){alert(e.message);}
+}
+async function providersSetOffering(model_id,enabled) {
+  const candidates=(providersSnapshot.accounts||[]).filter(x=>x.provider_id===providersSelectedId); if(!candidates.length){alert('Create an account first.');return;}
+  const account_id=prompt(`Account ID for ${enabled?'enable':'disable'}:`,candidates[0].account_id); if(!account_id)return;
+  try{await providersJson('/api/providers/accounts/offerings',{account_id,model_id,enabled});loadPage('providers');}catch(e){alert(e.message);}
 }
 
 async function providersSaveSettings() {

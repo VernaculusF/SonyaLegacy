@@ -143,24 +143,17 @@ Routing is two-stage:
 Remove hard-coded purpose-to-model maps and permanent provider fallback chains.
 Keep emergency defaults only as explicit, visible recovery configuration.
 
-## Current-to-Target Migration
+## Current Runtime
 
-Current useful foundations:
+The substrate v33 runtime now has first-class providers, accounts,
+account-offering access, quota windows, observations, encrypted secrets,
+lifecycle adapters, discovery refresh, and substrate-backed routing.
+`provider_keys` remains only as a compatibility source while old accounts are
+migrated. New accounts do not own one fixed model.
 
-- `provider_keys` account-like pool
-- `provider_models` offering-like pool
-- key cooldown/error counters
-- provider management tools and model scorecards
-
-Required changes:
-
-- add first-class provider registry
-- evolve `provider_keys` into provider accounts; remove `model` ownership
-- add account-offering access mapping
-- add structured quota windows and health observations
-- move adapter behavior out of `providers_tool.py`
-- remove Fireworks and other hard-coded picker/fallback assumptions
-- make management capabilities complete and secret-safe
+Remaining work is operational: import approved accounts through protected
+ingestion, schedule refresh/probes, collect scorecards, finish legacy-key
+retirement, and expose the existing management contract clearly in Admin.
 
 ## Surfaces
 

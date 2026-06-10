@@ -41,6 +41,8 @@ claims may age; use `STATE.md` for current implementation reality.
   - provider inventory and bootstrap candidates; no secrets
 - [operations/PROVIDER_RUNTIME_STATUS.md](operations/PROVIDER_RUNTIME_STATUS.md)
   - current provider-runtime implementation status and verification
+- [operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md](operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md)
+  - active delivery order for provider import, subagents, and memory migration
 - [operations/FREEMODEL_BRIDGE.md](operations/FREEMODEL_BRIDGE.md)
   - proposed freemodel bridge; not implemented
 - [skills/SKILL_SYSTEM_PLAN.md](skills/SKILL_SYSTEM_PLAN.md)
