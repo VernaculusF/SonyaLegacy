@@ -288,6 +288,62 @@ async def test_google_refresh_disables_models_without_text_generation(tmp_path) 
 
 
 @pytest.mark.asyncio
+async def test_nvidia_refresh_keeps_special_workers_out_of_text_loop(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "nvidia-special.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, provider_id="nvidia")
+        adapter = StubAdapter(
+            provider_id="nvidia",
+            models=[
+                DiscoveredModel(
+                    provider_id="nvidia",
+                    model_id="nvidia/nemotron-3-ultra-550b-a55b",
+                    display_name="Nemotron Ultra",
+                    modalities=("text",),
+                ),
+                DiscoveredModel(
+                    provider_id="nvidia",
+                    model_id="nvidia/llama-nemotron-rerank-vl-1b-v2",
+                    display_name="Nemotron Rerank",
+                    modalities=("text",),
+                ),
+                DiscoveredModel(
+                    provider_id="nvidia",
+                    model_id="nvidia/nv-embed-v1",
+                    display_name="NV Embed",
+                    modalities=("text",),
+                ),
+            ],
+        )
+
+        await ProviderRefreshService(store, {"nvidia": adapter}).refresh_provider("nvidia")
+
+        assert store.get_provider_model(
+            "nvidia/nemotron-3-ultra-550b-a55b", provider="nvidia"
+        ).text_loop_ok == 1
+        assert store.get_provider_model(
+            "nvidia/llama-nemotron-rerank-vl-1b-v2", provider="nvidia"
+        ).text_loop_ok == 0
+        assert store.get_provider_model("nvidia/nv-embed-v1", provider="nvidia").text_loop_ok == 0
+        assert [model.model_id for model in store.list_available_provider_models("nvidia")] == [
+            "nvidia/nemotron-3-ultra-550b-a55b"
+        ]
+        offerings = sub.connection.execute(
+            "SELECT model_id, enabled FROM provider_account_offerings "
+            "WHERE account_id = ? ORDER BY model_id",
+            (account_id,),
+        ).fetchall()
+        assert offerings == [
+            ("nvidia/llama-nemotron-rerank-vl-1b-v2", 0),
+            ("nvidia/nemotron-3-ultra-550b-a55b", 1),
+            ("nvidia/nv-embed-v1", 0),
+        ]
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
 async def test_codexsale_refresh_removes_stale_prefixed_manual_alias(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "refresh.db")
     try:

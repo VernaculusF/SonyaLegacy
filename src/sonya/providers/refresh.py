@@ -124,7 +124,12 @@ class ProviderRefreshService:
         else:
             for model in discovered:
                 metadata = dict(model.metadata)
-                text_loop_ok = _is_text_loop_discovered_model(provider_id, model.modalities, metadata)
+                text_loop_ok = _is_text_loop_discovered_model(
+                    provider_id,
+                    model.model_id,
+                    model.modalities,
+                    metadata,
+                )
                 self._store.upsert_provider_model(
                     model_id=model.model_id,
                     provider=provider_id,
@@ -154,7 +159,7 @@ class ProviderRefreshService:
                             enabled=False,
                             metadata_json=json.dumps({"source": "auto_probe", "disabled_reason": "probe_failed"}, ensure_ascii=False),
                         )
-                elif provider_id in ("openrouter", "nous", "google") and not self._is_requested_offering(account_id, model.model_id):
+                elif provider_id in ("openrouter", "nous", "google", "nvidia") and not self._is_requested_offering(account_id, model.model_id):
                     self._store.set_account_offering(
                         account_id,
                         model.model_id,
@@ -297,6 +302,7 @@ def _should_auto_enable_offering(
 
 def _is_text_loop_discovered_model(
     provider_id: str,
+    model_id: str,
     modalities: tuple[str, ...],
     metadata: Mapping[str, object],
 ) -> bool:
@@ -307,6 +313,17 @@ def _is_text_loop_discovered_model(
         if isinstance(raw, dict):
             methods = raw.get("supportedGenerationMethods")
             return isinstance(methods, list) and "generateContent" in methods
+    if provider_id == "nvidia":
+        special_markers = (
+            "embed",
+            "rerank",
+            "retriever",
+            "retrieval",
+            "guard",
+            "safety",
+        )
+        if any(marker in model_id.lower() for marker in special_markers):
+            return False
     return True
 
 
