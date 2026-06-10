@@ -106,5 +106,20 @@ against the backup copy before any production write.
 `sonya.tools.memory_semantic_dedup` is dry-run by default. Apply requires
 `--apply --target-is-backup-copy`; production apply is not approved.
 
+## Backup-Copy Dedup Proof
+
+Applied only to `/tmp/sonya-semantic-dedup-proof.db`:
+
+- dry-run: `245 groups`, `1,532 extra rows`
+- apply: deleted exactly `1,532` rows
+- semantic rows: `3,396 -> 1,864`
+- repeated dry-run: `0 groups`, `0 extra rows`
+- `PRAGMA quick_check`: `ok`
+- `1,708` retained facts still carry source provenance
+- `SemanticMemory.get_for_context(limit=50)` returned 50 unique statements
+
+The production substrate was not modified. Production apply requires explicit
+approval because it deletes duplicate rows even though the backup proof passed.
+
 Operational note: `deploy/backup.sh` must use SQLite Backup API even when the
 `sqlite3` CLI is absent. Plain `cp` of the live WAL database is forbidden.

@@ -69,7 +69,8 @@
 - [x] build a read-only migration manifest command
 - [x] create a WAL-safe backup and idempotent migration manifest before any write
 - [x] define deduplication rules from backup provenance analysis
-- [ ] prove semantic dedup apply and retrieval on a disposable backup copy
+- [x] prove semantic dedup apply and retrieval on a disposable backup copy
+- [ ] obtain explicit approval before any production semantic dedup apply
 - run existing Telegram history and legacy knowledge migrations where needed
 - deduplicate, preserve provenance, and verify retrieval after migration
 - prove that project work and summarized subagent outcomes enter the one shared

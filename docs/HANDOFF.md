@@ -48,6 +48,9 @@ Completed in the latest slices:
 - semantic exact-dedup tool added: dry-run by default, backup-confirmation
   required for apply, preserves provenance, and never deduplicates episodic
   events by content.
+- backup-copy semantic dedup proof passed: `3,396 -> 1,864` facts,
+  `quick_check=ok`, repeated plan empty, and context retrieval returned 50
+  unique facts. Production dedup was not applied.
 
 Do not run the application locally. Do not expose credentials in Git, docs,
 prompts, commands, logs, or continuity. See
