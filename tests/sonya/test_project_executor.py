@@ -14,6 +14,17 @@ class _FastProvider:
         return "[DONE] project executor result"
 
 
+class _FailThenSucceedProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete_text(self, messages, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("transient provider failure")
+        return "[DONE] recovered result"
+
+
 @pytest.mark.asyncio
 async def test_project_execute_spawns_subagent_and_harvests_result(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "project-executor.db")
@@ -60,3 +71,83 @@ async def test_project_execute_spawns_subagent_and_harvests_result(tmp_path) -> 
     finally:
         sub.close()
 
+
+@pytest.mark.asyncio
+async def test_project_execute_runs_multiple_independent_subagents(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-multi-executor.db")
+    try:
+        project = ProjectStore(sub).create(
+            "Multi executor proof",
+            workspace_path=str(tmp_path),
+            policy={"subagent_spawn": "allowed"},
+        )
+        tool = ProjectsTool(sub, subagent_provider=_FastProvider())
+
+        started = await tool.execute({
+            "name": "projects.execute",
+            "arguments": {
+                "project_id": project.project_id,
+                "tasks": ["inspect provider state", "inspect project state"],
+                "max_retries": 0,
+            },
+        })
+        assert "subagents: 2/2" in started
+
+        await asyncio.sleep(0.05)
+        harvested = await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+        assert "completed=1" in harvested
+
+        run = ProjectRunStore(sub).list_by_project(project.project_id, kind="project_executor", limit=1)[0]
+        assert run.status == "completed"
+        assert len(run.steps) == 2
+        assert all(step["status"] == "done" for step in run.steps)
+        assert run.result.count("project executor result") == 2
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_project_harvest_retries_failed_subagent(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-retry-executor.db")
+    try:
+        project = ProjectStore(sub).create(
+            "Retry executor proof",
+            workspace_path=str(tmp_path),
+            policy={"subagent_spawn": "allowed"},
+        )
+        provider = _FailThenSucceedProvider()
+        tool = ProjectsTool(sub, subagent_provider=provider)
+
+        await tool.execute({
+            "name": "projects.execute",
+            "arguments": {
+                "project_id": project.project_id,
+                "task": "retry this task",
+                "max_retries": 1,
+            },
+        })
+        await asyncio.sleep(0.05)
+        first_harvest = await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+        assert "pending=1" in first_harvest
+
+        await asyncio.sleep(0.05)
+        second_harvest = await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+        assert "completed=1" in second_harvest
+
+        run = ProjectRunStore(sub).list_by_project(project.project_id, kind="project_executor", limit=1)[0]
+        assert run.status == "completed"
+        assert run.steps[0]["retry_count"] == 1
+        assert len(run.steps[0]["attempts"]) == 2
+        assert "recovered result" in run.result
+        assert "checkpoint" in [trace.step_type for trace in ExecutionTraceStore(sub).list_by_run(run.run_id)]
+    finally:
+        sub.close()
