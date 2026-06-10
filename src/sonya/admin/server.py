@@ -969,7 +969,7 @@ async def api_providers_registry_delete(request: web.Request) -> web.Response:
 
 async def api_providers_registry_refresh(request: web.Request) -> web.Response:
     from sonya.providers import KeyStore
-    from sonya.providers.adapters.factory import build_lifecycle_adapter
+    from sonya.providers.adapters import factory as adapter_factory
     from sonya.providers.refresh import ProviderRefreshService
 
     config = request.app["config"]
@@ -980,10 +980,23 @@ async def api_providers_registry_refresh(request: web.Request) -> web.Response:
         if store.get_provider(provider_id) is None:
             return web.json_response({"error": "not found"}, status=404)
         try:
-            adapter = build_lifecycle_adapter(store, provider_id)
+            accounts = [
+                account for account in store.list_provider_accounts(provider_id)
+                if account.status == "active"
+            ]
+            if not accounts:
+                return web.json_response({"error": "no active accounts"}, status=409)
+            adapters = {
+                account.account_id: adapter_factory.build_lifecycle_adapter_for_account(
+                    store,
+                    provider_id,
+                    account.account_id,
+                )
+                for account in accounts
+            }
             result = await ProviderRefreshService(
                 store,
-                {provider_id: adapter},
+                adapters,
             ).refresh_provider(provider_id)
         except (KeyError, RuntimeError, ValueError) as exc:
             return web.json_response({"error": str(exc)}, status=409)

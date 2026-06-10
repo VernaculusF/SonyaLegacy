@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+
 from cryptography.fernet import Fernet
 from aiohttp.test_utils import TestClient, TestServer
 
 from sonya.admin.server import create_app
 from sonya.providers.keystore import KeyStore
 from sonya.providers.adapters.base import AdapterHealth
+from sonya.providers.adapters.openai_compatible import OpenAICompatibleAdapter
 from sonya.state.substrate import Substrate
 
 
@@ -87,15 +90,14 @@ async def test_admin_provider_registry_payload_and_create_flow(tmp_path, monkeyp
 
 
 async def test_admin_provider_refresh_runs_lifecycle_service(tmp_path, monkeypatch) -> None:
-    class RefreshAdapter:
-        async def health_check(self):
-            return AdapterHealth(ok=True, status="ok", latency_ms=12)
+    async def health_check(self):
+        return AdapterHealth(ok=True, status="ok", latency_ms=12)
 
-        async def discover_models(self):
-            return []
+    async def discover_models(self):
+        return []
 
-        async def fetch_quota(self):
-            return []
+    async def fetch_quota(self):
+        return []
 
     client = await _client(tmp_path, monkeypatch)
     try:
@@ -104,15 +106,26 @@ async def test_admin_provider_refresh_runs_lifecycle_service(tmp_path, monkeypat
             "display_name": "Nous",
             "adapter_kind": "openai_compatible",
         })
-        monkeypatch.setattr(
-            "sonya.providers.adapters.factory.build_lifecycle_adapter",
-            lambda store, provider_id: RefreshAdapter(),
+        account_response = await client.post("/api/providers/accounts", json={
+            "provider_id": "nous",
+            "name": "main",
+            "secret_ref": "pending:protected-ingestion",
+        })
+        account = (await account_response.json())["account"]
+        await client.put(
+            f"/api/providers/accounts/{account['account_id']}/secret",
+            data="opaque-test-secret",
+            headers={"Content-Type": "application/octet-stream"},
         )
+        monkeypatch.setattr(OpenAICompatibleAdapter, "health_check", health_check)
+        monkeypatch.setattr(OpenAICompatibleAdapter, "discover_models", discover_models)
+        monkeypatch.setattr(OpenAICompatibleAdapter, "fetch_quota", fetch_quota)
 
         response = await client.post("/api/providers/registry/nous/refresh")
 
-        assert response.status == 200
-        payload = await response.json()
+        body = await response.text()
+        assert response.status == 200, body
+        payload = json.loads(body)
         assert payload == {
             "provider_id": "nous",
             "ok": True,
@@ -120,6 +133,68 @@ async def test_admin_provider_refresh_runs_lifecycle_service(tmp_path, monkeypat
             "quotas_seen": 0,
             "error": "",
         }
+    finally:
+        await client.close()
+
+
+async def test_admin_provider_refresh_builds_adapter_per_active_account(tmp_path, monkeypatch) -> None:
+    async def health_check(self):
+        return AdapterHealth(ok=True, status="ok")
+
+    async def discover_models(self):
+        return []
+
+    async def fetch_quota(self):
+        return []
+
+    resolved_for: list[str] = []
+    original_resolve = KeyStore.resolve_account_secret
+
+    client = await _client(tmp_path, monkeypatch)
+    try:
+        await client.post("/api/providers/registry", json={
+            "provider_id": "nous",
+            "display_name": "Nous",
+            "adapter_kind": "openai_compatible",
+        })
+        first = await (await client.post("/api/providers/accounts", json={
+            "provider_id": "nous",
+            "name": "first",
+            "secret_ref": "pending:protected-ingestion",
+        })).json()
+        second = await (await client.post("/api/providers/accounts", json={
+            "provider_id": "nous",
+            "name": "second",
+            "secret_ref": "pending:protected-ingestion",
+        })).json()
+        await client.put(
+            f"/api/providers/accounts/{first['account']['account_id']}/secret",
+            data="first-secret",
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        await client.put(
+            f"/api/providers/accounts/{second['account']['account_id']}/secret",
+            data="second-secret",
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+        def resolve_account_secret(self, account_id):
+            resolved_for.append(account_id)
+            return original_resolve(self, account_id)
+
+        monkeypatch.setattr(KeyStore, "resolve_account_secret", resolve_account_secret)
+        monkeypatch.setattr(OpenAICompatibleAdapter, "health_check", health_check)
+        monkeypatch.setattr(OpenAICompatibleAdapter, "discover_models", discover_models)
+        monkeypatch.setattr(OpenAICompatibleAdapter, "fetch_quota", fetch_quota)
+
+        response = await client.post("/api/providers/registry/nous/refresh")
+
+        body = await response.text()
+        assert response.status == 200, body
+        assert sorted(resolved_for) == sorted([
+            first["account"]["account_id"],
+            second["account"]["account_id"],
+        ])
     finally:
         await client.close()
 

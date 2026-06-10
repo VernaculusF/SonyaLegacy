@@ -38,6 +38,28 @@ def _seed_provider(
     )
 
 
+def _seed_provider_with_accounts(store: KeyStore) -> tuple[str, str]:
+    store.upsert_provider(
+        provider_id="pool",
+        display_name="Pool",
+        adapter_kind="openai_compatible",
+        status="active",
+        base_url="https://example.test/v1",
+        metadata_json=json.dumps({"refresh_ttl_seconds": 3600}),
+    )
+    first = store.add_provider_account(
+        provider_id="pool",
+        name="first",
+        secret_ref="manual:first",
+    )
+    second = store.add_provider_account(
+        provider_id="pool",
+        name="second",
+        secret_ref="manual:second",
+    )
+    return first.account_id, second.account_id
+
+
 @pytest.mark.asyncio
 async def test_coordinator_refreshes_due_active_provider(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "coordinator.db")
@@ -162,5 +184,39 @@ async def test_coordinator_skips_provider_without_active_accounts(tmp_path) -> N
         )
 
         assert await coordinator.refresh_due() == []
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_refreshes_due_accounts_independently(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "coordinator.db")
+    try:
+        store = KeyStore(sub)
+        fresh_account_id, due_account_id = _seed_provider_with_accounts(store)
+        observation = store.record_provider_observation(
+            provider_id="pool",
+            account_id=fresh_account_id,
+            observation_kind="model_discovery",
+            success=True,
+        )
+        now = datetime.fromisoformat(observation.observed_at)
+        refreshed: list[tuple[str, str]] = []
+
+        async def refresh_account(provider_id: str, account_id: str) -> RefreshResult:
+            refreshed.append((provider_id, account_id))
+            return RefreshResult(provider_id=provider_id, account_id=account_id, ok=True)
+
+        coordinator = ProviderRefreshCoordinator(
+            store,
+            refresh_account=refresh_account,
+        )
+
+        results = await coordinator.refresh_due(now=now)
+
+        assert refreshed == [("pool", due_account_id)]
+        assert results == [
+            RefreshResult(provider_id="pool", account_id=due_account_id, ok=True)
+        ]
     finally:
         sub.close()

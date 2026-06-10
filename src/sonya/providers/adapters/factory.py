@@ -36,3 +36,35 @@ def build_lifecycle_adapter(store: KeyStore, provider_id: str) -> ProviderAdapte
             api_key=secret,
         )
     raise ValueError(f"unsupported lifecycle adapter kind: {provider.adapter_kind}")
+
+
+def build_lifecycle_adapter_for_account(
+    store: KeyStore,
+    provider_id: str,
+    account_id: str,
+) -> ProviderAdapter:
+    """Build a lifecycle adapter for one concrete provider account."""
+    provider = store.get_provider(provider_id)
+    if provider is None:
+        raise KeyError(provider_id)
+    account = store.get_provider_account(account_id)
+    if account is None or account.provider_id != provider_id:
+        raise KeyError(account_id)
+    if account.status != "active":
+        raise RuntimeError(f"provider account {account_id!r} is not active")
+
+    secret = store.resolve_account_secret(account.account_id)
+
+    if provider.adapter_kind == "google_native":
+        return GoogleNativeAdapter(
+            provider_id=provider.provider_id,
+            api_key=secret,
+            base_url=provider.base_url or "https://generativelanguage.googleapis.com/v1beta",
+        )
+    if provider.adapter_kind == "openai_compatible":
+        return OpenAICompatibleAdapter(
+            provider_id=provider.provider_id,
+            base_url=provider.base_url,
+            api_key=secret,
+        )
+    raise ValueError(f"unsupported lifecycle adapter kind: {provider.adapter_kind}")

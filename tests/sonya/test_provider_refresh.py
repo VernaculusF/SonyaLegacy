@@ -66,6 +66,26 @@ def _seed_provider_and_account(store: KeyStore) -> str:
     return account.account_id
 
 
+def _seed_provider_with_two_accounts(store: KeyStore) -> tuple[str, str]:
+    store.upsert_provider(
+        provider_id="stub",
+        display_name="Stub",
+        adapter_kind="openai_compatible",
+        base_url="https://example.test/v1",
+    )
+    first = store.add_provider_account(
+        provider_id="stub",
+        name="first",
+        secret_ref="manual:first",
+    )
+    second = store.add_provider_account(
+        provider_id="stub",
+        name="second",
+        secret_ref="manual:second",
+    )
+    return first.account_id, second.account_id
+
+
 @pytest.mark.asyncio
 async def test_refresh_discovers_models_and_account_offerings(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "refresh.db")
@@ -164,6 +184,50 @@ async def test_refresh_records_health_and_quota_windows(tmp_path) -> None:
             if item.observation_kind == "health"
         ]
         assert health and health[0].success == 1
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_refresh_account_scopes_observations_offerings_and_quotas(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        first_account_id, second_account_id = _seed_provider_with_two_accounts(store)
+        adapter = StubAdapter(
+            models=[DiscoveredModel("stub", "stub/account-model", "Account Model", 65536)],
+            quotas=[
+                QuotaSnapshot(
+                    quota_kind="tpm",
+                    limit_value=500000,
+                    used_value=1000,
+                    remaining_value=499000,
+                    unit="tokens",
+                )
+            ],
+        )
+
+        result = await ProviderRefreshService(
+            store,
+            {"stub": adapter},
+        ).refresh_account("stub", first_account_id)
+
+        assert result == RefreshResult(
+            provider_id="stub",
+            ok=True,
+            models_seen=1,
+            quotas_seen=1,
+            account_id=first_account_id,
+        )
+        offerings = sub.connection.execute(
+            "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY account_id"
+        ).fetchall()
+        assert offerings == [(first_account_id, "stub/account-model", 1)]
+        assert store.list_quota_windows(first_account_id)
+        assert store.list_quota_windows(second_account_id) == []
+        observations = store.list_provider_observations(provider_id="stub")
+        assert {item.observation_kind for item in observations} == {"health", "model_discovery"}
+        assert all(item.account_id == first_account_id for item in observations)
     finally:
         sub.close()
 
