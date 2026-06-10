@@ -231,7 +231,10 @@ async def test_openrouter_refresh_probes_free_models_before_enabling(tmp_path) -
         offerings = sub.connection.execute(
             "SELECT account_id, model_id, enabled FROM provider_account_offerings ORDER BY model_id"
         ).fetchall()
-        assert offerings == [(account_id, "google/gemma-4-31b-it:free", 1)]
+        assert offerings == [
+            (account_id, "google/gemma-4-31b-it:free", 1),
+            (account_id, "qwen/qwen3-coder:free", 0),
+        ]
         observations = store.list_provider_observations(provider_id="openrouter")
         failed_probe = next(
             item for item in observations
