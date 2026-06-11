@@ -221,15 +221,13 @@ function handleEvent(msg) {
   const skipFromStream = new Set([
     'outgoing.response',
   ]);
+  const isDialogAgentStep = kind === 'internal.agent_step' && payload?.tool === 'chat.dialog';
 
   // Typing indicator: while an active session is between scheduling and the
   // outgoing.* delivery, mark her_typing so the Atrium UI shows the typing
   // dots. A reset on her outgoing closes it.
   if (kind === 'internal.active_session_scheduled' || kind === 'internal.active_session_requested_external') {
-    if (feed.synced) setFeed('her_typing', true);
-  }
-  if (kind === 'internal.agent_step' && payload && payload.tool === 'chat.dialog') {
-    if (feed.synced) setFeed('her_typing', true);
+    setFeed('her_typing', true);
   }
   if (kind && (kind.startsWith('outgoing.dialog') || kind.startsWith('outgoing.telegram_progress')
     || kind.startsWith('outgoing.telegram_initiative') || kind.startsWith('outgoing.telegram_response')
@@ -241,7 +239,7 @@ function handleEvent(msg) {
   }
   // Keep outgoing.dialog in stream so Иван sees it on the timeline too,
   // but with src=active so it's visually marked.
-  if (!skipFromStream.has(kind) && !isProjectTraceNoise(kind)) {
+  if (!skipFromStream.has(kind) && !isProjectTraceNoise(kind) && !isDialogAgentStep) {
     let body = '';
     if (kind === 'internal.thought' && payload.text) {
       body = `"${payload.text}"`;

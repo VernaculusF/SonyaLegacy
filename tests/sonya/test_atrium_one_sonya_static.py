@@ -92,6 +92,7 @@ def test_inner_stream_is_debug_drawer_not_main_right_pane() -> None:
     header = (ROOT / "packages/atrium/src/components/Header.jsx").read_text(encoding="utf-8")
     mind = (ROOT / "packages/atrium/src/components/MindPane.jsx").read_text(encoding="utf-8")
     reason = (ROOT / "packages/atrium/src/components/ReasonStream.jsx").read_text(encoding="utf-8")
+    ws = (ROOT / "packages/atrium/src/ws.js").read_text(encoding="utf-8")
 
     assert "showReasonStream" in app
     assert "onOpenReasonStream" in header
@@ -99,6 +100,13 @@ def test_inner_stream_is_debug_drawer_not_main_right_pane() -> None:
     assert "inner_thoughts" not in mind
     assert "private_count_last_hour" not in mind
     assert "isProjectTraceNoise" in reason
+    assert "export default function ReasonStream(props)" in reason
+    assert "props.onClose?.()" in reason
+    assert "window.addEventListener('keydown', onKey)" in reason
+    assert "isDialogAgentStep" in reason
+    assert "streams-backdrop" in reason
+    assert "event.stopPropagation()" in reason
+    assert "if (feed.synced) setFeed('her_typing', true)" not in ws
 
 
 def test_atrium_dialog_surface_does_not_mirror_telegram_social_channel() -> None:

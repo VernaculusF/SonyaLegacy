@@ -7,7 +7,7 @@
 ## Deployed Baseline
 
 - Branch: `develop`
-- Latest pushed/deployed baseline before this slice: `c5c8839`
+- Latest pushed/deployed baseline before this slice: `d7a4f39`
 - Production host: `jester-sonya@34.38.255.149`
 - Production repo: `/home/jester-sonya/Sonya`
 - Production substrate: `/home/jester-sonya/.sonya/sonya_substrate.db`
@@ -50,44 +50,39 @@ surfaces.
 
 ## Latest Implemented Slice In Progress
 
-Atrium UI cleanup after hosted-stack proof:
+Atrium reason-stream, expression stability, and dialog-spam guard:
 
-- `inner stream` / reason logs moved out of the main layout into a top-bar
-  debug drawer;
-- main right pane no longer renders raw inner thoughts or drive counters;
-- global reason stream filters out project/subagent trace noise because those
-  belong in the active project runtime panel;
-- Atrium dialog history and live chat no longer mirror Telegram
-  `incoming.telegram_message` / `outgoing.telegram_*` events into the main
-  chat;
-- assistant messages strip accidental outer quotes and prose-only empty fenced
-  blocks;
-- live assistant messages reveal text progressively and keep the typing row in
-  view while `her_typing` is true.
+- reason-stream drawer now closes through its button, `Escape`, or backdrop;
+- technical `internal.agent_step tool=chat.dialog` rows no longer duplicate
+  the actual outgoing dialog in reason-stream;
+- typing state begins when an active session is scheduled and no longer waits
+  for the websocket backlog `synced` flag;
+- explicit `body.expression` choices hold a 45-second lease against the cheap
+  auto-classifier, and no-op explicit expression calls no longer emit events;
+- an agent session may send one ordinary dialog for a user input and another
+  after real work; further dialog calls without new input/work are blocked and
+  audited as `internal.dialog_repeat_suppressed`;
+- provider-native token streaming is still not implemented; Atrium currently
+  uses typing state plus client-side progressive reveal of completed replies.
 
-VPS verification already passed for this uncommitted slice:
+VPS pre-deploy verification passed:
 
-- `pytest -q tests/sonya/test_atrium_one_sonya_static.py
-  tests/sonya/test_atrium_etap1.py::test_history_excludes_telegram_social_channel
-  tests/sonya/test_atrium_etap1.py::test_history_initial_page_returns_newest_dialog_events
-  tests/sonya/test_atrium_etap1.py::test_dialog_records_workspace_id_and_history_filters_by_it
-  tests/sonya/test_atrium_etap1.py::test_events_history_returns_non_private_scrollback`
-  -> `14 passed`;
+- focused regression suite -> `28 passed`;
 - `python -m compileall -q src/sonya` -> passed;
 - `cd packages/atrium && npm run build` -> passed.
 
 This slice still needs commit, push, VPS fast-forward, service restart, and
-post-restart status/journal check.
+post-restart status/journal/log check.
 
 ## Remaining Immediate Work
 
-1. Finish/deploy the Atrium UI cleanup slice above.
+1. Finish/deploy the Atrium stability slice above.
 2. Inspect real production `drive_state` and evolution pressure values:
    drive counters are internal initiative accumulators, not emotions; if they
    saturate unexpectedly, fix runtime normalization separately from UI.
-3. Recheck live Atrium behavior after refresh:
-   typing indicator, progressive reveal, Telegram/Atrium separation, and
-   inner-stream drawer.
+3. Recheck live Atrium behavior after refresh: close behavior, typing,
+   progressive reveal, Telegram/Atrium separation, expression stability, and
+   dialog suppression.
 4. Continue provider/model evaluation automation and web-proxy model bridge
    only after Atrium chat UX is stable again.
 

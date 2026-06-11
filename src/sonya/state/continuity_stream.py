@@ -107,6 +107,27 @@ class ContinuityStream:
         "outgoing.telegram_progress",
         "outgoing.response",
     })
+    _EXPLICIT_EXPRESSION_LEASE_SECONDS = 45.0
+
+    def _has_recent_explicit_expression(self) -> bool:
+        try:
+            row = self._sub.connection.execute(
+                "SELECT payload_json, created_at FROM continuity_events "
+                "WHERE kind = 'outgoing.body_expression' "
+                "ORDER BY seq DESC LIMIT 1"
+            ).fetchone()
+            if not row:
+                return False
+            payload = json.loads(row[0] or "{}")
+            if payload.get("source") != "explicit":
+                return False
+            created_at = datetime.fromisoformat(str(row[1]).replace("Z", "+00:00"))
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - created_at).total_seconds()
+            return age <= self._EXPLICIT_EXPRESSION_LEASE_SECONDS
+        except Exception:
+            return False
 
     def _maybe_derive_expression(self, event: ContinuityEvent) -> None:
         """Run expression classifier on dialog turns; update subject_state.
@@ -125,6 +146,8 @@ class ContinuityStream:
             return
         # Don't run on ourselves.
         if kind == "outgoing.body_expression":
+            return
+        if self._has_recent_explicit_expression():
             return
 
         # Lazy import — classifier is in state layer (same layer as us)

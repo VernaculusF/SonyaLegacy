@@ -269,6 +269,46 @@ async def test_done_allowed_without_dialog_reply_required(substrate: Substrate) 
     assert gate_events == 0
 
 
+async def test_repeated_dialog_without_new_input_or_work_is_suppressed(
+    substrate: Substrate, monkeypatch
+) -> None:
+    import sonya.initiative.outbound as outbound_mod
+
+    sent: list[str] = []
+
+    def _fake_call_outbound_sync(_gate, text, **kw):
+        sent.append(text)
+        return f"[OK] dialog: {text[:40]}"
+
+    monkeypatch.setattr(outbound_mod, "call_outbound_sync", _fake_call_outbound_sync)
+    provider = _Stub([
+        "[TOOL: chat.dialog]\nПервый ответ.",
+        "[TOOL: chat.dialog]\nВторой ответ без новой причины.",
+        "[DONE]",
+    ])
+
+    await run_agent_session(
+        provider=provider,
+        stream=ContinuityStream(substrate),
+        self_inspect=SelfInspectTool(substrate),
+        filesystem=FilesystemTool(),
+        outbound=object(),
+        system_prompt="test",
+        initial_user_text="Привет.",
+        require_dialog_reply=True,
+        max_steps=4,
+        max_seconds=10.0,
+        purpose="test",
+    )
+
+    assert sent == ["Первый ответ."]
+    suppressed = substrate.connection.execute(
+        "SELECT COUNT(*) FROM continuity_events "
+        "WHERE kind = 'internal.dialog_repeat_suppressed'"
+    ).fetchone()[0]
+    assert suppressed == 1
+
+
 async def test_done_with_body_dispatches_as_reply_short_circuits_gate(
     substrate: Substrate, monkeypatch
 ) -> None:

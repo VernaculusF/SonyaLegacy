@@ -201,7 +201,7 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 - subagent.list — список всех субагентов (pending/running/done/failed)
 - subagent.result [subagent_id] — забрать результат завершённого субагента
 
-- chat.dialog [message] — отправить сообщение Ивану (TG + Atrium). Основной канал диалога: ответы, отчёты, прогресс. Не дросселируется в активной сессии — используй для каждого ответа ему.
+- chat.dialog [message] — отправить сообщение Ивану (TG + Atrium). Основной канал диалога: ответы, отчёты, прогресс. Повтор без нового сообщения Ивана или выполненной работы блокируется.
 - chat.tell_ivan [message] — алиас на chat.dialog. То же самое.
 
 ## How to finish
@@ -766,6 +766,7 @@ async def run_agent_session(
     # только приветствие, результат пропадал.
     _unanswered_inbox = bool(require_dialog_reply)
     _work_done_since_last_dialog = False
+    _dialog_sent_since_last_input = False
     _recent_tools: list[tuple[str, str]] = []  # (tool, arg-prefix) — last 4
 
     # Tools that count as "real work" — after one of these fires, the next
@@ -838,6 +839,7 @@ async def run_agent_session(
                 ))
             if new_msgs:
                 _unanswered_inbox = True
+                _dialog_sent_since_last_input = False
 
         # Send a wrap-up nudge in the last 2 steps OR when ~80% of time is gone.
         # This gives the model a chance to emit [DONE: ...] before hard-stop.
@@ -952,6 +954,7 @@ async def run_agent_session(
             # call, even when Ivan asked her to "просто открой URL и
             # отчитайся [DONE: ...]".
             _DIALOG_TOOLS = {"chat.dialog", "chat.tell_ivan", "chat.emergency"}
+            _ORDINARY_DIALOG_TOOLS = {"chat.dialog", "chat.tell_ivan"}
             _SAFE_REACTION_TOOLS = {"body.expression", "mind.thought", "mind.focus", "body.outfit"}
             # The gate only lifts when chat.dialog actually dispatches with
             # non-empty text. Empty-arg or [BLOCKED] result keeps the gate
@@ -997,6 +1000,30 @@ async def run_agent_session(
                         "по сути> ИЛИ закрывайся через [DONE: <текст>]. "
                         "Дальше работа выполнится после ответа."
                     ),
+                })
+                continue
+
+            if (
+                tool_name in _ORDINARY_DIALOG_TOOLS
+                and _dialog_sent_since_last_input
+                and not _work_done_since_last_dialog
+            ):
+                observation = (
+                    "[BLOCKED] repeated chat.dialog without a new Ivan message "
+                    "or completed work. Continue the task or finish the session."
+                )
+                stream.append(ContinuityEvent(
+                    kind="internal.dialog_repeat_suppressed",
+                    payload={
+                        "step": step,
+                        "tool": tool_name,
+                        "preview": tool_arg[:240],
+                    },
+                ))
+                messages.append({"role": "assistant", "content": response})
+                messages.append({
+                    "role": "user",
+                    "content": f"[Observation from {tool_name}]:\n{observation}",
                 })
                 continue
 
@@ -1126,6 +1153,8 @@ async def run_agent_session(
                         and not head.startswith("[BLOCKED]")
                     ):
                         _work_done_since_last_dialog = False
+                        if tool_name in _ORDINARY_DIALOG_TOOLS:
+                            _dialog_sent_since_last_input = True
             elif tool_name in _TERMINAL_TASK_TOOLS:
                 if observation:
                     head = observation.lstrip()[:10].upper()
@@ -2354,6 +2383,8 @@ def _h_body_expression(arg: str, ctx: _ToolContext) -> str:
         previous = (row[0] if row else "neutral") or "neutral"
     except Exception:
         previous = "neutral"
+    if previous == marker:
+        return f"[OK] expression unchanged: {marker}"
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
     sub.connection.execute(
@@ -2367,7 +2398,7 @@ def _h_body_expression(arg: str, ctx: _ToolContext) -> str:
         ctx.stream.append(ContinuityEvent(
             kind="outgoing.body_expression",
             channel="body",
-            payload={"marker": marker, "previous": previous},
+            payload={"marker": marker, "previous": previous, "source": "explicit"},
         ))
     return f"[OK] expression: {marker}"
 

@@ -4,7 +4,7 @@
  *
  * См. UX_SKETCH.md §5.5 для дизайна.
  */
-import { For, Show, createSignal, onMount } from 'solid-js';
+import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
 import { feed, settings, updateSetting, updateFilter, prependStreamEvents } from '../store.js';
 import { sendNudge, loadEventHistory } from '../ws.js';
 
@@ -24,7 +24,11 @@ function isProjectTraceNoise(ev) {
   return ev.kind?.startsWith('subagent.') || ev.kind?.startsWith('project.');
 }
 
-export default function ReasonStream() {
+function isDialogAgentStep(ev) {
+  return ev.kind === 'internal.agent_step' && ev.payload?.tool === 'chat.dialog';
+}
+
+export default function ReasonStream(props) {
   // Map of seq → reply input state
   const [activeReply, setActiveReply] = createSignal({ seq: null, text: '', sending: false, error: '' });
   const [loadingHistory, setLoadingHistory] = createSignal(false);
@@ -64,7 +68,11 @@ export default function ReasonStream() {
 
   // Filter visible events
   const visibleEvents = () =>
-    feed.stream_events.filter((e) => settings.streams_filters[e.src] !== false && !isProjectTraceNoise(e));
+    feed.stream_events.filter((e) =>
+      settings.streams_filters[e.src] !== false
+      && !isProjectTraceNoise(e)
+      && !isDialogAgentStep(e)
+    );
 
   function formatHistoryEvent(ev) {
     const payload = ev.payload || {};
@@ -107,7 +115,9 @@ export default function ReasonStream() {
     setLoadingHistory(true);
     try {
       const r = await loadEventHistory(oldestSeq || 0, 80);
-      prependStreamEvents((r.events || []).map(formatHistoryEvent).filter((ev) => !isProjectTraceNoise(ev)));
+      prependStreamEvents((r.events || [])
+        .filter((ev) => !isProjectTraceNoise(ev) && !isDialogAgentStep(ev))
+        .map(formatHistoryEvent));
       if (!r.has_more) setHistoryExhausted(true);
     } finally {
       setLoadingHistory(false);
@@ -119,16 +129,23 @@ export default function ReasonStream() {
   }
 
   onMount(() => {
+    const onKey = (event) => {
+      if (event.key === 'Escape') props.onClose?.();
+    };
+    window.addEventListener('keydown', onKey);
+    onCleanup(() => window.removeEventListener('keydown', onKey));
     loadOlderEvents();
   });
 
   return (
-    <section
-      classList={{
-        streams: true,
-        collapsed: settings.streams_collapsed,
-      }}
-    >
+    <div class="streams-backdrop" onClick={() => props.onClose?.()}>
+      <section
+        classList={{
+          streams: true,
+          collapsed: settings.streams_collapsed,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
       <div class="streams-header" onClick={toggleCollapse}>
         <span classList={{ title: true, live: feed.connected }}>REASON-STREAMS · {feed.connected ? 'live' : 'offline'}</span>
         <div class="filters" onClick={(e) => e.stopPropagation()}>
@@ -242,6 +259,7 @@ export default function ReasonStream() {
           </For>
         </Show>
       </div>
-    </section>
+      </section>
+    </div>
   );
 }
