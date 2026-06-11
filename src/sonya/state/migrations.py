@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 33
+CURRENT_VERSION = 34
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -1074,6 +1074,100 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         )
         conn.commit()
         version = 33
+
+    if version == 33:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS situational_assertions (
+                assertion_id TEXT PRIMARY KEY,
+                subject TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                value TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'observation',
+                source_ref TEXT NOT NULL DEFAULT '',
+                confidence REAL NOT NULL DEFAULT 0.5,
+                observed_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL DEFAULT '',
+                scope TEXT NOT NULL DEFAULT 'global',
+                visibility TEXT NOT NULL DEFAULT 'normal',
+                active INTEGER NOT NULL DEFAULT 1,
+                supersedes_id TEXT NOT NULL DEFAULT '',
+                superseded_by TEXT NOT NULL DEFAULT '',
+                metadata_json TEXT NOT NULL DEFAULT '{}'
+            );
+            CREATE INDEX IF NOT EXISTS idx_sa_current
+                ON situational_assertions(subject, predicate, scope, active);
+            CREATE INDEX IF NOT EXISTS idx_sa_expires ON situational_assertions(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_sa_observed ON situational_assertions(observed_at);
+
+            CREATE TABLE IF NOT EXISTS credential_exposures (
+                exposure_id TEXT PRIMARY KEY,
+                source_kind TEXT NOT NULL,
+                source_ref TEXT NOT NULL DEFAULT '',
+                credential_label TEXT NOT NULL DEFAULT '',
+                discovered_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'unresolved',
+                metadata_json TEXT NOT NULL DEFAULT '{}'
+            );
+            CREATE INDEX IF NOT EXISTS idx_ce_status ON credential_exposures(status);
+
+            CREATE TABLE IF NOT EXISTS runtime_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            );
+        """)
+        if _table_exists(conn, "environment_state"):
+            rows = conn.execute(
+                "SELECT key, value, source, updated_at, updated_by FROM environment_state"
+            ).fetchall()
+            credential_markers = (
+                "apikey", "api_key", "token", "secret", "credential", "password", "passwd"
+            )
+            runtime_keys = {"atrium_last_seen", "drift_last_alert_at"}
+            for key, value, source, updated_at, updated_by in rows:
+                key_lower = (key or "").lower()
+                if any(marker in key_lower for marker in credential_markers):
+                    conn.execute(
+                        "INSERT OR IGNORE INTO credential_exposures("
+                        "exposure_id, source_kind, source_ref, credential_label, discovered_at, "
+                        "status, metadata_json) VALUES (?, 'legacy_environment_state', ?, ?, ?, "
+                        "'unresolved', '{\"value_removed\":true}')",
+                        (f"ce-env-{key}", updated_by or "", key, now),
+                    )
+                    continue
+                if key in runtime_keys:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO runtime_state(key, value, updated_at) "
+                        "VALUES (?, ?, ?)",
+                        (key, value, updated_at or now),
+                    )
+                    continue
+                subject = "ivan" if (key or "").startswith("ivan_") else "environment"
+                conn.execute(
+                    "INSERT OR IGNORE INTO situational_assertions("
+                    "assertion_id, subject, predicate, value, source, source_ref, confidence, "
+                    "observed_at, expires_at, scope, visibility, active, supersedes_id, "
+                    "superseded_by, metadata_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 0.5, ?, '', 'global', 'normal', 1, '', '', "
+                    "'{\"migrated_from\":\"environment_state\"}')",
+                    (
+                        f"wa-env-{key}",
+                        subject,
+                        key,
+                        value,
+                        source or "legacy",
+                        updated_by or "",
+                        updated_at or now,
+                    ),
+                )
+            conn.execute("DELETE FROM environment_state")
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (34, now),
+        )
+        conn.commit()
+        version = 34
 
     if version < CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

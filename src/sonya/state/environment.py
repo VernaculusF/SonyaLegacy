@@ -1,31 +1,24 @@
-"""Environment state — Sonya's observation of Ivan's context.
+"""Compatibility facade for the v34 SituationalModel.
 
-Substrate v15 table `environment_state`. Sonya writes here via env.set tool
-when she infers something from conversation (e.g. Ivan said he's going to
-sleep, going to work, busy with something). The values surface in the
-context_builder so future LLM calls and the OutboundGate know whether to
-initiate.
-
-There are no clock heuristics. Sonya is the observer.
+Legacy callers still use key/value operations. Human/environment observations
+are now persisted as sourced, expiring-capable situational assertions rather
+than eternal values in ``environment_state``.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
+from sonya.state.situational import SituationalStore
 from sonya.state.substrate import Substrate
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 class EnvironmentStore:
-    """CRUD over environment_state."""
+    """Legacy key/value view over Sonya's global situational assertions."""
 
     def __init__(self, substrate: Substrate) -> None:
         self._sub = substrate
+        self._situational = SituationalStore(substrate)
 
     def set(
         self,
@@ -34,58 +27,61 @@ class EnvironmentStore:
         *,
         source: str = "observation",
         updated_by: str = "",
+        subject: str = "environment",
+        confidence: float = 0.5,
+        expires_at: str = "",
     ) -> None:
         key = (key or "").strip()
         if not key:
             raise ValueError("environment key is required")
-        now = _utc_now_iso()
-        self._sub.connection.execute(
-            "INSERT INTO environment_state(key, value, source, updated_at, updated_by) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET "
-            "value = excluded.value, source = excluded.source, "
-            "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
-            (key, value, source, now, updated_by),
+        if key.startswith("ivan_"):
+            subject = "ivan"
+        self._situational.assert_fact(
+            subject=subject,
+            predicate=key,
+            value=value,
+            source=source,
+            source_ref=updated_by,
+            confidence=confidence,
+            expires_at=expires_at,
         )
-        self._sub.connection.commit()
 
     def get(self, key: str) -> dict[str, Any] | None:
-        row = self._sub.connection.execute(
-            "SELECT key, value, source, updated_at, updated_by "
-            "FROM environment_state WHERE key = ?",
-            (key,),
-        ).fetchone()
-        if row is None:
+        subject = "ivan" if key.startswith("ivan_") else "environment"
+        item = self._situational.get_current(subject=subject, predicate=key)
+        if item is None:
             return None
         return {
-            "key": row[0],
-            "value": row[1],
-            "source": row[2],
-            "updated_at": row[3],
-            "updated_by": row[4],
+            "key": item.predicate,
+            "value": item.value,
+            "source": item.source,
+            "updated_at": item.observed_at,
+            "updated_by": item.source_ref,
+            "confidence": item.confidence,
+            "expires_at": item.expires_at,
+            "subject": item.subject,
         }
 
     def list_all(self) -> dict[str, dict[str, Any]]:
-        cursor = self._sub.connection.execute(
-            "SELECT key, value, source, updated_at, updated_by "
-            "FROM environment_state ORDER BY key"
-        )
+        current = self._situational.list_current()
         return {
-            row[0]: {
-                "value": row[1],
-                "source": row[2],
-                "updated_at": row[3],
-                "updated_by": row[4],
+            item.predicate: {
+                "value": item.value,
+                "source": item.source,
+                "updated_at": item.observed_at,
+                "updated_by": item.source_ref,
+                "confidence": item.confidence,
+                "expires_at": item.expires_at,
+                "subject": item.subject,
             }
-            for row in cursor.fetchall()
+            for item in current
         }
 
     def clear(self, key: str) -> bool:
-        cur = self._sub.connection.execute(
-            "DELETE FROM environment_state WHERE key = ?", (key,)
+        subject = "ivan" if key.startswith("ivan_") else "environment"
+        return self._situational.retract(
+            subject=subject, predicate=key
         )
-        self._sub.connection.commit()
-        return cur.rowcount > 0
 
 
 __all__ = ["EnvironmentStore"]

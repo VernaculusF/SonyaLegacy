@@ -236,15 +236,15 @@ class OutboundGate:
     def _atrium_is_live(self) -> bool:
         """True if Atrium was seen within the emergency threshold.
 
-        Reads `atrium_last_seen` from environment_state (written by the admin
+        Reads `atrium_last_seen` from technical runtime state (written by the admin
         heartbeat / WS feed). When live and emergency-mode is on, TG dialog is
         suppressed — Atrium is the primary surface.
         """
         if self._substrate is None:
             return False
         try:
-            from sonya.state.environment import EnvironmentStore
-            rec = EnvironmentStore(self._substrate).get("atrium_last_seen")
+            from sonya.state.runtime_state import RuntimeStateStore
+            rec = RuntimeStateStore(self._substrate).get("atrium_last_seen")
             if not rec or not rec.get("value"):
                 return False
             seen = datetime.fromisoformat(rec["value"])

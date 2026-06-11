@@ -875,3 +875,44 @@ CREATE INDEX IF NOT EXISTS idx_ps_account ON provider_secrets(account_id);
 CREATE INDEX IF NOT EXISTS idx_ps_status ON provider_secrets(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ps_fingerprint
     ON provider_secrets(provider_id, value_fingerprint);
+
+-- v34: current, sourced, expiring-capable world-state assertions.
+CREATE TABLE IF NOT EXISTS situational_assertions (
+    assertion_id TEXT PRIMARY KEY,
+    subject TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    value TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'observation',
+    source_ref TEXT NOT NULL DEFAULT '',
+    confidence REAL NOT NULL DEFAULT 0.5,
+    observed_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL DEFAULT '',
+    scope TEXT NOT NULL DEFAULT 'global',
+    visibility TEXT NOT NULL DEFAULT 'normal',
+    active INTEGER NOT NULL DEFAULT 1,
+    supersedes_id TEXT NOT NULL DEFAULT '',
+    superseded_by TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_sa_current
+    ON situational_assertions(subject, predicate, scope, active);
+CREATE INDEX IF NOT EXISTS idx_sa_expires ON situational_assertions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sa_observed ON situational_assertions(observed_at);
+
+CREATE TABLE IF NOT EXISTS credential_exposures (
+    exposure_id TEXT PRIMARY KEY,
+    source_kind TEXT NOT NULL,
+    source_ref TEXT NOT NULL DEFAULT '',
+    credential_label TEXT NOT NULL DEFAULT '',
+    discovered_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'unresolved',
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_ce_status ON credential_exposures(status);
+
+-- Technical process coordination. Never injected as Sonya's world model.
+CREATE TABLE IF NOT EXISTS runtime_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);

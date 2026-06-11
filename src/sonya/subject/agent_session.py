@@ -79,7 +79,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - memory.recall [query] — semantic search over your full episodic history (returns top-5 relevant memories with similarity score)
 - memory.recall_visual [media_path] — найти похожие картинки в episodic history по perceptual hash. Принимает абсолютный путь к файлу (например /home/jester-sonya/.sonya/media/atrium_xxx.png). Возвращает топ-5 событий с дистанцией в битах (0-12 = очень похоже, 12-20 = похоже, >20 = разное).
 - memory.index_status — diagnostic: how many events are embedded vs pending
-- env.set [key value] — record what you observe about Ivan / context (e.g. `env.set ivan_status спит`, `env.set mood уставший`, `env.set activity работает`). Used to suppress initiative when Ivan is busy/asleep — OutboundGate respects ivan_status='спит' / 'занят'.
+- env.set [key value] or JSON — record a sourced current observation. JSON supports subject, predicate, value, source, source_ref, confidence, expires_at, scope, visibility. Never store credentials here; use protected provider secret storage.
 - env.get [key] — read a previously recorded observation
 - env.list — list all current observations
 - env.clear [key] — drop an observation when no longer relevant

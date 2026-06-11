@@ -15,7 +15,10 @@ The OutboundGate respects ivan_status='спит'/'занят' and won't initiate
 
 from __future__ import annotations
 
+import json
+
 from sonya.state.environment import EnvironmentStore
+from sonya.state.situational import SituationalStore
 from sonya.state.substrate import Substrate
 
 
@@ -25,55 +28,42 @@ class EnvTool:
     def __init__(self, substrate: Substrate) -> None:
         self._sub = substrate
         self._store = EnvironmentStore(substrate)
+        self._situational = SituationalStore(substrate)
 
     def set(self, arg: str) -> str:
-        """`env.set <key> <value>` — record an observation."""
+        """Record a legacy key/value or a structured situational assertion."""
         if not arg or not arg.strip():
             return "[ERROR] env.set needs: <key> <value>"
+        if arg.lstrip().startswith("{"):
+            try:
+                data = json.loads(arg)
+                assertion = self._situational.assert_fact(
+                    subject=str(data.get("subject", "")).strip(),
+                    predicate=str(data.get("predicate", "")).strip(),
+                    value=str(data.get("value", "")),
+                    source=str(data.get("source", "observation")),
+                    source_ref=str(data.get("source_ref", "agent")),
+                    confidence=float(data.get("confidence", 0.5)),
+                    observed_at=str(data.get("observed_at", "")),
+                    expires_at=str(data.get("expires_at", "")),
+                    scope=str(data.get("scope", "global")),
+                    visibility=str(data.get("visibility", "normal")),
+                )
+            except Exception as exc:
+                return f"[ERROR] env.set failed: {exc}"
+            return (
+                f"[OK] env.set {assertion.subject}.{assertion.predicate}="
+                f"{assertion.value!r} confidence={assertion.confidence:.2f}"
+            )
         parts = arg.strip().split(None, 1)
         if len(parts) < 2:
             return "[ERROR] env.set needs: <key> <value>"
         key, value = parts[0], parts[1]
-        # Capture pre-existing value before overwrite — used by the
-        # credential-shape hint below to flag label drift.
-        pre_existing_value = ""
-        pre_existing_at = ""
-        try:
-            prev = self._store.get(key)
-            if prev is not None:
-                pre_existing_value = prev.get("value", "")
-                pre_existing_at = prev.get("updated_at", "")
-        except Exception:
-            pass
         try:
             self._store.set(key, value, source="observation", updated_by="agent")
         except Exception as exc:
             return f"[ERROR] env.set failed: {exc}"
-        result = f"[OK] env.set {key}={value!r}"
-        # Soft hint when storing a credential-shaped key. Не блокирующий
-        # гейт — просто подсказка в observation что label лучше сверить с
-        # памятью прежде чем называть ключ от провайдера X. Появилось
-        # после 27.05 incident: Ivan дал Shodan key, Sonya записала как
-        # `apikey_openrouter`, потом 401 → "ключ невалидный" → апология.
-        # Memory.recall по prefix значения вернул бы утренний episodic
-        # с подтверждением что это Shodan.
-        kl = key.lower()
-        if any(marker in kl for marker in ("apikey", "api_key", "token", "secret", "credential")):
-            existing_hint = ""
-            if pre_existing_value and pre_existing_value != value:
-                existing_hint = (
-                    f" Note: this key was previously set to a different "
-                    f"value at {pre_existing_at[:19]} — overwriting."
-                )
-            result += (
-                "\n[hint] Это credential-shaped запись. Перед тем как "
-                "использовать этот label в задаче — сверь что провайдер "
-                "тот, что ты думаешь: `[TOOL: memory.recall <первые 8 "
-                "символов value>]` либо вспомни недавний контекст где "
-                "Иван дал ключ. Mislabel ведёт к 401 и потерянному "
-                "тику." + existing_hint
-            )
-        return result
+        return f"[OK] env.set {key}={value!r}"
 
     def get(self, key: str) -> str:
         key = key.strip()

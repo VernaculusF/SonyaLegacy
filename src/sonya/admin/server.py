@@ -2982,7 +2982,7 @@ async def atrium_media_get(request: web.Request) -> web.Response:
 async def atrium_heartbeat(request: web.Request) -> web.Response:
     """HTTP heartbeat (T1.5) — Atrium tells the backend it's alive.
 
-    Writes `atrium_last_seen` (ISO ts) into environment_state. OutboundGate
+    Writes `atrium_last_seen` (ISO ts) into technical runtime state. OutboundGate
     reads it to decide whether TG should act as fallback: when Atrium has been
     seen recently, `chat.dialog` stays Atrium-only (TG suppressed) if
     `SONYA_TG_EMERGENCY_MODE=1`. When Atrium has been silent past the
@@ -3005,16 +3005,11 @@ async def atrium_heartbeat(request: web.Request) -> web.Response:
 
 
 def _atrium_mark_seen(sub) -> None:
-    """Record that Atrium is connected right now (environment_state)."""
+    """Record that Atrium is connected right now (technical runtime state)."""
     from datetime import datetime, timezone
-    from sonya.state.environment import EnvironmentStore
+    from sonya.state.runtime_state import RuntimeStateStore
     try:
-        EnvironmentStore(sub).set(
-            "atrium_last_seen",
-            datetime.now(timezone.utc).isoformat(),
-            source="atrium/heartbeat",
-            updated_by="atrium",
-        )
+        RuntimeStateStore(sub).set("atrium_last_seen", datetime.now(timezone.utc).isoformat())
     except Exception:
         pass
 

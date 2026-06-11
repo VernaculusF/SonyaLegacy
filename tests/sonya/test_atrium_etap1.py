@@ -3,7 +3,7 @@
 Tests for:
 - /api/atrium/dialog + /api/atrium/heartbeat routes registered
 - atrium_dialog records incoming.atrium_dialog + triggers active session
-- atrium_heartbeat writes atrium_last_seen to environment_state
+- atrium_heartbeat writes atrium_last_seen to technical runtime state
 - context_builder recognizes incoming.atrium_dialog as Ivan's message
 - OutboundGate emergency-mode: TG dialog suppressed when Atrium live
 - OutboundGate emergency-mode: TG dialog resumes when Atrium offline past threshold
@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
-from sonya.state.environment import EnvironmentStore
+from sonya.state.runtime_state import RuntimeStateStore
 from sonya.state.substrate import Substrate
 
 
@@ -80,7 +80,7 @@ def test_emergency_on_atrium_live_suppresses(tmp_path: Path) -> None:
     sub = _fresh_substrate(tmp_path)
     try:
         # Atrium seen just now
-        EnvironmentStore(sub).set(
+        RuntimeStateStore(sub).set(
             "atrium_last_seen", datetime.now(timezone.utc).isoformat()
         )
         gate = _make_gate(sub, emergency_mode=True)
@@ -96,7 +96,7 @@ def test_emergency_on_atrium_offline_does_not_suppress(tmp_path: Path) -> None:
     try:
         # Atrium last seen 30h ago — past the 24h threshold
         old = datetime.now(timezone.utc) - timedelta(hours=30)
-        EnvironmentStore(sub).set("atrium_last_seen", old.isoformat())
+        RuntimeStateStore(sub).set("atrium_last_seen", old.isoformat())
         gate = _make_gate(sub, emergency_mode=True, threshold_hours=24.0)
         suppress, reason = gate._suppress_tg_dialog(emergency_override=False)
         assert suppress is False
@@ -118,7 +118,7 @@ def test_emergency_on_never_seen_does_not_suppress(tmp_path: Path) -> None:
 def test_emergency_override_bypasses_suppression(tmp_path: Path) -> None:
     sub = _fresh_substrate(tmp_path)
     try:
-        EnvironmentStore(sub).set(
+        RuntimeStateStore(sub).set(
             "atrium_last_seen", datetime.now(timezone.utc).isoformat()
         )
         gate = _make_gate(sub, emergency_mode=True)
@@ -132,7 +132,7 @@ def test_emergency_override_bypasses_suppression(tmp_path: Path) -> None:
 def test_send_via_tool_atrium_only_records_outgoing_dialog(tmp_path: Path) -> None:
     sub = _fresh_substrate(tmp_path)
     try:
-        EnvironmentStore(sub).set(
+        RuntimeStateStore(sub).set(
             "atrium_last_seen", datetime.now(timezone.utc).isoformat()
         )
         gate = _make_gate(sub, emergency_mode=True)

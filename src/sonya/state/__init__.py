@@ -27,6 +27,8 @@ from sonya.state.subject_state import (
     SubjectStateStore,
 )
 from sonya.state.substrate import Substrate, SubstrateVersionError
+from sonya.state.situational import SituationalAssertion, SituationalStore
+from sonya.state.runtime_state import RuntimeStateStore
 
 __all__ = [
     "CanonicalResponse",
@@ -50,6 +52,9 @@ __all__ = [
     "SubjectStateStore",
     "Substrate",
     "SubstrateVersionError",
+    "SituationalAssertion",
+    "SituationalStore",
+    "RuntimeStateStore",
     "THINGS_NOT_TO_BETRAY_SEED",
     "seed_identity_if_empty",
 ]

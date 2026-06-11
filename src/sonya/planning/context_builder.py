@@ -185,7 +185,7 @@ def _time_awareness_block(substrate=None) -> str:
             events = list(stream.read_since(max(0, latest_seq - 300)))
             last_ivan_ts = None
             for ev in reversed(events):
-                if ev.kind == "incoming.telegram_message" and ev.created_at:
+                if ev.kind in ("incoming.telegram_message", "incoming.atrium_dialog") and ev.created_at:
                     last_ivan_ts = ev.created_at
                     break
             if last_ivan_ts:
@@ -227,7 +227,12 @@ def _time_awareness_block(substrate=None) -> str:
                             age = f" (записала {mins // 1440}д назад)"
                     except Exception:
                         pass
-                    lines.append(f"  - **{key}**: {item['value']}{age}")
+                    confidence = float(item.get("confidence", 0.5))
+                    source = item.get("source", "unknown")
+                    lines.append(
+                        f"  - **{key}**: {item['value']}{age} "
+                        f"(source={source}, confidence={confidence:.2f})"
+                    )
             else:
                 lines.append(
                     "- Я ещё не зафиксировала статус Ивана. "

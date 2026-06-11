@@ -2775,10 +2775,10 @@ class InternalProcess:
 
         from datetime import datetime, timedelta, timezone
 
-        # 1. Throttle — env-key for last alert time
+        # 1. Throttle — technical runtime state, not situational/world state.
         try:
             cur = substrate.connection.execute(
-                "SELECT value FROM environment_state WHERE key = ?",
+                "SELECT value FROM runtime_state WHERE key = ?",
                 ("drift_last_alert_at",),
             ).fetchone()
             if cur:
@@ -2793,7 +2793,7 @@ class InternalProcess:
         now_iso = datetime.now(timezone.utc).isoformat()
         try:
             substrate.connection.execute(
-                "INSERT INTO environment_state(key, value, updated_at) "
+                "INSERT INTO runtime_state(key, value, updated_at) "
                 "VALUES (?, ?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET "
                 "value = excluded.value, updated_at = excluded.updated_at",
