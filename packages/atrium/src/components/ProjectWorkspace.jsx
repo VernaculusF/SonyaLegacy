@@ -8,6 +8,9 @@ import {
   activeWorkspaceId,
   fetchProjectRuns,
   fetchProjectTraces,
+  fetchWorkspacePolicy,
+  checkProjectPolicy,
+  setWorkspacePolicy,
   cancelProjectRun,
   controlProjectRun,
 } from '../store.js';
@@ -17,7 +20,10 @@ const terminalStatuses = new Set(['done', 'failed', 'cancelled']);
 export default function ProjectWorkspace(props) {
   const [runs, setRuns] = createSignal([]);
   const [traces, setTraces] = createSignal([]);
+  const [workspacePolicy, setWorkspacePolicyState] = createSignal(null);
+  const [policyVerdict, setPolicyVerdict] = createSignal(null);
   const [loading, setLoading] = createSignal(false);
+  const [policyBusy, setPolicyBusy] = createSignal(false);
 
   const projectId = () => activeWorkspaceId();
   const activeProject = () => feed.projects.find((p) => p.project_id === projectId());
@@ -37,13 +43,17 @@ export default function ProjectWorkspace(props) {
     const id = projectId();
     if (!id || id === 'main') return;
     setLoading(true);
-    const [nextRuns, nextTraces] = await Promise.all([
+    const [nextRuns, nextTraces, nextPolicy, nextVerdict] = await Promise.all([
       fetchProjectRuns(id),
       fetchProjectTraces(id),
+      fetchWorkspacePolicy(id),
+      checkProjectPolicy(id, 'shell_run'),
     ]);
     if (projectId() === id) {
       setRuns(nextRuns);
       setTraces(nextTraces);
+      setWorkspacePolicyState(nextPolicy);
+      setPolicyVerdict(nextVerdict);
       setLoading(false);
     }
   };
@@ -75,6 +85,22 @@ export default function ProjectWorkspace(props) {
   const controlRun = async (runId, action) => {
     if (await controlProjectRun(projectId(), runId, action)) await refreshRuntime();
   };
+  const toggleFullAccess = async () => {
+    const id = projectId();
+    if (!id || id === 'main' || policyBusy()) return;
+    setPolicyBusy(true);
+    const updated = await setWorkspacePolicy(id, {
+      full_system_access: !workspacePolicy()?.full_system_access,
+    });
+    if (updated && projectId() === id) {
+      setWorkspacePolicyState(updated);
+      setPolicyVerdict(await checkProjectPolicy(id, 'shell_run'));
+    }
+    setPolicyBusy(false);
+  };
+  const fullAccessEnabled = () => Boolean(workspacePolicy()?.full_system_access);
+  const policySource = () => policyVerdict()?.source || (workspacePolicy() ? 'workspace_policy' : 'loading');
+  const shellVerdict = () => policyVerdict()?.verdict || 'unknown';
 
   return (
     <div class="pane workspace-pane">
@@ -102,6 +128,33 @@ export default function ProjectWorkspace(props) {
             <div class="ws-project-controls">
               <button class="btn ghost" onClick={() => props.onOpenWorkshop?.()}>Открыть Workshop</button>
               <button class="btn ghost" onClick={refreshRuntime}>Обновить runtime</button>
+            </div>
+
+            <div classList={{ 'ws-policy-card': true, enabled: fullAccessEnabled() }}>
+              <div class="ws-policy-main">
+                <div>
+                  <div class="ws-policy-title">Full-system access</div>
+                  <div class="ws-policy-copy">
+                    {fullAccessEnabled()
+                      ? 'Main Sonya can work under the wider workspace policy. Internal subagents remain project-scoped.'
+                      : 'Project actions use conservative consent policy. Enable only when Ivan wants main Sonya to work wider than the project folder.'}
+                  </div>
+                </div>
+                <button
+                  class="btn ghost ws-policy-toggle"
+                  disabled={policyBusy()}
+                  onClick={toggleFullAccess}
+                >
+                  {policyBusy() ? 'Saving...' : fullAccessEnabled() ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+              <div class="ws-policy-meta">
+                <span classList={{ 'ws-policy-pill': true, enabled: fullAccessEnabled() }}>
+                  {fullAccessEnabled() ? 'enabled' : 'restricted'}
+                </span>
+                <span>shell_run: {shellVerdict()}</span>
+                <span>source: {policySource()}</span>
+              </div>
             </div>
 
             <div class="ws-section">

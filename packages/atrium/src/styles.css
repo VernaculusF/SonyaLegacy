@@ -2906,6 +2906,63 @@ textarea {
   gap: 8px;
 }
 
+.ws-policy-card {
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg, rgba(255,193,120,0.08), rgba(255,193,120,0.02)),
+    rgba(255,255,255,0.02);
+}
+.ws-policy-card.enabled {
+  border-color: rgba(143, 201, 176, 0.24);
+  background:
+    linear-gradient(180deg, rgba(143,201,176,0.10), rgba(143,201,176,0.025)),
+    rgba(255,255,255,0.02);
+}
+.ws-policy-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ws-policy-title {
+  color: var(--ink-1);
+  font-size: 13px;
+  font-weight: 650;
+}
+.ws-policy-copy {
+  margin-top: 4px;
+  max-width: 560px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.ws-policy-toggle {
+  flex: 0 0 auto;
+}
+.ws-policy-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.ws-policy-pill {
+  padding: 2px 7px;
+  border: 1px solid rgba(255,193,120,0.28);
+  border-radius: 999px;
+  color: #ffd09a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ws-policy-pill.enabled {
+  border-color: rgba(143, 201, 176, 0.32);
+  color: #a7ddbf;
+}
+
 .ws-section {
   min-height: 0;
   display: flex;

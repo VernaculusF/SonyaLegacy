@@ -11,8 +11,15 @@ def test_project_workspace_uses_project_runtime_api():
     store = (ROOT / "packages/atrium/src/store.js").read_text(encoding="utf-8")
 
     assert "fetchProjectRuns" in store
+    assert "fetchWorkspacePolicy" in store
+    assert "checkProjectPolicy" in store
     assert "fetchProjectRuns(id)" in workspace
     assert "fetchProjectTraces(id)" in workspace
+    assert "fetchWorkspacePolicy(id)" in workspace
+    assert "checkProjectPolicy(id, 'shell_run')" in workspace
+    assert "ws-policy-card" in workspace
+    assert "Full-system access" in workspace
+    assert "fullAccessEnabled()" in workspace
     assert "setInterval(refreshRuntime, 5000)" in workspace
     assert "cancelProjectRun" in workspace
     assert "controlProjectRun" in store

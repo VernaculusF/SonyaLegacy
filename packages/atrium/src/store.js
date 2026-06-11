@@ -536,6 +536,28 @@ export async function controlProjectRun(projectId, runId, action) {
   } catch { return false; }
 }
 
+export async function fetchWorkspacePolicy(workspaceId) {
+  try {
+    const res = await fetch(_apiBase() + '/api/workspace-policy/' + workspaceId, {
+      headers: _apiHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+export async function checkProjectPolicy(projectId, action) {
+  try {
+    const res = await fetch(_apiBase() + '/api/projects/' + projectId + '/check-policy', {
+      method: 'POST',
+      headers: _apiHeaders(),
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
 export async function createProject(title, description, workspacePath) {
   try {
     const res = await fetch(_apiBase() + '/api/projects', {
@@ -557,6 +579,7 @@ export async function setWorkspacePolicy(workspaceId, policy) {
       headers: _apiHeaders(),
       body: JSON.stringify(policy),
     });
-    return res.ok;
-  } catch { return false; }
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
 }
