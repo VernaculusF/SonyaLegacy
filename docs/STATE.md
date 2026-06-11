@@ -58,8 +58,11 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
 - project approval requests and approve/deny decisions are persisted and
   exposed in Atrium runtime controls;
 - completed project outcomes compile into shared semantic memory with
-  `scope="project"` and concrete `project_id`; production backup/manifest proof
-  passed without applying destructive semantic dedup;
+  `scope="project"` and concrete `project_id`;
+- production semantic dedup was explicitly approved and applied on 2026-06-11:
+  `3,864 -> 1,913` semantic facts, `0` duplicate groups remaining,
+  `PRAGMA quick_check=ok`, and top-50 semantic retrieval returned unique
+  signatures;
 - latest VPS proof passed: project/Atrium runtime controls `14 passed`,
   provider scorecard/cooldown/picker `21 passed`, project-memory/manifest
   `4 passed`, compileall clean, services active, error journal empty;

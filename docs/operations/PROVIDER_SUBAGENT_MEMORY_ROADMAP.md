@@ -75,9 +75,9 @@
 - [x] create a WAL-safe backup and idempotent migration manifest before any write
 - [x] define deduplication rules from backup provenance analysis
 - [x] prove semantic dedup apply and retrieval on a disposable backup copy
-- [ ] obtain explicit approval before any production semantic dedup apply
+- [x] obtain explicit approval before any production semantic dedup apply
+- [x] apply production semantic dedup with provenance merge and verify retrieval
 - run existing Telegram history and legacy knowledge migrations where needed
-- deduplicate, preserve provenance, and verify retrieval after migration
 - [x] prove that project work and summarized subagent outcomes enter the one shared
   memory without mixing UI chat histories
 

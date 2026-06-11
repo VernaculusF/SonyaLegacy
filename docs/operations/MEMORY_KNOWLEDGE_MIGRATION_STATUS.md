@@ -1,6 +1,6 @@
 # Memory and Knowledge Migration Status
 
-**Status:** Active audit; no production migration writes performed
+**Status:** Active audit; production semantic dedup applied after explicit approval
 **Last updated:** 2026-06-11
 
 ## Production Inventory
@@ -10,7 +10,7 @@ Read-only VPS inventory:
 | Layer | Rows / files |
 |---|---:|
 | `episodic_events` | 13,273 |
-| `semantic_facts` | 3,346 |
+| `semantic_facts` | 1,913 after exact semantic dedup |
 | `raw_traces` | 1 |
 | `procedural_memory` | 20 |
 | `continuity_events` | 23,238 |
@@ -103,8 +103,9 @@ against the backup copy before any production write.
 - Procedural, raw trace, and knowledge deduplication remain manual until their
   evidence justifies an automated rule.
 
-`sonya.tools.memory_semantic_dedup` is dry-run by default. Apply requires
-`--apply --target-is-backup-copy`; production apply is not approved.
+`sonya.tools.memory_semantic_dedup` is dry-run by default. Apply requires either
+`--apply --target-is-backup-copy` for disposable proofs or
+`--apply --target-is-production-approved` after explicit production approval.
 
 ## Backup-Copy Dedup Proof
 
@@ -118,8 +119,9 @@ Applied only to `/tmp/sonya-semantic-dedup-proof.db`:
 - `1,708` retained facts still carry source provenance
 - `SemanticMemory.get_for_context(limit=50)` returned 50 unique statements
 
-The production substrate was not modified. Production apply requires explicit
-approval because it deletes duplicate rows even though the backup proof passed.
+The initial backup-copy proof did not modify production. Production apply still
+requires explicit approval because it deletes duplicate rows even when exact
+semantic provenance merge rules pass.
 
 Operational note: `deploy/backup.sh` must use SQLite Backup API even when the
 `sqlite3` CLI is absent. Plain `cp` of the live WAL database is forbidden.
@@ -137,4 +139,17 @@ On 2026-06-11 the project outcome compiler was corrected and proven on the VPS:
 - duplicate analysis ran only against the backup copy;
 - focused project-memory and manifest suite passed (`4 passed`).
 
-Production semantic dedup was not applied.
+## Production Semantic Dedup
+
+Applied on 2026-06-11 after explicit approval:
+
+- fresh WAL-safe production backup created and gzip-verified:
+  `/home/jester-sonya/.sonya/backups/daily/sonya_2026-06-11.db.gz`;
+- pre-apply live plan: `287 groups`, `1,951 extra rows`;
+- apply: deleted exactly `1,951` duplicate semantic rows;
+- semantic rows: `3,864 -> 1,913`;
+- post-apply plan: `0 groups`, `0 extra rows`;
+- SQL duplicate group check: `0`;
+- `PRAGMA quick_check`: `ok`;
+- `SemanticMemory.get_for_context(limit=50)` returned 50 facts with 50 unique
+  semantic signatures.

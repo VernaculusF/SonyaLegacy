@@ -27,8 +27,9 @@ Latest VPS proof:
 Current slice and authoritative order:
 
 1. continue remaining approved provider imports if Ivan supplies more keys;
-2. production semantic dedup remains blocked on explicit approval because it
-   deletes rows, even though backup-copy proof passed.
+2. continue hosted Atrium/project hardening: full-system-access live proof,
+   multi-workspace execution, CSP/auth/WS security, and the parked web-proxy
+   model bridge when explicitly resumed.
 
 Execution plan:
 `docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
@@ -53,7 +54,8 @@ Completed in the latest slices:
   project run and surfaced in Atrium runtime controls;
 - project outcome summaries now enter shared semantic memory with project
   provenance; read-only live/backup manifests and backup duplicate analysis
-  passed on the VPS; production semantic dedup remains unapplied;
+  passed on the VPS; production semantic dedup was then explicitly approved and
+  applied (`3,864 -> 1,913` semantic facts, `0` duplicate groups remaining);
 - live hosted Atrium project-chat proof passed on project `proj-a83c1c3657`:
   project/main history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall all worked
@@ -121,12 +123,18 @@ Completed in the latest slices:
   distributions without content fields.
 - exact duplicate counting is explicit `--analyze-duplicates` backup-only
   analysis; it reports group/extra-row counts without values.
-- semantic exact-dedup tool added: dry-run by default, backup-confirmation
-  required for apply, preserves provenance, and never deduplicates episodic
-  events by content.
+- semantic exact-dedup tool added: dry-run by default, explicit backup-copy or
+  production approval flag required for apply, preserves provenance, and never
+  deduplicates episodic events by content.
 - backup-copy semantic dedup proof passed: `3,396 -> 1,864` facts,
   `quick_check=ok`, repeated plan empty, and context retrieval returned 50
-  unique facts. Production dedup was not applied.
+  unique facts.
+- production semantic dedup applied after explicit approval on 2026-06-11:
+  backup `/home/jester-sonya/.sonya/backups/daily/sonya_2026-06-11.db.gz`
+  gzip-verified, live plan `287 groups` / `1,951 extra rows`, apply deleted
+  `1,951` rows, semantic rows `3,864 -> 1,913`, post-plan `0/0`,
+  SQL duplicate groups `0`, `PRAGMA quick_check=ok`, and top-50 retrieval had
+  50 unique semantic signatures.
 - generic provider refresh coordinator replaced the Fireworks-only balance
   loop; provider metadata may set `refresh_ttl_seconds`, default is six hours,
   and only the last successful model discovery marks a pool fresh.

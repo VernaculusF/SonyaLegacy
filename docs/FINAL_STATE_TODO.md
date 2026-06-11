@@ -18,6 +18,8 @@ Completed and deployed foundations:
 - project outcome summaries entering shared semantic memory with project
   provenance;
 - WAL-safe production backup and read-only memory manifest proof;
+- production semantic dedup applied after explicit approval: `3,864 -> 1,913`
+  semantic facts, `0` duplicate groups remaining, `quick_check=ok`;
 - live hosted Atrium project-chat proof through API/runtime/history/memory.
 
 Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
@@ -26,7 +28,8 @@ Latest VPS proof:
 
 - project/Atrium runtime controls: `14 passed`;
 - provider scorecard/cooldown/picker: `21 passed`;
-- project-memory/manifest: `4 passed`;
+- project-memory/manifest/dedup: `3 passed` for dedup plus clean live
+  post-checks;
 - live proof project `proj-a83c1c3657` passed: isolated project history,
   main-history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall;
@@ -34,8 +37,6 @@ Latest VPS proof:
 
 Still intentionally open:
 
-- production semantic dedup apply only after explicit approval because it
-  deletes rows;
 - browser/web-proxy model bridge remains parked as a separate future workstream.
 
 > Current execution order is maintained in
