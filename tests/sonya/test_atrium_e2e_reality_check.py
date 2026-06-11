@@ -214,3 +214,27 @@ def test_project_run_cancel_api_marks_run_and_workers(substrate, tmp_path: Path,
         ).fetchone()[0] == "cancelled"
     finally:
         checked.close()
+
+
+def test_project_run_pause_resume_api_persists_orchestration_state(substrate, tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "pause-api.db"))
+    from sonya.admin.project_api import api_project_run_control
+    from sonya.config import load_config
+
+    api_substrate = Substrate.open(tmp_path / "pause-api.db")
+    project = ProjectStore(api_substrate).create("pause api proof")
+    run_store = ProjectRunStore(api_substrate)
+    run = run_store.create(project.project_id, kind="project_executor")
+    run_store.start(run.run_id)
+    api_substrate.close()
+
+    class _Req:
+        app = {"config": load_config()}
+        match_info = {"project_id": project.project_id, "run_id": run.run_id, "action": "pause"}
+
+    paused = asyncio.run(api_project_run_control(_Req()))
+    assert __import__("json").loads(paused.text)["status"] == "paused"
+
+    _Req.match_info["action"] = "resume"
+    resumed = asyncio.run(api_project_run_control(_Req()))
+    assert __import__("json").loads(resumed.text)["status"] == "running"

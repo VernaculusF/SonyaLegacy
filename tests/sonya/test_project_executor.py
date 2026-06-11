@@ -110,6 +110,60 @@ async def test_project_execute_auto_plan_schedules_dependencies_and_synthesizes(
 
 
 @pytest.mark.asyncio
+async def test_project_pause_stops_orchestration_until_resume(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-paused-executor.db")
+    try:
+        project = ProjectStore(sub).create(
+            "Paused executor proof",
+            workspace_path=str(tmp_path),
+            policy={"subagent_spawn": "allowed"},
+        )
+        tool = ProjectsTool(sub, subagent_provider=_PlanningProvider())
+        await tool.execute({
+            "name": "projects.execute",
+            "arguments": {
+                "project_id": project.project_id,
+                "task": "deliver the requested change",
+                "auto_plan": True,
+                "max_retries": 0,
+            },
+        })
+        run = ProjectRunStore(sub).list_by_project(project.project_id, kind="project_executor", limit=1)[0]
+
+        paused = await tool.execute({
+            "name": "projects.pause",
+            "arguments": {"project_id": project.project_id, "run_id": run.run_id},
+        })
+        assert "[OK]" in paused
+        assert ProjectRunStore(sub).get(run.run_id).status == "paused"
+
+        await asyncio.sleep(0.05)
+        await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+        paused_run = ProjectRunStore(sub).get(run.run_id)
+        assert paused_run.steps[0]["status"] == "running"
+        assert paused_run.steps[1]["status"] == "blocked"
+
+        resumed = await tool.execute({
+            "name": "projects.resume",
+            "arguments": {"project_id": project.project_id, "run_id": run.run_id},
+        })
+        assert "[OK]" in resumed
+        await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+        resumed_run = ProjectRunStore(sub).get(run.run_id)
+        assert resumed_run.status == "running"
+        assert resumed_run.steps[0]["status"] == "done"
+        assert resumed_run.steps[1]["status"] == "running"
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
 async def test_project_execute_spawns_subagent_and_harvests_result(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "project-executor.db")
     try:
