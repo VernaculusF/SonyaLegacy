@@ -69,9 +69,14 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
   `consent -> allowed`, and subagent filesystem scope stayed project-bound;
 - Atrium project workspace exposes full-system-access state, `shell_run`
   verdict, verdict source, and a project-scoped toggle backed by the same API;
+- hosted Admin/Atrium security baseline is live: unauthenticated `/api/*`
+  requests return JSON `401` instead of `/login` redirects, and HTML/API
+  responses include CSP, `nosniff`, no-referrer, frame denial, and baseline
+  permissions-policy headers;
 - latest VPS proof passed: project/Atrium runtime controls `14 passed`,
   provider scorecard/cooldown/picker `21 passed`, project-memory/manifest
-  `4 passed`, compileall clean, services active, error journal empty;
+  `4 passed`, Admin/Atrium security slice `47 passed`, compileall clean,
+  services active, error journal empty;
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;

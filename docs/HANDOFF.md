@@ -20,6 +20,7 @@ Latest VPS proof:
 - project/Atrium runtime controls: `14 passed`;
 - provider scorecard/cooldown/picker slice: `21 passed`;
 - project-memory/manifest slice: `4 passed`;
+- Admin/Atrium security slice: `47 passed`;
 - `python -m compileall -q src/sonya` passed;
 - `sonya` and `sonya-admin` are active;
 - recent error journal is empty.
@@ -27,9 +28,10 @@ Latest VPS proof:
 Current slice and authoritative order:
 
 1. continue remaining approved provider imports if Ivan supplies more keys;
-2. continue hosted Atrium/project hardening: multi-workspace execution,
-   full-system-access UX, CSP/auth/WS security, and the parked web-proxy model
-   bridge when explicitly resumed.
+2. continue hosted Atrium/project hardening: WebSocket token lifecycle and
+   reconnect discipline, multi-workspace execution, large-file upload/storage
+   path, runtime self-repair loop, and the parked web-proxy model bridge when
+   explicitly resumed.
 
 Execution plan:
 `docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
@@ -61,6 +63,11 @@ Completed in the latest slices:
   temp-project proof showed `shell_run` verdict changing from project
   `consent` to workspace `allowed`, while subagent filesystem scope remained
   project-bound;
+- hosted Admin/Atrium API auth and security headers are deployed: unauthenticated
+  `/api/*` calls now return JSON `401` without `/login` redirects, HTML/API
+  responses carry baseline CSP/security headers, focused VPS suite passed
+  (`47 passed`), live HTTP smoke passed, both services are active, and the
+  recent error journal is empty;
 - live hosted Atrium project-chat proof passed on project `proj-a83c1c3657`:
   project/main history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall all worked

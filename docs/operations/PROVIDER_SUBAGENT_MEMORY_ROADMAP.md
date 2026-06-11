@@ -97,7 +97,17 @@ by that proof. Do not add Admin provider CRUD to Atrium.
   filesystem scope
 - [x] make the Atrium project workspace show full-system-access state, verdict
   source, and a project-scoped toggle without turning Atrium into Admin
-- next: CSP/auth/WS security hardening and multi-workspace execution
+
+### 7. Hosted Atrium Security
+
+- [x] make unauthenticated `/api/*` calls return JSON `401` instead of login
+  redirects/HTML
+- [x] add baseline security headers to Admin/Atrium responses:
+  `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `X-Frame-Options`, and `Permissions-Policy`
+- [x] prove the API auth/header behavior on the live VPS after service restart
+- next: WebSocket token lifecycle/reconnect discipline, multi-workspace
+  execution, large-file upload/storage path, and runtime self-repair loop
 
 ## VPS Gate
 

@@ -26,6 +26,9 @@ Completed and deployed foundations:
   enabled, and still keeps subagent filesystem scope project-bound;
 - Atrium project workspace now shows full-system-access state, `shell_run`
   verdict, verdict source, and a project-scoped toggle;
+- hosted Admin/Atrium API auth now returns JSON `401` for unauthenticated
+  `/api/*` calls instead of login redirects, and HTML/API responses carry
+  baseline CSP/security headers;
 - live hosted Atrium project-chat proof through API/runtime/history/memory.
 
 Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
@@ -40,6 +43,10 @@ Latest VPS proof:
   proof passed, services active, recent error journal empty;
 - full-system-access Atrium UX: focused static/API suite passed, authenticated
   live API smoke returned `consent -> allowed` after toggle;
+- Admin/Atrium security slice: `47 passed`, compileall clean,
+  unauthenticated `/api/projects` returned `401 {"error": "auth"}` with no
+  `Location`, authenticated API/HTML responses carried CSP/security headers,
+  services active, recent error journal empty;
 - live proof project `proj-a83c1c3657` passed: isolated project history,
   main-history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall;
@@ -47,8 +54,9 @@ Latest VPS proof:
 
 Still intentionally open:
 
-- Atrium still needs remaining security hardening, especially CSP/auth/WS
-  discipline;
+- Atrium still needs remaining hosted-stack hardening: WebSocket token
+  lifecycle/reconnect discipline, multi-workspace execution, large-file
+  upload/storage path, and runtime self-repair loop;
 - browser/web-proxy model bridge remains parked as a separate future workstream.
 
 > Current execution order is maintained in
