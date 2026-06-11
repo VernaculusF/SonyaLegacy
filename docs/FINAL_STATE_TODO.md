@@ -1,5 +1,29 @@
 # FINAL STATE TODO
 
+## 2026-06-12 Runtime-Coherence Status Override
+
+The 2026-06-11 hosted project-stack foundation is deployed, but it is not the
+end of the current hosted-stack work. A production audit found foundational
+gaps that must be closed before Sonya can reliably own arbitrary work and
+self-improvement end-to-end.
+
+Canonical audit: `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+
+Still open before the hosted stack can be considered coherent:
+
+- first-class SituationalModel / WorldState with TTL, provenance,
+  contradiction, and state-store separation;
+- unified WorkItem lifecycle across tasks, project activity, and background
+  work, including promotion and archive;
+- explicit separation of cognition, messages, actions, and reports;
+- visible ActionRun/ToolRun/SubagentRun progress in Atrium;
+- meaningful-change active-session semantics and paid-cost/run guards;
+- real main-cognition provider/model-pool routing and observable fallback;
+- provider-native normalized streaming;
+- authoritative embodiment/focus state and operational continuity hygiene.
+
+The browser/web-proxy model bridge remains a later separate workstream.
+
 ## 2026-06-11 Hosted-Stack Status Override
 
 Completed and deployed foundations:
@@ -71,9 +95,8 @@ Latest VPS proof:
   pause/resume, approval deny, completion, and shared-memory recall;
 - compileall clean, `sonya`/`sonya-admin` active, recent error journal empty.
 
-Still intentionally open:
-
-- browser/web-proxy model bridge remains the next separate workstream.
+The statement that only the browser/web-proxy model bridge remained open is
+superseded by the 2026-06-12 runtime-coherence audit.
 
 > Current execution order is maintained in
 > `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Provider registry,

@@ -10,10 +10,12 @@ prefer the sources listed earlier within the same category.
 ## Current Source Of Truth
 
 1. [ATRIUM_PROJECT_PLAN.md](ATRIUM_PROJECT_PLAN.md) - active Atrium delivery plan
-2. [STATE.md](STATE.md) - verified current state and known gaps
-3. [HANDOFF.md](HANDOFF.md) - current continuation point and verification notes
-4. [MASTER.md](MASTER.md) - high-level doctrine and long-term direction
-5. [FINAL_STATE_TODO.md](FINAL_STATE_TODO.md) - broader target-state backlog
+2. [SONYA_RUNTIME_COHERENCE_AUDIT.md](SONYA_RUNTIME_COHERENCE_AUDIT.md) -
+   canonical runtime-coherence problems and target architecture
+3. [STATE.md](STATE.md) - verified current state and known gaps
+4. [HANDOFF.md](HANDOFF.md) - current continuation point and verification notes
+5. [MASTER.md](MASTER.md) - high-level doctrine and long-term direction
+6. [FINAL_STATE_TODO.md](FINAL_STATE_TODO.md) - broader target-state backlog
 
 ## Governing Invariants
 

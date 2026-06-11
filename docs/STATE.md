@@ -2,9 +2,45 @@
 
 **Status:** Active
 **Type:** Current project state
-**Last updated:** 2026-06-11
+**Last updated:** 2026-06-12
 
 Latest production deployment: verify on the VPS with `git rev-parse --short HEAD`.
+
+## Runtime coherence audit - 2026-06-12
+
+Canonical audit and target architecture:
+`docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+
+The deployed hosted project/provider foundation is real, but Sonya cannot yet
+reliably own arbitrary work and self-improvement end-to-end. A read-only
+production audit established:
+
+- no first-class SituationalModel / WorldState; current ephemeral facts are
+  stale, absent, contradictory, or stored without TTL/provenance;
+- environment state contains credentials and conflicts with embodiment state;
+- main-chat active sessions can self-propel using prior generated output rather
+  than meaningful external/work-state change;
+- cognition, addressed messages, actions, and progress are not cleanly
+  separated;
+- task, background-task, project, and project-activity lifecycles have
+  diverged;
+- tool/subagent work is not consistently represented as first-class visible
+  action runs;
+- response streaming is synthetic client reveal after a non-streaming provider
+  response;
+- main cognition used one OpenRouter Gemma model for all 445 observed daily
+  calls despite available model/provider pools;
+- about 12 million tokens were consumed in the observed day, acceptable on
+  free capacity but unsafe if the same loops reach paid providers;
+- retry/fallback and per-account provider refresh behavior need better measured
+  outcomes and account-scoped observability;
+- current focus and outfit state have stale/conflicting sources;
+- lifecycle events and historical Telegram session errors remain operational
+  hygiene concerns.
+
+Recent guards fixed specific dialog and proof-subagent spam sources, but do not
+replace the missing architecture and have limited live conversational proof.
+No runtime code was changed as part of this documentation audit.
 
 ## Current execution state - 2026-06-11
 

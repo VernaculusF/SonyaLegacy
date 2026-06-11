@@ -7,7 +7,8 @@
 ## Deployed Baseline
 
 - Branch: `develop`
-- Latest pushed/deployed baseline: `9215106`
+- Latest pushed/deployed runtime baseline before this documentation slice:
+  `aa2753a`
 - Production host: `jester-sonya@34.38.255.149`
 - Production repo: `/home/jester-sonya/Sonya`
 - Production substrate: `/home/jester-sonya/.sonya/sonya_substrate.db`
@@ -42,6 +43,30 @@ Sonya is one environment/subject:
 - subagents are internal disposable tools, not UI actors and not separate
   Sonyas;
 - memory and continuity stream are shared.
+
+There is no universal hardcoded "correct behavior" for Sonya. The runtime must
+give her reliable situational evidence and preserve her judgement, not replace
+it with a behavior rule engine. Autonomous work may continue without Ivan;
+main chat remains shared interaction rather than an autonomous self-dialog.
+
+## Current Architecture Priority
+
+Read first: `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+
+The next implementation sequence is:
+
+1. SituationalModel / WorldState and separation of current situation, durable
+   knowledge, embodiment, work state, and credentials;
+2. shared WorkItem lifecycle across tasks/background work/project activity,
+   with promotion to durable projects and archive semantics;
+3. distinct cognition/message/action/report contracts plus visible
+   ActionRun/ToolRun/SubagentRun records;
+4. meaningful-change active-session semantics, run/cost guards, and actual
+   provider/model-pool use for main cognition;
+5. provider-native normalized streaming and complete live Atrium proof.
+
+Do not begin the parked web-proxy bridge before these foundations. More cheap
+capacity would currently amplify self-propelling loops and incoherent state.
 
 Atrium is the main work/chat surface, not the admin surface. Telegram is
 Sonya's social/emergency channel and must not be mirrored into Atrium chat as
@@ -88,18 +113,18 @@ Production verification:
 
 ## Remaining Immediate Work
 
-1. Inspect real production `drive_state` and evolution pressure values:
-   drive counters are internal initiative accumulators, not emotions; if they
-   saturate unexpectedly, fix runtime normalization separately from UI.
-2. Recheck live Atrium behavior after refresh: close behavior, typing,
-   progressive reveal, Telegram/Atrium separation, expression stability, and
-   dialog suppression.
-3. Continue provider/model evaluation automation and web-proxy model bridge
-   only after Atrium chat UX is stable again.
+1. Design and implement the SituationalModel slice from the canonical audit.
+2. Design the WorkItem migration/promotion path without blindly converting
+   every small action into a project.
+3. Preserve the existing deployed spam guards and validate them during later
+   live scenarios; do not mistake them for the architectural fix.
+4. Keep Google Drive as an optional cold archive target, never primary live
+   state.
 
 ## Key Docs
 
 - `docs/MASTER.md`
+- `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`
 - `docs/STATE.md`
 - `docs/ATRIUM_PROJECT_PLAN.md`
 - `docs/atrium/ATRIUM_WORKSPACE_RUNTIME_SPEC.md`

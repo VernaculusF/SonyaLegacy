@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** High-level doctrine
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-12
 
 ---
 
@@ -90,6 +90,25 @@ Atrium должен стать не только интерфейсом обще
 
 ## 4. Неподвижные инварианты
 
+### Runtime agency doctrine - 2026-06-12
+
+- There is no universal hardcoded "correct behavior" for Sonya.
+- The runtime must provide current evidence, uncertainty, memory, tools, and
+  consequences without replacing Sonya's judgement with a behavioral rule
+  engine.
+- Autonomous self-improvement and assigned work may continue without Ivan's
+  active participation.
+- Main chat is shared interaction with Ivan, not an autonomous execution loop
+  or a place for Sonya to talk to herself.
+- When another subject's intent materially matters, situational understanding
+  must represent that subject and uncertainty instead of silently inventing
+  participation.
+- Tasks, project activity, and background work should converge on a shared
+  WorkItem lifecycle; a project is a durable work context, not a mandatory
+  wrapper for every small action.
+- Current canonical audit and target architecture:
+  `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+
 - Иван остаётся primary anchor
 - Sonya is one environment/subject: one main chat plus project chats only.
   Projects are chat contexts tied to reachable folders, not separate Sonyas.
@@ -107,6 +126,7 @@ Atrium должен стать не только интерфейсом обще
 
 ### Entry
 
+- `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`
 - `docs/STATE.md`
 - `docs/HANDOFF.md`
 

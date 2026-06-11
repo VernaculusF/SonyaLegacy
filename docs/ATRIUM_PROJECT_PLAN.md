@@ -2,7 +2,36 @@
 
 **Status:** Active
 **Type:** Unified implementation plan
-**Last updated:** 2026-06-11
+**Last updated:** 2026-06-12
+
+## Current priority override - 2026-06-12
+
+The hosted project foundation is not the remaining limiting factor. A
+production read-only audit found runtime-coherence failures across situation
+awareness, active sessions, work semantics, visible actions, embodiment state,
+and real model-pool use.
+
+The canonical problem statement and target architecture are now:
+`docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+
+Immediate execution order:
+
+1. implement `SituationalModel / WorldState` and separate ephemeral situation,
+   durable knowledge, embodiment, work state, and credentials;
+2. converge task/project/background activity on a common `WorkItem` lifecycle
+   with project promotion and archive semantics;
+3. separate cognition, addressed messages, actions, and reports, then expose
+   first-class ActionRun/ToolRun/SubagentRun progress in Atrium;
+4. stop self-propelling sessions through meaningful-change semantics and
+   bounded run/cost controls without replacing Sonya's judgement with a hard
+   behavior rule engine;
+5. make main cognition use measured provider/model pools, free-first fallback,
+   and observable retry/account routing;
+6. implement normalized provider-native streaming and prove the complete live
+   Atrium flow.
+
+The web-proxy model bridge remains parked until these foundations prevent cheap
+capacity from amplifying loops and incoherent state.
 
 ## Current priority override - 2026-06-11
 

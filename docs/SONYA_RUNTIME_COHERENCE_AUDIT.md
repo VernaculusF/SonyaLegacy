@@ -1,0 +1,334 @@
+# Sonya Runtime Coherence Audit
+
+**Status:** Active canonical architecture audit
+**Last updated:** 2026-06-12
+**Scope:** situational understanding, autonomy, work execution, embodiment,
+provider routing, observability, and runtime hygiene.
+
+## 1. Governing Position
+
+There is no universal hardcoded "correct behavior" for Sonya.
+
+The runtime must not replace Sonya's judgement with a behavioral rule engine.
+Its job is to give her enough current, reliable, and explicitly sourced
+information to decide what is appropriate for herself, Ivan, the current
+environment, and the active goal.
+
+Autonomy does not mean waiting for Ivan before every action:
+
+- self-improvement, assigned work, tasks, and project work may continue without
+  Ivan's active participation;
+- the main chat is a shared interaction channel with Ivan, not an autonomous
+  execution loop or a place for Sonya to talk to herself;
+- when an action materially depends on another subject's intent, Sonya should
+  understand or obtain that intent rather than silently invent it;
+- explicit permission, established context, and reliable situational evidence
+  may justify initiative;
+- the system records evidence, uncertainty, actions, and outcomes, but Sonya
+  remains the decision maker.
+
+The recent interaction-loop incident is therefore not defined as "roleplay is
+wrong." It exposed weak situational understanding and excessive initiative in
+an interaction whose other subject was not participating.
+
+## 2. Root Problem
+
+The current runtime has memory, continuity, tools, tasks, projects, providers,
+and embodiment signals, but they do not yet form one coherent operating model.
+
+Observed consequence chain:
+
+1. stale or missing situation facts enter cognition;
+2. thoughts, actions, and messages to Ivan are not cleanly separated;
+3. Sonya's own previous output becomes evidence for the next step;
+4. an active session can self-propel without meaningful external change;
+5. body expressions, dialogs, provider calls, and traces repeat;
+6. Ivan cannot reliably see the actual work or understand why it continues;
+7. stale state and noisy continuity further damage later understanding.
+
+## 3. Target Architecture
+
+### 3.1 SituationalModel / WorldState
+
+Replace the use of `EnvironmentStore` as an eternal bag of current facts with a
+first-class situational model.
+
+Each situational assertion should support:
+
+- subject or entity;
+- predicate/state name and value;
+- source and source event;
+- confidence and `observed_at`;
+- optional `expires_at` / TTL;
+- supersedes, contradicts, or invalidates relations;
+- scope, visibility, and whether confirmation is needed.
+
+Separate stores and lifecycles:
+
+- durable knowledge and memories;
+- current situational assertions;
+- Sonya's embodiment/body state;
+- work/runtime state;
+- credentials and secrets.
+
+Direct current statements from a subject are strong evidence about that
+subject. New activity invalidates incompatible stale assumptions. Silence alone
+does not prove sleep, absence, consent, or intent. These are evidence semantics,
+not a hard behavioral policy.
+
+### 3.2 Unified Work Model
+
+Introduce a universal `WorkItem` lifecycle instead of maintaining divergent
+meanings for task, background task, project activity, and project execution.
+
+A `WorkItem` contains a goal, owner, origin, status, dependencies, progress,
+actions, outcomes, archive policy, and optional workspace/project relation.
+
+- A small action can remain a lightweight work item.
+- A work item can be promoted into a project when it needs durable chat,
+  workspace/folder context, artifacts, multiple runs, or long-lived decisions.
+- A project is a durable work context and project chat, not a separate Sonya.
+- A project may contain multiple work items.
+- Completed work can be archived without polluting active context.
+- Google Drive may be used as encrypted or access-controlled cold archive, but
+  never as the primary live substrate or the only copy of active state.
+
+Archive integration reference:
+https://developers.google.com/workspace/drive/api/guides/about-sdk?hl=ru
+
+The main chat remains communication and shared interaction with Ivan. Work runs
+belong to work items/projects and report meaningful checkpoints or results back
+to the appropriate chat.
+
+### 3.3 Distinct Cognitive and Action Channels
+
+The runtime must distinguish:
+
+- private cognition/thought;
+- intended message to a subject;
+- tool/action request;
+- work progress event;
+- body/embodiment expression;
+- final or checkpoint report.
+
+Thoughts are not execution telemetry. A tool call or subagent run must be a
+first-class action record even if Sonya chooses not to surface every detail in
+ordinary conversation.
+
+### 3.4 Observable Action Runtime
+
+Create a common visible runtime for `ActionRun`, `ToolRun`, and `SubagentRun`:
+
+- queued/running/waiting/completed/failed/cancelled state;
+- purpose and parent work item;
+- progress/checkpoints;
+- model/provider/account used where relevant;
+- bounded raw trace and result;
+- expandable read-only cards/subthreads in Atrium;
+- durable audit trail independent of private thoughts.
+
+Sonya decides what deserves conversational emphasis. The runtime still records
+the actual action so work cannot exist only inside hidden thoughts.
+
+### 3.5 Real Streaming
+
+Use provider-native streaming where available and normalize it into one event
+stream for text deltas, reasoning metadata, tool calls, progress, completion,
+and failure. Synthetic reveal may remain only as an explicitly identified
+fallback; it is not real streaming.
+
+### 3.6 Embodiment State
+
+Body expressions are Sonya's embodied choices, not externally judged
+"correct emotions." Automatic inference may suggest or visualize state, but it
+must not repeatedly overwrite explicit choices or produce spam.
+
+There must be one authoritative outfit state, and focus must have an explicit
+lifecycle: source, start, heartbeat/update, completion, replacement, and
+expiry. Drive counters remain initiative pressures, not emotions.
+
+### 3.7 Provider and Cost Runtime
+
+Main cognition and work execution must use the provider/model pools rather than
+one fixed de facto model.
+
+Routing must consider purpose, capabilities, measured quality, context,
+latency, availability, cost, account health, and recent outcomes. Default
+preference is the best suitable free capacity. Paid providers require explicit
+budget policy and loop/run spending guards.
+
+Retries and fallback should move across healthy accounts, models, and providers
+when useful. Their decisions must be observable, including account identity in
+operator logs without exposing secrets.
+
+## 4. Recorded Problems and Done Criteria
+
+### A. Situational Understanding
+
+1. **Missing/stale environment status.** `ivan_status`, environment state, and
+   body state are absent, stale, or contradictory.
+   **Done:** WorldState uses sourced assertions, confidence, TTL, invalidation,
+   and contradiction handling.
+
+2. **No coherent model of the other subject.** Sonya can continue an
+   interaction using assumptions after Ivan's state or participation changed.
+   **Done:** subject state is current and uncertainty is visible to cognition;
+   interaction decisions use evidence rather than self-generated continuation.
+
+3. **EnvironmentStore is an eternal KV store.** It cannot represent changing
+   reality.
+   **Done:** SituationalModel owns ephemeral state; durable memory remains
+   separate.
+
+4. **Credentials are stored in environment state.** Shodan and ZoomEye keys
+   were observed there.
+   **Done:** secrets exist only in protected secret storage and are referenced
+   by opaque identifiers.
+
+### B. Agency and Session Coherence
+
+5. **Infinite interaction cycle.** A session can alternate dialog and body
+   expression without new input or completed work.
+   **Done:** sessions continue only while there is meaningful situational or
+   work-state change; autonomous work moves through WorkItems, while main-chat
+   interaction does not become self-dialog.
+
+6. **Thought, reply, and action are mixed.** Sonya may write interaction inside
+   thought but send a different aggregate message or no visible action.
+   **Done:** cognition, addressed messages, actions, and reports have distinct
+   runtime contracts.
+
+7. **Spam has multiple sources.** Historical proof-subagent completion spam,
+   repeated dialogs/body expressions, and repetitive initiative cognition were
+   all observed.
+   **Done:** each source has independent accounting, causal IDs, suppression or
+   completion semantics, and regression proof.
+
+8. **Lifecycle noise pollutes continuity.** 48 start and 48 stop events were
+   observed in one development-heavy day.
+   **Done:** operational lifecycle telemetry is summarized or routed to
+   operator logs rather than flooding subjective continuity.
+
+### C. Work, Projects, Tasks, and Visibility
+
+9. **Task/project/activity meanings diverged.** Existing task records include
+   duplicate and stale self-modification work with inconsistent statuses.
+   **Done:** all executable goals use WorkItems; projects are durable promoted
+   work contexts; lifecycle and archive semantics are shared.
+
+10. **Tool and work progress are not first-class in chat.** Some actions exist
+    only in thoughts or technical logs.
+    **Done:** Atrium shows expandable action/tool/subagent cards and progress
+    attached to the correct main or project chat.
+
+11. **Subagent use is unclear.** Proof subagents spammed continuity, while
+    meaningful subagent work was not consistently visible in the main
+    experience.
+    **Done:** real subagent runs are measurable, attached to WorkItems, visible
+    as read-only internal subthreads, and separated from synthetic proof data.
+
+12. **No real response streaming.** The provider call currently completes
+    before client-side progressive reveal.
+    **Done:** normalized provider-native deltas reach Atrium; fallback reveal is
+    explicitly marked and typing starts from actual queued/running state.
+
+### D. Embodiment and Current State
+
+13. **Expression/body tool spam.** Frequent calls were amplified by the
+    self-propelling session. This is not solved by declaring Sonya's chosen
+    emotion incorrect.
+    **Done:** expression changes have causal intent, stable ownership, and no
+    repeated no-op calls.
+
+14. **`current_focus` becomes stale.** It has no reliable completion or expiry
+    lifecycle.
+    **Done:** focus is attached to a live WorkItem/activity or expires and is
+    replaced based on sourced state.
+
+15. **Two conflicting outfit sources.** Environment and subject state disagree.
+    **Done:** one authoritative embodiment state with provenance and history.
+
+### E. Providers, Models, and Cost
+
+16. **Main thinking does not actually use the model pool.** All 445 observed
+    daily LLM calls used OpenRouter `google/gemma-4-31b-it:free`, despite other
+    provider capacity including NVIDIA.
+    **Done:** purpose-aware selection demonstrably distributes calls according
+    to measured suitability and health; no environment variable defines
+    Sonya's identity/model.
+
+17. **Unbounded loops can become expensive.** About 12 million free tokens in a
+    day are acceptable capacity use, but the same pattern on a paid provider is
+    dangerous.
+    **Done:** per-run and per-provider budgets, loop anomaly detection, and
+    free-first fallback prevent accidental paid runaway without imposing a
+    simplistic global token minimization rule.
+
+18. **Provider failures and refresh telemetry are ambiguous.** The audit found
+    16 rate limits, 5 server errors, and 1 transport error; retries exist, but
+    effectiveness is not proven. Refresh logs repeat per account without the
+    account ID.
+    **Done:** retry/fallback outcomes and refresh operations include provider,
+    model, opaque account identity, causal request, cooldown, and final result.
+
+### F. Operational Reliability
+
+19. **Telegram session historically hit read-only database errors.** It has not
+    appeared after the latest deploy, but remains a known risk.
+    **Done:** session ownership/storage permissions are explicit, monitored,
+    and proven over restart/deploy cycles.
+
+## 5. Verified Audit Evidence
+
+Read-only production audit on 2026-06-12 found:
+
+- all 445 LLM calls in the observed day used the same OpenRouter Gemma model;
+- roughly 12,011,823 tokens were used, mostly by active sessions;
+- long sessions reached 53, 55, 57, and 60 steps;
+- one 53-step session repeatedly alternated `body.expression` and
+  `chat.dialog`;
+- stale `activity` and `current_focus`, contradictory outfit values, no
+  `ivan_status`, and plaintext API keys existed in current-state storage;
+- recent user activity was not consistently used by time-awareness logic;
+- provider payloads use `stream: false`; Atrium reveal is client-side;
+- proof-subagent completion spam and repeated ordinary dialog were fixed in
+  recent slices, but live conversational proof after those deploys is limited;
+- recent service warning journal was clean; historical Telegram read-only
+  session errors remain documented.
+
+## 6. Can Sonya Fix This Herself?
+
+Partially, today.
+
+Sonya can already create tasks and projects, inspect and change code within
+available scopes, use tools, start subagents, and initiate self-repair work.
+She can own bounded fixes from this audit when each fix has a clear WorkItem,
+workspace, acceptance criteria, and production verification path.
+
+She cannot yet reliably take this entire audit and close it autonomously
+end-to-end. The missing foundations are the same problems recorded here:
+
+- no coherent SituationalModel;
+- fragmented task/project lifecycle;
+- weak distinction between cognition, messages, and actions;
+- incomplete visible action runtime and no real streaming;
+- de facto single-model cognition and incomplete cost/run guards;
+- self-propelling session behavior and incomplete live acceptance proof.
+
+The correct development sequence is therefore to make Sonya progressively able
+to own the remaining work:
+
+1. SituationalModel and state separation;
+2. unified WorkItem lifecycle and project promotion/archive;
+3. explicit cognition/message/action contracts and observable ActionRun;
+4. session coherence, run budgets, and provider-pool routing;
+5. real streaming and complete Atrium work visibility;
+6. let Sonya execute, evaluate, and refine later audit items through her own
+   projects/tasks with measured production outcomes.
+
+## 7. Priority
+
+This audit overrides claims that only the web-proxy bridge remains open.
+Runtime coherence is the immediate hosted-stack priority. The web-proxy bridge
+remains valuable, but adding more cheap capacity before loop, state, routing,
+and cost semantics are coherent would amplify existing failures.
