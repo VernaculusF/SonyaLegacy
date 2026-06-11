@@ -53,5 +53,27 @@ def test_semantic_dedup_refuses_apply_without_backup_confirmation(tmp_path) -> N
     sub = Substrate.open(db_path)
     sub.close()
 
-    with pytest.raises(PermissionError, match="backup copy"):
-        apply_semantic_dedup(db_path, target_is_backup_copy=False)
+    with pytest.raises(PermissionError, match="production approval"):
+        apply_semantic_dedup(db_path)
+
+
+def test_semantic_dedup_allows_explicit_production_approval(tmp_path) -> None:
+    db_path = tmp_path / "production.db"
+    sub = Substrate.open(db_path)
+    try:
+        for fact_id in ("fact-a", "fact-b"):
+            sub.connection.execute(
+                "INSERT INTO semantic_facts "
+                "(fact_id, fact_type, statement, source_event_ids_json, confidence, "
+                "last_reinforced_at, contradiction_flags_json, scope, project_id, retention_policy) "
+                "VALUES (?, 'preference', 'same production statement', '[]', 0.5, "
+                "'2026-01-01', '[]', 'global', '', 'long')",
+                (fact_id,),
+            )
+        sub.connection.commit()
+    finally:
+        sub.close()
+
+    result = apply_semantic_dedup(db_path, target_is_production_approved=True)
+
+    assert result == {"groups": 1, "deleted_rows": 1}

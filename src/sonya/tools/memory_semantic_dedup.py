@@ -1,4 +1,4 @@
-"""Plan or apply exact semantic-fact deduplication on a backup copy."""
+"""Plan or apply exact semantic-fact deduplication."""
 
 from __future__ import annotations
 
@@ -56,9 +56,16 @@ def _json_union(values: list[str]) -> str:
     return json.dumps(sorted(merged), ensure_ascii=False)
 
 
-def apply_semantic_dedup(path: Path, *, target_is_backup_copy: bool) -> dict[str, int]:
-    if not target_is_backup_copy:
-        raise PermissionError("semantic dedup apply requires explicit backup copy confirmation")
+def apply_semantic_dedup(
+    path: Path,
+    *,
+    target_is_backup_copy: bool = False,
+    target_is_production_approved: bool = False,
+) -> dict[str, int]:
+    if not (target_is_backup_copy or target_is_production_approved):
+        raise PermissionError(
+            "semantic dedup apply requires backup-copy confirmation or explicit production approval"
+        )
 
     connection = _connect(path, read_only=False)
     try:
@@ -95,14 +102,19 @@ def apply_semantic_dedup(path: Path, *, target_is_backup_copy: bool) -> dict[str
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Plan/apply exact semantic dedup on a backup copy")
+    parser = argparse.ArgumentParser(description="Plan/apply exact semantic dedup")
     parser.add_argument("substrate", type=Path)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--target-is-backup-copy", action="store_true")
+    parser.add_argument("--target-is-production-approved", action="store_true")
     args = parser.parse_args(argv)
 
     result = (
-        apply_semantic_dedup(args.substrate, target_is_backup_copy=args.target_is_backup_copy)
+        apply_semantic_dedup(
+            args.substrate,
+            target_is_backup_copy=args.target_is_backup_copy,
+            target_is_production_approved=args.target_is_production_approved,
+        )
         if args.apply
         else plan_semantic_dedup(args.substrate)
     )
