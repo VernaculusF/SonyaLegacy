@@ -166,6 +166,52 @@ def test_acquire_for_model_uses_only_accounts_with_enabled_offering(tmp_path) ->
         sub.close()
 
 
+def test_acquire_for_model_reactivates_account_after_bounded_cooldown(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "offering-cooldown.db")
+    try:
+        store = KeyStore(sub)
+        key = store.add_key(
+            provider="openrouter",
+            name="cooling",
+            api_key="sk-cooling",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        model = store.upsert_provider_model(
+            model_id="google/gemma-4-31b-it:free",
+            provider="openrouter",
+            model_name="Gemma",
+            is_free=1,
+        )
+        store.set_account_offering(key.key_id, model.model_id, enabled=True)
+        future = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+        sub.connection.execute(
+            "UPDATE provider_keys SET status = 'cooldown', cooldown_until = ? WHERE key_id = ?",
+            (future, key.key_id),
+        )
+        sub.connection.execute(
+            "UPDATE provider_accounts SET status = 'cooldown' WHERE account_id = ?",
+            (key.key_id,),
+        )
+        sub.connection.commit()
+
+        assert asyncio.run(store.acquire_for_model("openrouter", model.model_id)) is None
+
+        past = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
+        sub.connection.execute(
+            "UPDATE provider_keys SET cooldown_until = ? WHERE key_id = ?",
+            (past, key.key_id),
+        )
+        sub.connection.commit()
+
+        acquired = asyncio.run(store.acquire_for_model("openrouter", model.model_id))
+        assert acquired is not None
+        assert acquired.key_id == key.key_id
+        assert acquired.status is KeyStatus.ACTIVE
+        assert store.get_provider_account(key.key_id).status == "active"
+    finally:
+        sub.close()
+
+
 def test_quota_windows_and_observations_have_typed_round_trip(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "observations.db")
     try:
