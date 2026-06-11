@@ -153,6 +153,16 @@ class InternalProcess:
         # active session / task worker / TG handler / idle thinking is running.
         # Single-stream-of-consciousness: only one cognitive context at a time.
         self._busy_lock: asyncio.Lock = asyncio.Lock()
+        self._completed_subagent_ids: set[str] = set()
+        if substrate is not None:
+            try:
+                rows = substrate.connection.execute(
+                    "SELECT subagent_id FROM subagent_tasks "
+                    "WHERE status IN ('done', 'failed')"
+                ).fetchall()
+                self._completed_subagent_ids.update(str(row[0]) for row in rows)
+            except Exception:
+                pass
 
     @property
     def counters(self) -> HomeostasisCounters:
@@ -3328,7 +3338,10 @@ class InternalProcess:
             return
         try:
             from sonya.tools.subagent_tool import SubagentTool
-            st = SubagentTool(substrate)
+            st = SubagentTool(
+                substrate,
+                already_polled=self._completed_subagent_ids,
+            )
             completed = st.poll_completed()
             for sub_id, status, preview in completed:
                 if self._stream:

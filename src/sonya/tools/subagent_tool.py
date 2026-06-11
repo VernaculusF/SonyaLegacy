@@ -26,12 +26,18 @@ _log = logging.getLogger("sonya.subagent")
 class SubagentTool:
     """Manages subagent lifecycle: spawn, list, check results."""
 
-    def __init__(self, substrate: Substrate, provider: LLMProvider | None = None, workspace_id: str = ""):
+    def __init__(
+        self,
+        substrate: Substrate,
+        provider: LLMProvider | None = None,
+        workspace_id: str = "",
+        already_polled: set[str] | None = None,
+    ):
         self._sub = substrate
         self._provider = provider or LLMProvider(KeyStore(substrate))
         self._workspace_id = workspace_id
         self._running: dict[str, asyncio.Task] = {}
-        self._already_polled: set[str] = set()
+        self._already_polled = already_polled if already_polled is not None else set()
 
     def spawn(self, arg: str) -> str:
         """Spawn a subagent from a JSON task description.

@@ -201,3 +201,33 @@ def test_pending_ivan_message_empty_stream(substrate: Substrate) -> None:
     store = PendingIntentionStore(substrate)
     proc = InternalProcess(stream, store)
     assert proc._pending_ivan_message(substrate) is None
+
+
+def test_subagent_completion_poll_emits_each_new_completion_once(substrate: Substrate) -> None:
+    stream = ContinuityStream(substrate)
+    store = PendingIntentionStore(substrate)
+    substrate.connection.execute(
+        "INSERT INTO subagent_tasks(subagent_id, task, status, result, created_at, completed_at) "
+        "VALUES ('old-done', 'old', 'done', 'old result', datetime('now'), datetime('now'))"
+    )
+    substrate.connection.commit()
+    proc = InternalProcess(stream, store, substrate=substrate)
+
+    proc._check_subagent_completions()
+    assert substrate.connection.execute(
+        "SELECT COUNT(*) FROM continuity_events WHERE kind = 'subagent.complete'"
+    ).fetchone()[0] == 0
+
+    substrate.connection.execute(
+        "INSERT INTO subagent_tasks(subagent_id, task, status, result, created_at, completed_at) "
+        "VALUES ('new-done', 'new', 'done', 'new result', datetime('now'), datetime('now'))"
+    )
+    substrate.connection.commit()
+    proc._check_subagent_completions()
+    proc._check_subagent_completions()
+
+    rows = substrate.connection.execute(
+        "SELECT payload_json FROM continuity_events WHERE kind = 'subagent.complete'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert "new-done" in rows[0][0]

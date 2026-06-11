@@ -62,12 +62,16 @@ Atrium reason-stream, expression stability, and dialog-spam guard:
 - an agent session may send one ordinary dialog for a user input and another
   after real work; further dialog calls without new input/work are blocked and
   audited as `internal.dialog_repeat_suppressed`;
+- completed-subagent polling now owns a process-lifetime cursor seeded from
+  existing terminal tasks, so old proof workers are not re-emitted on every
+  maintenance tick or service restart;
 - provider-native token streaming is still not implemented; Atrium currently
   uses typing state plus client-side progressive reveal of completed replies.
 
 VPS pre-deploy verification passed:
 
 - focused regression suite -> `28 passed`;
+- subagent completion cursor regression -> passed;
 - `python -m compileall -q src/sonya` -> passed;
 - `cd packages/atrium && npm run build` -> passed.
 
