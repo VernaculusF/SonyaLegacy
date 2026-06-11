@@ -55,3 +55,15 @@ async def test_hosted_atrium_returns_503_when_bundle_missing(tmp_path, monkeypat
 def test_vite_build_targets_hosted_atrium_base() -> None:
     source = (server._ATRIUM_DIST_DIR.parent / "vite.config.js").read_text(encoding="utf-8")
     assert "base: '/atrium/'" in source
+
+
+def test_vps_update_builds_hosted_atrium_before_restart() -> None:
+    update_script = (
+        server._ATRIUM_DIST_DIR.parents[2] / "deploy" / "update.sh"
+    ).read_text(encoding="utf-8")
+    build_at = update_script.index('echo "=> Building hosted Atrium..."')
+    restart_at = update_script.index('echo "=> Restarting services..."')
+
+    assert "npm ci --no-audit --no-fund" in update_script
+    assert "npm run build" in update_script
+    assert build_at < restart_at

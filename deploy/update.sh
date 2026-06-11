@@ -99,6 +99,21 @@ if [ ! -d "$HOME/.cache/ms-playwright" ]; then
         > /tmp/sonya-playwright-install.log 2>&1 &
 fi
 
+echo "=> Building hosted Atrium..."
+ATRIUM_DIR="$PROJECT_DIR/packages/atrium"
+if command -v npm >/dev/null 2>&1; then
+    (
+        cd "$ATRIUM_DIR"
+        npm ci --no-audit --no-fund
+        npm run build
+    )
+elif [ ! -f "$ATRIUM_DIR/dist/index.html" ]; then
+    echo "!! npm is unavailable and hosted Atrium bundle is missing"
+    exit 1
+else
+    echo "   npm unavailable; preserving existing hosted Atrium bundle"
+fi
+
 echo "=> Restarting services..."
 # Sync systemd unit files from repo if they've changed (e.g. EnvironmentFile
 # directive added). Without this, a unit lacking EnvironmentFile would
