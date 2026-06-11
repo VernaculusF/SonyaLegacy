@@ -6,23 +6,26 @@
 
 ## Immediate continuation - current
 
-Deployed baseline: `aab8eea`, substrate schema v33, account-scoped periodic
+Deployed baseline: `512b1bb`, substrate schema v33, account-scoped periodic
 provider refresh, safe provider account importer, Kimchi/Google/Nous/CodexSale
 imported, OpenRouter free-model probe deployed, provider-scoped model identity
 repaired, multi-worker project executor and Atrium runtime visibility deployed,
 and active
 `sonya` / `sonya-admin` services.
 
-Current slice:
+Current slice and authoritative order:
 
-1. add measured scorecards and provider/account cooldowns;
-2. extend project executor from explicit independent tasks to autonomous
+1. extend project executor from explicit independent tasks to autonomous
    decomposition, dependency-aware execution, and result synthesis;
+2. add measured scorecards and provider/account cooldowns;
 3. add project runtime controls for pause/approval decisions; honest cancel is
    now implemented;
-4. inventory and migrate old memory and knowledge with backups, provenance, and
-   idempotent manifests;
-5. continue remaining approved provider imports if Ivan supplies more keys.
+4. prove project outcomes enter shared memory and finish non-destructive
+   production migration/retrieval proof;
+5. prove the complete project-chat flow in live Atrium and close exposed gaps.
+
+Execution plan:
+`docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
 
 Parked new workstream: `docs/operations/WEB_PROXY_MODEL_BRIDGE.md` describes a
 future localhost-only web-proxy model tier. It replaces the old

@@ -2,25 +2,25 @@
 
 **Status:** Active
 **Type:** Unified implementation plan
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
-## Current priority override - 2026-06-10
+## Current priority override - 2026-06-11
 
-Atrium remains the final product goal, but its next UI slice is intentionally
-deferred. The immediate execution order is:
+The provider-pool foundation, approved account imports, observable multi-worker
+project runtime, and honest cancellation are deployed. The immediate execution
+order is now:
 
-1. finish the existing Admin Providers operator console;
-2. safely import approved provider accounts and operationalize refresh, health,
-   quotas, and scorecards;
-3. finish disposable subagent lifecycle, scope, traces, and outcome learning;
-4. audit and migrate legacy memory and knowledge into the one shared Sonya
-   substrate;
-5. resume Atrium project/workspace UX.
+1. extend the project executor to model-driven decomposition,
+   dependency-aware scheduling, and result synthesis;
+2. feed measured outcomes into model scorecards and provider/account cooldowns;
+3. add honest pause, approval, decision, and resume controls;
+4. prove project outcomes enter the one shared Sonya memory and complete the
+   non-destructive production migration proof;
+5. close the live Atrium project-chat end-to-end scenario and its UX gaps.
 
-Provider pools, account offerings, encrypted secrets, substrate-backed routing,
-and removal of fixed provider-to-model assumptions are already complete. The
-detailed current roadmap is
-`docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`.
+The web-proxy model bridge remains parked until this hosted-stack path is
+complete. The executable plan is
+`docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
 **Scope:** Единый проработанный план по доведению Atrium до целевого состояния: рабочие проекты, корректные ответы Сони, провайдеры как model pools, субагенты как внутренние инструменты Сони, без поломки остального runtime.
 
 ---

@@ -48,9 +48,9 @@
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;
-- active work is measured scorecards/cooldowns, stronger project executor
-  autonomous planning/dependency behavior, and migration/audit of old memory
-  and knowledge.
+- active work is the hosted Atrium completion path: autonomous project
+  planning/dependency execution/synthesis, measured scorecards/cooldowns,
+  pause/approval/resume, shared-memory proof, and live project-chat E2E.
 
 The authoritative execution order is
 `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Older provider sections

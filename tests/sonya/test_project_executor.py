@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -29,6 +30,83 @@ class _BlockingProvider:
     async def complete_text(self, messages, **kwargs):
         await asyncio.sleep(30)
         return "[DONE] should have been cancelled"
+
+
+class _PlanningProvider:
+    def __init__(self) -> None:
+        self.purposes: list[str] = []
+
+    async def complete_text(self, messages, **kwargs):
+        purpose = str(kwargs.get("purpose", ""))
+        self.purposes.append(purpose)
+        if purpose == "project_planner":
+            return json.dumps({
+                "summary": "Inspect before implementation",
+                "steps": [
+                    {"id": "inspect", "task": "inspect current state", "depends_on": []},
+                    {"id": "implement", "task": "implement the change", "depends_on": ["inspect"]},
+                ],
+            })
+        if purpose == "project_synthesis":
+            return "Synthesized project result"
+        return "[DONE] worker result"
+
+
+@pytest.mark.asyncio
+async def test_project_execute_auto_plan_schedules_dependencies_and_synthesizes(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-planned-executor.db")
+    try:
+        project = ProjectStore(sub).create(
+            "Planned executor proof",
+            workspace_path=str(tmp_path),
+            policy={"subagent_spawn": "allowed"},
+        )
+        provider = _PlanningProvider()
+        tool = ProjectsTool(sub, subagent_provider=provider)
+
+        started = await tool.execute({
+            "name": "projects.execute",
+            "arguments": {
+                "project_id": project.project_id,
+                "task": "deliver the requested change",
+                "auto_plan": True,
+                "max_retries": 0,
+            },
+        })
+        assert "subagents: 1/2" in started
+
+        run = ProjectRunStore(sub).list_by_project(project.project_id, kind="project_executor", limit=1)[0]
+        assert [step["step_id"] for step in run.steps] == ["inspect", "implement"]
+        assert run.steps[0]["status"] == "running"
+        assert run.steps[1]["status"] == "blocked"
+        assert run.steps[1]["depends_on"] == ["inspect"]
+        traces = ExecutionTraceStore(sub).list_by_run(run.run_id)
+        assert traces[1].step_type == "plan"
+        assert '"depends_on": ["inspect"]' in traces[1].content
+
+        await asyncio.sleep(0.05)
+        first_harvest = await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+        assert "pending=1" in first_harvest
+        run = ProjectRunStore(sub).get(run.run_id)
+        assert run.steps[0]["status"] == "done"
+        assert run.steps[1]["status"] == "running"
+
+        await asyncio.sleep(0.05)
+        second_harvest = await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+        assert "completed=1" in second_harvest
+        run = ProjectRunStore(sub).get(run.run_id)
+        assert run.status == "completed"
+        assert run.result == "Synthesized project result"
+        assert provider.purposes.count("project_planner") == 1
+        assert provider.purposes.count("project_synthesis") == 1
+    finally:
+        sub.close()
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 # Provider, Subagent, and Memory Roadmap
 
 **Status:** Active execution order
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
 ## Fixed Invariants
 
@@ -40,39 +40,32 @@
 
 ## Active Delivery Order
 
-### 1. Admin Provider Console
+### 1. Project Executor
 
-- [x] replace the legacy key-centric Providers page with provider pool,
-  account, model, quota, and observation views
-- [x] expose existing provider/account/offering CRUD and protected secret
-  rotation
-- [x] keep legacy keys visible only as migration/debug data
-- [x] add a typed Admin provider refresh/probe endpoint and control
-- [ ] visually verify the authenticated production page with operator access
+- [x] observable project runs, traces, retries, multiple independent workers,
+  and honest cancellation
+- [ ] model-driven decomposition without a hard-coded orchestration rule engine
+- [ ] dependency-aware scheduling and terminal dependency propagation
+- [ ] final synthesis that preserves raw worker outcomes
 
-### 2. Provider Import and Operations
+### 2. Measured Routing and Cooldowns
 
-- bootstrap Nous, Google AI Studio, AgentRouter, CodexSale, and other
-  approved accounts through protected ingestion
-- support many accounts per provider without embedding credentials in Git,
+- [x] bootstrap approved Google, Nous, CodexSale, OpenRouter, Kimchi, and NVIDIA
+  accounts through protected ingestion
+- [x] support many accounts per provider without embedding credentials in Git,
   docs, prompts, argv, or continuity
 - [x] add periodic discovery/health/quota refresh with last-good-cache behavior
-- import active first-class accounts so the coordinator can refresh real pools
-- [x] import Kimchi as the first bulk multi-account provider pool
-- add measured model scorecards and provider/account cooldown handling
-- research Freemodel and browser bridges separately; do not pretend they are
-  ordinary OpenAI-compatible providers until proven
+- [ ] feed measured project/subagent outcomes into model scorecards
+- [ ] add bounded first-class provider-account cooldown handling
 
-### 3. Subagent Runtime
+### 3. Pause, Approval, and Resume
 
-- make `subagent.spawn` record requirement, chosen offering/account, reason,
-  scope, cost, and outcome
-- enforce disposable empty-context workers and filesystem scope
-- allow Sonya to choose no delegation, one worker, or multiple workers
-- evaluate carrier/worker/reviewer patterns without hard-coding recursion
-- feed measured outcomes into scorecards and future routing
+- [x] honest cancellation persists across processes
+- [ ] pause orchestration without pretending an in-flight request is suspended
+- [ ] persist approval requests and decisions
+- [ ] expose project controls in Atrium, not Admin
 
-### 4. Memory and Knowledge Migration
+### 4. Shared Memory and Knowledge Migration
 
 - [x] inventory the production substrate using actual tables:
   `episodic_events`, `semantic_facts`, `raw_traces`, `procedural_memory`, and
@@ -88,10 +81,10 @@
 - prove that project work and summarized subagent outcomes enter the one shared
   memory without mixing UI chat histories
 
-### 5. Atrium
+### 5. Atrium End-to-End Proof
 
-Return to Atrium project/workspace UX after the provider, subagent, and memory
-runtime is operationally trustworthy. Do not add Admin provider CRUD to Atrium.
+Prove the full project-chat workflow on the live VPS and fix only gaps exposed
+by that proof. Do not add Admin provider CRUD to Atrium.
 
 ## VPS Gate
 
