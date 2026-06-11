@@ -98,6 +98,30 @@ compatibility foundation, but full contradiction handling, subject
 participation semantics, automatic invalidation, and WorldState quality review
 are not complete yet.
 
+Follow-up deployed commit `358b43d` adds the first automatic invalidation rule
+for checklist item #1:
+
+- fresh incoming Ivan activity from Atrium or Telegram checks the current
+  `ivan_status`;
+- if that status says Ivan is asleep/busy/dnd, the runtime supersedes it with
+  `ivan_status=active` sourced to the incoming event;
+- a `world_state.ivan_activity_invalidated_status` continuity event records the
+  previous assertion, new assertion, source, and source sequence;
+- specific active statuses such as "работает" are not overwritten merely
+  because Ivan sent a message.
+
+Production proof for `358b43d`:
+
+- isolated VPS focused suite: `49 passed`, compileall clean;
+- production fast-forward and restart completed;
+- `sonya.service` and `sonya-admin.service` active;
+- substrate remains schema `34`, `environment_state=0`,
+  `credential_env_rows=0`, `quick_check=ok`;
+- recent warning journal: no entries.
+
+Checklist item #1 remains open until contradiction handling is generalized and
+WorldState quality metrics/review exist.
+
 ## Current execution state - 2026-06-11
 
 - production and repository substrate are at schema v33;

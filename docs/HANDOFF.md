@@ -112,6 +112,16 @@ Checklist status:
 - #4 closed;
 - #1 and #2 still open.
 
+Additional deployed progress on #1:
+
+- commit `358b43d` supersedes stale asleep/busy/dnd `ivan_status` when a fresh
+  incoming Ivan message arrives from Atrium or Telegram;
+- it records `world_state.ivan_activity_invalidated_status`;
+- focused VPS suite passed (`49 passed`), compileall clean, production services
+  active, `environment_state=0`, `credential_env_rows=0`, `quick_check=ok`;
+- do not close #1 yet: generalized contradiction handling and WorldState
+  quality metrics are still missing.
+
 Known verification note: one old `test_internal_process_emits_on_idle_timeout`
 is a fragile 150 ms timing test on VPS and failed independently of the
 WorldState slice. The focused WorldState/Atrium/provider/substrate suite passed
