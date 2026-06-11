@@ -288,7 +288,7 @@ complete. The executable plan is
 - [x] project approval requests and approve/deny decisions are persisted on the
   run and surfaced through Atrium runtime controls
 - [x] VPS proof for project/Atrium runtime controls passed (`14 passed`);
-  production deployed at `b161806`, compileall clean, services active, error
+  production deployed at `10f65f1`, compileall clean, services active, error
   journal empty
 
 ---

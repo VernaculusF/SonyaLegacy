@@ -4,7 +4,7 @@
 **Type:** Current project state
 **Last updated:** 2026-06-11
 
-Latest production deployment: `b161806`.
+Latest production deployment: `10f65f1`.
 
 ## Current execution state - 2026-06-11
 
