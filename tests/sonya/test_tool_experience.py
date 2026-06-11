@@ -98,6 +98,46 @@ def test_model_stats(tmp_path) -> None:
         sub.close()
 
 
+def test_model_outcomes_update_measured_scorecard(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "scorecard.db")
+    try:
+        tx = ToolExperience(sub)
+        tx.record(
+            tool_name="projects.execute",
+            outcome="success",
+            provider="nvidia",
+            model="nvidia/nemotron-3-ultra-550b-a55b",
+            latency_ms=900,
+            session_type="project",
+        )
+        tx.record(
+            tool_name="projects.execute",
+            outcome="error",
+            provider="nvidia",
+            model="nvidia/nemotron-3-ultra-550b-a55b",
+            latency_ms=2100,
+            session_type="project",
+        )
+
+        row = sub.connection.execute(
+            "SELECT provider_id, model_id, domain, role, avg_score, confidence, "
+            "avg_latency_ms, error_rate, total_runs FROM model_scorecards"
+        ).fetchone()
+        assert row == (
+            "nvidia",
+            "nvidia/nemotron-3-ultra-550b-a55b",
+            "project",
+            "worker",
+            0.5,
+            0.1,
+            1500,
+            0.5,
+            2,
+        )
+    finally:
+        sub.close()
+
+
 def test_episodic_mirror(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "texp.db")
     try:

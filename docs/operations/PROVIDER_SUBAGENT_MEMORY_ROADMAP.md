@@ -44,9 +44,9 @@
 
 - [x] observable project runs, traces, retries, multiple independent workers,
   and honest cancellation
-- [ ] model-driven decomposition without a hard-coded orchestration rule engine
-- [ ] dependency-aware scheduling and terminal dependency propagation
-- [ ] final synthesis that preserves raw worker outcomes
+- [x] model-driven decomposition without a hard-coded orchestration rule engine
+- [x] dependency-aware scheduling and terminal dependency propagation
+- [x] final synthesis that preserves raw worker outcomes
 
 ### 2. Measured Routing and Cooldowns
 

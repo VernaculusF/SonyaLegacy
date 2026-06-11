@@ -34,6 +34,10 @@ DeepSeek browser-backed bridges behind one Sonya-owned provider surface.
 
 Completed in the latest slices:
 
+- project execution now supports optional model-driven decomposition, persists
+  the raw planner graph, schedules only dependency-ready disposable workers,
+  propagates dependency failures, and synthesizes the final result while
+  preserving raw worker outcomes; VPS regression proof passed (`29 passed`);
 - Admin Providers now renders provider pools, accounts, models, quotas,
   observations, protected secret rotation, and a collapsed legacy-key view;
 - provider model identity is now provider-scoped: live v33 databases repair

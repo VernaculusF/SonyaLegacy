@@ -276,8 +276,14 @@ complete. The executable plan is
   progress, retries, internal worker subthreads, and outcomes
 - [x] project runs can be honestly cancelled through persisted cross-process
   lifecycle state plus immediate core-process task cancellation
-- [ ] autonomous task decomposition/planning and dependency-aware execution
-  remain next work
+- [x] model-driven autonomous task decomposition with strict JSON graph and
+  safe single-task fallback
+- [x] dependency-aware scheduling starts only ready workers and propagates
+  terminal dependency failure
+- [x] successful planned runs synthesize a final result while raw worker
+  outcomes remain persisted
+- [x] deployed VPS regression proof: `29 passed`, compileall clean, services
+  active, error journal empty
 
 ---
 

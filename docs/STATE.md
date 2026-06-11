@@ -45,6 +45,10 @@
 - project executor cancellation is lifecycle-backed: cancellation is persisted
   for cross-process visibility and immediately cancels a running worker task
   when core owns its asyncio handle;
+- optional project auto-planning is deployed: a model-generated dependency
+  graph is persisted with raw planner output, only ready internal workers are
+  scheduled, dependency failures propagate, and successful graphs synthesize a
+  final result without discarding worker outcomes;
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;
