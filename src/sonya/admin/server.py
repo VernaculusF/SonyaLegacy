@@ -2706,6 +2706,16 @@ async def atrium_history(request: web.Request) -> web.Response:
         sub.close()
 
 
+def _atrium_max_upload_bytes() -> int:
+    raw_bytes = os.environ.get("SONYA_ATRIUM_MAX_UPLOAD_BYTES", "").strip()
+    raw_mb = os.environ.get("SONYA_ATRIUM_MAX_UPLOAD_MB", "2048").strip()
+    try:
+        value = int(raw_bytes) if raw_bytes else int(raw_mb) * 1024 * 1024
+    except ValueError:
+        value = 2048 * 1024 * 1024
+    return max(1, min(value, 16 * 1024 * 1024 * 1024))
+
+
 async def atrium_upload(request: web.Request) -> web.Response:
     """Accept a file attachment from the Atrium composer (multipart/form-data).
 
@@ -2739,8 +2749,9 @@ async def atrium_upload(request: web.Request) -> web.Response:
     kind_label = None
     workspace_id = ""
     saved_path = None
+    staged_path = None
     total = 0
-    MAX_BYTES = 60 * 1024 * 1024  # 60 MB per file
+    max_bytes = _atrium_max_upload_bytes()
 
     async for part in reader:
         if part.name == "kind":
@@ -2750,6 +2761,10 @@ async def atrium_upload(request: web.Request) -> web.Response:
             workspace_id = (await part.text()).strip()
             continue
         if part.name == "file":
+            if staged_path is not None:
+                staged_path.unlink(missing_ok=True)
+                return _atrium_cors(web.json_response(
+                    {"error": "only one file field is supported"}, status=400))
             filename = part.filename or "upload.bin"
             content_type = part.headers.get("Content-Type") or mimetypes.guess_type(filename)[0]
             ext = os.path.splitext(filename)[1].lower() or ""
@@ -2759,40 +2774,55 @@ async def atrium_upload(request: web.Request) -> web.Response:
                 ext = guessed
             safe_name = f"atrium_{uuid.uuid4().hex}{ext}"
             saved_path = media_dir / safe_name
-            with open(saved_path, "wb") as f:
-                while True:
-                    chunk = await part.read_chunk()
-                    if not chunk:
-                        break
-                    total += len(chunk)
-                    if total > MAX_BYTES:
-                        f.close()
-                        try:
-                            saved_path.unlink()
-                        except Exception:
-                            pass
-                        return _atrium_cors(web.json_response(
-                            {"error": f"file too large (>{MAX_BYTES // (1024*1024)} MB)"},
-                            status=413))
-                    f.write(chunk)
+            staged_path = media_dir / f".{safe_name}.part"
+            try:
+                with open(staged_path, "xb") as f:
+                    while True:
+                        chunk = await part.read_chunk()
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                        if total > max_bytes:
+                            return _atrium_cors(web.json_response(
+                                {"error": f"file too large (max {max_bytes} bytes)"},
+                                status=413))
+                        f.write(chunk)
+            except BaseException:
+                staged_path.unlink(missing_ok=True)
+                raise
+            finally:
+                if total > max_bytes and staged_path is not None:
+                    staged_path.unlink(missing_ok=True)
             continue
 
-    if not saved_path or total == 0:
+    if not saved_path or not staged_path or total == 0:
+        if staged_path is not None:
+            staged_path.unlink(missing_ok=True)
         return _atrium_cors(web.json_response({"error": "no file field"}, status=400))
 
     if workspace_id:
-        sub = _get_substrate(config)
         try:
-            from sonya.project import ProjectStore
-            from sonya.project.model import ProjectNotFoundError
+            sub = _get_substrate(config)
             try:
-                ProjectStore(sub).get(workspace_id)
-            except ProjectNotFoundError:
-                saved_path.unlink(missing_ok=True)
-                return _atrium_cors(web.json_response(
-                    {"error": "workspace not found"}, status=404))
-        finally:
-            sub.close()
+                from sonya.project import ProjectStore
+                from sonya.project.model import ProjectNotFoundError
+                try:
+                    ProjectStore(sub).get(workspace_id)
+                except ProjectNotFoundError:
+                    staged_path.unlink(missing_ok=True)
+                    return _atrium_cors(web.json_response(
+                        {"error": "workspace not found"}, status=404))
+            finally:
+                sub.close()
+        except BaseException:
+            staged_path.unlink(missing_ok=True)
+            raise
+
+    try:
+        staged_path.replace(saved_path)
+    except BaseException:
+        staged_path.unlink(missing_ok=True)
+        raise
 
     if not content_type:
         content_type = "application/octet-stream"
@@ -2904,11 +2934,11 @@ def create_app() -> web.Application:
     admin_password = os.environ.get("SONYA_ADMIN_PASSWORD", "")
     # client_max_size: default aiohttp limit is 1 MB, which blocks file
     # attachments (video / gif / large code dumps) from the Atrium composer.
-    # Raise to 64 MB so Ivan can attach reasonably large media. The dialog
-    # endpoint enforces a per-file cap of its own.
+    # The upload handler streams to a staged file and enforces the configurable
+    # per-file cap; allow enough multipart overhead above that cap.
     app = web.Application(
         middlewares=[security_headers_middleware, cors_middleware, auth_middleware],
-        client_max_size=64 * 1024 * 1024,
+        client_max_size=_atrium_max_upload_bytes() + 8 * 1024 * 1024,
     )
     app["config"] = config
     app["admin_password"] = admin_password
