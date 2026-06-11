@@ -2583,32 +2583,32 @@ async def atrium_history(request: web.Request) -> web.Response:
         )
         ph = ",".join("?" for _ in kinds)
         params: list[object] = list(kinds)
-        where_extra = ""
+        where_parts = []
         if before_seq > 0:
-            where_extra = "AND seq < ? "
+            where_parts.append("seq < ?")
             params.append(before_seq)
-        raw_limit = max(limit * 5, 100)
+        if workspace_id:
+            where_parts.append("COALESCE(json_extract(payload_json, '$.workspace_id'), '') = ?")
+            params.append(workspace_id)
+        else:
+            where_parts.append("COALESCE(json_extract(payload_json, '$.workspace_id'), '') = ''")
+        where_extra = ("AND " + " AND ".join(where_parts) + " ") if where_parts else ""
         rows = sub.connection.execute(
             f"SELECT seq, kind, channel, principal_id, payload_json, created_at "
             f"FROM continuity_events "
             f"WHERE kind IN ({ph}) AND private = 0 "
             f"{where_extra}"
             f"ORDER BY seq DESC LIMIT ?",
-            (*params, raw_limit),
+            (*params, limit + 1),
         ).fetchall()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
         events = []
         for r in reversed(rows):
             try:
                 payload = json.loads(r[4] or "{}")
             except Exception:
                 payload = {}
-            ev_ws = str(payload.get("workspace_id") or "") if isinstance(payload, dict) else ""
-            if workspace_id:
-                if ev_ws != workspace_id:
-                    continue
-            else:
-                if ev_ws:
-                    continue
             events.append({
                 "seq": r[0],
                 "kind": r[1],
@@ -2618,11 +2618,9 @@ async def atrium_history(request: web.Request) -> web.Response:
                 "text": payload.get("text", "") if isinstance(payload, dict) else "",
                 "payload": payload,
             })
-            if len(events) >= limit:
-                break
         return _atrium_cors(web.json_response({
             "events": events,
-            "has_more": len(rows) >= raw_limit or len(events) >= limit,
+            "has_more": has_more,
             "before_seq": before_seq,
             "workspace_id": workspace_id,
         }))

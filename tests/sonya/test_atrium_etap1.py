@@ -442,6 +442,35 @@ def test_dialog_records_workspace_id_and_history_filters_by_it(tmp_path: Path, m
     assert data_main["events"][0]["text"] == "main chat"
 
 
+def test_history_initial_page_returns_newest_dialog_events(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "history-newest.db"))
+    from sonya.admin.server import atrium_dialog, atrium_history
+    from sonya.config import load_config
+
+    cfg = load_config()
+
+    class _Req:
+        def __init__(self, app, body=None, query=None):
+            self.app = app
+            self._body = body or {}
+            self.headers = {}
+            self.query = query or {}
+
+        async def json(self):
+            return self._body
+
+    app = {"config": cfg, "admin_password": ""}
+    for text in ("history one", "history two", "history three"):
+        assert asyncio.run(atrium_dialog(_Req(app, {"text": text}))).status == 200
+
+    resp = asyncio.run(atrium_history(_Req(app, query={"before_seq": "0", "limit": "2"})))
+    assert resp.status == 200
+    import json as _json
+    data = _json.loads(resp.text)
+    assert [event["text"] for event in data["events"]] == ["history two", "history three"]
+    assert data["has_more"] is True
+
+
 def test_dialog_resumes_waiting_choice_project(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "test.db"))
     from sonya.admin.server import atrium_dialog
