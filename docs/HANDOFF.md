@@ -27,9 +27,9 @@ Latest VPS proof:
 Current slice and authoritative order:
 
 1. continue remaining approved provider imports if Ivan supplies more keys;
-2. continue hosted Atrium/project hardening: full-system-access live proof,
-   multi-workspace execution, CSP/auth/WS security, and the parked web-proxy
-   model bridge when explicitly resumed.
+2. continue hosted Atrium/project hardening: multi-workspace execution,
+   full-system-access UX, CSP/auth/WS security, and the parked web-proxy model
+   bridge when explicitly resumed.
 
 Execution plan:
 `docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
@@ -56,6 +56,11 @@ Completed in the latest slices:
   provenance; read-only live/backup manifests and backup duplicate analysis
   passed on the VPS; production semantic dedup was then explicitly approved and
   applied (`3,864 -> 1,913` semantic facts, `0` duplicate groups remaining);
+- full-system-access policy checks now use workspace policy state in both
+  `projects.check_policy` and `/api/projects/{id}/check-policy`; live VPS
+  temp-project proof showed `shell_run` verdict changing from project
+  `consent` to workspace `allowed`, while subagent filesystem scope remained
+  project-bound;
 - live hosted Atrium project-chat proof passed on project `proj-a83c1c3657`:
   project/main history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall all worked

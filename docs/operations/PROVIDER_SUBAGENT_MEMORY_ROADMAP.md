@@ -86,6 +86,18 @@
 Prove the full project-chat workflow on the live VPS and fix only gaps exposed
 by that proof. Do not add Admin provider CRUD to Atrium.
 
+### 6. Full-System-Access Policy
+
+- [x] route project policy checks through workspace policy state
+- [x] expose policy verdict source and `full_system_access` in API responses
+- [x] expose the same verdict through `projects.check_policy`
+- [x] prove on the live VPS that enabling full-system-access changes backend
+  verdicts from project consent to workspace allowed
+- [x] prove full-system-access does not automatically grant subagents wider
+  filesystem scope
+- next: make the Atrium UX show this policy state clearly without turning
+  Atrium into Admin
+
 ## VPS Gate
 
 Every substantial slice must be committed, pushed, deployed, and verified on

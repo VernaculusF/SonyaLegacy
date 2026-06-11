@@ -20,6 +20,10 @@ Completed and deployed foundations:
 - WAL-safe production backup and read-only memory manifest proof;
 - production semantic dedup applied after explicit approval: `3,864 -> 1,913`
   semantic facts, `0` duplicate groups remaining, `quick_check=ok`;
+- full-system-access policy proof is live: workspace policy now drives
+  `projects.check_policy` and `/api/projects/{id}/check-policy`, reports its
+  verdict source, changes backend verdicts from consent to allowed when
+  enabled, and still keeps subagent filesystem scope project-bound;
 - live hosted Atrium project-chat proof through API/runtime/history/memory.
 
 Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
@@ -30,6 +34,8 @@ Latest VPS proof:
 - provider scorecard/cooldown/picker: `21 passed`;
 - project-memory/manifest/dedup: `3 passed` for dedup plus clean live
   post-checks;
+- full-system-access policy: `15 passed`, compileall clean, live temp-project
+  proof passed, services active, recent error journal empty;
 - live proof project `proj-a83c1c3657` passed: isolated project history,
   main-history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall;
@@ -37,6 +43,8 @@ Latest VPS proof:
 
 Still intentionally open:
 
+- Atrium needs clearer UX for full-system-access state and remaining security
+  hardening, especially CSP/auth/WS discipline;
 - browser/web-proxy model bridge remains parked as a separate future workstream.
 
 > Current execution order is maintained in

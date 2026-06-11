@@ -63,6 +63,10 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
   `3,864 -> 1,913` semantic facts, `0` duplicate groups remaining,
   `PRAGMA quick_check=ok`, and top-50 semantic retrieval returned unique
   signatures;
+- full-system-access policy is now live-backed: project policy checks consult
+  workspace policy, API/tool responses expose verdict source and
+  `full_system_access`, a live VPS temp-project proof showed
+  `consent -> allowed`, and subagent filesystem scope stayed project-bound;
 - latest VPS proof passed: project/Atrium runtime controls `14 passed`,
   provider scorecard/cooldown/picker `21 passed`, project-memory/manifest
   `4 passed`, compileall clean, services active, error journal empty;
