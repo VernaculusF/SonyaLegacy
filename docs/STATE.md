@@ -59,6 +59,45 @@ remote workspace version/resume semantics, sensitive trace handling,
 credential-exposure lifecycle, enforced Canonical Response, memory correction
 quality, SituationalModel quality metrics, and documentation staleness checks.
 
+### Runtime coherence implementation progress - 2026-06-12
+
+Deployed commit `f372560` closes checklist items #3 and #4:
+
+- substrate schema v34 adds `situational_assertions`, `credential_exposures`,
+  and technical `runtime_state`;
+- legacy `EnvironmentStore` is now a compatibility facade over
+  `SituationalStore`, so current observations have subject, source,
+  confidence, observed time, optional expiry, and supersession history;
+- `env.set` rejects credential-shaped keys and tells Sonya to use protected
+  secret storage instead;
+- v33->v34 migration moves non-secret legacy environment rows into
+  situational assertions, moves technical heartbeat/throttle values into
+  `runtime_state`, and records credential-shaped legacy rows as exposure
+  records without retaining raw secret values;
+- Atrium heartbeat and drift-alert throttle moved out of environment/world
+  state into `runtime_state`;
+- context now treats Atrium messages as Ivan activity for last-message
+  awareness and includes source/confidence for current observations.
+
+Production proof:
+
+- backup created:
+  `/home/jester-sonya/backups/sonya-v34-worldstate-20260611-230944.db`;
+- isolated VPS focused suite: `57 passed`, compileall clean;
+- real production-substrate copy migration: `schema 33 -> 34`,
+  `assertions=2`, `exposures=2`, `legacy_environment=0 after cleanup`,
+  `runtime_state=1`, `quick_check=ok`;
+- production services restarted and active;
+- production substrate: `version=34`, `environment_state=0`,
+  `credential_env_rows=0`, `runtime_state.atrium_last_seen` current,
+  `quick_check=ok`;
+- recent warning journal: no entries.
+
+Checklist items #1 and #2 remain open. The first slice provides the storage and
+compatibility foundation, but full contradiction handling, subject
+participation semantics, automatic invalidation, and WorldState quality review
+are not complete yet.
+
 ## Current execution state - 2026-06-11
 
 - production and repository substrate are at schema v33;

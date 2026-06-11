@@ -78,6 +78,45 @@ scheduler backpressure, continuity/telemetry separation, and independent
 acceptance evidence. Do not postpone these as cleanup; otherwise the same
 failures will reappear through a different worker or channel.
 
+## Latest Deployed Slice - v34 WorldState Foundation
+
+Commit `f372560` is deployed to production.
+
+What changed:
+
+- `situational_assertions` is the new current WorldState table;
+- `credential_exposures` records migrated credential-shaped current-state
+  rows without preserving raw values;
+- `runtime_state` stores technical heartbeat/throttle values that must not be
+  injected as Sonya's world model;
+- `EnvironmentStore` remains as a legacy facade but writes to
+  `SituationalStore`;
+- `env.set` blocks credential-shaped keys;
+- Atrium heartbeat and drift-alert throttle no longer use `environment_state`;
+- context includes source/confidence for observations and counts Atrium as Ivan
+  activity for last-message awareness.
+
+Production proof:
+
+- backup:
+  `/home/jester-sonya/backups/sonya-v34-worldstate-20260611-230944.db`;
+- services: `sonya.service` and `sonya-admin.service` active;
+- production substrate: schema `34`, `environment_state=0`,
+  `credential_env_rows=0`, `credential_exposures=2`,
+  `runtime_state.atrium_last_seen` current, `quick_check=ok`;
+- recent warning journal had no entries.
+
+Checklist status:
+
+- #3 closed;
+- #4 closed;
+- #1 and #2 still open.
+
+Known verification note: one old `test_internal_process_emits_on_idle_timeout`
+is a fragile 150 ms timing test on VPS and failed independently of the
+WorldState slice. The focused WorldState/Atrium/provider/substrate suite passed
+(`57 passed`) and production-copy migration proof passed.
+
 Atrium is the main work/chat surface, not the admin surface. Telegram is
 Sonya's social/emergency channel and must not be mirrored into Atrium chat as
 ordinary dialog history. Telegram events may remain visible in explicit debug
