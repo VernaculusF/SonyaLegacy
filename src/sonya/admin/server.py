@@ -70,6 +70,9 @@ async def auth_middleware(request: web.Request, handler):
         token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
         if token == password:
             return await handler(request)
+        if request.cookies.get("sonya_auth") == password:
+            return await handler(request)
+        return web.json_response({"error": "auth"}, status=401)
     # Check cookie
     if request.cookies.get("sonya_auth") == password:
         return await handler(request)
@@ -78,6 +81,39 @@ async def auth_middleware(request: web.Request, handler):
         return await handler(request)
     # Redirect to login
     return web.HTTPFound("/login")
+
+
+_SECURITY_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob: http: https:; "
+    "media-src 'self' data: blob: http: https:; "
+    "connect-src 'self' ws: wss: http: https:; "
+    "font-src 'self' data:; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
+@middleware
+async def security_headers_middleware(request: web.Request, handler):
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        _apply_security_headers(exc.headers)
+        raise
+    _apply_security_headers(response.headers)
+    return response
+
+
+def _apply_security_headers(headers) -> None:
+    headers.setdefault("Content-Security-Policy", _SECURITY_CSP)
+    headers.setdefault("X-Content-Type-Options", "nosniff")
+    headers.setdefault("Referrer-Policy", "no-referrer")
+    headers.setdefault("X-Frame-Options", "DENY")
+    headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
 
 @middleware
@@ -2828,7 +2864,10 @@ def create_app() -> web.Application:
     # attachments (video / gif / large code dumps) from the Atrium composer.
     # Raise to 64 MB so Ivan can attach reasonably large media. The dialog
     # endpoint enforces a per-file cap of its own.
-    app = web.Application(middlewares=[cors_middleware, auth_middleware], client_max_size=64 * 1024 * 1024)
+    app = web.Application(
+        middlewares=[security_headers_middleware, cors_middleware, auth_middleware],
+        client_max_size=64 * 1024 * 1024,
+    )
     app["config"] = config
     app["admin_password"] = admin_password
     app.router.add_get("/", handle_index)
