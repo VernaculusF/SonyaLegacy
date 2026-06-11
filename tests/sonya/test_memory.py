@@ -87,6 +87,23 @@ def test_completed_project_outcome_enters_shared_memory_with_project_provenance(
     assert "Delivered the dependency-aware project runtime" in project_facts[0].statement
 
 
+def test_project_outcome_memory_ignores_newer_subagent_runs(substrate: Substrate) -> None:
+    project = ProjectStore(substrate).create("Project executor memory proof")
+    run_store = ProjectRunStore(substrate)
+    executor_run = run_store.create(project.project_id, kind="project_executor")
+    run_store.start(executor_run.run_id)
+    run_store.complete(executor_run.run_id, result="Executor result survives newer worker runs")
+    for _ in range(4):
+        worker_run = run_store.create(project.project_id, kind="subagent")
+        run_store.start(worker_run.run_id)
+
+    compiled = MemoryCompiler(substrate).run()
+
+    facts = SemanticMemory(substrate).get_all(project_id=project.project_id, limit=10)
+    assert compiled["project_summaries"] == 1
+    assert any("Executor result survives newer worker runs" in fact.statement for fact in facts)
+
+
 def test_semantic_reinforce(substrate: Substrate) -> None:
     sem = SemanticMemory(substrate)
     fact = sem.add_fact(fact_type="x", statement="y", confidence=0.5)

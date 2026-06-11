@@ -170,7 +170,11 @@ class MemoryCompiler:
             from sonya.project import ProjectStore, ProjectRunStore
             projects = ProjectStore(self._sub).list_all()
             for p in projects:
-                runs = ProjectRunStore(self._sub).list_by_project(p.project_id, limit=3)
+                runs = ProjectRunStore(self._sub).list_by_project(
+                    p.project_id,
+                    kind="project_executor",
+                    limit=20,
+                )
                 recent_completed = [r for r in runs if r.status in ("completed", "failed")]
                 if not recent_completed:
                     continue
