@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -66,6 +67,12 @@ class ToolExperience:
              session_type, now),
         )
         self._sub.connection.commit()
+        if provider and model:
+            self._update_measured_scorecard(
+                provider=provider,
+                model=model,
+                session_type=session_type,
+            )
 
         from sonya.memory.types import RecordType, Scope
         try:
@@ -118,6 +125,53 @@ class ToolExperience:
             latency_ms=latency_ms, tags=tags,
             session_type=session_type, created_at=now,
         )
+
+    def _update_measured_scorecard(self, *, provider: str, model: str, session_type: str) -> None:
+        domain = session_type if session_type in ("project", "subagent") else "general"
+        role = "worker" if domain in ("project", "subagent") else "auto"
+        row = self._sub.connection.execute(
+            "SELECT COUNT(*), "
+            "SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN outcome IN ('error', 'timeout') THEN 1 ELSE 0 END), "
+            "AVG(latency_ms) "
+            "FROM tool_experiences WHERE provider = ? AND model = ? AND session_type = ?",
+            (provider, model, session_type),
+        ).fetchone()
+        total = int(row[0] or 0)
+        if not total:
+            return
+        success = int(row[1] or 0)
+        errors = int(row[2] or 0)
+        now = _utc_now_iso()
+        identity = f"{provider}\0{model}\0{domain}\0{role}".encode("utf-8")
+        scorecard_id = f"sc-measured-{hashlib.sha1(identity).hexdigest()[:16]}"
+        self._sub.connection.execute(
+            "INSERT INTO model_scorecards "
+            "(scorecard_id, model_id, provider_id, domain, role, avg_score, confidence, "
+            "avg_latency_ms, error_rate, total_runs, last_evaluated_at, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(scorecard_id) DO UPDATE SET "
+            "avg_score = excluded.avg_score, confidence = excluded.confidence, "
+            "avg_latency_ms = excluded.avg_latency_ms, error_rate = excluded.error_rate, "
+            "total_runs = excluded.total_runs, last_evaluated_at = excluded.last_evaluated_at, "
+            "updated_at = excluded.updated_at",
+            (
+                scorecard_id,
+                model,
+                provider,
+                domain,
+                role,
+                success / total,
+                min(1.0, total / 20.0),
+                int(row[3] or 0),
+                errors / total,
+                total,
+                now,
+                now,
+                now,
+            ),
+        )
+        self._sub.connection.commit()
 
     def success_rate(
         self,
