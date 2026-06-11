@@ -60,6 +60,9 @@
   separate actors
 - Atrium как multichannel UI surface
 - Atrium workspace path partially started: non-main workspaces, workspace-aware dialog/history/runtime routing
+- Atrium project-chat visual contract: left pane is Sonya's avatar/presence,
+  center pane is always the active chat, right pane is mind or active-project
+  context, and the project list opens as an overlay drawer
 
 Практический runtime уже живёт на VPS:
 - host: `34.38.255.149`
@@ -88,6 +91,13 @@ Atrium должен стать не только интерфейсом обще
 ## 4. Неподвижные инварианты
 
 - Иван остаётся primary anchor
+- Sonya is one environment/subject: one main chat plus project chats only.
+  Projects are chat contexts tied to reachable folders, not separate Sonyas.
+- When full-computer-access is enabled and policy allows it, main Sonya may
+  create a project from any reachable local, mounted, VPS, or SSH path; internal
+  subagents still get explicit bounded filesystem scopes.
+- Project understanding notes live by default in substrate/Atrium pinned project
+  context, with optional export into a project folder only when useful.
 - refusal layer не должен врастать в систему
 - identity-critical зоны не ломаются обычным selfmod
 - memory/state/runtime важнее prompt cosmetics

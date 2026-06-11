@@ -86,6 +86,20 @@ Completed in the latest slices:
 - active Atrium sidebar now exposes exactly one main chat plus real
   substrate-backed projects. Live API/bundle smoke proved safe SSH project
   creation, rejected password-in-URI metadata, and removed fake chat creation;
+- Atrium visual regression was fixed after the project-chat slice: `AvatarPane`
+  is again part of the main grid, `DialogPane` stays mounted for both main and
+  project chats, project runtime is the right context pane, and the project
+  selector is a drawer/overlay rather than a permanent left column;
+- do not reintroduce generic workspaces or project surfaces that replace the
+  chat. The UI contract is one main chat plus substrate-backed project chats;
+  project selection changes context, not Sonya's identity or the chat surface;
+- project path is a starting context. If full-computer-access is enabled and
+  policy allows it, main Sonya can create a project from any reachable path on
+  a connected computer, mounted system, VPS path, or SSH path; disposable
+  subagents remain scoped explicitly per task;
+- project understanding/state/style/rule notes should default to
+  substrate/Atrium project context and appear as pinned right-side context.
+  Export them into the project folder only when writable and useful;
 - production migration manifest re-run returned `legacy_sources=[]`, current
   knowledge has zero duplicate files, and no legacy import remains to apply;
 - real tool exceptions now feed the existing capability-gap -> repair

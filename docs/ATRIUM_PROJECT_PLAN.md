@@ -22,6 +22,38 @@ order is now:
 The web-proxy model bridge remains parked until this hosted-stack path is
 complete. The executable plan is
 `docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
+
+## Atrium UI invariant - 2026-06-11
+
+Atrium must render one continuous Sonya surface:
+
+- the left visual/presence pane belongs to Sonya and must keep her avatar/model
+  and idle/speaking animations visible;
+- the center pane is always the chat pane;
+- `main` is the only non-project chat;
+- every other selectable chat is a real substrate-backed project chat;
+- selecting a project changes the active chat context, not the identity of
+  Sonya and not the center chat component;
+- project runtime, folder/path, policy, progress, traces, and subagent
+  subthreads live in the right context pane for the active project;
+- subagent traces/subthreads are read-only internal work logs. Ivan can inspect
+  them, but cannot talk to a subagent directly;
+- the project/chat selector is a drawer or overlay, not a permanent left column
+  that displaces Sonya's visual pane.
+
+Project folder scope is the project starting context, not a hard prison for the
+main Sonya. If Atrium's full-computer-access setting is enabled and policy
+allows it, Ivan can ask in the main chat to create a project from any reachable
+local, mounted, or SSH path. Disposable subagents still receive an explicit
+bounded filesystem scope chosen by Sonya for the task.
+
+Project understanding notes should be first-class project context artifacts:
+purpose, current state, external connections, code style, examples, rules,
+known hazards, and decision history. Default storage should be substrate/Atrium
+project context so completed projects and read-only workspaces are not polluted
+by generated files. Exporting `.sonya/` or Kilo-style docs into the project
+folder is an explicit option only when the folder is writable and Ivan/Sonya
+decide the project should carry those notes with it.
 **Scope:** Единый проработанный план по доведению Atrium до целевого состояния: рабочие проекты, корректные ответы Сони, провайдеры как model pools, субагенты как внутренние инструменты Сони, без поломки остального runtime.
 
 ---

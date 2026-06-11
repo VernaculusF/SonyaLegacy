@@ -88,6 +88,17 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
   read/list/search and code execution through existing SSH config/keys;
 - active Atrium UI now has exactly one main chat and substrate-backed project
   chats only; first project creation accepts local or SSH workspace paths;
+- Atrium UI invariant is restored: Sonya's avatar/presence pane remains the
+  left column, the chat pane remains centered for both main and project chats,
+  project runtime/progress/policy/traces render as the right context pane, and
+  the project selector is an overlay drawer instead of a permanent column;
+- project folder path is the starting context, not the whole authority model:
+  with full-computer-access enabled and allowed by policy, main Sonya can
+  create a project from any reachable local, mounted, or SSH path, while
+  disposable subagents still receive explicit bounded scopes;
+- project understanding notes are intended as first-class Atrium/substrate
+  project context artifacts by default, with optional export into the project
+  folder only when the folder is writable and carrying those notes is useful;
 - the production migration manifest now reports `legacy_sources=[]`; no
   Telegram export or remaining legacy knowledge source exists to import;
 - real `internal.tool_error` exceptions now enter the existing

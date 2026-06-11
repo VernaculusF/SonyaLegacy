@@ -21,3 +21,25 @@ def test_sidebar_exposes_one_main_chat_and_only_real_project_chats() -> None:
 
 def test_legacy_projects_drawer_is_removed() -> None:
     assert not (ROOT / "packages/atrium/src/components/ProjectsDrawer.jsx").exists()
+
+
+def test_atrium_keeps_sonya_avatar_and_dialog_present_in_every_chat() -> None:
+    source = (ROOT / "packages/atrium/src/App.jsx").read_text(encoding="utf-8")
+
+    assert "import AvatarPane" in source
+    assert "<AvatarPane" in source
+    assert "<DialogPane" in source
+    assert "fallback={<DialogPane" not in source
+    assert "when={activeWorkspaceId() !== 'main'}" in source
+    assert "fallback={<MindPane" in source
+
+
+def test_chat_selector_is_an_overlay_not_a_permanent_main_column() -> None:
+    source = (ROOT / "packages/atrium/src/components/ChatSidebar.jsx").read_text(encoding="utf-8")
+    styles = (ROOT / "packages/atrium/src/styles.css").read_text(encoding="utf-8")
+
+    assert "props.open()" in source
+    assert "chat-drawer-overlay" in source
+    assert "'chat-sidebar': true, open: props.open()" in source
+    assert ".chat-sidebar.open" in styles
+    assert "position: fixed" in styles
