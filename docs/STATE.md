@@ -520,3 +520,6 @@ Workstream A получил первый answer-first вертикальный �
   typing state followed by client-side progressive reveal
 - VPS pre-deploy verification: `28 passed`, compileall passed, Atrium build
   passed
+- deployed commits: `bedff3a`, `9215106`
+- post-deploy: both services active, Atrium HTTP healthy, warning journal
+  empty, and no repeated `subagent.complete` event after restart/maintenance

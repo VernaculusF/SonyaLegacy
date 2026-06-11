@@ -7,7 +7,7 @@
 ## Deployed Baseline
 
 - Branch: `develop`
-- Latest pushed/deployed baseline before this slice: `d7a4f39`
+- Latest pushed/deployed baseline: `9215106`
 - Production host: `jester-sonya@34.38.255.149`
 - Production repo: `/home/jester-sonya/Sonya`
 - Production substrate: `/home/jester-sonya/.sonya/sonya_substrate.db`
@@ -48,7 +48,7 @@ Sonya's social/emergency channel and must not be mirrored into Atrium chat as
 ordinary dialog history. Telegram events may remain visible in explicit debug
 surfaces.
 
-## Latest Implemented Slice In Progress
+## Latest Deployed Slice
 
 Atrium reason-stream, expression stability, and dialog-spam guard:
 
@@ -75,19 +75,24 @@ VPS pre-deploy verification passed:
 - `python -m compileall -q src/sonya` -> passed;
 - `cd packages/atrium && npm run build` -> passed.
 
-This slice still needs commit, push, VPS fast-forward, service restart, and
-post-restart status/journal/log check.
+Production verification:
+
+- commits `bedff3a` and `9215106` are pushed and deployed;
+- both services are active, Atrium responds on `127.0.0.1:8877`, and the
+  post-restart warning journal is empty;
+- no new `subagent.complete` event appeared after the `9215106` core restart
+  and maintenance tick;
+- production checkout is clean except the preserved runtime `tg.session`.
 
 ## Remaining Immediate Work
 
-1. Finish/deploy the Atrium stability slice above.
-2. Inspect real production `drive_state` and evolution pressure values:
+1. Inspect real production `drive_state` and evolution pressure values:
    drive counters are internal initiative accumulators, not emotions; if they
    saturate unexpectedly, fix runtime normalization separately from UI.
-3. Recheck live Atrium behavior after refresh: close behavior, typing,
+2. Recheck live Atrium behavior after refresh: close behavior, typing,
    progressive reveal, Telegram/Atrium separation, expression stability, and
    dialog suppression.
-4. Continue provider/model evaluation automation and web-proxy model bridge
+3. Continue provider/model evaluation automation and web-proxy model bridge
    only after Atrium chat UX is stable again.
 
 ## Key Docs
