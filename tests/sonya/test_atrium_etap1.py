@@ -493,7 +493,11 @@ def test_events_history_returns_non_private_scrollback(tmp_path: Path, monkeypat
             self.headers = {}
             self.query = query or {}
 
-    app = {"config": cfg, "admin_password": ""}
+    import aiohttp.web
+    from sonya.admin.app_key import CONFIG_KEY, ADMIN_PASSWORD_KEY
+    app = aiohttp.web.Application()
+    app[CONFIG_KEY] = cfg
+    app[ADMIN_PASSWORD_KEY] = ""
     resp = asyncio.run(atrium_events_history(_Req(app, query={"before_seq": "0", "limit": "10"})))
     assert resp.status == 200
     import json as _json
