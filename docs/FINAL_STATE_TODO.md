@@ -17,7 +17,8 @@ Completed and deployed foundations:
 - runtime outcomes feeding measured model scorecards;
 - project outcome summaries entering shared semantic memory with project
   provenance;
-- WAL-safe production backup and read-only memory manifest proof.
+- WAL-safe production backup and read-only memory manifest proof;
+- live hosted Atrium project-chat proof through API/runtime/history/memory.
 
 Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
 
@@ -26,16 +27,16 @@ Latest VPS proof:
 - project/Atrium runtime controls: `14 passed`;
 - provider scorecard/cooldown/picker: `21 passed`;
 - project-memory/manifest: `4 passed`;
+- live proof project `proj-a83c1c3657` passed: isolated project history,
+  main-history separation, executor progress/traces, dependency steps,
+  pause/resume, approval deny, completion, and shared-memory recall;
 - compileall clean, `sonya`/`sonya-admin` active, recent error journal empty.
 
-Still open before calling the hosted Atrium goal fully done:
+Still intentionally open:
 
-- live project-chat UX proof through the actual Atrium surface, including
-  create/open project, project message, executor progress, pause/resume,
-  approval, completion, and shared-memory recall;
-- fix only UX/runtime gaps exposed by that live proof;
 - production semantic dedup apply only after explicit approval because it
-  deletes rows.
+  deletes rows;
+- browser/web-proxy model bridge remains parked as a separate future workstream.
 
 > Current execution order is maintained in
 > `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Provider registry,

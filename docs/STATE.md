@@ -66,9 +66,12 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;
-- active work is the hosted Atrium completion path: autonomous project
+- hosted Atrium completion path is proven on the VPS: autonomous project
   planning/dependency execution/synthesis, measured scorecards/cooldowns,
   pause/approval/resume, shared-memory proof, and live project-chat E2E.
+- live proof project `proj-a83c1c3657` verified project/main history
+  separation, executor progress/traces, dependency steps, pause/resume,
+  approval deny, completion, and project-scoped shared-memory recall.
 
 The authoritative execution order is
 `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Older provider sections

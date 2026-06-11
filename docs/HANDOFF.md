@@ -26,9 +26,8 @@ Latest VPS proof:
 
 Current slice and authoritative order:
 
-1. prove the complete project-chat flow in live Atrium and close exposed gaps;
-2. continue remaining approved provider imports if Ivan supplies more keys;
-3. production semantic dedup remains blocked on explicit approval because it
+1. continue remaining approved provider imports if Ivan supplies more keys;
+2. production semantic dedup remains blocked on explicit approval because it
    deletes rows, even though backup-copy proof passed.
 
 Execution plan:
@@ -55,6 +54,10 @@ Completed in the latest slices:
 - project outcome summaries now enter shared semantic memory with project
   provenance; read-only live/backup manifests and backup duplicate analysis
   passed on the VPS; production semantic dedup remains unapplied;
+- live hosted Atrium project-chat proof passed on project `proj-a83c1c3657`:
+  project/main history separation, executor progress/traces, dependency steps,
+  pause/resume, approval deny, completion, and shared-memory recall all worked
+  after fixing history pagination and project outcome compilation;
 - Admin Providers now renders provider pools, accounts, models, quotas,
   observations, protected secret rotation, and a collapsed legacy-key view;
 - provider model identity is now provider-scoped: live v33 databases repair

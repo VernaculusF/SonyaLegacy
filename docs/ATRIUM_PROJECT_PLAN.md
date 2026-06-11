@@ -16,7 +16,8 @@ order is now:
 3. add honest pause, approval, decision, and resume controls;
 4. prove project outcomes enter the one shared Sonya memory and complete the
    non-destructive production migration proof;
-5. close the live Atrium project-chat end-to-end scenario and its UX gaps.
+5. live Atrium project-chat end-to-end scenario is now proven; continue only
+   follow-up gaps found outside this hosted-stack proof.
 
 The web-proxy model bridge remains parked until this hosted-stack path is
 complete. The executable plan is
@@ -217,9 +218,9 @@ complete. The executable plan is
 - [x] статусы влияют на runtime поведение
 
 ### Done criteria
-- [ ] тестовый проект можно создать
-- [ ] по нему можно вести диалог и работу
-- [ ] статус меняется и влияет на flow
+- [x] тестовый проект можно создать
+- [x] по нему можно вести диалог и работу
+- [x] статус меняется и влияет на flow
 
 ---
 
@@ -233,6 +234,21 @@ complete. The executable plan is
 - [x] policy consent blocks set `waiting_choice`
 - [x] API and `projects.update` use the same transition contract
 - [x] production live five-status proof passed
+
+### Progress 2026-06-11 - live project-chat proof
+
+- [x] hosted API created proof project `proj-a83c1c3657`
+- [x] project chat message with `workspace_id` appeared in project history
+  and not in main history
+- [x] main chat proof message appeared in main history and not in project
+  history
+- [x] project runtime exposed dependency steps, progress, traces, pause/resume,
+  approval deny, completion, and synthesized result
+- [x] shared memory recall returned a project-scoped semantic fact for the live
+  project outcome
+- [x] live proof exposed and fixed history initial pagination
+- [x] live proof exposed and fixed project outcome compilation when newer
+  subagent runs existed
 
 ---
 

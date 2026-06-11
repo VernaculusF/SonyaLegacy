@@ -80,7 +80,7 @@
 - [ ] Ensure raw subagent chatter does not enter long-term behavior memory.
 - [ ] Run the existing non-destructive migration manifest and retrieval proof against a production backup.
 - [ ] Verify project-scoped recall and global continuity from the same substrate.
-- [ ] Leave production semantic dedup unapplied until explicit approval.
+- [x] Leave production semantic dedup unapplied until explicit approval.
 
 ### Task 5: Atrium project-chat end-to-end proof
 
@@ -92,7 +92,20 @@
 - Modify: `docs/HANDOFF.md`
 - Modify: `docs/STATE.md`
 
-- [ ] Prove create/open project chat, folder binding, separate project history, execution progress, dependency steps, approval, pause/resume, completion, and shared-memory outcome.
-- [ ] Fix only gaps exposed by that proof.
-- [ ] Confirm the main chat remains the single home chat and Admin remains separate.
-- [ ] Run the full relevant VPS suite, deploy, inspect service journals, and record the final live scenario.
+- [x] Prove create/open project chat, folder binding, separate project history, execution progress, dependency steps, approval, pause/resume, completion, and shared-memory outcome.
+- [x] Fix only gaps exposed by that proof.
+- [x] Confirm the main chat remains the single home chat and Admin remains separate.
+- [x] Run the full relevant VPS suite, deploy, inspect service journals, and record the final live scenario.
+
+Live proof 2026-06-11:
+
+- project: `proj-a83c1c3657`
+- `GET /api/atrium/history?workspace_id=<project>` returned only the project
+  proof message; main history returned the main proof message and no project
+  workspace rows.
+- project executor runtime showed dependency execution, pause/resume,
+  approval-deny, completion, traces, and synthesized result through hosted API.
+- shared memory contained one project-scoped semantic fact for the live proof.
+- exposed and fixed two real gaps: initial history pagination returned old
+  rows instead of newest rows, and `MemoryCompiler` could miss a completed
+  `project_executor` run when newer subagent runs occupied the small run window.
