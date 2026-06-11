@@ -288,6 +288,76 @@ async def test_project_execute_runs_multiple_independent_subagents(tmp_path) -> 
 
 
 @pytest.mark.asyncio
+async def test_project_execute_keeps_concurrent_workspaces_isolated(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-multi-workspace.db")
+    try:
+        first_dir = tmp_path / "first"
+        second_dir = tmp_path / "second"
+        first_dir.mkdir()
+        second_dir.mkdir()
+        first = ProjectStore(sub).create(
+            "First workspace",
+            workspace_path=str(first_dir),
+            policy={"subagent_spawn": "allowed"},
+        )
+        second = ProjectStore(sub).create(
+            "Second workspace",
+            workspace_path=str(second_dir),
+            policy={"subagent_spawn": "allowed"},
+        )
+        tool = ProjectsTool(sub, subagent_provider=_FastProvider())
+
+        first_started, second_started = await asyncio.gather(
+            tool.execute({
+                "name": "projects.execute",
+                "arguments": {"project_id": first.project_id, "task": "inspect first"},
+            }),
+            tool.execute({
+                "name": "projects.execute",
+                "arguments": {"project_id": second.project_id, "task": "inspect second"},
+            }),
+        )
+
+        assert "[OK]" in first_started
+        assert "[OK]" in second_started
+        rows = sub.connection.execute(
+            "SELECT workspace_id, COUNT(*) FROM subagent_tasks "
+            "WHERE workspace_id IN (?, ?) GROUP BY workspace_id",
+            (first.project_id, second.project_id),
+        ).fetchall()
+        assert dict(rows) == {first.project_id: 1, second.project_id: 1}
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_project_execute_blocks_inaccessible_workspace(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-missing-workspace.db")
+    try:
+        project = ProjectStore(sub).create(
+            "Missing mounted workspace",
+            workspace_path=str(tmp_path / "not-mounted"),
+            policy={"subagent_spawn": "allowed"},
+        )
+        tool = ProjectsTool(sub, subagent_provider=_FastProvider())
+
+        result = await tool.execute({
+            "name": "projects.execute",
+            "arguments": {"project_id": project.project_id, "task": "inspect remote files"},
+        })
+
+        assert result.startswith("[BLOCKED] projects.execute: workspace unavailable")
+        assert ProjectRunStore(sub).list_by_project(project.project_id) == []
+        count = sub.connection.execute(
+            "SELECT COUNT(*) FROM subagent_tasks WHERE workspace_id = ?",
+            (project.project_id,),
+        ).fetchone()[0]
+        assert count == 0
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
 async def test_project_harvest_retries_failed_subagent(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "project-retry-executor.db")
     try:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from sonya.state.substrate import Substrate
@@ -448,6 +449,13 @@ class ProjectsTool:
                 source="project_executor",
             )
             return "[BLOCKED] projects.execute: subagent_spawn requires consent"
+        workspace_path = Path(project.workspace_path).expanduser() if project.workspace_path else None
+        if workspace_path is None or not workspace_path.is_dir():
+            return (
+                "[BLOCKED] projects.execute: workspace unavailable; "
+                "local and remote workspaces must be mounted as an accessible directory "
+                f"on Sonya's execution host: {project.workspace_path or '(empty)'}"
+            )
 
         run_store = ProjectRunStore(self._sub)
         trace_store = ExecutionTraceStore(self._sub)
