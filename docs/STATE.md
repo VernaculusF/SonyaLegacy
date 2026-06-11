@@ -42,6 +42,14 @@ Recent guards fixed specific dialog and proof-subagent spam sources, but do not
 replace the missing architecture and have limited live conversational proof.
 No runtime code was changed as part of this documentation audit.
 
+The follow-up audit also identified cross-cutting requirements that must be
+designed into the foundational slices: provenance against self-reinforcing
+generated assumptions, causal IDs, general idempotency, shared-state ownership,
+scheduler fairness/backpressure, explicit message addressing/channel choice,
+offering-scoped capability taxonomy, exploration-aware model scorecards,
+continuity/telemetry separation, independent completion evidence,
+situational-impact semantics for full-system access, and an archive lifecycle.
+
 ## Current execution state - 2026-06-11
 
 - production and repository substrate are at schema v33;

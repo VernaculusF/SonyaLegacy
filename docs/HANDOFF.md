@@ -68,6 +68,12 @@ The next implementation sequence is:
 Do not begin the parked web-proxy bridge before these foundations. More cheap
 capacity would currently amplify self-propelling loops and incoherent state.
 
+Every foundational slice must also include the cross-cutting contracts from the
+canonical audit: provenance, causal IDs, idempotency, shared-state ownership,
+scheduler backpressure, continuity/telemetry separation, and independent
+acceptance evidence. Do not postpone these as cleanup; otherwise the same
+failures will reappear through a different worker or channel.
+
 Atrium is the main work/chat surface, not the admin surface. Telegram is
 Sonya's social/emergency channel and must not be mirrored into Atrium chat as
 ordinary dialog history. Telegram events may remain visible in explicit debug

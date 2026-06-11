@@ -278,7 +278,95 @@ operator logs without exposing secrets.
     **Done:** session ownership/storage permissions are explicit, monitored,
     and proven over restart/deploy cycles.
 
-## 5. Verified Audit Evidence
+## 5. Additional Cross-Cutting Problems
+
+These problems were identified after the initial 19-point audit. Some are
+consequences of the same root failures, but they require explicit acceptance
+criteria because fixing only the visible symptom will not close them.
+
+20. **Generated cognition can reinforce its own incorrect assumptions.**
+    Recent internal thoughts are injected into later context and can become
+    apparent evidence for themselves.
+    **Done:** observations, subject statements, hypotheses, imagination, and
+    confirmed facts remain distinguishable by provenance and confidence;
+    generated cognition cannot silently promote itself into external fact.
+
+21. **Events lack a complete causal graph.** Messages, thoughts, actions,
+    provider attempts, retries, and outcomes cannot always be traced to one
+    initiating cause.
+    **Done:** relevant events carry stable correlation and causal-parent IDs,
+    allowing the runtime and operator surfaces to reconstruct why an action or
+    message occurred.
+
+22. **Background processing lacks a general idempotency contract.** The fixed
+    `subagent.complete` spam demonstrated that maintenance/restart processing
+    can emit the same logical outcome repeatedly.
+    **Done:** repeatable handlers use durable checkpoints and idempotency keys;
+    restart/retry proof shows one logical side effect per event.
+
+23. **Concurrent processes can compete for shared state and outward action.**
+    Main sessions, idle cognition, task workers, project workers, and Telegram
+    may concurrently change focus, embodiment, continuity, or messaging.
+    **Done:** state updates and outward actions declare ownership, causal scope,
+    and conflict semantics; races are observable and resolved without silently
+    discarding another active process.
+
+24. **Scheduler fairness and backpressure are undefined.** A long active
+    session can consume most capacity and delay messages, projects, tasks, or
+    self-improvement.
+    **Done:** scheduling considers active goals, progress, priority, deadlines,
+    provider capacity, and cost; runaway work is backpressured without turning
+    autonomy into a hard behavioral rule engine.
+
+25. **Addressing and channel selection are not first-class.** Telegram and
+    Atrium have previously mirrored or duplicated dialog.
+    **Done:** every outward message distinguishes intent, addressee, selected
+    channel, and delivery result; channels do not automatically mirror one
+    another.
+
+26. **Model capability taxonomy is incomplete.** Provider-level categories
+    cannot accurately describe heterogeneous model pools and can route vision,
+    embedding, reranking, image, or audio models incorrectly.
+    **Done:** capabilities belong to concrete provider model offerings and
+    distinguish at least text generation, vision understanding, image
+    generation, embeddings, reranking, audio/TTS, tool calling, reasoning, and
+    streaming.
+
+27. **Model scorecards suffer from selection bias.** A model receiving nearly
+    all work also receives nearly all outcome data, preventing challengers from
+    proving that they are better.
+    **Done:** controlled exploration/challenger runs evaluate suitable models
+    on comparable work while respecting capacity and cost; routing uses both
+    exploitation and measured exploration.
+
+28. **Subjective continuity is polluted by technical telemetry.** Lifecycle,
+    retries, provider refresh, synthetic proof, and raw cognition can enter the
+    same stream used for Sonya's lived continuity.
+    **Done:** subjective continuity, work history, operator telemetry, and raw
+    audit logs have explicit boundaries and intentional summaries between them.
+
+29. **Work completion can be self-declared without independent evidence.**
+    A model or subagent response may be treated as completion without proving
+    the requested outcome.
+    **Done:** WorkItems support acceptance criteria and evidence such as tests,
+    production proof, artifact checks, another executor's review, or Ivan's
+    confirmation where appropriate.
+
+30. **Full-system access lacks situational impact semantics.** Permission to
+    access a system does not itself describe current activity, blast radius,
+    reversibility, or the effect of an action.
+    **Done:** action planning can inspect and record target scope, active
+    processes, expected impact, reversibility, and observed outcome without
+    reducing access to static allow/deny rules.
+
+31. **Archive lifecycle is unspecified.** Google Drive capacity is available,
+    but archival, restoration, integrity, deletion, and linkage semantics are
+    not yet defined.
+    **Done:** archived WorkItems/projects have manifests, integrity checks,
+    protected storage, retention/deletion policy, restoration proof, and stable
+    links back to live substrate records.
+
+## 6. Verified Audit Evidence
 
 Read-only production audit on 2026-06-12 found:
 
@@ -296,7 +384,7 @@ Read-only production audit on 2026-06-12 found:
 - recent service warning journal was clean; historical Telegram read-only
   session errors remain documented.
 
-## 6. Can Sonya Fix This Herself?
+## 7. Can Sonya Fix This Herself?
 
 Partially, today.
 
@@ -326,9 +414,18 @@ to own the remaining work:
 6. let Sonya execute, evaluate, and refine later audit items through her own
    projects/tasks with measured production outcomes.
 
-## 7. Priority
+## 8. Priority
 
 This audit overrides claims that only the web-proxy bridge remains open.
 Runtime coherence is the immediate hosted-stack priority. The web-proxy bridge
 remains valuable, but adding more cheap capacity before loop, state, routing,
 and cost semantics are coherent would amplify existing failures.
+
+Cross-cutting foundations that must be designed into the first slices rather
+than postponed:
+
+- provenance and protection against self-reinforcing generated assumptions;
+- causal IDs and idempotency;
+- shared-state ownership and scheduler backpressure;
+- separation of subjective continuity from technical telemetry;
+- independent WorkItem acceptance evidence.
