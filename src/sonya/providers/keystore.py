@@ -1005,7 +1005,7 @@ class KeyStore:
                 "SELECT DISTINCT pa.legacy_key_id "
                 "FROM provider_accounts pa "
                 "JOIN provider_account_offerings pao ON pao.account_id = pa.account_id "
-                "WHERE pa.provider_id = ? AND pa.status = 'active' "
+                "WHERE pa.provider_id = ? AND pa.status IN ('active', 'cooldown') "
                 "AND pa.legacy_key_id != '' AND pao.model_id = ? AND pao.enabled = 1",
                 (provider, model_id),
             ).fetchall()
