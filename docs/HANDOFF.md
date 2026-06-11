@@ -13,16 +13,23 @@ repaired, multi-worker project executor and Atrium runtime visibility deployed,
 and active
 `sonya` / `sonya-admin` services.
 
+Latest deployed commit: `b161806`.
+
+Latest VPS proof:
+
+- project/Atrium runtime controls: `14 passed`;
+- provider scorecard/cooldown/picker slice: `21 passed`;
+- project-memory/manifest slice: `4 passed`;
+- `python -m compileall -q src/sonya` passed;
+- `sonya` and `sonya-admin` are active;
+- recent error journal is empty.
+
 Current slice and authoritative order:
 
-1. extend project executor from explicit independent tasks to autonomous
-   decomposition, dependency-aware execution, and result synthesis;
-2. add measured scorecards and provider/account cooldowns;
-3. add project runtime controls for pause/approval decisions; honest cancel is
-   now implemented;
-4. prove project outcomes enter shared memory and finish non-destructive
-   production migration/retrieval proof;
-5. prove the complete project-chat flow in live Atrium and close exposed gaps.
+1. prove the complete project-chat flow in live Atrium and close exposed gaps;
+2. continue remaining approved provider imports if Ivan supplies more keys;
+3. production semantic dedup remains blocked on explicit approval because it
+   deletes rows, even though backup-copy proof passed.
 
 Execution plan:
 `docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.

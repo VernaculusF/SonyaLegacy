@@ -1,5 +1,42 @@
 # FINAL STATE TODO
 
+## 2026-06-11 Hosted-Stack Status Override
+
+Completed and deployed foundations:
+
+- provider registry, many-account/many-model pools, encrypted secrets,
+  account-scoped offerings, discovery refresh, and substrate-backed routing;
+- approved Google, Nous, CodexSale, OpenRouter, Kimchi, and NVIDIA provider
+  pools imported/proven where keys were supplied;
+- model-specific availability probes and bounded cooldown reactivation;
+- project executor with model-driven decomposition, dependency-aware
+  scheduling, retries, cancellation, pause/resume, approval decisions, and
+  result synthesis;
+- Atrium project runtime visibility for runs, traces, workers, cancellation,
+  pause/resume, and approval controls;
+- runtime outcomes feeding measured model scorecards;
+- project outcome summaries entering shared semantic memory with project
+  provenance;
+- WAL-safe production backup and read-only memory manifest proof.
+
+Latest deployed commit: `b161806`.
+
+Latest VPS proof:
+
+- project/Atrium runtime controls: `14 passed`;
+- provider scorecard/cooldown/picker: `21 passed`;
+- project-memory/manifest: `4 passed`;
+- compileall clean, `sonya`/`sonya-admin` active, recent error journal empty.
+
+Still open before calling the hosted Atrium goal fully done:
+
+- live project-chat UX proof through the actual Atrium surface, including
+  create/open project, project message, executor progress, pause/resume,
+  approval, completion, and shared-memory recall;
+- fix only UX/runtime gaps exposed by that live proof;
+- production semantic dedup apply only after explicit approval because it
+  deletes rows.
+
 > Current execution order is maintained in
 > `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Provider registry,
 > many-account/many-model pools, encrypted secrets, discovery refresh

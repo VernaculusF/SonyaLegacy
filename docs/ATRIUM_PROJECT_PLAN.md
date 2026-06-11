@@ -284,6 +284,12 @@ complete. The executable plan is
   outcomes remain persisted
 - [x] deployed VPS regression proof: `29 passed`, compileall clean, services
   active, error journal empty
+- [x] persisted pause/resume stops orchestration until resume
+- [x] project approval requests and approve/deny decisions are persisted on the
+  run and surfaced through Atrium runtime controls
+- [x] VPS proof for project/Atrium runtime controls passed (`14 passed`);
+  production deployed at `b161806`, compileall clean, services active, error
+  journal empty
 
 ---
 
@@ -463,6 +469,13 @@ not turn Atrium into an admin surface.
 ### Done criteria
 - [ ] есть хотя бы один реальный champion per key task-class
 - [ ] scorecards наполнены реальными результатами
+
+### Progress 2026-06-11 - measured runtime outcomes
+
+- [x] project/subagent runtime outcomes feed `model_scorecards`
+- [x] model-specific provider-account cooldowns reactivate after bounded
+  cooldown expiry
+- [x] VPS provider/scorecard/cooldown suite passed (`21 passed`)
 - [ ] Sonya может опираться на operational model knowledge
 
 ---

@@ -4,6 +4,8 @@
 **Type:** Current project state
 **Last updated:** 2026-06-11
 
+Latest production deployment: `b161806`.
+
 ## Current execution state - 2026-06-11
 
 - production and repository substrate are at schema v33;
@@ -58,6 +60,9 @@
 - completed project outcomes compile into shared semantic memory with
   `scope="project"` and concrete `project_id`; production backup/manifest proof
   passed without applying destructive semantic dedup;
+- latest VPS proof passed: project/Atrium runtime controls `14 passed`,
+  provider scorecard/cooldown/picker `21 passed`, project-memory/manifest
+  `4 passed`, compileall clean, services active, error journal empty;
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;
