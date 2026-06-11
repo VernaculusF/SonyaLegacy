@@ -29,7 +29,7 @@ Sonya to a provider or model.
 | Service / Container | Port | Описание |
 |---------------------|------|----------|
 | `sonya.service` (systemd) | — | Ядро: substrate + thinking loop + telegram userbot + embedding indexer |
-| `sonya-admin.service` (systemd) | 8877 | Web-панель (пароль в .env) + Atrium WS feed `/atrium/feed` + nudge `/api/atrium/nudge` |
+| `sonya-admin.service` (systemd) | 8877 | Admin at `/`, hosted Atrium SPA at `/atrium/`, Atrium API/WS feed |
 | `sonya-searxng` (docker) | 127.0.0.1:8888 | Self-hosted SearXNG — meta-search для `web.search` |
 
 LLM-вызовы идут напрямую через `sonya.providers.llm_provider` с собственной key pool в substrate (provider_keys table). OmniRoute удалён.
@@ -123,6 +123,11 @@ bash ~/Sonya/deploy/searxng/setup.sh
 # С локальной машины
 ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 ```
+
+`deploy/update.sh` rebuilds `packages/atrium/dist` with `npm ci` and
+`npm run build` before restarting services. Node/npm must be installed on the
+VPS; the deploy refuses to continue without npm when no previous Atrium bundle
+exists.
 
 `update.sh` делает: сохраняет diverged-коммиты Сони (если автопуш не прошёл) → `git fetch + reset --hard origin/develop` → `pip install` runtime deps (fastembed/numpy/imagehash) → `systemctl restart sonya sonya-admin`. На старте ядра запускается идемпотентная миграция knowledge (legacy repo-папки → `~/.sonya/knowledge/`, лог `knowledge_migrated`).
 

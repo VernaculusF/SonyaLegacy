@@ -73,10 +73,23 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
   requests return JSON `401` instead of `/login` redirects, and HTML/API
   responses include CSP, `nosniff`, no-referrer, frame denial, and baseline
   permissions-policy headers;
+- Atrium WebSocket auth uses 45-second one-time tickets; raw permanent-token
+  query auth is rejected, ticket reuse is rejected, and reconnect generations
+  prevent stale sockets from reconnecting;
+- `sonya-admin` hosts the built Atrium SPA at `/atrium/`; Node/npm is installed
+  on the VPS and `deploy/update.sh` rebuilds Atrium before service restart;
+- Atrium uploads are streamed to hidden staged files and atomically published;
+  the configurable default limit is 2 GB, and a live 65 MB VPS proof left no
+  partial files;
+- concurrent project execution keeps project/subagent workspace IDs isolated
+  and blocks unavailable local or mounted-remote directories before spawning;
+- real `internal.tool_error` exceptions now enter the existing
+  capability-gap -> intention -> draft selfmod proposal repair loop;
 - latest VPS proof passed: project/Atrium runtime controls `14 passed`,
   provider scorecard/cooldown/picker `21 passed`, project-memory/manifest
-  `4 passed`, Admin/Atrium security slice `47 passed`, compileall clean,
-  services active, error journal empty;
+  `4 passed`, Admin/Atrium security/hosted/upload slice `55 passed`,
+  self-repair bridge `37 passed`, multi-workspace executor `17 passed`,
+  compileall clean, services active, error journal empty;
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;

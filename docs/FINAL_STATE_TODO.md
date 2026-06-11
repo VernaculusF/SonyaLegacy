@@ -29,6 +29,16 @@ Completed and deployed foundations:
 - hosted Admin/Atrium API auth now returns JSON `401` for unauthenticated
   `/api/*` calls instead of login redirects, and HTML/API responses carry
   baseline CSP/security headers;
+- browser WebSockets use short-lived one-time tickets instead of placing the
+  permanent admin token in the feed URL, with stale reconnect suppression;
+- Atrium is now actually hosted by `sonya-admin` at `/atrium/`; the VPS has
+  Node/npm and the update script rebuilds the bundle before restart;
+- large Atrium uploads stream to staged files, publish atomically, clean
+  partials, and default to a configurable 2 GB limit;
+- concurrent project runs keep workspace/subagent scope separate and refuse
+  unavailable local or mounted-remote workspace paths before spawning;
+- real tool exceptions feed the existing capability-gap/self-repair proposal
+  loop;
 - live hosted Atrium project-chat proof through API/runtime/history/memory.
 
 Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
@@ -47,6 +57,10 @@ Latest VPS proof:
   unauthenticated `/api/projects` returned `401 {"error": "auth"}` with no
   `Location`, authenticated API/HTML responses carried CSP/security headers,
   services active, recent error journal empty;
+- WS ticket/upload/hosted SPA slices: `55 passed`; one-time ticket accepted
+  once, raw token WS query rejected, 65 MB live upload published and cleaned
+  with zero partials, `/atrium/` and its built asset returned `200`;
+- self-repair bridge: `37 passed`; multi-workspace executor proof: `17 passed`;
 - live proof project `proj-a83c1c3657` passed: isolated project history,
   main-history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall;
@@ -54,10 +68,10 @@ Latest VPS proof:
 
 Still intentionally open:
 
-- Atrium still needs remaining hosted-stack hardening: WebSocket token
-  lifecycle/reconnect discipline, multi-workspace execution, large-file
-  upload/storage path, and runtime self-repair loop;
 - browser/web-proxy model bridge remains parked as a separate future workstream.
+- direct remote execution transport is not implemented; remote project
+  workspaces are supported when mounted as accessible directories on Sonya's
+  execution host.
 
 > Current execution order is maintained in
 > `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Provider registry,

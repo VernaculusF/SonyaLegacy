@@ -106,8 +106,19 @@ by that proof. Do not add Admin provider CRUD to Atrium.
   `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`,
   `X-Frame-Options`, and `Permissions-Policy`
 - [x] prove the API auth/header behavior on the live VPS after service restart
-- next: WebSocket token lifecycle/reconnect discipline, multi-workspace
-  execution, large-file upload/storage path, and runtime self-repair loop
+- [x] replace permanent admin-token WebSocket query auth with short-lived,
+  one-time tickets and generation-safe reconnect lifecycle
+- [x] host the built Atrium SPA at `/atrium/` without mixing it with Admin,
+  and build it during VPS updates
+- [x] stream large uploads to staged files, atomically publish them, clean
+  partials, and expose a configurable limit (2 GB default)
+- [x] prove concurrent project runs keep separate workspace/subagent scope and
+  block unavailable local or mounted-remote workspace paths before execution
+- [x] route real tool exceptions into the existing capability-gap -> repair
+  intention -> draft selfmod proposal loop
+- next: run legacy history/knowledge imports only where the production
+  manifest shows a missing source; browser/web-proxy provider bridge remains a
+  separate parked workstream
 
 ## VPS Gate
 

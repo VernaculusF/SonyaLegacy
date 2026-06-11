@@ -21,6 +21,9 @@ Latest VPS proof:
 - provider scorecard/cooldown/picker slice: `21 passed`;
 - project-memory/manifest slice: `4 passed`;
 - Admin/Atrium security slice: `47 passed`;
+- hosted Atrium/WS/upload slice: `55 passed`;
+- self-repair bridge: `37 passed`;
+- multi-workspace executor: `17 passed`;
 - `python -m compileall -q src/sonya` passed;
 - `sonya` and `sonya-admin` are active;
 - recent error journal is empty.
@@ -28,10 +31,9 @@ Latest VPS proof:
 Current slice and authoritative order:
 
 1. continue remaining approved provider imports if Ivan supplies more keys;
-2. continue hosted Atrium/project hardening: WebSocket token lifecycle and
-   reconnect discipline, multi-workspace execution, large-file upload/storage
-   path, runtime self-repair loop, and the parked web-proxy model bridge when
-   explicitly resumed.
+2. run legacy history/knowledge imports only when the production manifest shows
+   a missing source; resume the parked web-proxy model bridge only when
+   explicitly requested.
 
 Execution plan:
 `docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
@@ -68,6 +70,19 @@ Completed in the latest slices:
   responses carry baseline CSP/security headers, focused VPS suite passed
   (`47 passed`), live HTTP smoke passed, both services are active, and the
   recent error journal is empty;
+- WebSocket lifecycle hardening is deployed: browser clients request a
+  45-second one-time ticket, raw permanent-token query auth and ticket reuse
+  are rejected, and stale reconnect generations cannot revive old sockets;
+- `sonya-admin` now hosts the built Atrium SPA at `/atrium/`; Node/npm is
+  installed on the VPS, `deploy/update.sh` rebuilds the bundle before restart,
+  and live index/asset smoke returned `200`;
+- large uploads stream to hidden staged files and publish atomically with a
+  configurable 2 GB default limit; a live 65 MB VPS proof completed and left
+  zero partial files;
+- concurrent project execution keeps separate workspace/subagent scope and
+  blocks unavailable local or mounted-remote directories before spawning;
+- real tool exceptions now feed the existing capability-gap -> repair
+  intention -> draft selfmod proposal loop;
 - live hosted Atrium project-chat proof passed on project `proj-a83c1c3657`:
   project/main history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall all worked
