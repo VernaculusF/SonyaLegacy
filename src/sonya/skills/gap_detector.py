@@ -80,7 +80,7 @@ class GapDetector:
         for event in self._stream.read_since(since_seq):
             if event.kind in _SKIP_KINDS:
                 continue
-            if not self._is_gap_signal(event.payload):
+            if not self._is_gap_signal(event.kind, event.payload):
                 continue
             fp = self._fingerprint(event.payload)
             if fp in existing_fps:
@@ -169,7 +169,9 @@ class GapDetector:
         self._sub.connection.commit()
         return proposal.proposal_id
 
-    def _is_gap_signal(self, payload: dict) -> bool:
+    def _is_gap_signal(self, event_kind: str, payload: dict) -> bool:
+        if event_kind == "internal.tool_error":
+            return True
         text = str(payload).lower()
         return any(signal in text for signal in self._GAP_SIGNALS)
 

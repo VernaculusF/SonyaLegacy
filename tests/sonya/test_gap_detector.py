@@ -43,6 +43,26 @@ def test_scan_ignores_normal_events(substrate: Substrate) -> None:
     assert len(gaps) == 0
 
 
+def test_scan_treats_internal_tool_exception_as_repair_gap(substrate: Substrate) -> None:
+    stream = ContinuityStream(substrate)
+    stream.append(ContinuityEvent(
+        kind="internal.tool_error",
+        payload={
+            "tool": "filesystem.read",
+            "arg": "broken.txt",
+            "error_type": "RuntimeError",
+            "error_message": "unexpected low-level crash",
+        },
+    ))
+
+    detector = GapDetector(substrate, stream)
+    gaps = detector.scan_recent(since_seq=0)
+
+    assert len(gaps) == 1
+    assert "filesystem.read" in gaps[0].description
+    assert "RuntimeError" in gaps[0].description
+
+
 def test_create_proposal_from_gap(substrate: Substrate) -> None:
     stream = ContinuityStream(substrate)
     stream.append(ContinuityEvent(
