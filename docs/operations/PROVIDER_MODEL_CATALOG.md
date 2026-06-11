@@ -47,6 +47,26 @@ GPT-OSS 120B/20B, Nemotron Nano variants, Gemma 4 26B, Qwen3 Next 80B,
 Llama 3.3 70B, Riverflow 2.5, Hermes 3 405B, and others. Exact IDs,
 availability, context, and free status must come from live discovery.
 
+## Capability Category Rules
+
+Catalog rows must keep model category separate from provider/account identity:
+
+- text/code/planner/reviewer models are eligible for `text_loop` only when
+  live probes prove normal chat completion works;
+- vision models are eligible for `vision_input` when they accept image/video
+  inputs and return text descriptions;
+- free embedding models are `embedding` workers, not chat models;
+- rerank/retrieval models are `rerank` workers, not chat models;
+- image generators are `image_generation` workers with artifact output;
+- transcription/TTS models are audio workers with audio-specific quotas;
+- safety/guard models are policy workers.
+
+OpenRouter, Google, NVIDIA, CodexSale, and browser bridges can expose multiple
+categories under one provider account. Admin and Sonya-facing management should
+therefore display provider -> accounts -> offerings grouped by capability
+category, with `text_loop_ok` only applying to the ordinary dialog/subagent
+loop.
+
 ## Dynamic Limit Notes
 
 - Google states that RPM, TPM, and RPD vary by model/tier and are applied per

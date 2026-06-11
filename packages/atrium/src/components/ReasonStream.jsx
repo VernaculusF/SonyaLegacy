@@ -5,8 +5,8 @@
  * См. UX_SKETCH.md §5.5 для дизайна.
  */
 import { For, Show, createSignal } from 'solid-js';
-import { feed, settings, updateSetting, updateFilter } from '../store.js';
-import { sendNudge } from '../ws.js';
+import { feed, settings, updateSetting, updateFilter, prependStreamEvents } from '../store.js';
+import { sendNudge, loadEventHistory } from '../ws.js';
 
 const FILTER_ORDER = ['active', 'worker', 'idle', 'skill', 'system'];
 
@@ -21,6 +21,8 @@ const SRC_TAG_LABEL = {
 export default function ReasonStream() {
   // Map of seq → reply input state
   const [activeReply, setActiveReply] = createSignal({ seq: null, text: '', sending: false, error: '' });
+  const [loadingHistory, setLoadingHistory] = createSignal(false);
+  const [historyExhausted, setHistoryExhausted] = createSignal(false);
 
   function toggleCollapse() {
     updateSetting('streams_collapsed', !settings.streams_collapsed);
@@ -58,6 +60,56 @@ export default function ReasonStream() {
   const visibleEvents = () =>
     feed.stream_events.filter((e) => settings.streams_filters[e.src] !== false);
 
+  function formatHistoryEvent(ev) {
+    const payload = ev.payload || {};
+    let body = '';
+    if (ev.kind === 'internal.thought' && payload.text) {
+      body = `"${payload.text}"`;
+    } else if (ev.text) {
+      body = ev.text;
+    } else if (payload.tool) {
+      body = `tool=${payload.tool} ${payload.arg ? '· ' + String(payload.arg).slice(0, 100) : ''}`;
+    } else if (payload.summary) {
+      body = payload.summary;
+    } else if (ev.kind?.startsWith('provider.') && payload.provider_id) {
+      body = `provider=${payload.provider_id} status=${payload.status || ''}`.trim();
+    } else if (payload.next_step) {
+      body = `next: ${payload.next_step}`;
+    } else if (!ev.kind?.startsWith('internal.scheduler')) {
+      try { body = JSON.stringify(payload).slice(0, 150); } catch { body = ''; }
+    }
+    return {
+      seq: ev.seq,
+      ts: ev.ts ? new Date(ev.ts).toLocaleTimeString('ru-RU', { hour12: false }) : '',
+      kind: ev.kind,
+      src: ev.src || 'system',
+      channel: ev.channel || '',
+      session_id: ev.session_id,
+      body,
+    };
+  }
+
+  async function loadOlderEvents() {
+    if (loadingHistory() || historyExhausted()) return;
+    const oldestSeq = feed.stream_events.reduce((min, ev) => {
+      const seq = typeof ev.seq === 'number' ? ev.seq : null;
+      if (seq == null) return min;
+      return min == null || seq < min ? seq : min;
+    }, null);
+    setLoadingHistory(true);
+    try {
+      const r = await loadEventHistory(oldestSeq || 0, 80);
+      prependStreamEvents((r.events || []).map(formatHistoryEvent));
+      if (!r.has_more) setHistoryExhausted(true);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  function onScroll(e) {
+    if (e.currentTarget.scrollTop < 60) loadOlderEvents();
+  }
+
   return (
     <section
       classList={{
@@ -86,7 +138,10 @@ export default function ReasonStream() {
         <span class="toggle">⌃</span>
       </div>
 
-      <div class="streams-body">
+      <div class="streams-body" onScroll={onScroll}>
+        <Show when={loadingHistory()}>
+          <div class="history-loader">loading older logs...</div>
+        </Show>
         <Show
           when={visibleEvents().length > 0}
           fallback={

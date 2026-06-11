@@ -526,6 +526,16 @@ export async function loadDialogHistory(beforeSeq = 0, limit = 50, workspaceId =
   return resp.json();
 }
 
+export async function loadEventHistory(beforeSeq = 0, limit = 80) {
+  if (!settings.vps_host || !settings.atrium_token) {
+    throw new Error('connection settings missing');
+  }
+  const url = `http://${settings.vps_host}/api/atrium/events-history?before_seq=${beforeSeq}&limit=${limit}`;
+  const resp = await fetch(url, { headers: { 'X-Atrium-Token': settings.atrium_token } });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
 // HTTP heartbeat (T1.5) — keep-alive so the backend knows Atrium is the live
 // primary surface (affects TG emergency-fallback). Fire-and-forget.
 export async function sendHeartbeat() {

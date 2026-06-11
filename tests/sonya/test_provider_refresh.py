@@ -13,6 +13,7 @@ from sonya.providers.adapters.base import (
     QuotaSnapshot,
 )
 from sonya.providers.keystore import KeyStore
+from sonya.providers.llm_provider import _pick_vision_model
 from sonya.providers.refresh import ProviderRefreshService, RefreshResult
 from sonya.state.substrate import Substrate
 from sonya.tools.providers_tool import ProvidersTool
@@ -67,6 +68,36 @@ def _seed_provider_and_account(store: KeyStore, provider_id: str = "stub") -> st
         secret_ref="manual:test",
     )
     return account.account_id
+
+
+def test_pick_vision_model_uses_provider_modalities(tmp_path):
+    sub = Substrate.open(tmp_path / "vision-picker.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, "stub")
+        store.upsert_provider_model(
+            provider="stub",
+            model_id="stub/text-only",
+            model_name="Text",
+            modalities_json='["text"]',
+            is_free=1,
+        )
+        store.upsert_provider_model(
+            provider="stub",
+            model_id="stub/vision-free",
+            model_name="Vision",
+            modalities_json='["text", "image"]',
+            is_free=1,
+        )
+        store.set_account_offering(account_id, "stub/text-only", enabled=True)
+        store.set_account_offering(account_id, "stub/vision-free", enabled=True)
+
+        picked = _pick_vision_model(store)
+
+        assert picked is not None
+        assert picked.model_id == "stub/vision-free"
+    finally:
+        sub.close()
 
 
 def _seed_provider_with_two_accounts(store: KeyStore) -> tuple[str, str]:

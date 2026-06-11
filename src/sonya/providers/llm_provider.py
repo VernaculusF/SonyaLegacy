@@ -147,6 +147,27 @@ def _provider_fallback_chain(store: KeyStore, primary_provider: str, *, explicit
     return chain
 
 
+def _pick_vision_model(store: KeyStore):
+    candidates = []
+    for model in store.list_available_provider_models():
+        modalities = {str(item).lower() for item in model.modalities()}
+        if "text" not in modalities:
+            continue
+        if not ({"image", "vision", "video"} & modalities):
+            continue
+        candidates.append(model)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda m: (
+        0 if m.is_free else 1,
+        0 if m.latency_tier in ("very_fast", "fast") else 1,
+        -int(m.context_length or 0),
+        m.provider,
+        m.model_id,
+    ))
+    return candidates[0]
+
+
 def _record_call(
     store: KeyStore,
     *,
@@ -519,14 +540,22 @@ class LLMProvider:
             {"role": "user", "content": vision_content},
         ]
 
-        # Acquire vision key
-        key = await self._store.acquire_by_slot("vision")
+        # Acquire a first-class provider/account offering with visual input.
+        # Legacy `slot=vision` is only a compatibility fallback; provider-pool
+        # runtime stores capabilities on provider_models/modalities instead.
+        vision_model = _pick_vision_model(self._store)
+        key = (
+            await self._store.acquire_for_model(vision_model.provider, vision_model.model_id)
+            if vision_model is not None else None
+        )
+        if key is None:
+            key = await self._store.acquire_by_slot("vision")
         if key is None:
             _log.info("vision_no_keys_fallback")
             return None
 
-        model = key.model or "google/gemma-3-27b-it"
-        base_url = key.base_url or "https://openrouter.ai/api/v1"
+        model = vision_model.model_id if vision_model is not None else (key.model or "google/gemma-3-27b-it")
+        base_url = key.base_url or (vision_model.base_url if vision_model is not None else "") or "https://openrouter.ai/api/v1"
         url = f"{base_url.rstrip('/')}/chat/completions"
         headers = {
             "Content-Type": "application/json",

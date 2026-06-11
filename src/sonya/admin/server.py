@@ -2730,6 +2730,74 @@ async def atrium_history(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def atrium_events_history(request: web.Request) -> web.Response:
+    """Paginated non-private Atrium event history for the reason-stream pane.
+
+    WebSocket catch-up intentionally sends only a bounded recent tail. This
+    endpoint is the slower scroll-up path for older logs.
+    """
+    config = request.app["config"]
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
+    if admin_password and token != admin_password:
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
+    try:
+        before_seq = int(request.query.get("before_seq", "0"))
+    except ValueError:
+        before_seq = 0
+    try:
+        limit = max(1, min(100, int(request.query.get("limit", "80"))))
+    except ValueError:
+        limit = 80
+    channel_filter = str(request.query.get("channel", "") or "").strip()
+    session_filter = str(request.query.get("session_id", "") or "").strip()
+    sub = _get_substrate(config)
+    try:
+        params: list[object] = []
+        where_parts = ["private = 0"]
+        if before_seq > 0:
+            where_parts.append("seq < ?")
+            params.append(before_seq)
+        if channel_filter:
+            where_parts.append("channel = ?")
+            params.append(channel_filter)
+        rows = sub.connection.execute(
+            "SELECT seq, kind, principal_id, payload_json, channel, private, created_at "
+            "FROM continuity_events "
+            f"WHERE {' AND '.join(where_parts)} "
+            "ORDER BY seq DESC LIMIT ?",
+            (*params, limit + 1),
+        ).fetchall()
+        events = []
+        for row in rows:
+            try:
+                payload = json.loads(row[3] or "{}")
+            except Exception:
+                payload = {}
+            if session_filter and isinstance(payload, dict) and payload.get("session_id") != session_filter:
+                continue
+            ev = type("_AtriumEvent", (), {
+                "seq": int(row[0]),
+                "kind": row[1],
+                "principal_id": row[2],
+                "payload": payload,
+                "channel": row[4] or "",
+                "private": bool(row[5]),
+                "created_at": row[6],
+            })()
+            events.append(_atrium_event_to_json(ev))
+            if len(events) >= limit:
+                break
+        events.reverse()
+        return _atrium_cors(web.json_response({
+            "events": events,
+            "has_more": len(rows) > limit,
+            "before_seq": before_seq,
+        }))
+    finally:
+        sub.close()
+
+
 def _atrium_max_upload_bytes() -> int:
     raw_bytes = os.environ.get("SONYA_ATRIUM_MAX_UPLOAD_BYTES", "").strip()
     raw_mb = os.environ.get("SONYA_ATRIUM_MAX_UPLOAD_MB", "2048").strip()
@@ -3039,6 +3107,8 @@ def create_app() -> web.Application:
     # Atrium dialog history pagination — load older messages on scroll-up.
     app.router.add_get("/api/atrium/history", atrium_history)
     app.router.add_options("/api/atrium/history", atrium_options)
+    app.router.add_get("/api/atrium/events-history", atrium_events_history)
+    app.router.add_options("/api/atrium/events-history", atrium_options)
     # Workshop — Skills / Tools-plugins / Packages browser+editor for Atrium UI.
     from sonya.admin.workshop import register_routes as _register_workshop
     _register_workshop(app)

@@ -50,6 +50,27 @@ def test_bundled_avatar_assets_are_atrium_base_aware() -> None:
 
     assert "import.meta.env.BASE_URL" in source
     assert "atriumAsset(" in source
+    assert "merged.avatar_frames.every((u) => isBundledAvatarAsset(u))" in source
     assert "avatar_model_url: '/models/sonya.vrm'" not in source
     assert "'/avatar/sonya_closed.png'" not in source
     assert "desire: '/avatar/emotions/desire.png'" not in source
+
+
+def test_dialog_loads_initial_history_and_preserves_workspace_scope() -> None:
+    source = (ROOT / "packages/atrium/src/components/DialogPane.jsx").read_text(encoding="utf-8")
+
+    assert "loadedHistoryWorkspaces" in source
+    assert "if (!visibleMessages().length) loadOlderHistory()" in source
+    assert "payload.workspace_id ? { workspace_id: payload.workspace_id }" in source
+
+
+def test_reason_stream_has_scrollback_history_loader() -> None:
+    source = (ROOT / "packages/atrium/src/components/ReasonStream.jsx").read_text(encoding="utf-8")
+    ws = (ROOT / "packages/atrium/src/ws.js").read_text(encoding="utf-8")
+    store = (ROOT / "packages/atrium/src/store.js").read_text(encoding="utf-8")
+
+    assert "loadEventHistory" in source
+    assert "prependStreamEvents" in source
+    assert "onScroll={onScroll}" in source
+    assert "/api/atrium/events-history" in ws
+    assert "export function prependStreamEvents" in store

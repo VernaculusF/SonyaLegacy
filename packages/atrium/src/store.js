@@ -119,7 +119,7 @@ function loadSettings() {
     // change of the bundled frames — e.g. .png→.jpg — takes effect without
     // re-onboarding). Custom user paths (not /avatar/sonya_) are preserved.
     const isBundled = Array.isArray(merged.avatar_frames)
-      && merged.avatar_frames.every((u) => isBundledAvatarAsset(u) && String(u).includes('/sonya_'));
+      && merged.avatar_frames.every((u) => isBundledAvatarAsset(u));
     if (!Array.isArray(merged.avatar_frames) || merged.avatar_frames.length === 0 || isBundled) {
       merged.avatar_frames = [...DEFAULT_SETTINGS.avatar_frames];
     }
@@ -324,6 +324,18 @@ export function pushStreamEvent(ev) {
     if (ev.seq != null && cur.some((e) => e.seq === ev.seq)) return cur;
     const next = [...cur, ev];
     if (next.length > MAX_STREAM) next.splice(0, next.length - MAX_STREAM);
+    return next;
+  });
+}
+
+export function prependStreamEvents(events) {
+  if (!Array.isArray(events) || !events.length) return;
+  setFeed('stream_events', (cur) => {
+    const seen = new Set(cur.map((e) => e.seq));
+    const fresh = events.filter((e) => !seen.has(e.seq));
+    if (!fresh.length) return cur;
+    const next = [...fresh, ...cur];
+    if (next.length > MAX_STREAM * 4) next.splice(0, next.length - MAX_STREAM * 4);
     return next;
   });
 }

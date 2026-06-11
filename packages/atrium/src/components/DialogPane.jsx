@@ -106,6 +106,7 @@ export default function DialogPane(props) {
   const [dragOver, setDragOver] = createSignal(false);
   const [loadingHistory, setLoadingHistory] = createSignal(false);
   const [historyExhausted, setHistoryExhausted] = createSignal(false);
+  const loadedHistoryWorkspaces = new Set();
 
   // Filter messages by active workspace. Main chat shows messages without
   // workspace_id; project chats show only their messages.
@@ -155,6 +156,7 @@ export default function DialogPane(props) {
           sender: isHis ? 'him' : 'her',
           text: e.text || '',
           attachments: atts,
+          ...(payload.workspace_id ? { workspace_id: payload.workspace_id } : {}),
         };
       });
       prependDialogMessages(msgs);
@@ -187,6 +189,16 @@ export default function DialogPane(props) {
       if (scrollEl && _wasAtBottom) {
         scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
       }
+    });
+  });
+
+  createEffect(() => {
+    const wId = activeWorkspaceId();
+    setHistoryExhausted(false);
+    if (loadedHistoryWorkspaces.has(wId)) return;
+    loadedHistoryWorkspaces.add(wId);
+    queueMicrotask(() => {
+      if (!visibleMessages().length) loadOlderHistory();
     });
   });
 

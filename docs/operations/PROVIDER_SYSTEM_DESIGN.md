@@ -143,6 +143,38 @@ Routing is two-stage:
 Remove hard-coded purpose-to-model maps and permanent provider fallback chains.
 Keep emergency defaults only as explicit, visible recovery configuration.
 
+## Capability Classes
+
+Provider models are not one flat text list. Runtime selection must treat the
+following as separate capability classes:
+
+- `text_loop`: ordinary chat/reasoning/code subagent loop. Requires text input
+  and text output, healthy account offering, context fit, and `text_loop_ok=1`.
+- `vision_input`: image/video understanding used as Sonya's eyes. It may be
+  invoked as a small internal preprocessor that turns media into text for the
+  main Sonya; it must not become a separate persona.
+- `embedding`: vectorization/retrieval models. These are never eligible for
+  chat/subagent loops, even if free and large-context.
+- `rerank`: retrieval/ranking workers. Never chat-loop eligible.
+- `image_generation`: image output models. They are tool workers with artifact
+  outputs, not dialog models.
+- `audio_transcribe` / `audio_tts`: speech workers with audio-specific quotas
+  and payload contracts.
+- `safety_guard`: moderation/safety/guard models. These are policy workers,
+  not Sonya's thinking model.
+
+`modalities_json` describes input/output surface, but it is not enough by
+itself. Each provider model/offering also needs normalized capability tags and
+API mode metadata so Sonya can ask for "vision", "embedding", or "image
+generation" without accidentally selecting an ordinary text model or excluding
+a valid multimodal model.
+
+Current compatibility note: legacy `slot=vision` is being retired. Vision
+routing should first select an active account offering whose model supports
+visual input, then fall back to the old slot only while legacy keys still
+exist. The same pattern should be used for embeddings, rerankers, image
+generation, transcription, and TTS.
+
 ## Current Runtime
 
 The substrate v33 runtime now has first-class providers, accounts,

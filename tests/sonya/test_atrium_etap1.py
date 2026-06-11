@@ -40,6 +40,7 @@ def test_atrium_etap1_routes_registered(tmp_path: Path, monkeypatch) -> None:
     routes = {r.resource.canonical for r in app.router.routes()}
     assert "/api/atrium/dialog" in routes
     assert "/api/atrium/heartbeat" in routes
+    assert "/api/atrium/events-history" in routes
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +470,36 @@ def test_history_initial_page_returns_newest_dialog_events(tmp_path: Path, monke
     data = _json.loads(resp.text)
     assert [event["text"] for event in data["events"]] == ["history two", "history three"]
     assert data["has_more"] is True
+
+
+def test_events_history_returns_non_private_scrollback(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "events-history.db"))
+    from sonya.admin.server import atrium_events_history
+    from sonya.config import load_config
+
+    cfg = load_config()
+    sub = Substrate.open(tmp_path / "events-history.db")
+    try:
+        stream = ContinuityStream(sub)
+        stream.append(ContinuityEvent(kind="internal.thought", channel="mind", payload={"text": "hidden"}, private=True))
+        stream.append(ContinuityEvent(kind="internal.agent_step", channel="active", payload={"tool": "shell.run"}))
+        stream.append(ContinuityEvent(kind="outgoing.worker_log", channel="worker_log", payload={"text": "worker"}))
+    finally:
+        sub.close()
+
+    class _Req:
+        def __init__(self, app, query=None):
+            self.app = app
+            self.headers = {}
+            self.query = query or {}
+
+    app = {"config": cfg, "admin_password": ""}
+    resp = asyncio.run(atrium_events_history(_Req(app, query={"before_seq": "0", "limit": "10"})))
+    assert resp.status == 200
+    import json as _json
+    data = _json.loads(resp.text)
+    assert [event["kind"] for event in data["events"]] == ["internal.agent_step", "outgoing.worker_log"]
+    assert all(event["payload"].get("text") != "hidden" for event in data["events"])
 
 
 def test_dialog_resumes_waiting_choice_project(tmp_path: Path, monkeypatch) -> None:
