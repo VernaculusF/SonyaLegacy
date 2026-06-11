@@ -37,6 +37,11 @@ Completed and deployed foundations:
   partials, and default to a configurable 2 GB limit;
 - concurrent project runs keep workspace/subagent scope separate and refuse
   unavailable local or mounted-remote workspace paths before spawning;
+- project subagents can use direct `ssh://user@host/absolute/path` workspaces
+  for scoped read/search/code execution through provisioned SSH keys and
+  trusted host keys, without storing passwords in project metadata;
+- active Atrium sidebar now exposes exactly one main chat plus real
+  substrate-backed project chats; it can create the first local/SSH project;
 - real tool exceptions feed the existing capability-gap/self-repair proposal
   loop;
 - live hosted Atrium project-chat proof through API/runtime/history/memory.
@@ -68,10 +73,7 @@ Latest VPS proof:
 
 Still intentionally open:
 
-- browser/web-proxy model bridge remains parked as a separate future workstream.
-- direct remote execution transport is not implemented; remote project
-  workspaces are supported when mounted as accessible directories on Sonya's
-  execution host.
+- browser/web-proxy model bridge remains the next separate workstream.
 
 > Current execution order is maintained in
 > `docs/operations/PROVIDER_SUBAGENT_MEMORY_ROADMAP.md`. Provider registry,

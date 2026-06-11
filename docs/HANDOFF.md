@@ -31,9 +31,7 @@ Latest VPS proof:
 Current slice and authoritative order:
 
 1. continue remaining approved provider imports if Ivan supplies more keys;
-2. run legacy history/knowledge imports only when the production manifest shows
-   a missing source; resume the parked web-proxy model bridge only when
-   explicitly requested.
+2. continue the web-proxy model bridge workstream.
 
 Execution plan:
 `docs/superpowers/plans/2026-06-11-atrium-hosted-stack-completion.md`.
@@ -81,6 +79,15 @@ Completed in the latest slices:
   zero partial files;
 - concurrent project execution keeps separate workspace/subagent scope and
   blocks unavailable local or mounted-remote directories before spawning;
+- direct SSH project workspace transport is deployed for scoped subagent
+  read/list/search/code execution. It uses provisioned SSH config/keys and
+  preserves host-key verification; the VPS self-SSH proof stopped honestly at
+  `Host key verification failed`;
+- active Atrium sidebar now exposes exactly one main chat plus real
+  substrate-backed projects. Live API/bundle smoke proved safe SSH project
+  creation, rejected password-in-URI metadata, and removed fake chat creation;
+- production migration manifest re-run returned `legacy_sources=[]`, current
+  knowledge has zero duplicate files, and no legacy import remains to apply;
 - real tool exceptions now feed the existing capability-gap -> repair
   intention -> draft selfmod proposal loop;
 - live hosted Atrium project-chat proof passed on project `proj-a83c1c3657`:

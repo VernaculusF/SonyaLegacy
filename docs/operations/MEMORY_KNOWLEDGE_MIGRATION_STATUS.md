@@ -1,6 +1,6 @@
 # Memory and Knowledge Migration Status
 
-**Status:** Active audit; production semantic dedup applied after explicit approval
+**Status:** Completed audit; no remaining legacy import source on production
 **Last updated:** 2026-06-11
 
 ## Production Inventory
@@ -20,6 +20,12 @@ Read-only VPS inventory:
 No Telegram Desktop `result.json` import source was found in the repository
 checkout. The live `tg.session` is runtime authentication state, not an import
 source and must not be modified by migration work.
+
+The production manifest was re-run on 2026-06-11 after hosted-stack
+completion. It reported `legacy_sources=[]`; repository scans found no
+Telegram export or remaining legacy knowledge directories, and the 12 current
+knowledge files reported zero duplicate groups/files. No production import is
+required unless Ivan supplies a new explicit source later.
 
 ## Main Finding
 

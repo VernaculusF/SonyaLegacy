@@ -77,7 +77,9 @@
 - [x] prove semantic dedup apply and retrieval on a disposable backup copy
 - [x] obtain explicit approval before any production semantic dedup apply
 - [x] apply production semantic dedup with provenance merge and verify retrieval
-- run existing Telegram history and legacy knowledge migrations where needed
+- [x] re-run the production manifest and close legacy imports honestly:
+  `legacy_sources=[]`, no Telegram export exists, and migrated knowledge has
+  zero duplicate files
 - [x] prove that project work and summarized subagent outcomes enter the one shared
   memory without mixing UI chat histories
 
@@ -116,9 +118,11 @@ by that proof. Do not add Admin provider CRUD to Atrium.
   block unavailable local or mounted-remote workspace paths before execution
 - [x] route real tool exceptions into the existing capability-gap -> repair
   intention -> draft selfmod proposal loop
-- next: run legacy history/knowledge imports only where the production
-  manifest shows a missing source; browser/web-proxy provider bridge remains a
-  separate parked workstream
+- [x] add direct `ssh://user@host/absolute/path` project workspace transport
+  for scoped subagent read/search/code execution without storing SSH secrets
+- [x] make active Atrium UI expose one main chat and only real substrate-backed
+  project chats; first project creation now accepts local or SSH workspace path
+- next: browser/web-proxy provider bridge
 
 ## VPS Gate
 

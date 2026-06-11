@@ -83,6 +83,13 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
   partial files;
 - concurrent project execution keeps project/subagent workspace IDs isolated
   and blocks unavailable local or mounted-remote directories before spawning;
+- direct SSH project transport is deployed for
+  `ssh://user@host/absolute/path`: scoped subagents receive remote
+  read/list/search and code execution through existing SSH config/keys;
+- active Atrium UI now has exactly one main chat and substrate-backed project
+  chats only; first project creation accepts local or SSH workspace paths;
+- the production migration manifest now reports `legacy_sources=[]`; no
+  Telegram export or remaining legacy knowledge source exists to import;
 - real `internal.tool_error` exceptions now enter the existing
   capability-gap -> intention -> draft selfmod proposal repair loop;
 - latest VPS proof passed: project/Atrium runtime controls `14 passed`,
