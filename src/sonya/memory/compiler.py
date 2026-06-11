@@ -170,8 +170,6 @@ class MemoryCompiler:
             from sonya.project import ProjectStore, ProjectRunStore
             projects = ProjectStore(self._sub).list_all()
             for p in projects:
-                if p.status not in ("in_progress", "active"):
-                    continue
                 runs = ProjectRunStore(self._sub).list_by_project(p.project_id, limit=3)
                 recent_completed = [r for r in runs if r.status in ("completed", "failed")]
                 if not recent_completed:
@@ -179,9 +177,12 @@ class MemoryCompiler:
                 last = recent_completed[0]
                 summary = (
                     f"Project {p.title}: last run {last.kind} "
-                    f"{last.status} — {last.result[:100] if last.result else 'no result'}"
+                    f"{last.status} — {last.result[:500] if last.result else last.error[:500] or 'no result'}"
                 )
-                existing = {f.statement.strip().lower() for f in self._semantic.get_all(limit=1000)}
+                existing = {
+                    f.statement.strip().lower()
+                    for f in self._semantic.get_all(limit=1000, project_id=p.project_id)
+                }
                 if summary.lower() in existing:
                     continue
 
@@ -190,6 +191,8 @@ class MemoryCompiler:
                     statement=summary,
                     source_event_ids=(),
                     confidence=0.6,
+                    scope="project",
+                    project_id=p.project_id,
                 )
                 created += 1
                 if created >= 20:
