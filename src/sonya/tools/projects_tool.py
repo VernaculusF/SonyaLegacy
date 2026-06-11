@@ -192,6 +192,30 @@ class ProjectsTool:
                 },
             },
             {
+                "name": "projects.pause",
+                "description": "Pause project orchestration. Running provider requests may finish, but no harvest, retries, dependencies, or synthesis run until resume.",
+                "parameters": {
+                    "type": "object",
+                    "required": ["project_id", "run_id"],
+                    "properties": {
+                        "project_id": {"type": "string"},
+                        "run_id": {"type": "string"},
+                    },
+                },
+            },
+            {
+                "name": "projects.resume",
+                "description": "Resume a paused project executor run from its persisted steps.",
+                "parameters": {
+                    "type": "object",
+                    "required": ["project_id", "run_id"],
+                    "properties": {
+                        "project_id": {"type": "string"},
+                        "run_id": {"type": "string"},
+                    },
+                },
+            },
+            {
                 "name": "projects.pressure",
                 "description": (
                     "Read or update evolution pressure dimensions. "
@@ -237,6 +261,10 @@ class ProjectsTool:
             return await self._harvest_project(args)
         if name == "projects.cancel":
             return self._cancel_project(args)
+        if name == "projects.pause":
+            return self._control_project(args, action="pause")
+        if name == "projects.resume":
+            return self._control_project(args, action="resume")
         if name == "projects.pressure":
             return self._pressure(args)
         return f"[unknown tool: {name}]"
@@ -616,6 +644,42 @@ class ProjectsTool:
             outcome="cancelled",
         )
         return f"[OK] project run cancelled: cancelled={cancelled}"
+
+    def _control_project(self, args: dict, *, action: str) -> str:
+        from sonya.project import ExecutionTraceStore, ProjectRunStore
+        from sonya.project.model import RunNotFoundError
+
+        pid = str(args.get("project_id", "")).strip()
+        run_id = str(args.get("run_id", "")).strip()
+        if not pid or not run_id:
+            return f"[ERROR] projects.{action}: project_id and run_id are required"
+        store = ProjectRunStore(self._sub)
+        try:
+            run = store.get(run_id)
+        except RunNotFoundError:
+            return f"[ERROR] projects.{action}: run {run_id} not found"
+        if run.project_id != pid:
+            return f"[ERROR] projects.{action}: run {run_id} does not belong to project {pid}"
+        if action == "pause":
+            if run.status not in ("pending", "running"):
+                return f"[BLOCKED] projects.pause: run status is {run.status}"
+            status = "paused"
+            content = "project orchestration paused; running provider requests may finish"
+        else:
+            if run.status != "paused":
+                return f"[BLOCKED] projects.resume: run status is {run.status}"
+            status = "running"
+            content = "project orchestration resumed"
+        store.update(run_id, status=status)
+        self._append_run_trace(
+            ExecutionTraceStore(self._sub),
+            run_id,
+            pid,
+            "checkpoint",
+            content,
+            outcome=status,
+        )
+        return f"[OK] project run {status}: {run_id}"
 
     async def _plan_project(
         self,

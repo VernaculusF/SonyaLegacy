@@ -38,6 +38,11 @@ Completed in the latest slices:
   the raw planner graph, schedules only dependency-ready disposable workers,
   propagates dependency failures, and synthesizes the final result while
   preserving raw worker outcomes; VPS regression proof passed (`29 passed`);
+- runtime project/subagent outcomes now update measured model scorecards;
+  model-specific routing can reactivate accounts after bounded cooldown expiry;
+- persisted project pause/resume stops orchestration and is exposed through the
+  Atrium project runtime without pretending an in-flight provider request is
+  suspended;
 - Admin Providers now renders provider pools, accounts, models, quotas,
   observations, protected secret rotation, and a collapsed legacy-key view;
 - provider model identity is now provider-scoped: live v33 databases repair

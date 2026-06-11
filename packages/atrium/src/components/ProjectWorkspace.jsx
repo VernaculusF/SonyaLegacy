@@ -9,6 +9,7 @@ import {
   fetchProjectRuns,
   fetchProjectTraces,
   cancelProjectRun,
+  controlProjectRun,
 } from '../store.js';
 
 const terminalStatuses = new Set(['done', 'failed', 'cancelled']);
@@ -55,7 +56,7 @@ export default function ProjectWorkspace(props) {
   });
 
   const executorRuns = () => runs().filter((run) => run.kind === 'project_executor');
-  const activeRuns = () => executorRuns().filter((run) => !['completed', 'failed'].includes(run.status));
+  const activeRuns = () => executorRuns().filter((run) => !['completed', 'failed', 'cancelled'].includes(run.status));
   const visibleRuns = () => (activeRuns().length ? activeRuns() : executorRuns()).slice(0, 8);
   const workerSteps = () => visibleRuns().flatMap((run) =>
     (run.steps || []).map((step) => ({ ...step, run_id: run.run_id }))
@@ -70,6 +71,9 @@ export default function ProjectWorkspace(props) {
     : trace.step_type === 'outcome' ? 'результат' : trace.step_type;
   const cancelRun = async (runId) => {
     if (await cancelProjectRun(projectId(), runId)) await refreshRuntime();
+  };
+  const controlRun = async (runId, action) => {
+    if (await controlProjectRun(projectId(), runId, action)) await refreshRuntime();
   };
 
   return (
@@ -126,7 +130,12 @@ export default function ProjectWorkspace(props) {
                           <Show when={run.progress?.failed}><span class="ws-error">{run.progress.failed} ошибок</span></Show>
                           <Show when={run.progress?.cancelled}><span>{run.progress.cancelled} отменено</span></Show>
                           <Show when={['pending', 'running'].includes(run.status)}>
+                            <button class="btn ghost" onClick={() => controlRun(run.run_id, 'pause')}>Pause</button>
                             <button class="btn ghost ws-cancel-run" onClick={() => cancelRun(run.run_id)}>Отменить</button>
+                          </Show>
+                          <Show when={run.status === 'paused'}>
+                            <button class="btn ghost" onClick={() => controlRun(run.run_id, 'resume')}>Resume</button>
+                            <button class="btn ghost ws-cancel-run" onClick={() => cancelRun(run.run_id)}>Cancel</button>
                           </Show>
                         </div>
                         <Show when={run.result || run.error}>

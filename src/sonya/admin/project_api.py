@@ -303,6 +303,48 @@ async def api_project_run_cancel(request: web.Request) -> web.Response:
         sub.close()
 
 
+async def api_project_run_control(request: web.Request) -> web.Response:
+    config = request.app["config"]
+    project_id = request.match_info["project_id"]
+    run_id = request.match_info["run_id"]
+    action = request.match_info["action"]
+    if action not in ("pause", "resume"):
+        return _cors(web.json_response({"error": "invalid action"}, status=400))
+    sub = _get_substrate_writable(config)
+    try:
+        from sonya.project import ExecutionTraceStore, ProjectRunStore
+        from sonya.project.model import RunNotFoundError
+
+        store = ProjectRunStore(sub)
+        try:
+            run = store.get(run_id)
+        except RunNotFoundError:
+            return _cors(web.json_response({"error": "run not found"}, status=404))
+        if run.project_id != project_id:
+            return _cors(web.json_response({"error": "run not found"}, status=404))
+        if action == "pause" and run.status not in ("pending", "running"):
+            return _cors(web.json_response({"error": f"cannot pause {run.status} run"}, status=409))
+        if action == "resume" and run.status != "paused":
+            return _cors(web.json_response({"error": f"cannot resume {run.status} run"}, status=409))
+        status = "paused" if action == "pause" else "running"
+        store.update(run_id, status=status)
+        traces = ExecutionTraceStore(sub).list_by_run(run_id)
+        ExecutionTraceStore(sub).append(
+            run_id,
+            project_id,
+            step_seq=(max(trace.step_seq for trace in traces) + 1) if traces else 0,
+            step_type="checkpoint",
+            content=(
+                "project orchestration paused; running provider requests may finish"
+                if action == "pause" else "project orchestration resumed"
+            ),
+            outcome=status,
+        )
+        return _cors(web.json_response({"status": status, "run_id": run_id}))
+    finally:
+        sub.close()
+
+
 async def api_project_check_policy(request: web.Request) -> web.Response:
     config = request.app["config"]
     project_id = request.match_info["project_id"]
@@ -418,6 +460,7 @@ def register_project_routes(app: web.Application) -> None:
     app.router.add_delete("/api/projects/{project_id}", api_project_delete)
     app.router.add_get("/api/projects/{project_id}/runs", api_project_runs)
     app.router.add_post("/api/projects/{project_id}/runs/{run_id}/cancel", api_project_run_cancel)
+    app.router.add_post("/api/projects/{project_id}/runs/{run_id}/{action}", api_project_run_control)
     app.router.add_get("/api/projects/{project_id}/traces", api_project_traces)
     app.router.add_post("/api/projects/{project_id}/check-policy", api_project_check_policy)
     app.router.add_get("/api/evolution-pressure", api_evolution_pressure)

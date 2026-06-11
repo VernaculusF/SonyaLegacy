@@ -49,6 +49,10 @@
   graph is persisted with raw planner output, only ready internal workers are
   scheduled, dependency failures propagate, and successful graphs synthesize a
   final result without discarding worker outcomes;
+- runtime worker outcomes feed measured model scorecards, and bounded
+  model-specific account cooldowns reactivate after expiry;
+- project executor pause/resume is persisted and exposed in Atrium; pause stops
+  harvest, retries, dependency scheduling, and synthesis until resume;
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;

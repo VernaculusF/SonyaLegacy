@@ -525,6 +525,17 @@ export async function cancelProjectRun(projectId, runId) {
   } catch { return false; }
 }
 
+export async function controlProjectRun(projectId, runId, action) {
+  if (!['pause', 'resume'].includes(action)) return false;
+  try {
+    const res = await fetch(_apiBase() + '/api/projects/' + projectId + '/runs/' + runId + '/' + action, {
+      method: 'POST',
+      headers: _apiHeaders(),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 export async function createProject(title, description, workspacePath) {
   try {
     const res = await fetch(_apiBase() + '/api/projects', {

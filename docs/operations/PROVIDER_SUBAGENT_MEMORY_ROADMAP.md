@@ -55,13 +55,13 @@
 - [x] support many accounts per provider without embedding credentials in Git,
   docs, prompts, argv, or continuity
 - [x] add periodic discovery/health/quota refresh with last-good-cache behavior
-- [ ] feed measured project/subagent outcomes into model scorecards
-- [ ] add bounded first-class provider-account cooldown handling
+- [x] feed measured project/subagent outcomes into model scorecards
+- [x] repair bounded model-specific account cooldown reactivation
 
 ### 3. Pause, Approval, and Resume
 
 - [x] honest cancellation persists across processes
-- [ ] pause orchestration without pretending an in-flight request is suspended
+- [x] pause orchestration without pretending an in-flight request is suspended
 - [ ] persist approval requests and decisions
 - [ ] expose project controls in Atrium, not Admin
 
