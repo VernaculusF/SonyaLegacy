@@ -95,8 +95,9 @@ by that proof. Do not add Admin provider CRUD to Atrium.
   verdicts from project consent to workspace allowed
 - [x] prove full-system-access does not automatically grant subagents wider
   filesystem scope
-- next: make the Atrium UX show this policy state clearly without turning
-  Atrium into Admin
+- [x] make the Atrium project workspace show full-system-access state, verdict
+  source, and a project-scoped toggle without turning Atrium into Admin
+- next: CSP/auth/WS security hardening and multi-workspace execution
 
 ## VPS Gate
 

@@ -24,6 +24,8 @@ Completed and deployed foundations:
   `projects.check_policy` and `/api/projects/{id}/check-policy`, reports its
   verdict source, changes backend verdicts from consent to allowed when
   enabled, and still keeps subagent filesystem scope project-bound;
+- Atrium project workspace now shows full-system-access state, `shell_run`
+  verdict, verdict source, and a project-scoped toggle;
 - live hosted Atrium project-chat proof through API/runtime/history/memory.
 
 Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
@@ -36,6 +38,8 @@ Latest VPS proof:
   post-checks;
 - full-system-access policy: `15 passed`, compileall clean, live temp-project
   proof passed, services active, recent error journal empty;
+- full-system-access Atrium UX: focused static/API suite passed, authenticated
+  live API smoke returned `consent -> allowed` after toggle;
 - live proof project `proj-a83c1c3657` passed: isolated project history,
   main-history separation, executor progress/traces, dependency steps,
   pause/resume, approval deny, completion, and shared-memory recall;
@@ -43,8 +47,8 @@ Latest VPS proof:
 
 Still intentionally open:
 
-- Atrium needs clearer UX for full-system-access state and remaining security
-  hardening, especially CSP/auth/WS discipline;
+- Atrium still needs remaining security hardening, especially CSP/auth/WS
+  discipline;
 - browser/web-proxy model bridge remains parked as a separate future workstream.
 
 > Current execution order is maintained in
