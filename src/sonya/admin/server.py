@@ -2637,6 +2637,17 @@ async def atrium_dialog(request: web.Request) -> web.Response:
             principal_id="ivan",
             payload=payload,
         ))
+        try:
+            from sonya.state.situational import record_ivan_activity
+
+            record_ivan_activity(
+                sub,
+                source="incoming.atrium_dialog",
+                source_ref=str(ev.seq or ""),
+                stream=stream,
+            )
+        except Exception:
+            pass
         # Wake the core: request an active session so she replies promptly.
         stream.append(ContinuityEvent(
             kind="internal.active_session_requested_external",

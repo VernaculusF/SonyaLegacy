@@ -26,6 +26,17 @@ _CREDENTIAL_MARKERS = (
     "passwd",
 )
 
+_IVAN_UNAVAILABLE_MARKERS = (
+    "спит",
+    "сплю",
+    "asleep",
+    "sleeping",
+    "занят",
+    "busy",
+    "не беспокоить",
+    "dnd",
+)
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -172,6 +183,55 @@ class SituationalStore:
         return cur.rowcount > 0
 
 
+def record_ivan_activity(
+    substrate: Substrate,
+    *,
+    source: str,
+    source_ref: str = "",
+    stream: object | None = None,
+) -> SituationalAssertion | None:
+    """Use fresh Ivan activity to invalidate stale asleep/busy status."""
+
+    store = SituationalStore(substrate)
+    current = store.get_current(subject="ivan", predicate="ivan_status")
+    if current is None:
+        return None
+    if not any(marker in current.value.lower() for marker in _IVAN_UNAVAILABLE_MARKERS):
+        return None
+    updated = store.assert_fact(
+        subject="ivan",
+        predicate="ivan_status",
+        value="active",
+        source=source,
+        source_ref=source_ref,
+        confidence=0.95,
+        metadata={
+            "reason": "incoming_ivan_message_invalidated_unavailable_status",
+            "previous_assertion_id": current.assertion_id,
+            "previous_value": current.value,
+        },
+    )
+    if stream is not None:
+        try:
+            from sonya.state.continuity_stream import ContinuityEvent
+
+            stream.append(ContinuityEvent(
+                kind="world_state.ivan_activity_invalidated_status",
+                principal_id="ivan",
+                payload={
+                    "previous_assertion_id": current.assertion_id,
+                    "previous_value": current.value,
+                    "new_assertion_id": updated.assertion_id,
+                    "new_value": updated.value,
+                    "source": source,
+                    "source_ref": source_ref,
+                },
+            ))
+        except Exception:
+            pass
+    return updated
+
+
 def _row_to_assertion(row: Any) -> SituationalAssertion:
     return SituationalAssertion(
         assertion_id=row[0],
@@ -194,4 +254,5 @@ __all__ = [
     "SituationalAssertion",
     "SituationalStore",
     "is_credential_shaped_key",
+    "record_ivan_activity",
 ]

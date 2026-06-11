@@ -645,8 +645,10 @@ def _build_incoming_handler(
 
     async def _on_incoming(msg: ChannelMessage) -> OutgoingMessage | None:
         from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
+        from sonya.state.situational import record_ivan_activity
 
-        ContinuityStream(substrate).append(ContinuityEvent(
+        stream = ContinuityStream(substrate)
+        incoming_event = stream.append(ContinuityEvent(
             kind=f"incoming.{msg.channel}_message",
             payload={
                 "channel": msg.channel,
@@ -657,6 +659,12 @@ def _build_incoming_handler(
                 "is_private": msg.is_private,
             },
         ))
+        record_ivan_activity(
+            substrate,
+            source=f"incoming.{msg.channel}_message",
+            source_ref=str(incoming_event.seq or ""),
+            stream=stream,
+        )
 
         if not msg.text:
             return None

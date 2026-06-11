@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from sonya.state.environment import EnvironmentStore
-from sonya.state.situational import SituationalStore
+from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
+from sonya.state.situational import SituationalStore, record_ivan_activity
 from sonya.state.substrate import Substrate
 
 
@@ -77,6 +78,43 @@ def test_runtime_state_is_not_in_environment_view(tmp_path: Path) -> None:
         RuntimeStateStore(sub).set("atrium_last_seen", "2026-06-12T00:00:00+00:00")
         assert EnvironmentStore(sub).get("atrium_last_seen") is None
         assert "atrium_last_seen" not in EnvironmentStore(sub).list_all()
+    finally:
+        sub.close()
+
+
+def test_incoming_ivan_activity_invalidates_sleep_status(tmp_path: Path) -> None:
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        EnvironmentStore(sub).set("ivan_status", "спит", source="ivan_statement")
+        stream = ContinuityStream(sub)
+        incoming = stream.append(ContinuityEvent(
+            kind="incoming.atrium_dialog",
+            principal_id="ivan",
+            payload={"text": "я не сплю"},
+        ))
+        updated = record_ivan_activity(
+            sub,
+            source="incoming.atrium_dialog",
+            source_ref=str(incoming.seq),
+            stream=stream,
+        )
+        assert updated is not None
+        current = EnvironmentStore(sub).get("ivan_status")
+        assert current["value"] == "active"
+        assert current["source"] == "incoming.atrium_dialog"
+        events = list(stream.read_since(0))
+        assert any(e.kind == "world_state.ivan_activity_invalidated_status" for e in events)
+    finally:
+        sub.close()
+
+
+def test_incoming_ivan_activity_does_not_overwrite_specific_active_status(tmp_path: Path) -> None:
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        EnvironmentStore(sub).set("ivan_status", "работает", source="ivan_statement")
+        updated = record_ivan_activity(sub, source="incoming.atrium_dialog")
+        assert updated is None
+        assert EnvironmentStore(sub).get("ivan_status")["value"] == "работает"
     finally:
         sub.close()
 
