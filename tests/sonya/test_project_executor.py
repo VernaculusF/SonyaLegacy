@@ -52,6 +52,18 @@ class _PlanningProvider:
         return "[DONE] worker result"
 
 
+class _WorkspaceReadingProvider:
+    async def complete_text(self, messages, **kwargs):
+        if any("[OBS: filesystem.read]" in str(message.get("content", "")) for message in messages):
+            observation = next(
+                str(message["content"])
+                for message in reversed(messages)
+                if "[OBS: filesystem.read]" in str(message.get("content", ""))
+            )
+            return f"[DONE] {observation}"
+        return "[TOOL: filesystem.read] marker.txt"
+
+
 @pytest.mark.asyncio
 async def test_project_execute_auto_plan_schedules_dependencies_and_synthesizes(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "project-planned-executor.db")
@@ -246,6 +258,38 @@ async def test_project_execute_spawns_subagent_and_harvests_result(tmp_path) -> 
         assert [t.step_type for t in traces] == ["task", "action", "outcome"]
         assert traces[1].tool_name == "subagent.spawn"
         assert traces[2].outcome == "done"
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
+async def test_project_subagent_can_read_its_local_workspace(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-workspace-read.db")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "marker.txt").write_text("workspace-specific-content", encoding="utf-8")
+    try:
+        project = ProjectStore(sub).create(
+            "Workspace read proof",
+            workspace_path=str(workspace),
+            policy={"subagent_spawn": "allowed"},
+        )
+        tool = ProjectsTool(sub, subagent_provider=_WorkspaceReadingProvider())
+
+        started = await tool.execute({
+            "name": "projects.execute",
+            "arguments": {"project_id": project.project_id, "task": "read marker"},
+        })
+        assert "[OK]" in started
+        await asyncio.sleep(0.05)
+        await tool.execute({
+            "name": "projects.harvest",
+            "arguments": {"project_id": project.project_id},
+        })
+
+        run = ProjectRunStore(sub).list_by_project(project.project_id, kind="project_executor", limit=1)[0]
+        assert run.status == "completed"
+        assert "workspace-specific-content" in run.result
     finally:
         sub.close()
 

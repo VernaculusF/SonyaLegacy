@@ -106,23 +106,27 @@ class SubagentRunner:
             "memory.recall": None,  # will be set below
         }
         
-        sandbox_dir: str | None = None
+        code_tool: Any = CodeTool(timeout_seconds=30)
         if task.workspace_id and task.workspace_id != "main":
             try:
                 from sonya.project import ProjectStore
-                from sonya.tools.filesystem import FilesystemTool
+                from sonya.tools.workspace_transport import resolve_workspace_tools
+
                 p = ProjectStore(self._sub).get(task.workspace_id)
                 if p.workspace_path:
-                    sandbox_dir = p.workspace_path
-                    fs_tool = FilesystemTool(project_root=p.workspace_path)
+                    fs_tool, code_tool, _workspace_detail = resolve_workspace_tools(p.workspace_path)
                     tools["filesystem.list"] = fs_tool.list_dir
                     tools["filesystem.read"] = fs_tool.read_file
                     tools["filesystem.search"] = fs_tool.search
                     # Write tools remain restricted, but subagents can read project files
-            except Exception:
-                pass
+            except Exception as err:
+                task.status = "failed"
+                task.result = f"[ERROR] project workspace unavailable: {type(err).__name__}: {err}"
+                task.completed_at = _utc_now_iso()
+                self._save_task(task)
+                return task.result
                 
-        tools["code.exec"] = CodeTool(timeout_seconds=30, sandbox_dir=sandbox_dir).exec_python
+        tools["code.exec"] = code_tool.exec_python
 
         # Wire memory.recall if available
         try:

@@ -195,6 +195,36 @@ class FilesystemTool:
             return f"[ERROR] Not a file: {path}"
         return p.read_text(encoding="utf-8", errors="replace")[:10000]
 
+    def read_file(self, path: str) -> str:
+        return self.read(path)
+
+    def search(self, query: str) -> str:
+        query = (query or "").strip()
+        if not query:
+            return "[ERROR] filesystem.search needs a query"
+        needle = query.lower()
+        lines: list[str] = []
+        for path in self._project_root.rglob("*"):
+            if len(lines) >= 100:
+                break
+            if not path.is_file() or any(part in FORBIDDEN_NAMES for part in path.parts):
+                continue
+            if any(part in {"node_modules", "__pycache__"} for part in path.parts):
+                continue
+            try:
+                relative = path.relative_to(self._project_root).as_posix()
+                for number, line in enumerate(
+                    path.read_text(encoding="utf-8", errors="replace").splitlines(),
+                    start=1,
+                ):
+                    if needle in line.lower():
+                        lines.append(f"{relative}:{number}: {line[:300]}")
+                        if len(lines) >= 100:
+                            break
+            except (OSError, UnicodeError):
+                continue
+        return "\n".join(lines)
+
     def write(self, path: str, content: str) -> str:
         # Defense in depth: reject paths with newline / control / quote chars.
         # Even if upstream parser fails, we don't want to create a literal
