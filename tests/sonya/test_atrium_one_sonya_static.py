@@ -85,3 +85,26 @@ def test_reason_stream_has_scrollback_history_loader() -> None:
     assert "onScroll={onScroll}" in source
     assert "/api/atrium/events-history" in ws
     assert "export function prependStreamEvents" in store
+
+
+def test_inner_stream_is_debug_drawer_not_main_right_pane() -> None:
+    app = (ROOT / "packages/atrium/src/App.jsx").read_text(encoding="utf-8")
+    header = (ROOT / "packages/atrium/src/components/Header.jsx").read_text(encoding="utf-8")
+    mind = (ROOT / "packages/atrium/src/components/MindPane.jsx").read_text(encoding="utf-8")
+    reason = (ROOT / "packages/atrium/src/components/ReasonStream.jsx").read_text(encoding="utf-8")
+
+    assert "showReasonStream" in app
+    assert "onOpenReasonStream" in header
+    assert "inner-stream-btn" in header
+    assert "inner_thoughts" not in mind
+    assert "private_count_last_hour" not in mind
+    assert "isProjectTraceNoise" in reason
+
+
+def test_atrium_dialog_surface_does_not_mirror_telegram_social_channel() -> None:
+    ws = (ROOT / "packages/atrium/src/ws.js").read_text(encoding="utf-8")
+    dialog = (ROOT / "packages/atrium/src/components/DialogPane.jsx").read_text(encoding="utf-8")
+
+    assert "function isAtriumDialogOutgoing" in ws
+    assert "if (isAtriumDialogOutgoing(kind, channel))" in ws
+    assert "e.kind === 'incoming.telegram_message'" not in dialog

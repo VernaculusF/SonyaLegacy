@@ -2,7 +2,7 @@
  * Updates via meta-messages every 60s + immediate on mind.* events.
  */
 import { For, Show } from 'solid-js';
-import { feed, settings, speaking, fetchEvolutionPressure } from '../store.js';
+import { feed, speaking } from '../store.js';
 
 const EXPRESSION_LABEL = {
   neutral: 'спокойна',
@@ -22,15 +22,6 @@ const EXPRESSION_LABEL = {
   calm: 'умиротворена',
   surprised: 'удивлена',
   joy: 'радуется',
-};
-
-const DRIVE_ORDER = ['curiosity', 'relational_focus', 'pending_debt', 'boredom'];
-
-const DRIVE_LABEL = {
-  curiosity: 'curiosity',
-  relational_focus: 'attachment', // human-readable label for Иван
-  pending_debt: 'pending_debt',
-  boredom: 'boredom',
 };
 
 function DriveBar(props) {
@@ -92,15 +83,6 @@ export default function MindPane() {
         </div>
       </div>
 
-      <div class="mind-section">
-        <h2>DRIVES</h2>
-        <div class="drives">
-          <For each={DRIVE_ORDER}>
-            {(key) => <DriveBar label={DRIVE_LABEL[key]} value={feed.drives[key] ?? 0} />}
-          </For>
-        </div>
-      </div>
-
       <Show when={feed.evolution_pressure.length > 0}>
         <div class="mind-section">
           <h2>EVOLUTION PRESSURE</h2>
@@ -127,27 +109,6 @@ export default function MindPane() {
         </div>
       </div>
 
-      <Show when={feed.inner_thoughts.length > 0 || (settings.show_private_count && feed.private_count_last_hour > 0)}>
-        <div class="stream-divider">inner stream</div>
-
-        <Show when={settings.show_private_count && feed.private_count_last_hour > 0}>
-          <div class="thought private">
-            <div class="age">last hour</div>
-            <div class="body">
-              ({feed.private_count_last_hour} private thoughts hidden)
-            </div>
-          </div>
-        </Show>
-
-        <For each={feed.inner_thoughts}>
-          {(t) => (
-            <div classList={{ thought: true, private: t.private }}>
-              <div class="age">{t.age}</div>
-              <div class="body">{t.text}</div>
-            </div>
-          )}
-        </For>
-      </Show>
     </aside>
   );
 }

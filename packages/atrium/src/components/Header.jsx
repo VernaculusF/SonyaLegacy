@@ -37,6 +37,9 @@ export default function Header(props) {
           ? 'соединение…'
           : 'нет связи'}
       </span>
+      <button class="inner-stream-btn" title="inner stream / reason logs" onClick={props.onOpenReasonStream}>
+        inner
+      </button>
       <button class="icon-btn" title="консоль (операторка, задачи, репозиторий)" onClick={props.onOpenConsole}>
         <svg viewBox="0 0 24 24" width="17" height="17" fill="none">
           <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.6" />

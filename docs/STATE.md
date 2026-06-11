@@ -9,6 +9,10 @@ Latest production deployment: verify on the VPS with `git rev-parse --short HEAD
 ## Current execution state - 2026-06-11
 
 - production and repository substrate are at schema v33;
+- Atrium UI cleanup is the current active slice: inner/reason stream belongs in
+  an explicit top-bar debug drawer, not in the main right pane; Telegram is a
+  social/emergency channel and must not be mirrored into Atrium chat history or
+  live dialog bubbles;
 - provider registry, many accounts per provider, many model offerings per
   account, quota windows, observations, and encrypted secrets are implemented;
 - runtime provider/model/account selection is substrate-owned and no longer

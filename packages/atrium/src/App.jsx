@@ -20,6 +20,7 @@ export default function App() {
   const [showWorkshop, setShowWorkshop] = createSignal(false);
   const [showConsole, setShowConsole] = createSignal(false);
   const [showChats, setShowChats] = createSignal(false);
+  const [showReasonStream, setShowReasonStream] = createSignal(false);
 
   const isConfigured = () => Boolean(settings.vps_host && settings.atrium_token);
 
@@ -73,6 +74,7 @@ export default function App() {
           onOpenSettings={() => setShowSettings(true)}
           onOpenWorkshop={() => setShowWorkshop(true)}
           onOpenConsole={() => setShowConsole(true)}
+          onOpenReasonStream={() => setShowReasonStream(true)}
         />
 
         <ChatSidebar open={showChats} onClose={() => setShowChats(false)} />
@@ -91,7 +93,9 @@ export default function App() {
           </Show>
         </div>
 
-        <ReasonStream />
+        <Show when={showReasonStream()}>
+          <ReasonStream onClose={() => setShowReasonStream(false)} />
+        </Show>
 
         <Show when={showSettings()}>
           <Settings onClose={() => setShowSettings(false)} />

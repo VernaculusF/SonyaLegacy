@@ -18,6 +18,12 @@ const SRC_TAG_LABEL = {
   system: 'system',
 };
 
+const DRIVE_ORDER = ['curiosity', 'relational_focus', 'pending_debt', 'boredom'];
+
+function isProjectTraceNoise(ev) {
+  return ev.kind?.startsWith('subagent.') || ev.kind?.startsWith('project.');
+}
+
 export default function ReasonStream() {
   // Map of seq → reply input state
   const [activeReply, setActiveReply] = createSignal({ seq: null, text: '', sending: false, error: '' });
@@ -58,7 +64,7 @@ export default function ReasonStream() {
 
   // Filter visible events
   const visibleEvents = () =>
-    feed.stream_events.filter((e) => settings.streams_filters[e.src] !== false);
+    feed.stream_events.filter((e) => settings.streams_filters[e.src] !== false && !isProjectTraceNoise(e));
 
   function formatHistoryEvent(ev) {
     const payload = ev.payload || {};
@@ -75,6 +81,8 @@ export default function ReasonStream() {
       body = `provider=${payload.provider_id} status=${payload.status || ''}`.trim();
     } else if (payload.next_step) {
       body = `next: ${payload.next_step}`;
+    } else if (ev.kind?.startsWith('subagent.') || ev.kind?.startsWith('project.')) {
+      body = '';
     } else if (!ev.kind?.startsWith('internal.scheduler')) {
       try { body = JSON.stringify(payload).slice(0, 150); } catch { body = ''; }
     }
@@ -99,7 +107,7 @@ export default function ReasonStream() {
     setLoadingHistory(true);
     try {
       const r = await loadEventHistory(oldestSeq || 0, 80);
-      prependStreamEvents((r.events || []).map(formatHistoryEvent));
+      prependStreamEvents((r.events || []).map(formatHistoryEvent).filter((ev) => !isProjectTraceNoise(ev)));
       if (!r.has_more) setHistoryExhausted(true);
     } finally {
       setLoadingHistory(false);
@@ -139,10 +147,32 @@ export default function ReasonStream() {
             )}
           </For>
         </div>
+        <button class="streams-close" onClick={(e) => { e.stopPropagation(); props.onClose?.(); }}>×</button>
         <span class="toggle">⌃</span>
       </div>
 
       <div class="streams-body" onScroll={onScroll}>
+        <div class="inner-debug-summary">
+          <div class="inner-debug-title">inner diagnostics</div>
+          <div class="inner-debug-grid">
+            <div><span>private/hour</span><b>{feed.private_count_last_hour}</b></div>
+            <For each={DRIVE_ORDER}>
+              {(key) => <div><span>{key}</span><b>{(feed.drives[key] ?? 0).toFixed(2)}</b></div>}
+            </For>
+          </div>
+        </div>
+        <Show when={feed.inner_thoughts.length > 0}>
+          <div class="inner-thought-list">
+            <For each={feed.inner_thoughts.slice(0, 8)}>
+              {(t) => (
+                <div classList={{ 'inner-thought-row': true, private: t.private }}>
+                  <span>{t.age}</span>
+                  <p>{t.private ? '(private thought hidden)' : t.text}</p>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
         <Show when={loadingHistory()}>
           <div class="history-loader">loading older logs...</div>
         </Show>

@@ -6,7 +6,7 @@
  *   - render her replies + Ivan's messages with media inline, code blocks, and
  *     large text scrollable.
  */
-import { For, Show, createEffect, createSignal, createMemo } from 'solid-js';
+import { For, Show, createEffect, createSignal, createMemo, onCleanup } from 'solid-js';
 import { feed, pushDialogMessage, prependDialogMessages, activeWorkspaceId } from '../store.js';
 import { sendDialog, uploadAtriumFile, mediaUrl, loadDialogHistory } from '../ws.js';
 
@@ -55,12 +55,41 @@ function MessageBody(props) {
       {(s) =>
         s.type === 'code' ? (
           <pre class="bubble-code"><code>{s.value}</code></pre>
+        ) : props.reveal ? (
+          <TypewriterText text={s.value} />
         ) : (
           <span class="bubble-text">{s.value}</span>
         )
       }
     </For>
   );
+}
+
+function TypewriterText(props) {
+  const [shown, setShown] = createSignal('');
+  const [done, setDone] = createSignal(false);
+  let timer;
+
+  createEffect(() => {
+    const text = props.text || '';
+    clearInterval(timer);
+    setShown('');
+    setDone(false);
+    if (!text) return;
+    let i = 0;
+    const step = Math.max(1, Math.ceil(text.length / 180));
+    timer = setInterval(() => {
+      i = Math.min(text.length, i + step);
+      setShown(text.slice(0, i));
+      if (i >= text.length) {
+        setDone(true);
+        clearInterval(timer);
+      }
+    }, 16);
+  });
+
+  onCleanup(() => clearInterval(timer));
+  return <span classList={{ 'bubble-text': true, 'typing-reveal': !done() }}>{shown()}</span>;
 }
 
 function Attachment(props) {
@@ -139,7 +168,7 @@ export default function DialogPane(props) {
       const wId = activeWorkspaceId();
       const r = await loadDialogHistory(oldestSeq || 0, 50, wId !== 'main' ? wId : '');
       const msgs = (r.events || []).map((e) => {
-        const isHis = e.kind === 'incoming.atrium_dialog' || e.kind === 'incoming.telegram_message';
+        const isHis = e.kind === 'incoming.atrium_dialog';
         const payload = e.payload || {};
         const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
         if (!atts.length && payload.media_kind) {
@@ -185,6 +214,7 @@ export default function DialogPane(props) {
 
   createEffect(() => {
     visibleMessages().length;
+    feed.her_typing;
     queueMicrotask(() => {
       if (scrollEl && _wasAtBottom) {
         scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
@@ -334,7 +364,7 @@ export default function DialogPane(props) {
                 </div>
                 <div classList={{ bubble: true, [m.sender]: true }}>
                   <Show when={m.text}>
-                    <MessageBody text={m.text} />
+                    <MessageBody text={m.text} reveal={m.sender === 'her' && m.reveal} />
                   </Show>
                   <Show when={m.attachments && m.attachments.length}>
                     <div class="bubble-atts">

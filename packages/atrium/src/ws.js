@@ -58,10 +58,18 @@ function classifySrc(kind, payload) {
 
 function isHisIncoming(kind) {
   return (
-    kind?.startsWith('incoming.telegram_message') ||
     kind === 'incoming.atrium_dialog' ||
     kind === 'incoming.atrium_voice'
   );
+}
+
+function isAtriumDialogOutgoing(kind, channel) {
+  if (kind === 'outgoing.dialog' || kind === 'outgoing.response') return channel === '' || channel === 'dialog' || channel === 'atrium';
+  return false;
+}
+
+function isProjectTraceNoise(kind) {
+  return kind?.startsWith('subagent.') || kind?.startsWith('project.');
 }
 
 function relativeAge(ts) {
@@ -87,6 +95,18 @@ function cleanDialogText(t) {
   s = s.replace(/^(?:\s*\[[^\]\n]{1,80}\][^\n]*\n)+/, '');
   // Drop standalone bracketed markers anywhere on their own line.
   s = s.replace(/^\s*\[[^\]\n]{1,80}\]\s*$/gm, '');
+  // Some providers wrap ordinary replies in a single empty code fence. If the
+  // block is prose, show it as prose; real fenced code still renders as code.
+  const fenced = s.trim().match(/^```\s*\n?([\s\S]*?)\n?```\s*$/);
+  if (fenced && /[А-Яа-яЁё]/.test(fenced[1])) {
+    s = fenced[1];
+  }
+  // Strip accidental outer quotes around the whole assistant answer.
+  const quoted = s.trim().match(/^(["“«])([\s\S]*)(["”»])$/);
+  if (quoted) {
+    const pairs = { '"': '"', '“': '”', '«': '»' };
+    if (pairs[quoted[1]] === quoted[3]) s = quoted[2];
+  }
   // Collapse 3+ newlines.
   s = s.replace(/\n{3,}/g, '\n\n');
   return s.trim();
@@ -127,13 +147,13 @@ function handleEvent(msg) {
   // reply was lost in transit).
 
   // Dialog messages (her replies in TG/Atrium)
-  if (kind === 'outgoing.dialog' || kind === 'outgoing.telegram_initiative' || kind === 'outgoing.telegram_progress' || kind === 'outgoing.telegram_response' || kind === 'outgoing.response') {
+  if (isAtriumDialogOutgoing(kind, channel)) {
     if (text) {
       const cleaned = cleanDialogText(text);
       if (cleaned) {
         const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
         const wsId = payload.workspace_id || inheritWorkspaceContext();
-        pushDialogMessage({ seq, ts, sender: 'her', text: cleaned, attachments: atts, ...(wsId ? { workspace_id: wsId } : {}) });
+        pushDialogMessage({ seq, ts, sender: 'her', text: cleaned, attachments: atts, reveal: feed.synced, ...(wsId ? { workspace_id: wsId } : {}) });
         // Only flash/notify for live events, not during the initial backlog
         // replay (otherwise a cold start spams the avatar + notifications).
         if (feed.synced) {
@@ -199,9 +219,6 @@ function handleEvent(msg) {
   // Reason-stream — all events except pure dialog noise
   // Skip pure-dialog kinds because they're already in Dialog pane
   const skipFromStream = new Set([
-    'outgoing.telegram_initiative',
-    'outgoing.telegram_progress',
-    'outgoing.telegram_response',
     'outgoing.response',
   ]);
 
@@ -224,7 +241,7 @@ function handleEvent(msg) {
   }
   // Keep outgoing.dialog in stream so Иван sees it on the timeline too,
   // but with src=active so it's visually marked.
-  if (!skipFromStream.has(kind)) {
+  if (!skipFromStream.has(kind) && !isProjectTraceNoise(kind)) {
     let body = '';
     if (kind === 'internal.thought' && payload.text) {
       body = `"${payload.text}"`;

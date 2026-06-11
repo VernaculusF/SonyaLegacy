@@ -2679,11 +2679,7 @@ async def atrium_history(request: web.Request) -> web.Response:
         # Dialog-relevant kinds (mirrors ws.js handleEvent).
         kinds = (
             "incoming.atrium_dialog",
-            "incoming.telegram_message",
             "outgoing.dialog",
-            "outgoing.telegram_response",
-            "outgoing.telegram_initiative",
-            "outgoing.telegram_progress",
             "outgoing.response",
         )
         ph = ",".join("?" for _ in kinds)
