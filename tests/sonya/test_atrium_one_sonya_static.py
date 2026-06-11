@@ -56,6 +56,15 @@ def test_bundled_avatar_assets_are_atrium_base_aware() -> None:
     assert "desire: '/avatar/emotions/desire.png'" not in source
 
 
+def test_avatar_falls_back_to_drawn_head_when_sprite_assets_fail() -> None:
+    source = (ROOT / "packages/atrium/src/components/SonyaAvatar.jsx").read_text(encoding="utf-8")
+
+    assert "frameLoadFailed" in source
+    assert "const hasFrames = () => frames().length > 0 && !frameLoadFailed()" in source
+    assert "onError={onFrameError}" in source
+    assert "fallback={<DrawnHead" in source
+
+
 def test_dialog_loads_initial_history_and_preserves_workspace_scope() -> None:
     source = (ROOT / "packages/atrium/src/components/DialogPane.jsx").read_text(encoding="utf-8")
 

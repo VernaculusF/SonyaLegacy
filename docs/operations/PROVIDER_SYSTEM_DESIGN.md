@@ -164,10 +164,13 @@ following as separate capability classes:
   not Sonya's thinking model.
 
 `modalities_json` describes input/output surface, but it is not enough by
-itself. Each provider model/offering also needs normalized capability tags and
-API mode metadata so Sonya can ask for "vision", "embedding", or "image
-generation" without accidentally selecting an ordinary text model or excluding
-a valid multimodal model.
+itself. Capability tags belong to the concrete model/offering, not to the
+provider as a whole. A provider is an API/account container; one provider can
+expose chat, vision, embeddings, image generation, rerankers, and broken/free
+offerings at the same time. Each provider model/offering therefore needs
+normalized capability tags and API mode metadata so Sonya can ask for
+"vision", "embedding", or "image generation" without accidentally selecting an
+ordinary text model or excluding a valid multimodal model.
 
 Current compatibility note: legacy `slot=vision` is being retired. Vision
 routing should first select an active account offering whose model supports

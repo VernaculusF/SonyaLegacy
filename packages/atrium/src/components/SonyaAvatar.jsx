@@ -38,6 +38,7 @@ const EXPR = {
 
 export default function SonyaAvatar(props) {
   const [eyeOpen, setEyeOpen] = createSignal(1); // 1 open → 0 closed
+  const [frameLoadFailed, setFrameLoadFailed] = createSignal(false);
   let blinkTimer;
   let rafBlink;
 
@@ -105,6 +106,11 @@ export default function SonyaAvatar(props) {
   // Stable list of [marker, url] so all emotion sprites can be preloaded and
   // stacked (crossfade via opacity, not src-swap which is instant).
   const emotionList = createMemo(() => Object.entries(emotions()));
+  createEffect(() => {
+    frames().join('|');
+    emotionList();
+    setFrameLoadFailed(false);
+  });
 
   // Current emotion marker that actually has a sprite.
   const activeEmotion = createMemo(() => {
@@ -150,7 +156,8 @@ export default function SonyaAvatar(props) {
 
   const frameIdx = createMemo(() => (frames().length ? mouthFrame() : -1));
 
-  const hasFrames = () => frames().length > 0;
+  const hasFrames = () => frames().length > 0 && !frameLoadFailed();
+  const onFrameError = () => setFrameLoadFailed(true);
 
   return (
     <div classList={{ 'sonya-2d': true, talking: speaking() }}>
@@ -162,7 +169,7 @@ export default function SonyaAvatar(props) {
           <div class="sonya-2d-frames">
             {/* PERSISTENT base layer (closed frame) — always visible so there's
                 never a transparent gap between frame swaps (kills flicker). */}
-            <img class="sonya-2d-frame base" src={frames()[0]} alt="Sonya" draggable={false} />
+            <img class="sonya-2d-frame base" src={frames()[0]} alt="Sonya" draggable={false} onError={onFrameError} />
             {/* mouth overlay frames (1..n-1) — fade in over the base. Hidden
                 while showing an emotion sprite. */}
             <For each={frames()}>
@@ -174,6 +181,7 @@ export default function SonyaAvatar(props) {
                     src={src}
                     alt="Sonya"
                     draggable={false}
+                    onError={onFrameError}
                   />
                 </Show>
               )}
@@ -189,6 +197,7 @@ export default function SonyaAvatar(props) {
                   src={src}
                   alt={marker}
                   draggable={false}
+                  onError={onFrameError}
                 />
               )}
             </For>

@@ -216,6 +216,9 @@ async def handle_atrium_app(request: web.Request) -> web.Response:
         raise web.HTTPNotFound()
     if candidate.is_file():
         return web.FileResponse(candidate)
+    first_segment = relative.split("/", 1)[0] if relative else ""
+    if first_segment in {"assets", "avatar", "models"} or Path(relative).suffix:
+        raise web.HTTPNotFound()
     return web.FileResponse(index)
 
 

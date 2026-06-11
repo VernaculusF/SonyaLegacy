@@ -15,6 +15,9 @@ async def test_hosted_atrium_serves_index_assets_and_spa_fallback(
     assets.mkdir(parents=True)
     (dist / "index.html").write_text("<html>atrium-hosted</html>", encoding="utf-8")
     (assets / "app.js").write_text("console.log('atrium')", encoding="utf-8")
+    avatar = dist / "avatar"
+    avatar.mkdir()
+    (avatar / "sonya_closed.png").write_bytes(b"\x89PNG\r\n\x1a\natrium-avatar")
 
     monkeypatch.setattr(server, "_ATRIUM_DIST_DIR", dist)
     monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "atrium-hosted.db"))
@@ -24,14 +27,19 @@ async def test_hosted_atrium_serves_index_assets_and_spa_fallback(
     try:
         index = await client.get("/atrium/")
         asset = await client.get("/atrium/assets/app.js")
+        avatar_asset = await client.get("/atrium/avatar/sonya_closed.png")
         fallback = await client.get("/atrium/projects/proj-1")
+        missing_asset = await client.get("/atrium/avatar/missing.png")
 
         assert index.status == 200
         assert "atrium-hosted" in await index.text()
         assert asset.status == 200
         assert "console.log" in await asset.text()
+        assert avatar_asset.status == 200
+        assert await avatar_asset.read() == b"\x89PNG\r\n\x1a\natrium-avatar"
         assert fallback.status == 200
         assert "atrium-hosted" in await fallback.text()
+        assert missing_asset.status == 404
     finally:
         await client.close()
 

@@ -62,10 +62,10 @@ Catalog rows must keep model category separate from provider/account identity:
 - safety/guard models are policy workers.
 
 OpenRouter, Google, NVIDIA, CodexSale, and browser bridges can expose multiple
-categories under one provider account. Admin and Sonya-facing management should
-therefore display provider -> accounts -> offerings grouped by capability
-category, with `text_loop_ok` only applying to the ordinary dialog/subagent
-loop.
+model/offering categories under one provider account. Do not mark a provider
+globally as "vision", "embedding", or "image"; mark the concrete model/offering
+and then let Admin group provider -> accounts -> offerings by those tags.
+`text_loop_ok` only applies to the ordinary dialog/subagent loop.
 
 ## Dynamic Limit Notes
 
