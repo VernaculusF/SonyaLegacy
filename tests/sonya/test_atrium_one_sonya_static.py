@@ -43,3 +43,13 @@ def test_chat_selector_is_an_overlay_not_a_permanent_main_column() -> None:
     assert "'chat-sidebar': true, open: props.open()" in source
     assert ".chat-sidebar.open" in styles
     assert "position: fixed" in styles
+
+
+def test_bundled_avatar_assets_are_atrium_base_aware() -> None:
+    source = (ROOT / "packages/atrium/src/store.js").read_text(encoding="utf-8")
+
+    assert "import.meta.env.BASE_URL" in source
+    assert "atriumAsset(" in source
+    assert "avatar_model_url: '/models/sonya.vrm'" not in source
+    assert "'/avatar/sonya_closed.png'" not in source
+    assert "desire: '/avatar/emotions/desire.png'" not in source

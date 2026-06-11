@@ -13,6 +13,20 @@ import { createSignal } from 'solid-js';
 
 const SETTINGS_KEY = 'atrium.settings.v1';
 
+const ASSET_BASE = import.meta.env.BASE_URL || '/';
+function atriumAsset(path) {
+  const base = ASSET_BASE.endsWith('/') ? ASSET_BASE : `${ASSET_BASE}/`;
+  return `${base}${String(path).replace(/^\/+/, '')}`;
+}
+
+function isBundledAvatarAsset(url) {
+  if (typeof url !== 'string') return false;
+  return url.startsWith('/avatar/')
+    || url.startsWith('/models/sonya.vrm')
+    || url.startsWith(atriumAsset('avatar/'))
+    || url.startsWith(atriumAsset('models/sonya.vrm'));
+}
+
 const DEFAULT_SETTINGS = {
   vps_host: typeof window !== 'undefined'
     ? window.location.host
@@ -37,7 +51,7 @@ const DEFAULT_SETTINGS = {
   full_system_access: false, // Full-System Access toggle
   // Avatar VRM model URL. Default served from public/models by Vite/Tauri.
   // Empty → fall back to the static SVG silhouette.
-  avatar_model_url: '/models/sonya.vrm',
+  avatar_model_url: atriumAsset('models/sonya.vrm'),
   // Optional GLB/glTF room scene for the room view. Empty → procedural room.
   room_model_url: '',
   // Avatar render mode: '2d' (PNGtuber-style, default — clean, no rig) | '3d' (VRM).
@@ -46,27 +60,27 @@ const DEFAULT_SETTINGS = {
   // 4 AI-generated 2B frames (Ivan's, фон вырезан, 1600×2400 RGBA, выровнены).
   // closed → half → open → wide. wide (последний) — ОЧЕНЬ редкий (только пики).
   avatar_frames: [
-    '/avatar/sonya_closed.png',
-    '/avatar/sonya_half.png',
-    '/avatar/sonya_open.png',
-    '/avatar/sonya_wide.png',
+    atriumAsset('avatar/sonya_closed.png'),
+    atriumAsset('avatar/sonya_half.png'),
+    atriumAsset('avatar/sonya_open.png'),
+    atriumAsset('avatar/sonya_wide.png'),
   ],
   // Emotion sprites: marker → image URL. Shown when an expression is set and
   // she's idle (not talking). Talking falls back to avatar_frames so the mouth
   // still animates. Files live in public/avatar/emotions/.
   avatar_emotions: {
-    desire: '/avatar/emotions/desire.png',
-    desire_bite: '/avatar/emotions/desire_bite.png',
-    sad: '/avatar/emotions/sad.png',
-    sad_tears: '/avatar/emotions/sad_tears.png',
-    angry: '/avatar/emotions/angry.png',
-    shy: '/avatar/emotions/shy.png',
-    joy: '/avatar/emotions/joy.png',
-    tender: '/avatar/emotions/tender.png',
-    surprised: '/avatar/emotions/surprised.png',
-    thinking: '/avatar/emotions/thinking.png',
-    playful: '/avatar/emotions/playful.png',
-    calm: '/avatar/emotions/calm.png',
+    desire: atriumAsset('avatar/emotions/desire.png'),
+    desire_bite: atriumAsset('avatar/emotions/desire_bite.png'),
+    sad: atriumAsset('avatar/emotions/sad.png'),
+    sad_tears: atriumAsset('avatar/emotions/sad_tears.png'),
+    angry: atriumAsset('avatar/emotions/angry.png'),
+    shy: atriumAsset('avatar/emotions/shy.png'),
+    joy: atriumAsset('avatar/emotions/joy.png'),
+    tender: atriumAsset('avatar/emotions/tender.png'),
+    surprised: atriumAsset('avatar/emotions/surprised.png'),
+    thinking: atriumAsset('avatar/emotions/thinking.png'),
+    playful: atriumAsset('avatar/emotions/playful.png'),
+    calm: atriumAsset('avatar/emotions/calm.png'),
   },
 };
 
@@ -105,13 +119,20 @@ function loadSettings() {
     // change of the bundled frames — e.g. .png→.jpg — takes effect without
     // re-onboarding). Custom user paths (not /avatar/sonya_) are preserved.
     const isBundled = Array.isArray(merged.avatar_frames)
-      && merged.avatar_frames.every((u) => typeof u === 'string' && u.startsWith('/avatar/sonya_'));
+      && merged.avatar_frames.every((u) => isBundledAvatarAsset(u) && String(u).includes('/sonya_'));
     if (!Array.isArray(merged.avatar_frames) || merged.avatar_frames.length === 0 || isBundled) {
       merged.avatar_frames = [...DEFAULT_SETTINGS.avatar_frames];
     }
     // Always refresh bundled emotion map from default (new emotions ship over
     // time; user has no custom emotion config UI yet).
-    merged.avatar_emotions = { ...DEFAULT_SETTINGS.avatar_emotions, ...(parsed.avatar_emotions || {}) };
+    const customEmotions = Object.fromEntries(
+      Object.entries(parsed.avatar_emotions || {})
+        .filter(([, url]) => !isBundledAvatarAsset(url))
+    );
+    merged.avatar_emotions = { ...DEFAULT_SETTINGS.avatar_emotions, ...customEmotions };
+    if (isBundledAvatarAsset(merged.avatar_model_url)) {
+      merged.avatar_model_url = DEFAULT_SETTINGS.avatar_model_url;
+    }
     if (!merged.avatar_mode) merged.avatar_mode = DEFAULT_SETTINGS.avatar_mode;
     return merged;
   } catch {
