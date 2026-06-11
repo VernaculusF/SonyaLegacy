@@ -20,6 +20,7 @@ let ws = null;
 let reconnectTimer = null;
 let reconnectAttempt = 0;
 let intentionalClose = false;
+let connectionGeneration = 0;
 
 function classifySrc(kind, payload) {
   // Server already infers src in event JSON. Fall back to client-side
@@ -290,8 +291,26 @@ function handleMeta(msg) {
   applyMeta(msg);
 }
 
-export function connectWS() {
+async function requestWsTicket() {
+  const response = await fetch(`http://${settings.vps_host}/api/atrium/ws-ticket`, {
+    method: 'POST',
+    headers: {
+      'X-Atrium-Token': settings.atrium_token,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`WS ticket HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  if (!payload.ticket) {
+    throw new Error('WS ticket missing');
+  }
+  return payload.ticket;
+}
+
+export async function connectWS() {
   intentionalClose = false;
+  const generation = ++connectionGeneration;
   if (!settings.vps_host || !settings.atrium_token) {
     setFeed({ connected: false, last_error: 'connection settings missing' });
     return;
@@ -311,25 +330,41 @@ export function connectWS() {
   // (last_seq>0) resume exactly from where we left off.
   const sinceParam = `since_seq=${feed.last_seq}`;
   const backlogParam = feed.last_seq > 0 ? '' : '&backlog=150';
-  const url = `${proto}://${settings.vps_host}/atrium/feed?${sinceParam}${backlogParam}&token=${encodeURIComponent(settings.atrium_token)}`;
 
+  let ticket;
   try {
-    // Browser WebSocket can't set custom headers; the server reads token from
-    // the X-Atrium-Token header by default but we also accept ?token=... for
-    // browser-based clients. Backend update may be needed (T1.4).
-    ws = new WebSocket(url);
+    ticket = await requestWsTicket();
   } catch (err) {
+    if (generation !== connectionGeneration || intentionalClose) return;
     setFeed({ connected: false, last_error: String(err) });
     scheduleReconnect();
     return;
   }
+  if (intentionalClose || generation !== connectionGeneration) return;
 
-  ws.onopen = () => {
+  const url = `${proto}://${settings.vps_host}/atrium/feed?${sinceParam}${backlogParam}&ticket=${encodeURIComponent(ticket)}`;
+  let socket;
+  try {
+    socket = new WebSocket(url);
+  } catch (err) {
+    if (generation !== connectionGeneration || intentionalClose) return;
+    setFeed({ connected: false, last_error: String(err) });
+    scheduleReconnect();
+    return;
+  }
+  ws = socket;
+
+  socket.onopen = () => {
+    if (generation !== connectionGeneration) {
+      socket.close();
+      return;
+    }
     reconnectAttempt = 0;
     setFeed({ connected: true, reconnecting: false, last_error: '' });
   };
 
-  ws.onmessage = (e) => {
+  socket.onmessage = (e) => {
+    if (generation !== connectionGeneration) return;
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'event') {
@@ -348,11 +383,13 @@ export function connectWS() {
     }
   };
 
-  ws.onerror = () => {
+  socket.onerror = () => {
     // onclose will fire too, handle reconnect there.
   };
 
-  ws.onclose = (ev) => {
+  socket.onclose = () => {
+    if (generation !== connectionGeneration) return;
+    if (ws === socket) ws = null;
     setFeed({ connected: false });
     if (!intentionalClose) {
       scheduleReconnect();
@@ -373,6 +410,7 @@ function scheduleReconnect() {
 
 export function disconnectWS() {
   intentionalClose = true;
+  connectionGeneration += 1;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;

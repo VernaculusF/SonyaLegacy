@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -30,6 +32,7 @@ except ImportError:
 
 # Simple auth
 _ADMIN_PASSWORD = None  # Set via env SONYA_ADMIN_PASSWORD
+_ATRIUM_WS_TICKET_TTL_SECONDS = 45
 
 
 async def _json_body(request: web.Request) -> dict[str, Any]:
@@ -114,6 +117,36 @@ def _apply_security_headers(headers) -> None:
     headers.setdefault("Referrer-Policy", "no-referrer")
     headers.setdefault("X-Frame-Options", "DENY")
     headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+
+
+def _issue_atrium_ws_ticket(app: web.Application) -> dict[str, Any]:
+    ticket = secrets.token_urlsafe(32)
+    expires_at = time.time() + _ATRIUM_WS_TICKET_TTL_SECONDS
+    tickets = app["atrium_ws_tickets"]
+    tickets[ticket] = expires_at
+    _prune_atrium_ws_tickets(tickets)
+    return {
+        "ok": True,
+        "ticket": ticket,
+        "ttl_seconds": _ATRIUM_WS_TICKET_TTL_SECONDS,
+        "expires_at": datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
+    }
+
+
+def _prune_atrium_ws_tickets(tickets: dict[str, float]) -> None:
+    now = time.time()
+    expired = [ticket for ticket, expires_at in tickets.items() if expires_at <= now]
+    for ticket in expired:
+        tickets.pop(ticket, None)
+
+
+def _consume_atrium_ws_ticket(app: web.Application, ticket: str) -> bool:
+    if not ticket:
+        return False
+    tickets = app["atrium_ws_tickets"]
+    _prune_atrium_ws_tickets(tickets)
+    expires_at = tickets.pop(ticket, None)
+    return bool(expires_at and expires_at > time.time())
 
 
 @middleware
@@ -2206,6 +2239,15 @@ async def atrium_options(request: web.Request) -> web.Response:
     return _atrium_cors(web.Response(status=204))
 
 
+async def atrium_ws_ticket(request: web.Request) -> web.Response:
+    """Issue a short-lived one-time ticket for a browser WebSocket upgrade."""
+    admin_password = request.app.get("admin_password", "")
+    token = request.headers.get("X-Atrium-Token", "")
+    if admin_password and token != admin_password:
+        return _atrium_cors(web.json_response({"error": "auth"}, status=401))
+    return _atrium_cors(web.json_response(_issue_atrium_ws_ticket(request.app)))
+
+
 def _atrium_catchup_since(since_seq: int, latest: int, backlog: int) -> int:
     """Compute the effective starting seq for /atrium/feed catch-up.
 
@@ -2223,15 +2265,15 @@ def _atrium_catchup_since(since_seq: int, latest: int, backlog: int) -> int:
 async def atrium_feed_ws(request: web.Request) -> web.WebSocketResponse:
     """WebSocket feed of new continuity events for Atrium UI.
 
-    Auth: header `X-Atrium-Token` (preferred) ИЛИ query `?token=` (browser
-    fallback — WebSocket spec не позволяет custom headers from JS).
+    Auth: header `X-Atrium-Token` for non-browser clients or a short-lived,
+    one-time query `?ticket=` issued by `/api/atrium/ws-ticket`.
     Filters private=1 events at SQL layer.
     """
     config = request.app["config"]
     admin_password = request.app.get("admin_password", "")
-    # Auth — accept token from header или query (browser-friendly)
-    token = request.headers.get("X-Atrium-Token", "") or request.query.get("token", "")
-    if admin_password and token != admin_password:
+    token = request.headers.get("X-Atrium-Token", "")
+    ticket = request.query.get("ticket", "")
+    if admin_password and token != admin_password and not _consume_atrium_ws_ticket(request.app, ticket):
         return web.json_response({"error": "auth"}, status=401)
 
     # Query params
@@ -2870,6 +2912,7 @@ def create_app() -> web.Application:
     )
     app["config"] = config
     app["admin_password"] = admin_password
+    app["atrium_ws_tickets"] = {}
     app.router.add_get("/", handle_index)
     app.router.add_route("*", "/login", handle_login)
     app.router.add_get("/api/dashboard", api_dashboard)
@@ -2924,6 +2967,8 @@ def create_app() -> web.Application:
     app.router.add_post("/api/operator/task/{task_id}/action", api_operator_task_action)
     # Atrium (multichannel UI/output package — Этап 0)
     app.router.add_get("/atrium/feed", atrium_feed_ws)
+    app.router.add_post("/api/atrium/ws-ticket", atrium_ws_ticket)
+    app.router.add_options("/api/atrium/ws-ticket", atrium_options)
     app.router.add_post("/api/atrium/nudge", atrium_nudge)
     app.router.add_options("/api/atrium/nudge", atrium_options)
     # Atrium Этап 1 — dialog composer (T1.4) + connection heartbeat (T1.5)
