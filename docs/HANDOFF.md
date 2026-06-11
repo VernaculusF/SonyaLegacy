@@ -13,7 +13,7 @@ repaired, multi-worker project executor and Atrium runtime visibility deployed,
 and active
 `sonya` / `sonya-admin` services.
 
-Latest deployed commit: `10f65f1`.
+Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
 
 Latest VPS proof:
 

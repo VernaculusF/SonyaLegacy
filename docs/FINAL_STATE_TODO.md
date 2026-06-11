@@ -19,7 +19,7 @@ Completed and deployed foundations:
   provenance;
 - WAL-safe production backup and read-only memory manifest proof.
 
-Latest deployed commit: `10f65f1`.
+Latest deployed commit: verify on the VPS with `git rev-parse --short HEAD`.
 
 Latest VPS proof:
 

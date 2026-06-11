@@ -4,7 +4,7 @@
 **Type:** Current project state
 **Last updated:** 2026-06-11
 
-Latest production deployment: `10f65f1`.
+Latest production deployment: verify on the VPS with `git rev-parse --short HEAD`.
 
 ## Current execution state - 2026-06-11
 
