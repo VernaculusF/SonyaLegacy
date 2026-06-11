@@ -78,6 +78,8 @@ def test_reason_stream_has_scrollback_history_loader() -> None:
     ws = (ROOT / "packages/atrium/src/ws.js").read_text(encoding="utf-8")
     store = (ROOT / "packages/atrium/src/store.js").read_text(encoding="utf-8")
 
+    assert "onMount" in source
+    assert "loadOlderEvents();" in source
     assert "loadEventHistory" in source
     assert "prependStreamEvents" in source
     assert "onScroll={onScroll}" in source

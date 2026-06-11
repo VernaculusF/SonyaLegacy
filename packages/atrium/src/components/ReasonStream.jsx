@@ -4,7 +4,7 @@
  *
  * См. UX_SKETCH.md §5.5 для дизайна.
  */
-import { For, Show, createSignal } from 'solid-js';
+import { For, Show, createSignal, onMount } from 'solid-js';
 import { feed, settings, updateSetting, updateFilter, prependStreamEvents } from '../store.js';
 import { sendNudge, loadEventHistory } from '../ws.js';
 
@@ -109,6 +109,10 @@ export default function ReasonStream() {
   function onScroll(e) {
     if (e.currentTarget.scrollTop < 60) loadOlderEvents();
   }
+
+  onMount(() => {
+    loadOlderEvents();
+  });
 
   return (
     <section
