@@ -153,6 +153,11 @@ class ProjectsTool:
                         "model": {"type": "string", "description": "Optional model override"},
                         "max_steps": {"type": "integer", "description": "Max subagent steps", "default": 6},
                         "max_retries": {"type": "integer", "description": "Retries per failed subtask", "default": 1},
+                        "auto_plan": {
+                            "type": "boolean",
+                            "description": "Let Sonya decompose the task and schedule dependency-ready internal workers",
+                            "default": False,
+                        },
                     },
                 },
             },
@@ -227,9 +232,9 @@ class ProjectsTool:
         if name == "projects.trace":
             return self._trace(args)
         if name == "projects.execute":
-            return self._execute_project(args)
+            return await self._execute_project(args)
         if name == "projects.harvest":
-            return self._harvest_project(args)
+            return await self._harvest_project(args)
         if name == "projects.cancel":
             return self._cancel_project(args)
         if name == "projects.pressure":
@@ -334,7 +339,7 @@ class ProjectsTool:
         ProjectStore(self._sub).touch(pid)
         return f"Trace #{t.trace_id} recorded (seq={t.step_seq}, type={t.step_type})."
 
-    def _execute_project(self, args: dict) -> str:
+    async def _execute_project(self, args: dict) -> str:
         from sonya.project import ExecutionTraceStore, ProjectRunStore, ProjectStore
         from sonya.project.model import ProjectNotFoundError
 
@@ -368,51 +373,62 @@ class ProjectsTool:
         trace_store = ExecutionTraceStore(self._sub)
         run = run_store.create(pid, kind="project_executor", agent_type="subagent_orchestrator")
         run_store.start(run.run_id)
+        requested_provider = str(args.get("provider", "")).strip()
+        requested_model = str(args.get("model", "")).strip()
+        auto_plan = bool(args.get("auto_plan")) and bool(task) and not tasks_arg
+        plan_summary = ""
+        raw_plan = ""
+        planned_steps: list[dict[str, Any]] = []
+        if auto_plan:
+            raw_plan, plan_summary, planned_steps = await self._plan_project(
+                task,
+                provider=requested_provider,
+                model=requested_model,
+            )
+            if raw_plan:
+                trace_store.append(
+                    run.run_id,
+                    pid,
+                    step_seq=1,
+                    step_type="plan",
+                    content=raw_plan,
+                    outcome="accepted" if planned_steps else "fallback",
+                )
+        if not planned_steps:
+            planned_steps = [
+                {"id": f"step-{index}", "task": item, "depends_on": []}
+                for index, item in enumerate(tasks, start=1)
+            ]
         trace_store.append(
             run.run_id,
             pid,
             step_seq=0,
             step_type="task",
-            content="\n".join(f"{index + 1}. {item}" for index, item in enumerate(tasks)),
+            content=task or "\n".join(f"{index + 1}. {item}" for index, item in enumerate(tasks)),
             outcome="accepted",
         )
 
         run_steps: list[dict[str, Any]] = []
         max_retries = max(0, min(int(args.get("max_retries", 1) or 0), 3))
-        requested_provider = str(args.get("provider", "")).strip()
-        requested_model = str(args.get("model", "")).strip()
-        for index, subtask in enumerate(tasks, start=1):
-            spawned = self._spawn_project_subagent(
-                pid,
-                subtask,
-                provider=requested_provider,
-                model=requested_model,
-                max_steps=int(args.get("max_steps", 6) or 6),
-            )
+        max_steps = int(args.get("max_steps", 6) or 6)
+        for item in planned_steps:
             run_steps.append({
-                "subagent_id": spawned["subagent_id"],
-                "task": subtask,
-                "provider": spawned["provider"],
-                "model": spawned["model"],
-                "status": "running" if spawned["subagent_id"] else "failed",
+                "step_id": item["id"],
+                "depends_on": item["depends_on"],
+                "subagent_id": "",
+                "task": item["task"],
+                "root_task": task,
+                "provider": requested_provider,
+                "model": requested_model,
+                "status": "blocked",
                 "retry_count": 0,
                 "max_retries": max_retries,
-                "max_steps": int(args.get("max_steps", 6) or 6),
-                "attempts": [spawned["subagent_id"]] if spawned["subagent_id"] else [],
-                "result": "" if spawned["subagent_id"] else spawned["spawn_result"],
+                "max_steps": max_steps,
+                "attempts": [],
+                "result": "",
+                "planned": auto_plan,
             })
-            trace_store.append(
-                run.run_id,
-                pid,
-                step_seq=index,
-                step_type="action" if spawned["subagent_id"] else "error",
-                content="spawn internal project subagent",
-                tool_name="subagent.spawn",
-                tool_arg_summary=subtask[:500],
-                outcome=spawned["spawn_result"][:2000],
-                provider=spawned["provider"],
-                model=spawned["model"],
-            )
+        self._start_ready_steps(run.run_id, pid, run_steps, trace_store)
         spawned_count = sum(1 for step in run_steps if step["subagent_id"])
         if not spawned_count:
             error = "\n".join(step["result"] for step in run_steps)
@@ -423,7 +439,7 @@ class ProjectsTool:
         run_store.update(
             run.run_id,
             steps=run_steps,
-            summary=f"Project executor spawned {spawned_count}/{len(run_steps)} subagents",
+            summary=plan_summary or f"Project executor spawned {spawned_count}/{len(run_steps)} subagents",
         )
         ProjectStore(self._sub).touch(pid)
         return (
@@ -433,7 +449,7 @@ class ProjectsTool:
             + "\n".join(f"subagent_id: {step['subagent_id']}" for step in run_steps if step["subagent_id"])
         )
 
-    def _harvest_project(self, args: dict) -> str:
+    async def _harvest_project(self, args: dict) -> str:
         from sonya.memory.tool_experience import ToolExperience
         from sonya.project import ExecutionTraceStore, ProjectRunStore, ProjectStore
         from sonya.project.model import ProjectNotFoundError
@@ -456,6 +472,8 @@ class ProjectsTool:
             changed = False
             for step in run.steps:
                 if not isinstance(step, dict) or step.get("status") in ("done", "failed", "cancelled"):
+                    continue
+                if step.get("status") == "blocked":
                     continue
                 subagent_id = str(step.get("subagent_id", ""))
                 row = self._sub.connection.execute(
@@ -506,6 +524,25 @@ class ProjectsTool:
                     session_type="project",
                 )
                 changed = True
+            terminal_by_id = {
+                str(step.get("step_id", "")): str(step.get("status", ""))
+                for step in run.steps if isinstance(step, dict)
+            }
+            for step in run.steps:
+                if not isinstance(step, dict) or step.get("status") != "blocked":
+                    continue
+                dependency_states = [terminal_by_id.get(str(dep), "") for dep in step.get("depends_on", [])]
+                if any(state in ("failed", "cancelled") for state in dependency_states):
+                    step["status"] = "failed"
+                    step["result"] = "[BLOCKED] dependency failed or was cancelled"
+                    self._append_run_trace(
+                        trace_store, run.run_id, pid, "error",
+                        str(step["result"]), tool_arg_summary=str(step.get("step_id", "")),
+                        outcome="failed",
+                    )
+                    changed = True
+            if self._start_ready_steps(run.run_id, pid, run.steps, trace_store):
+                changed = True
             if changed:
                 run_store.update(run.run_id, steps=run.steps)
             statuses = [str(step.get("status", "")) for step in run.steps if isinstance(step, dict)]
@@ -525,7 +562,14 @@ class ProjectsTool:
                 run_store.complete(run.run_id, error="\n\n".join(results))
                 failed += 1
             else:
-                run_store.complete(run.run_id, result="\n\n".join(results))
+                result = "\n\n".join(results)
+                if any(bool(step.get("planned")) for step in run.steps if isinstance(step, dict)):
+                    result = await self._synthesize_project(run.steps) or result
+                    self._append_run_trace(
+                        trace_store, run.run_id, pid, "outcome", result,
+                        tool_name="project.synthesis", outcome="done",
+                    )
+                run_store.complete(run.run_id, result=result)
                 completed += 1
         if completed or failed:
             ProjectStore(self._sub).touch(pid)
@@ -572,6 +616,129 @@ class ProjectsTool:
             outcome="cancelled",
         )
         return f"[OK] project run cancelled: cancelled={cancelled}"
+
+    async def _plan_project(
+        self,
+        task: str,
+        *,
+        provider: str = "",
+        model: str = "",
+    ) -> tuple[str, str, list[dict[str, Any]]]:
+        if self._subagent_provider is None:
+            return "", "", []
+        kwargs: dict[str, Any] = {"purpose": "project_planner", "role": "manager"}
+        if provider:
+            kwargs["_provider"] = provider
+        if model:
+            kwargs["_model"] = model
+        try:
+            raw = await self._subagent_provider.complete_text(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Plan internal project work for Sonya. Return only one JSON object "
+                            "with summary and steps. Each step needs id, task, and depends_on. "
+                            "Use at most 8 steps. Do not invent work that is not needed."
+                        ),
+                    },
+                    {"role": "user", "content": task},
+                ],
+                **kwargs,
+            )
+        except Exception as exc:
+            return f"[planner error] {exc}", "", []
+        summary, steps = _parse_project_plan(raw)
+        return raw, summary, steps
+
+    async def _synthesize_project(self, steps: list[dict[str, Any]]) -> str:
+        if self._subagent_provider is None:
+            return ""
+        first = next((step for step in steps if isinstance(step, dict)), {})
+        kwargs: dict[str, Any] = {"purpose": "project_synthesis", "role": "manager"}
+        if first.get("provider"):
+            kwargs["_provider"] = str(first["provider"])
+        if first.get("model"):
+            kwargs["_model"] = str(first["model"])
+        evidence = [
+            {
+                "step_id": step.get("step_id", ""),
+                "task": step.get("task", ""),
+                "result": step.get("result", ""),
+            }
+            for step in steps if isinstance(step, dict)
+        ]
+        try:
+            return await self._subagent_provider.complete_text(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Synthesize the internal project worker outcomes into Sonya's final "
+                            "project result. Preserve concrete evidence and unresolved limits."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps({
+                            "task": first.get("root_task", ""),
+                            "worker_outcomes": evidence,
+                        }, ensure_ascii=False),
+                    },
+                ],
+                **kwargs,
+            )
+        except Exception:
+            return ""
+
+    def _start_ready_steps(
+        self,
+        run_id: str,
+        project_id: str,
+        steps: list[dict[str, Any]],
+        trace_store: Any,
+    ) -> int:
+        statuses = {
+            str(step.get("step_id", "")): str(step.get("status", ""))
+            for step in steps if isinstance(step, dict)
+        }
+        started = 0
+        for step in steps:
+            if not isinstance(step, dict) or step.get("status") != "blocked":
+                continue
+            dependencies = [str(dep) for dep in step.get("depends_on", [])]
+            if not all(statuses.get(dep) == "done" for dep in dependencies):
+                continue
+            spawned = self._spawn_project_subagent(
+                project_id,
+                str(step.get("task", "")),
+                provider=str(step.get("provider", "")),
+                model=str(step.get("model", "")),
+                max_steps=int(step.get("max_steps", 6) or 6),
+            )
+            step["subagent_id"] = spawned["subagent_id"]
+            step["provider"] = spawned["provider"]
+            step["model"] = spawned["model"]
+            step["status"] = "running" if spawned["subagent_id"] else "failed"
+            step.setdefault("attempts", [])
+            if spawned["subagent_id"]:
+                step["attempts"].append(spawned["subagent_id"])
+                started += 1
+            else:
+                step["result"] = spawned["spawn_result"]
+            self._append_run_trace(
+                trace_store,
+                run_id,
+                project_id,
+                "action" if spawned["subagent_id"] else "error",
+                "spawn internal project subagent",
+                tool_name="subagent.spawn",
+                tool_arg_summary=str(step.get("task", ""))[:500],
+                outcome=spawned["spawn_result"][:2000],
+                provider=spawned["provider"],
+                model=spawned["model"],
+            )
+        return started
 
     def _spawn_project_subagent(
         self,
@@ -695,3 +862,46 @@ class ProjectsTool:
 def _extract_subagent_id(text: str) -> str:
     match = re.search(r"\bsa-[0-9a-f]{12}\b", text or "")
     return match.group(0) if match else ""
+
+
+def _parse_project_plan(raw: str) -> tuple[str, list[dict[str, Any]]]:
+    text = str(raw or "").strip()
+    if text.startswith("```") and text.endswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(lines[1:-1]).strip()
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        return "", []
+    if not isinstance(payload, dict) or not isinstance(payload.get("steps"), list):
+        return "", []
+    parsed: list[dict[str, Any]] = []
+    ids: set[str] = set()
+    for item in payload["steps"][:8]:
+        if not isinstance(item, dict):
+            return "", []
+        step_id = str(item.get("id", "")).strip()
+        task = str(item.get("task", "")).strip()
+        depends_on = item.get("depends_on", [])
+        if not step_id or not task or step_id in ids or not isinstance(depends_on, list):
+            return "", []
+        ids.add(step_id)
+        parsed.append({
+            "id": step_id,
+            "task": task,
+            "depends_on": [str(dep).strip() for dep in depends_on if str(dep).strip()],
+        })
+    if not parsed:
+        return "", []
+    if any(dep not in ids or dep == item["id"] for item in parsed for dep in item["depends_on"]):
+        return "", []
+    resolved: set[str] = set()
+    remaining = list(parsed)
+    while remaining:
+        ready = [item for item in remaining if all(dep in resolved for dep in item["depends_on"])]
+        if not ready:
+            return "", []
+        for item in ready:
+            resolved.add(item["id"])
+            remaining.remove(item)
+    return str(payload.get("summary", "")).strip(), parsed
