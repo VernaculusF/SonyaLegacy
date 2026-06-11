@@ -28,6 +28,12 @@ function isDialogAgentStep(ev) {
   return ev.kind === 'internal.agent_step' && ev.payload?.tool === 'chat.dialog';
 }
 
+function eventOrder(ev) {
+  if (typeof ev.seq === 'number') return ev.seq;
+  const parsed = ev.ts ? new Date(ev.ts).getTime() : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export default function ReasonStream(props) {
   // Map of seq → reply input state
   const [activeReply, setActiveReply] = createSignal({ seq: null, text: '', sending: false, error: '' });
@@ -72,7 +78,7 @@ export default function ReasonStream(props) {
       settings.streams_filters[e.src] !== false
       && !isProjectTraceNoise(e)
       && !isDialogAgentStep(e)
-    );
+    ).slice().sort((a, b) => eventOrder(b) - eventOrder(a));
 
   function formatHistoryEvent(ev) {
     const payload = ev.payload || {};
@@ -125,7 +131,10 @@ export default function ReasonStream(props) {
   }
 
   function onScroll(e) {
-    if (e.currentTarget.scrollTop < 60) loadOlderEvents();
+    const target = e.currentTarget;
+    if (target.scrollHeight - target.scrollTop - target.clientHeight < 60) {
+      loadOlderEvents();
+    }
   }
 
   onMount(() => {
@@ -189,9 +198,6 @@ export default function ReasonStream(props) {
               )}
             </For>
           </div>
-        </Show>
-        <Show when={loadingHistory()}>
-          <div class="history-loader">loading older logs...</div>
         </Show>
         <Show
           when={visibleEvents().length > 0}
@@ -257,6 +263,9 @@ export default function ReasonStream(props) {
               </>
             )}
           </For>
+        </Show>
+        <Show when={loadingHistory()}>
+          <div class="history-loader">loading older logs...</div>
         </Show>
       </div>
       </section>

@@ -503,6 +503,7 @@ Workstream A получил первый answer-first вертикальный �
 ## 2026-06-12 - Atrium stream and active-session stability
 
 - fixed the reason-stream drawer close path and added `Escape`/backdrop close
+- reason-stream chronology is newest-first; older logs paginate at the bottom
 - removed duplicate technical `internal.agent_step chat.dialog` rows from the
   visible reason stream
 - typing state now starts at active-session scheduling instead of depending on

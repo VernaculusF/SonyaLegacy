@@ -53,6 +53,8 @@ surfaces.
 Atrium reason-stream, expression stability, and dialog-spam guard:
 
 - reason-stream drawer now closes through its button, `Escape`, or backdrop;
+- reason-stream displays newest events first and loads older history when the
+  user scrolls to the bottom;
 - technical `internal.agent_step tool=chat.dialog` rows no longer duplicate
   the actual outgoing dialog in reason-stream;
 - typing state begins when an active session is scheduled and no longer waits

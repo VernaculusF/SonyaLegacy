@@ -87,6 +87,13 @@ def test_reason_stream_has_scrollback_history_loader() -> None:
     assert "export function prependStreamEvents" in store
 
 
+def test_reason_stream_shows_newest_first_and_loads_older_at_bottom() -> None:
+    source = (ROOT / "packages/atrium/src/components/ReasonStream.jsx").read_text(encoding="utf-8")
+
+    assert ".sort((a, b) => eventOrder(b) - eventOrder(a))" in source
+    assert "scrollHeight - target.scrollTop - target.clientHeight < 60" in source
+
+
 def test_inner_stream_is_debug_drawer_not_main_right_pane() -> None:
     app = (ROOT / "packages/atrium/src/App.jsx").read_text(encoding="utf-8")
     header = (ROOT / "packages/atrium/src/components/Header.jsx").read_text(encoding="utf-8")
