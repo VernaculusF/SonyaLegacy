@@ -1,7 +1,7 @@
 # Memory and Knowledge Migration Status
 
 **Status:** Active audit; no production migration writes performed
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
 ## Production Inventory
 
@@ -123,3 +123,18 @@ approval because it deletes duplicate rows even though the backup proof passed.
 
 Operational note: `deploy/backup.sh` must use SQLite Backup API even when the
 `sqlite3` CLI is absent. Plain `cp` of the live WAL database is forbidden.
+
+## Project Shared-Memory Proof
+
+On 2026-06-11 the project outcome compiler was corrected and proven on the VPS:
+
+- completed project runs are no longer skipped by `MemoryCompiler`;
+- project summaries are written as semantic facts with `scope="project"` and
+  the concrete `project_id`;
+- raw subagent chatter remains out of semantic behavior memory;
+- fresh WAL-safe production backup was created and gzip-verified;
+- live and backup read-only migration manifests were generated;
+- duplicate analysis ran only against the backup copy;
+- focused project-memory and manifest suite passed (`4 passed`).
+
+Production semantic dedup was not applied.

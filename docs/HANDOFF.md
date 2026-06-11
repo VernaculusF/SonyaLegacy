@@ -43,6 +43,11 @@ Completed in the latest slices:
 - persisted project pause/resume stops orchestration and is exposed through the
   Atrium project runtime without pretending an in-flight provider request is
   suspended;
+- project approval requests and approve/deny decisions are persisted on the
+  project run and surfaced in Atrium runtime controls;
+- project outcome summaries now enter shared semantic memory with project
+  provenance; read-only live/backup manifests and backup duplicate analysis
+  passed on the VPS; production semantic dedup remains unapplied;
 - Admin Providers now renders provider pools, accounts, models, quotas,
   observations, protected secret rotation, and a collapsed legacy-key view;
 - provider model identity is now provider-scoped: live v33 databases repair

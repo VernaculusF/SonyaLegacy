@@ -62,8 +62,8 @@
 
 - [x] honest cancellation persists across processes
 - [x] pause orchestration without pretending an in-flight request is suspended
-- [ ] persist approval requests and decisions
-- [ ] expose project controls in Atrium, not Admin
+- [x] persist approval requests and decisions
+- [x] expose project controls in Atrium, not Admin
 
 ### 4. Shared Memory and Knowledge Migration
 
@@ -78,7 +78,7 @@
 - [ ] obtain explicit approval before any production semantic dedup apply
 - run existing Telegram history and legacy knowledge migrations where needed
 - deduplicate, preserve provenance, and verify retrieval after migration
-- prove that project work and summarized subagent outcomes enter the one shared
+- [x] prove that project work and summarized subagent outcomes enter the one shared
   memory without mixing UI chat histories
 
 ### 5. Atrium End-to-End Proof

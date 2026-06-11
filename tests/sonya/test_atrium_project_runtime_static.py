@@ -15,5 +15,10 @@ def test_project_workspace_uses_project_runtime_api():
     assert "fetchProjectTraces(id)" in workspace
     assert "setInterval(refreshRuntime, 5000)" in workspace
     assert "cancelProjectRun" in workspace
+    assert "controlProjectRun" in store
+    assert "controlRun(run.run_id, 'pause')" in workspace
+    assert "controlRun(run.run_id, 'resume')" in workspace
+    assert "controlRun(run.run_id, 'approve')" in workspace
+    assert "controlRun(run.run_id, 'deny')" in workspace
     assert "Внутренние исполнители" in workspace
     assert "Ход выполнения" in workspace

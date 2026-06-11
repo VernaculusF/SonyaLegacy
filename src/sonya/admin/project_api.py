@@ -308,7 +308,7 @@ async def api_project_run_control(request: web.Request) -> web.Response:
     project_id = request.match_info["project_id"]
     run_id = request.match_info["run_id"]
     action = request.match_info["action"]
-    if action not in ("pause", "resume"):
+    if action not in ("pause", "resume", "approve", "deny"):
         return _cors(web.json_response({"error": "invalid action"}, status=400))
     sub = _get_substrate_writable(config)
     try:
@@ -326,8 +326,22 @@ async def api_project_run_control(request: web.Request) -> web.Response:
             return _cors(web.json_response({"error": f"cannot pause {run.status} run"}, status=409))
         if action == "resume" and run.status != "paused":
             return _cors(web.json_response({"error": f"cannot resume {run.status} run"}, status=409))
-        status = "paused" if action == "pause" else "running"
-        store.update(run_id, status=status)
+        if action in ("approve", "deny") and run.status != "waiting_approval":
+            return _cors(web.json_response({"error": f"cannot decide {run.status} run"}, status=409))
+        if action in ("approve", "deny"):
+            approval = next(
+                (step for step in reversed(run.steps) if isinstance(step, dict) and step.get("kind") == "approval" and not step.get("decision")),
+                None,
+            )
+            if approval is None:
+                return _cors(web.json_response({"error": "pending approval not found"}, status=409))
+            approval["decision"] = action
+            approval["status"] = "done"
+            status = "running" if action == "approve" else "paused"
+            store.update(run_id, status=status, steps=run.steps)
+        else:
+            status = "paused" if action == "pause" else "running"
+            store.update(run_id, status=status)
         traces = ExecutionTraceStore(sub).list_by_run(run_id)
         ExecutionTraceStore(sub).append(
             run_id,
@@ -336,7 +350,10 @@ async def api_project_run_control(request: web.Request) -> web.Response:
             step_type="checkpoint",
             content=(
                 "project orchestration paused; running provider requests may finish"
-                if action == "pause" else "project orchestration resumed"
+                if action == "pause" else (
+                    "project orchestration resumed" if action == "resume"
+                    else f"project approval decision: {action}"
+                )
             ),
             outcome=status,
         )

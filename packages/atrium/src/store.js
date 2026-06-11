@@ -526,7 +526,7 @@ export async function cancelProjectRun(projectId, runId) {
 }
 
 export async function controlProjectRun(projectId, runId, action) {
-  if (!['pause', 'resume'].includes(action)) return false;
+  if (!['pause', 'resume', 'approve', 'deny'].includes(action)) return false;
   try {
     const res = await fetch(_apiBase() + '/api/projects/' + projectId + '/runs/' + runId + '/' + action, {
       method: 'POST',

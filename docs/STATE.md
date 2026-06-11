@@ -53,6 +53,11 @@
   model-specific account cooldowns reactivate after expiry;
 - project executor pause/resume is persisted and exposed in Atrium; pause stops
   harvest, retries, dependency scheduling, and synthesis until resume;
+- project approval requests and approve/deny decisions are persisted and
+  exposed in Atrium runtime controls;
+- completed project outcomes compile into shared semantic memory with
+  `scope="project"` and concrete `project_id`; production backup/manifest proof
+  passed without applying destructive semantic dedup;
 - project runtime UI is deployed at commits `8bb2408` / `4cc7228`; focused VPS
   verification passed (`42 passed`), services are active, and recent service
   journals are clean;

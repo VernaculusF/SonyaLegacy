@@ -216,6 +216,32 @@ class ProjectsTool:
                 },
             },
             {
+                "name": "projects.request_approval",
+                "description": "Persist an explicit project-run approval question and stop orchestration until Ivan decides.",
+                "parameters": {
+                    "type": "object",
+                    "required": ["project_id", "run_id", "question"],
+                    "properties": {
+                        "project_id": {"type": "string"},
+                        "run_id": {"type": "string"},
+                        "question": {"type": "string"},
+                    },
+                },
+            },
+            {
+                "name": "projects.decide",
+                "description": "Record Ivan's explicit approve or deny decision for a waiting project run.",
+                "parameters": {
+                    "type": "object",
+                    "required": ["project_id", "run_id", "decision"],
+                    "properties": {
+                        "project_id": {"type": "string"},
+                        "run_id": {"type": "string"},
+                        "decision": {"type": "string", "enum": ["approve", "deny"]},
+                    },
+                },
+            },
+            {
                 "name": "projects.pressure",
                 "description": (
                     "Read or update evolution pressure dimensions. "
@@ -265,6 +291,10 @@ class ProjectsTool:
             return self._control_project(args, action="pause")
         if name == "projects.resume":
             return self._control_project(args, action="resume")
+        if name == "projects.request_approval":
+            return self._request_project_approval(args)
+        if name == "projects.decide":
+            return self._decide_project(args)
         if name == "projects.pressure":
             return self._pressure(args)
         return f"[unknown tool: {name}]"
@@ -680,6 +710,67 @@ class ProjectsTool:
             outcome=status,
         )
         return f"[OK] project run {status}: {run_id}"
+
+    def _request_project_approval(self, args: dict) -> str:
+        from sonya.project import ExecutionTraceStore, ProjectRunStore
+        from sonya.project.model import RunNotFoundError
+
+        pid = str(args.get("project_id", "")).strip()
+        run_id = str(args.get("run_id", "")).strip()
+        question = str(args.get("question", "")).strip()
+        if not pid or not run_id or not question:
+            return "[ERROR] projects.request_approval: project_id, run_id, and question are required"
+        store = ProjectRunStore(self._sub)
+        try:
+            run = store.get(run_id)
+        except RunNotFoundError:
+            return f"[ERROR] projects.request_approval: run {run_id} not found"
+        if run.project_id != pid or run.status not in ("pending", "running", "paused"):
+            return f"[BLOCKED] projects.request_approval: run status is {run.status}"
+        run.steps.append({
+            "kind": "approval",
+            "status": "waiting",
+            "question": question,
+            "decision": "",
+        })
+        store.update(run_id, status="waiting_approval", steps=run.steps)
+        self._append_run_trace(
+            ExecutionTraceStore(self._sub), run_id, pid, "decision",
+            question, tool_name="projects.request_approval", outcome="waiting_approval",
+        )
+        return f"[OK] project approval requested: {run_id}"
+
+    def _decide_project(self, args: dict) -> str:
+        from sonya.project import ExecutionTraceStore, ProjectRunStore
+        from sonya.project.model import RunNotFoundError
+
+        pid = str(args.get("project_id", "")).strip()
+        run_id = str(args.get("run_id", "")).strip()
+        decision = str(args.get("decision", "")).strip()
+        if decision not in ("approve", "deny"):
+            return "[ERROR] projects.decide: decision must be approve or deny"
+        store = ProjectRunStore(self._sub)
+        try:
+            run = store.get(run_id)
+        except RunNotFoundError:
+            return f"[ERROR] projects.decide: run {run_id} not found"
+        if run.project_id != pid or run.status != "waiting_approval":
+            return f"[BLOCKED] projects.decide: run status is {run.status}"
+        approval = next(
+            (step for step in reversed(run.steps) if isinstance(step, dict) and step.get("kind") == "approval" and not step.get("decision")),
+            None,
+        )
+        if approval is None:
+            return "[ERROR] projects.decide: pending approval not found"
+        approval["decision"] = decision
+        approval["status"] = "done"
+        status = "running" if decision == "approve" else "paused"
+        store.update(run_id, status=status, steps=run.steps)
+        self._append_run_trace(
+            ExecutionTraceStore(self._sub), run_id, pid, "decision",
+            f"project approval decision: {decision}", tool_name="projects.decide", outcome=status,
+        )
+        return f"[OK] project approval {decision}: {run_id}"
 
     async def _plan_project(
         self,

@@ -164,6 +164,46 @@ async def test_project_pause_stops_orchestration_until_resume(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_project_approval_request_blocks_until_explicit_decision(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "project-approval-executor.db")
+    try:
+        project = ProjectStore(sub).create("Approval executor proof")
+        run_store = ProjectRunStore(sub)
+        run = run_store.create(project.project_id, kind="project_executor")
+        run_store.start(run.run_id)
+        tool = ProjectsTool(sub)
+
+        requested = await tool.execute({
+            "name": "projects.request_approval",
+            "arguments": {
+                "project_id": project.project_id,
+                "run_id": run.run_id,
+                "question": "Apply the production migration?",
+            },
+        })
+        assert "[OK]" in requested
+        waiting = run_store.get(run.run_id)
+        assert waiting.status == "waiting_approval"
+        assert waiting.steps[-1]["kind"] == "approval"
+        assert waiting.steps[-1]["decision"] == ""
+
+        decided = await tool.execute({
+            "name": "projects.decide",
+            "arguments": {
+                "project_id": project.project_id,
+                "run_id": run.run_id,
+                "decision": "deny",
+            },
+        })
+        assert "[OK]" in decided
+        denied = run_store.get(run.run_id)
+        assert denied.status == "paused"
+        assert denied.steps[-1]["decision"] == "deny"
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
 async def test_project_execute_spawns_subagent_and_harvests_result(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "project-executor.db")
     try:

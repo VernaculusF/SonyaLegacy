@@ -137,6 +137,10 @@ export default function ProjectWorkspace(props) {
                             <button class="btn ghost" onClick={() => controlRun(run.run_id, 'resume')}>Resume</button>
                             <button class="btn ghost ws-cancel-run" onClick={() => cancelRun(run.run_id)}>Cancel</button>
                           </Show>
+                          <Show when={run.status === 'waiting_approval'}>
+                            <button class="btn ghost" onClick={() => controlRun(run.run_id, 'approve')}>Approve</button>
+                            <button class="btn ghost ws-cancel-run" onClick={() => controlRun(run.run_id, 'deny')}>Deny</button>
+                          </Show>
                         </div>
                         <Show when={run.result || run.error}>
                           <div classList={{ 'ws-run-result': true, error: Boolean(run.error) }}>
