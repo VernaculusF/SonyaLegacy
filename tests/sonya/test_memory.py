@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from sonya.memory import ConsolidationPipeline, EpisodicMemory, SemanticMemory
+from sonya.memory import ConsolidationPipeline, EpisodicMemory, MemoryCompiler, SemanticMemory
+from sonya.project import ProjectRunStore, ProjectStore
 from sonya.state import Substrate
 
 
@@ -66,6 +67,24 @@ def test_semantic_add_and_retrieve(substrate: Substrate) -> None:
     all_facts = sem.get_all()
     assert len(all_facts) == 1
     assert all_facts[0].statement == "Когда Иван говорит тихо, он устал"
+
+
+def test_completed_project_outcome_enters_shared_memory_with_project_provenance(substrate: Substrate) -> None:
+    project = ProjectStore(substrate).create("Shared outcome proof")
+    ProjectStore(substrate).set_status(project.project_id, "completed", source="test")
+    run_store = ProjectRunStore(substrate)
+    run = run_store.create(project.project_id, kind="project_executor")
+    run_store.start(run.run_id)
+    run_store.complete(run.run_id, result="Delivered the dependency-aware project runtime")
+
+    compiled = MemoryCompiler(substrate).run()
+
+    facts = SemanticMemory(substrate).get_for_context(project_id=project.project_id, limit=10)
+    project_facts = [fact for fact in facts if fact.project_id == project.project_id]
+    assert compiled["project_summaries"] == 1
+    assert len(project_facts) == 1
+    assert project_facts[0].scope == "project"
+    assert "Delivered the dependency-aware project runtime" in project_facts[0].statement
 
 
 def test_semantic_reinforce(substrate: Substrate) -> None:
