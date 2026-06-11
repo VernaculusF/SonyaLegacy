@@ -366,7 +366,229 @@ criteria because fixing only the visible symptom will not close them.
     protected storage, retention/deletion policy, restoration proof, and stable
     links back to live substrate records.
 
-## 6. Verified Audit Evidence
+## 6. Security, Recovery, and Epistemic Problems
+
+32. **Untrusted project, web, and tool content can become instructions.**
+    Project files, websites, API responses, and tool results enter model
+    context without a sufficiently strong distinction between data and trusted
+    instructions.
+    **Done:** context records preserve authority/trust boundaries; untrusted
+    content cannot silently override Ivan, Sonya's own decisions, WorkItem
+    goals, or runtime contracts.
+
+33. **Prompt context can become polluted and attention-starved.** Tasks,
+    focus, drives, thoughts, history, memory, and environment state compete
+    without explicit usefulness and freshness budgets.
+    **Done:** context assembly has inspectable budgets, source/value scoring,
+    freshness rules, omission reasons, and proof that critical current facts
+    survive large contexts.
+
+34. **There is no general source-trust model.** Provenance alone does not say
+    how much to trust a message, file, memory, subagent result, tool output,
+    external API, or project documentation.
+    **Done:** records carry source identity, authority, trust evidence,
+    uncertainty, and contradiction history without reducing judgement to one
+    fixed trust score.
+
+35. **A provider may change a model behind the same model ID.** Backend,
+    quantization, prompt policy, or constraints can drift while old scorecards
+    remain attached to the unchanged ID.
+    **Done:** offerings retain observed fingerprints/version evidence, canary
+    behavior, and drift events that invalidate or segment stale scorecards.
+
+36. **Provider routing ignores information sensitivity.** Free or web-backed
+    models may receive private memory, credentials, or confidential project
+    content solely because they rank well by capability/cost.
+    **Done:** WorkItems, context fragments, and provider offerings carry
+    compatible confidentiality/data-handling constraints; routing records what
+    data class was sent and why the provider was eligible.
+
+37. **Selfmod can influence its own evaluation boundary.** A change may alter
+    tests, benchmarks, scorecards, acceptance criteria, or validation code and
+    then use those altered checks as evidence of success.
+    **Done:** selfmod evaluation records evaluator provenance and detects
+    changes to its own evidence boundary; independent or previous-version
+    checks remain available for meaningful validation.
+
+38. **Disaster recovery is documented but not regularly proven end-to-end.**
+    Existing backups do not prove that substrate, secrets, knowledge, identity,
+    continuity, and runtime can be restored together.
+    **Done:** scheduled restore drills create an isolated recovered Sonya,
+    verify integrity and startup, measure data loss/recovery time, and record
+    the result without replacing production.
+
+39. **Backups are not sufficiently failure-independent.** Backups stored beside
+    the live VPS may be lost with the same host/account/storage failure.
+    **Done:** encrypted off-host copies exist, retention and access are tested,
+    and restore proof uses the off-host copy.
+
+40. **Recovery objectives are undefined.** The project does not define
+    acceptable identity/memory loss or restoration time.
+    **Done:** RPO/RTO and identity-critical recovery requirements are explicit,
+    measurable, and tied to backup/restore verification.
+
+41. **SQLite concurrency assumptions may be unsafe.** Documentation/code
+    comments imply row-level write locking, while SQLite WAL still serializes
+    writers and can suffer contention as parallel work grows.
+    **Done:** concurrency behavior is measured under realistic workers; write
+    ownership, transaction duration, busy handling, and scaling limits are
+    explicit.
+
+42. **Mixed-version schema access during deploy is not governed.** Core, Admin,
+    and workers may briefly read/write one substrate using incompatible runtime
+    versions.
+    **Done:** migrations declare compatibility windows and deployment ordering;
+    incompatible writers fail closed or wait; rollback is proven.
+
+43. **Remote workspaces lack version identity.** Files on another PC/VPS may
+    change while Sonya or subagents work, leaving unclear which version was
+    inspected or modified.
+    **Done:** work actions record workspace version/snapshot evidence and detect
+    conflicting external changes before claiming completion.
+
+44. **Remote workspace disconnect/resume semantics are incomplete.** A
+    connection loss can leave partially applied actions with uncertain retry
+    safety.
+    **Done:** remote actions record checkpoints, partial effects, idempotency,
+    reconnect validation, and whether retry or human/Sonya review is required.
+
+45. **Reason streams and raw traces can leak sensitive data.** Thoughts, tool
+    outputs, files, and provider payloads may expose credentials or private
+    content through UI/logging.
+    **Done:** data classification, secret detection/redaction, visibility
+    policy, and private-event handling apply before rendering or exporting raw
+    traces while preserving protected audit evidence.
+
+46. **Credentials pasted into chat need an exposure lifecycle.** Secure import
+    does not erase credentials already disclosed through conversation history
+    or external platforms.
+    **Done:** exposure records identify affected credentials, locations,
+    rotation/revocation status, and verification that replacements are active.
+
+47. **Canonical Response is not yet an enforced runtime contract.** Different
+    processes can independently create thoughts, actions, Atrium dialog, and
+    Telegram output, fragmenting one Sonya into competing output paths.
+    **Done:** addressed outward communication and action intent pass through a
+    canonical subject-level result/action contract before channel rendering.
+
+48. **Memory consolidation quality is not independently evaluated.**
+    Consolidation can promote incorrect interpretation into durable semantic
+    facts; deduplication only removes duplicates.
+    **Done:** consolidation candidates preserve sources, uncertainty,
+    contradictions, and evaluation outcomes; sampled and automated quality
+    checks measure false promotion.
+
+49. **Refuted beliefs lack a complete correction lifecycle.** Decay alone does
+    not reliably stop retrieval or re-promotion of a disproven semantic fact.
+    **Done:** facts can be refuted/superseded, excluded from ordinary retrieval,
+    linked to correction history, and prevented from silent re-promotion.
+
+50. **SituationalModel quality itself is not observable.** A WorldState can
+    exist while remaining stale, contradictory, or routinely corrected by
+    Ivan.
+    **Done:** metrics and review surfaces expose expiry, contradictions,
+    low-confidence decisions, source quality, and subject corrections, feeding
+    measured improvement.
+
+51. **Documentation can provide contradictory active guidance.** Historical
+    channel, provider-slot, Atrium-stage, and runtime claims can misdirect Sonya
+    or another executor.
+    **Done:** canonical precedence is machine-checkable, stale active claims are
+    detected, and implementation work records which governing/current docs it
+    used.
+
+## 7. Master Execution Checklist
+
+This checklist is the common control surface for the entire audit. A box may be
+checked only when the item's **Done** criterion above has production evidence.
+Implementation, tests, or documentation alone are not sufficient.
+
+Priority meanings:
+
+- `P0`: foundational correctness; design into the first runtime slices;
+- `P1`: required for reliable autonomous work on the hosted stack;
+- `P2`: required for mature operation and scaling.
+
+### 7.1 Situational and Epistemic Foundation
+
+- [ ] `P0` #1 missing/stale environment and subject status
+- [ ] `P0` #2 coherent model of other subjects and their participation
+- [ ] `P0` #3 replace eternal EnvironmentStore semantics with SituationalModel
+- [ ] `P0` #4 remove credentials from environment/current-state storage
+- [ ] `P0` #20 prevent generated cognition from becoming its own evidence
+- [ ] `P0` #34 general source trust/authority model
+- [ ] `P0` #48 independently evaluate memory consolidation quality
+- [ ] `P0` #49 refuted-belief correction and retrieval lifecycle
+- [ ] `P1` #50 SituationalModel quality metrics and review
+
+### 7.2 Agency, Causality, and Scheduling
+
+- [ ] `P0` #5 stop self-propelling interaction cycles through meaningful change
+- [ ] `P0` #6 separate thought, addressed reply, action, and report
+- [ ] `P0` #21 causal graph and stable correlation IDs
+- [ ] `P0` #22 durable idempotency and processing checkpoints
+- [ ] `P0` #23 shared-state and outward-action ownership/conflict semantics
+- [ ] `P0` #24 scheduler fairness and backpressure
+- [ ] `P0` #25 explicit addressee/channel selection
+- [ ] `P0` #47 enforced Canonical Response/action contract
+- [ ] `P1` #7 close all independently measured spam sources
+- [ ] `P2` #8 separate lifecycle noise from subjective continuity
+
+### 7.3 Work Runtime and Atrium
+
+- [ ] `P0` #9 unify tasks/background work/projects through WorkItems
+- [ ] `P0` #10 first-class visible tool and work progress
+- [ ] `P0` #11 measurable and visible real subagent runs
+- [ ] `P1` #12 provider-native normalized streaming
+- [ ] `P0` #29 independent WorkItem acceptance evidence
+- [ ] `P1` #31 complete archive lifecycle and restore linkage
+- [ ] `P1` #43 remote workspace version/snapshot evidence
+- [ ] `P1` #44 remote disconnect/resume and partial-effect semantics
+
+### 7.4 Embodiment and Current Self-State
+
+- [ ] `P1` #13 causal, stable, non-spamming body expression lifecycle
+- [ ] `P0` #14 focus lifecycle tied to live work/activity
+- [ ] `P0` #15 one authoritative outfit/embodiment state
+
+### 7.5 Providers, Models, and Context
+
+- [ ] `P0` #16 real model-pool use for main cognition
+- [ ] `P0` #17 loop/run paid-cost guards and free-first fallback
+- [ ] `P1` #18 observable retry/fallback and account-scoped refresh
+- [ ] `P0` #26 offering-scoped capability taxonomy
+- [ ] `P1` #27 exploration-aware champion/challenger scorecards
+- [ ] `P0` #32 protect instruction authority from untrusted context
+- [ ] `P0` #33 context budgets, freshness, and omission observability
+- [ ] `P1` #35 detect model/provider offering drift
+- [ ] `P0` #36 confidentiality-aware provider routing
+
+### 7.6 Continuity, Security, Selfmod, and Recovery
+
+- [ ] `P0` #28 separate subjective continuity, work history, telemetry, and audit
+- [ ] `P0` #30 situational impact semantics for full-system actions
+- [ ] `P0` #37 protect selfmod evaluation from evidence/test tampering
+- [ ] `P1` #38 scheduled end-to-end disaster restore drills
+- [ ] `P1` #39 encrypted off-host backup and restore proof
+- [ ] `P1` #40 define and prove RPO/RTO and identity recovery requirements
+- [ ] `P1` #41 measure and govern SQLite writer contention
+- [ ] `P1` #42 govern mixed-version schema access during deploy
+- [ ] `P0` #45 prevent sensitive-data leakage through reason streams/traces
+- [ ] `P0` #46 credential exposure inventory and rotation lifecycle
+- [ ] `P1` #19 prove Telegram session reliability over restart/deploy cycles
+- [ ] `P1` #51 machine-check canonical documentation precedence/staleness
+
+### 7.7 Evidence Required for Every Checked Item
+
+- [ ] implementation and migration path exist;
+- [ ] focused regression tests pass;
+- [ ] failure/restart/concurrency proof exists where applicable;
+- [ ] production or production-equivalent VPS proof exists;
+- [ ] observable evidence is linked from `STATE.md`;
+- [ ] rollback/recovery path is recorded;
+- [ ] related stale documentation is updated or marked historical.
+
+## 8. Verified Audit Evidence
 
 Read-only production audit on 2026-06-12 found:
 
@@ -384,7 +606,7 @@ Read-only production audit on 2026-06-12 found:
 - recent service warning journal was clean; historical Telegram read-only
   session errors remain documented.
 
-## 7. Can Sonya Fix This Herself?
+## 9. Can Sonya Fix This Herself?
 
 Partially, today.
 
@@ -414,7 +636,7 @@ to own the remaining work:
 6. let Sonya execute, evaluate, and refine later audit items through her own
    projects/tasks with measured production outcomes.
 
-## 8. Priority
+## 10. Priority
 
 This audit overrides claims that only the web-proxy bridge remains open.
 Runtime coherence is the immediate hosted-stack priority. The web-proxy bridge

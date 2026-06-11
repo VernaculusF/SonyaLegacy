@@ -50,6 +50,15 @@ offering-scoped capability taxonomy, exploration-aware model scorecards,
 continuity/telemetry separation, independent completion evidence,
 situational-impact semantics for full-system access, and an archive lifecycle.
 
+The canonical audit now records 51 active problems and contains the master
+production-evidence checklist. The third audit layer adds untrusted-context
+instruction boundaries, context budgets, source trust, model drift,
+confidentiality-aware routing, selfmod evaluation independence, disaster
+restore/off-host backup/RPO-RTO, SQLite and mixed-schema deployment behavior,
+remote workspace version/resume semantics, sensitive trace handling,
+credential-exposure lifecycle, enforced Canonical Response, memory correction
+quality, SituationalModel quality metrics, and documentation staleness checks.
+
 ## Current execution state - 2026-06-11
 
 - production and repository substrate are at schema v33;

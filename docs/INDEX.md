@@ -11,7 +11,8 @@ prefer the sources listed earlier within the same category.
 
 1. [ATRIUM_PROJECT_PLAN.md](ATRIUM_PROJECT_PLAN.md) - active Atrium delivery plan
 2. [SONYA_RUNTIME_COHERENCE_AUDIT.md](SONYA_RUNTIME_COHERENCE_AUDIT.md) -
-   canonical runtime-coherence problems and target architecture
+   canonical runtime-coherence problems, target architecture, and master
+   production-evidence checklist
 3. [STATE.md](STATE.md) - verified current state and known gaps
 4. [HANDOFF.md](HANDOFF.md) - current continuation point and verification notes
 5. [MASTER.md](MASTER.md) - high-level doctrine and long-term direction
