@@ -436,6 +436,16 @@ class WorkspacePolicy:
     updated_at: str = ""
 
 
+@dataclass(frozen=True)
+class ProjectActionPolicy:
+    project_id: str
+    project_title: str
+    action: str
+    verdict: str
+    source: str
+    full_system_access: bool = False
+
+
 class WorkspacePolicyStore:
     def __init__(self, substrate: Any) -> None:
         self._conn = substrate.connection
@@ -483,3 +493,41 @@ class WorkspacePolicyStore:
         else:
             wp.policy = dict(_DEFAULT_POLICY)
         self.set(wp)
+
+
+def resolve_project_action_policy(substrate: Any, project_id: str, action: str) -> ProjectActionPolicy:
+    project = ProjectStore(substrate).get(project_id)
+    workspace_policy = WorkspacePolicyStore(substrate).get(project_id)
+    workspace_value = workspace_policy.policy.get(action)
+    if workspace_value in ("allowed", "consent", "forbidden"):
+        return ProjectActionPolicy(
+            project_id=project.project_id,
+            project_title=project.title,
+            action=action,
+            verdict=str(workspace_value),
+            source="workspace_policy",
+            full_system_access=workspace_policy.full_system_access,
+        )
+    if workspace_policy.full_system_access:
+        return ProjectActionPolicy(
+            project_id=project.project_id,
+            project_title=project.title,
+            action=action,
+            verdict="allowed",
+            source="workspace_full_system_access",
+            full_system_access=True,
+        )
+    if project.policy_forbids(action):
+        verdict = "forbidden"
+    elif project.policy_requires_consent(action):
+        verdict = "consent"
+    else:
+        verdict = "allowed"
+    return ProjectActionPolicy(
+        project_id=project.project_id,
+        project_title=project.title,
+        action=action,
+        verdict=verdict,
+        source="project_policy",
+        full_system_access=workspace_policy.full_system_access,
+    )

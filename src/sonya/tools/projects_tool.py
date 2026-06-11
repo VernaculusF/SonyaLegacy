@@ -274,7 +274,7 @@ class ProjectsTool:
         if name == "projects.list":
             return self._list(args)
         if name == "projects.check_policy":
-            return self._check_policy(args)
+            return self._check_policy_v2(args)
         if name == "projects.create":
             return self._create(args)
         if name == "projects.update":
@@ -298,6 +298,28 @@ class ProjectsTool:
         if name == "projects.pressure":
             return self._pressure(args)
         return f"[unknown tool: {name}]"
+
+    def _check_policy_v2(self, args: dict) -> str:
+        from sonya.project import resolve_project_action_policy
+        from sonya.project.model import ProjectNotFoundError
+
+        pid = str(args.get("project_id", "")).strip()
+        action = str(args.get("action", "")).strip()
+        if not pid or not action:
+            return "ERROR: project_id and action are required."
+        try:
+            verdict = resolve_project_action_policy(self._sub, pid, action)
+        except ProjectNotFoundError:
+            return f"Project {pid} not found."
+        suffix = (
+            f" source={verdict.source}"
+            f" full_system_access={str(verdict.full_system_access).lower()}"
+        )
+        if verdict.verdict == "forbidden":
+            return f"FORBIDDEN: action '{action}' is forbidden in project '{verdict.project_title}'.{suffix}"
+        if verdict.verdict == "consent":
+            return f"CONSENT: action '{action}' in project '{verdict.project_title}' requires Ivan approval. Ask via chat.dialog first.{suffix}"
+        return f"ALLOWED: action '{action}' is allowed in project '{verdict.project_title}'.{suffix}"
 
     def _list(self, args: dict) -> str:
         from sonya.project import ProjectStore

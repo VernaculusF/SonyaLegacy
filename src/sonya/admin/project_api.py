@@ -374,23 +374,18 @@ async def api_project_check_policy(request: web.Request) -> web.Response:
         return _cors(web.json_response({"error": "action required"}, status=400))
     sub = _get_substrate(config)
     try:
-        from sonya.project import ProjectStore
+        from sonya.project import resolve_project_action_policy
         from sonya.project.model import ProjectNotFoundError
-        store = ProjectStore(sub)
         try:
-            p = store.get(project_id)
+            verdict = resolve_project_action_policy(sub, project_id, action)
         except ProjectNotFoundError:
             return _cors(web.json_response({"error": "not found"}, status=404))
-        if p.policy_forbids(action):
-            verdict = "forbidden"
-        elif p.policy_requires_consent(action):
-            verdict = "consent"
-        else:
-            verdict = "allowed"
         return _cors(web.json_response({
             "project_id": project_id,
             "action": action,
-            "verdict": verdict,
+            "verdict": verdict.verdict,
+            "source": verdict.source,
+            "full_system_access": verdict.full_system_access,
         }))
     finally:
         sub.close()
