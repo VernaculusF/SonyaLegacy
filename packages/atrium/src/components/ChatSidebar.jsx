@@ -1,170 +1,152 @@
 import { createSignal, For, Show } from 'solid-js';
-import { settings, feed, activeWorkspaceId, switchWorkspace, createWorkspace, removeWorkspace, fetchProjects, createProject, deleteProject } from '../store.js';
+import { feed, activeWorkspaceId, switchWorkspace, createProject, deleteProject } from '../store.js';
 
 const STATUS_LABELS = {
-  in_progress: 'в работе',
-  waiting_choice: 'жду выбор',
-  waiting: 'ожидает',
-  completed: 'завершён',
-  cancelled: 'отменён',
-  active: 'активен',
-  paused: 'на паузе',
-  closed: 'закрыт',
-  archived: 'в архиве'
+  in_progress: 'in progress',
+  waiting_choice: 'waiting for choice',
+  waiting: 'waiting',
+  completed: 'completed',
+  cancelled: 'cancelled',
 };
 
 function relTime(ts) {
   if (!ts) return '';
   const diff = Date.now() - ts;
-  if (diff < 60000) return 'только что';
-  if (diff < 3600000) return Math.floor(diff / 60000) + 'м';
-  if (diff < 86400000) return Math.floor(diff / 3600000) + 'ч';
-  return Math.floor(diff / 86400000) + 'д';
+  if (diff < 60000) return 'now';
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
+  return Math.floor(diff / 86400000) + 'd';
 }
 
 export default function ChatSidebar() {
-  const [showForm, setShowForm] = createSignal(false);
-  const [newName, setNewName] = createSignal('');
-  const [newDesc, setNewDesc] = createSignal('');
   const [showProjectForm, setShowProjectForm] = createSignal(false);
   const [projName, setProjName] = createSignal('');
   const [projDesc, setProjDesc] = createSignal('');
+  const [projPath, setProjPath] = createSignal('');
+  const [createError, setCreateError] = createSignal('');
 
-  function handleCreate(e) {
-    e.preventDefault();
-    if (!newName().trim()) return;
-    createWorkspace({
-      id: 'ws_' + Date.now(),
-      name: newName().trim(),
-      description: newDesc().trim(),
-      path: '',
-    });
-    setNewName('');
-    setNewDesc('');
-    setShowForm(false);
+  function resetForm() {
+    setProjName('');
+    setProjDesc('');
+    setProjPath('');
+    setCreateError('');
+    setShowProjectForm(false);
   }
 
   async function handleCreateProject(e) {
     e.preventDefault();
-    if (!projName().trim()) return;
-    await createProject(projName().trim(), projDesc().trim(), '');
-    setProjName('');
-    setProjDesc('');
-    setShowProjectForm(false);
+    if (!projName().trim() || !projPath().trim()) return;
+    setCreateError('');
+    const created = await createProject(
+      projName().trim(),
+      projDesc().trim(),
+      projPath().trim(),
+    );
+    if (!created?.project_id) {
+      setCreateError('Project creation failed. Check the workspace path and connection.');
+      return;
+    }
+    resetForm();
+    switchWorkspace(created.project_id);
   }
 
   return (
     <div class="chat-sidebar">
       <div class="chat-sidebar-header">
-        <h3>Чаты</h3>
-        <button class="chat-add-btn" onClick={() => setShowForm(!showForm())} title="Новый чат">+</button>
+        <h3>Chat</h3>
+      </div>
+      <div class="chat-sidebar-list">
+        <div
+          classList={{ 'chat-item': true, active: activeWorkspaceId() === 'main' }}
+          onClick={() => switchWorkspace('main')}
+        >
+          <div class="chat-item-top">
+            <span class="chat-item-name">main</span>
+          </div>
+          <div class="chat-item-desc">Sonya's home</div>
+        </div>
       </div>
 
-      <Show when={showForm()}>
-        <form class="chat-add-form" onSubmit={handleCreate}>
+      <div class="chat-sidebar-header">
+        <h3>Projects</h3>
+        <button
+          class="chat-add-btn"
+          onClick={() => setShowProjectForm(!showProjectForm())}
+          title="New project"
+        >
+          +
+        </button>
+      </div>
+
+      <Show when={showProjectForm()}>
+        <form class="chat-add-form" onSubmit={handleCreateProject}>
           <input
             type="text"
-            placeholder="Название чата"
-            value={newName()}
-            onInput={(e) => setNewName(e.currentTarget.value)}
+            placeholder="Project name"
+            value={projName()}
+            onInput={(e) => setProjName(e.currentTarget.value)}
             required
           />
           <input
             type="text"
-            placeholder="Описание (необязательно)"
-            value={newDesc()}
-            onInput={(e) => setNewDesc(e.currentTarget.value)}
+            placeholder="Description"
+            value={projDesc()}
+            onInput={(e) => setProjDesc(e.currentTarget.value)}
           />
+          <input
+            type="text"
+            placeholder="/local/path or ssh://user@host/absolute/path"
+            value={projPath()}
+            onInput={(e) => setProjPath(e.currentTarget.value)}
+            required
+          />
+          <Show when={createError()}>
+            <div class="ws-error">{createError()}</div>
+          </Show>
           <div class="chat-add-actions">
-            <button type="button" onClick={() => { setShowForm(false); setNewName(''); setNewDesc(''); }}>отмена</button>
-            <button type="submit" class="primary">создать</button>
+            <button type="button" onClick={resetForm}>cancel</button>
+            <button type="submit" class="primary">create project</button>
           </div>
         </form>
       </Show>
 
       <div class="chat-sidebar-list">
-        <For each={settings.workspaces}>
-          {(ws) => (
+        <For each={feed.projects}>
+          {(project) => (
             <div
-              classList={{ 'chat-item': true, active: activeWorkspaceId() === ws.id }}
-              onClick={() => switchWorkspace(ws.id)}
+              classList={{ 'chat-item': true, active: activeWorkspaceId() === project.project_id }}
+              onClick={() => switchWorkspace(project.project_id)}
             >
               <div class="chat-item-top">
-                <span class="chat-item-name">{ws.name}</span>
-                <span class="chat-item-time">{relTime(ws.last_message_at || ws.created_at)}</span>
+                <span class="chat-item-name">{project.title}</span>
+                <span class="chat-item-time">
+                  {relTime(project.last_activity_at ? new Date(project.last_activity_at).getTime() : undefined)}
+                </span>
               </div>
-              <Show when={ws.description}>
-                <div class="chat-item-desc">{ws.description}</div>
+              <Show when={project.description}>
+                <div class="chat-item-desc">{project.description}</div>
               </Show>
-              <Show when={ws.id !== 'main'}>
-                <button
-                  class="chat-item-del"
-                  onClick={(e) => { e.stopPropagation(); if (confirm('Удалить чат "' + ws.name + '"?')) removeWorkspace(ws.id); }}
-                  title="Удалить чат">✕</button>
+              <Show when={project.workspace_path}>
+                <div class="chat-item-desc mono">{project.workspace_path}</div>
               </Show>
+              <div class="chat-item-desc">{STATUS_LABELS[project.status] || project.status}</div>
+              <button
+                class="chat-item-del"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm(`Delete project "${project.title}" and its execution logs?`)) {
+                    deleteProject(project.project_id);
+                    if (activeWorkspaceId() === project.project_id) switchWorkspace('main');
+                  }
+                }}
+                title="Delete project"
+              >
+                x
+              </button>
             </div>
           )}
         </For>
       </div>
-
-      <Show when={feed.projects.length > 0}>
-        <div class="chat-sidebar-header">
-          <h3>Проекты</h3>
-          <button class="chat-add-btn" onClick={() => setShowProjectForm(!showProjectForm())} title="Новый проект">+</button>
-        </div>
-        <Show when={showProjectForm()}>
-          <form class="chat-add-form" onSubmit={handleCreateProject}>
-            <input
-              type="text"
-              placeholder="Название проекта"
-              value={projName()}
-              onInput={(e) => setProjName(e.currentTarget.value)}
-              required
-            />
-            <input
-              type="text"
-              placeholder="Описание"
-              value={projDesc()}
-              onInput={(e) => setProjDesc(e.currentTarget.value)}
-            />
-            <div class="chat-add-actions">
-              <button type="button" onClick={() => { setShowProjectForm(false); setProjName(''); setProjDesc(''); }}>отмена</button>
-              <button type="submit" class="primary">создать</button>
-            </div>
-          </form>
-        </Show>
-        <div class="chat-sidebar-list">
-          <For each={feed.projects}>
-            {(proj) => (
-              <div
-                classList={{ 'chat-item': true, active: activeWorkspaceId() === proj.project_id }}
-                onClick={() => switchWorkspace(proj.project_id)}
-              >
-                <div class="chat-item-top">
-                  <span class="chat-item-name">{proj.title}</span>
-                  <span class="chat-item-time">{relTime(proj.last_activity_at ? new Date(proj.last_activity_at).getTime() : undefined)}</span>
-                </div>
-                <Show when={proj.description}>
-                  <div class="chat-item-desc">{proj.description}</div>
-                </Show>
-                <div class="chat-item-desc" style="font-size: 0.8em; color: var(--color-subtext); margin-top: 4px;">
-                  {STATUS_LABELS[proj.status] || proj.status}
-                </div>
-                <button
-                  class="chat-item-del"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm('Удалить проект "' + proj.title + '"? Это также удалит все логи выполнения.')) {
-                      deleteProject(proj.project_id);
-                      if (activeWorkspaceId() === proj.project_id) switchWorkspace('main');
-                    }
-                  }}
-                  title="Удалить проект">✕</button>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
     </div>
   );
 }

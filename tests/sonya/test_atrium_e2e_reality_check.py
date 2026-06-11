@@ -142,6 +142,25 @@ def test_project_api_rejects_invalid_status(substrate, tmp_path: Path, monkeypat
     assert response.status == 400
 
 
+def test_project_api_rejects_ssh_workspace_with_embedded_password(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "project-secret.db"))
+    from sonya.admin.project_api import api_project_create
+    from sonya.config import load_config
+
+    class _Req:
+        app = {"config": load_config()}
+
+        async def json(self):
+            return {
+                "title": "unsafe remote",
+                "workspace_path": "ssh://user:password@example.com/srv/project",
+            }
+
+    response = asyncio.run(api_project_create(_Req()))
+    assert response.status == 400
+    assert "must not contain passwords" in response.text
+
+
 def test_project_runs_api_exposes_worker_progress(substrate, tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SONYA_SUBSTRATE_PATH", str(tmp_path / "runs-api.db"))
     from sonya.admin.project_api import api_project_runs

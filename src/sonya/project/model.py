@@ -76,10 +76,18 @@ class ProjectStore:
         ".sonya/", ".sonya\\",
     )
 
+    @staticmethod
+    def _validate_workspace_path(workspace_path: str) -> None:
+        if workspace_path.startswith("ssh://"):
+            from sonya.tools.workspace_transport import parse_ssh_workspace
+
+            parse_ssh_workspace(workspace_path)
+
     def create(self, title: str, *, description: str = "",
                workspace_path: str = "",
                owner_principal_id: str = "ivan",
                policy: dict[str, Any] | None = None) -> Project:
+        self._validate_workspace_path(workspace_path)
         for marker in self._SELF_TOUCH_PATHS:
             if marker in workspace_path.replace("\\", "/").lower():
                 raise ValueError(
@@ -129,6 +137,8 @@ class ProjectStore:
         return [self._row_to_project(r) for r in rows]
 
     def update(self, project_id: str, **kwargs: Any) -> Project:
+        if "workspace_path" in kwargs:
+            self._validate_workspace_path(str(kwargs["workspace_path"]))
         now = datetime.now(timezone.utc).isoformat()
         sets: list[str] = ["updated_at = ?"]
         vals: list[Any] = [now]
