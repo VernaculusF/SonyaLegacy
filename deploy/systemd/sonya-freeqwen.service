@@ -1,0 +1,32 @@
+[Unit]
+Description=Sonya FreeQwen localhost-only web proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jester-sonya
+Group=jester-sonya
+WorkingDirectory=/home/jester-sonya/.sonya/web-proxy/freeqwen
+Environment="NODE_ENV=production"
+Environment="HOST=127.0.0.1"
+Environment="PORT=3264"
+Environment="SKIP_ACCOUNT_MENU=true"
+Environment="NON_INTERACTIVE=true"
+Environment="CHROME_PATH=/usr/bin/chromium"
+Environment="HOME=/home/jester-sonya/.sonya/web-proxy/freeqwen/browser-home"
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/jester-sonya/.sonya/web-proxy/freeqwen/session
+ReadWritePaths=/home/jester-sonya/.sonya/web-proxy/freeqwen/logs
+ReadWritePaths=/home/jester-sonya/.sonya/web-proxy/freeqwen/uploads
+ReadWritePaths=/home/jester-sonya/.sonya/web-proxy/freeqwen/browser-home
+
+[Install]
+WantedBy=multi-user.target

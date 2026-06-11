@@ -29,7 +29,7 @@ def build_lifecycle_adapter(store: KeyStore, provider_id: str) -> ProviderAdapte
             api_key=secret,
             base_url=provider.base_url or "https://generativelanguage.googleapis.com/v1beta",
         )
-    if provider.adapter_kind == "openai_compatible":
+    if provider.adapter_kind in ("openai_compatible", "web_proxy"):
         return OpenAICompatibleAdapter(
             provider_id=provider.provider_id,
             base_url=provider.base_url,
@@ -61,7 +61,7 @@ def build_lifecycle_adapter_for_account(
             api_key=secret,
             base_url=provider.base_url or "https://generativelanguage.googleapis.com/v1beta",
         )
-    if provider.adapter_kind == "openai_compatible":
+    if provider.adapter_kind in ("openai_compatible", "web_proxy"):
         return OpenAICompatibleAdapter(
             provider_id=provider.provider_id,
             base_url=provider.base_url,

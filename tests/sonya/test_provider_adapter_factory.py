@@ -74,3 +74,26 @@ def test_factory_builds_adapter_for_specific_account(tmp_path, monkeypatch) -> N
         assert adapter.api_key.get_secret_value() == "second-secret"
     finally:
         sub.close()
+
+
+def test_factory_builds_openai_adapter_for_web_proxy(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SONYA_PROVIDER_SECRET_KEY", Fernet.generate_key().decode("ascii"))
+    sub = Substrate.open(tmp_path / "factory.db")
+    try:
+        store = KeyStore(sub)
+        store.upsert_provider(
+            provider_id="freeqwen",
+            display_name="FreeQwen Web Proxy",
+            adapter_kind="web_proxy",
+            base_url="http://127.0.0.1:3264/api",
+        )
+        account = store.add_provider_account(provider_id="freeqwen", name="local")
+        store.rotate_account_secret(account.account_id, "local-proxy-secret")
+
+        adapter = build_lifecycle_adapter(store, "freeqwen")
+
+        assert isinstance(adapter, OpenAICompatibleAdapter)
+        assert adapter.provider_id == "freeqwen"
+        assert adapter.base_url == "http://127.0.0.1:3264/api"
+    finally:
+        sub.close()

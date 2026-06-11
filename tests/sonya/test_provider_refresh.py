@@ -200,6 +200,45 @@ async def test_openrouter_refresh_auto_enables_only_free_models(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_web_proxy_refresh_enables_only_models_that_pass_live_probe(tmp_path) -> None:
+    sub = Substrate.open(tmp_path / "refresh.db")
+    try:
+        store = KeyStore(sub)
+        account_id = _seed_provider_and_account(store, provider_id="freeqwen")
+        store.upsert_provider(
+            provider_id="freeqwen",
+            display_name="FreeQwen Web Proxy",
+            adapter_kind="web_proxy",
+            base_url="http://127.0.0.1:3264/api",
+        )
+        adapter = StubAdapter(
+            provider_id="freeqwen",
+            models=[
+                DiscoveredModel("freeqwen", "qwen-good", "Qwen Good", 262144),
+                DiscoveredModel("freeqwen", "qwen-dead", "Qwen Dead", 262144),
+            ],
+            failing_infer_models={"qwen-dead"},
+        )
+
+        result = await ProviderRefreshService(store, {"freeqwen": adapter}).refresh_provider("freeqwen")
+
+        assert result.ok is True
+        assert [m.model_id for m in store.list_available_provider_models("freeqwen")] == ["qwen-good"]
+        disabled = store.get_account_offering_metadata(account_id, "qwen-dead")
+        assert disabled["disabled_reason"] == "probe_failed"
+        probes = [
+            item for item in store.list_provider_observations(provider_id="freeqwen")
+            if item.observation_kind == "model_probe"
+        ]
+        assert {item.model_id: item.success for item in probes} == {
+            "qwen-dead": 0,
+            "qwen-good": 1,
+        }
+    finally:
+        sub.close()
+
+
+@pytest.mark.asyncio
 async def test_nous_refresh_auto_enables_only_free_models(tmp_path) -> None:
     sub = Substrate.open(tmp_path / "refresh.db")
     try:

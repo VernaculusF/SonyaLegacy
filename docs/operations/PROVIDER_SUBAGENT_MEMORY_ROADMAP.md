@@ -122,7 +122,11 @@ by that proof. Do not add Admin provider CRUD to Atrium.
   for scoped subagent read/search/code execution without storing SSH secrets
 - [x] make active Atrium UI expose one main chat and only real substrate-backed
   project chats; first project creation now accepts local or SSH workspace path
-- next: browser/web-proxy provider bridge
+- browser/web-proxy Phase 1 infrastructure deployed: localhost-only FreeQwen
+  service, encrypted `web_proxy` provider account, and mandatory live probes
+- current blocker: Qwen serves an anti-bot challenge to the Google VPS, so no
+  FreeQwen offering is eligible
+- next: remote browser worker plus Sonya-owned authenticated gateway transport
 
 ## VPS Gate
 

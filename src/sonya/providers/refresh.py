@@ -210,7 +210,8 @@ class ProviderRefreshService:
         adapter: ProviderAdapter,
         model_id: str,
     ) -> bool:
-        if provider_id != "openrouter":
+        provider = self._store.get_provider(provider_id)
+        if provider_id != "openrouter" and (provider is None or provider.adapter_kind != "web_proxy"):
             return True
         try:
             result = await adapter.infer(

@@ -374,6 +374,18 @@ Verification:
   `thinking_provider_ready` for OpenRouter
 - production-source provider verification: `126 passed` (`119 + 7` async)
 
+## 2026-06-11 FreeQwen web-proxy handoff
+
+- production has `sonya-freeqwen.service` bound only to `127.0.0.1:3264`
+- provider `freeqwen` has one encrypted local proxy account and adapter kind
+  `web_proxy`
+- web-proxy offerings require a successful live tiny inference probe
+- health/catalog are live and advertise 27 models
+- no FreeQwen offering is enabled because Qwen serves an anti-bot AES challenge
+  to the Google VPS; completion is not proven
+- next: remote browser worker plus Sonya-owned authenticated gateway transport
+- do not publish port `3264` or mark catalog-only models available
+
 Next implementation slice:
 
 1. Add measured provider/model scorecards and cooldown handling on top of the

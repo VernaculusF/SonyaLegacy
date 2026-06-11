@@ -265,3 +265,37 @@ in Admin.
 - Failed models/accounts enter cooldown instead of being selected.
 - Subagent picker can select `web_proxy` only for eligible low-cost roles.
 - Normal provider pools remain available as fallback.
+
+## Production Status - 2026-06-11
+
+Phase 1 infrastructure is deployed, but FreeQwen inference is honestly blocked
+on the current Google VPS:
+
+- FreeQwenApi runtime is outside Git at
+  `/home/jester-sonya/.sonya/web-proxy/freeqwen`.
+- `sonya-freeqwen.service` runs as `jester-sonya`, binds only
+  `127.0.0.1:3264`, and has a bounded 20-second shutdown.
+- existing Qwen session artifacts are mode-protected; the local proxy API key
+  exists only in the runtime and encrypted provider substrate.
+- provider `freeqwen` is registered with adapter kind `web_proxy`.
+- every advertised web-proxy model must pass a live tiny inference probe before
+  its account offering becomes eligible.
+- `/api/health` and `/api/models` return `200`; the bridge advertises 27 models.
+- live completion is not proven. `chat.qwen.ai` serves an anti-bot AES
+  challenge page to the Google VPS instead of the current application/API.
+  The old bridge then stalls inside Puppeteer and its obsolete
+  `/api/v2/chats/new` call returns HTML rather than JSON.
+- no FreeQwen model is enabled in Sonya. This is deliberate.
+
+The next implementation slice is a remote browser worker:
+
+1. run the browser-facing bridge on a connected machine/network where the Qwen
+   web application works normally;
+2. expose only a Sonya-owned authenticated gateway over the existing remote
+   workspace/worker transport;
+3. keep provider discovery on the VPS, but enable account offerings only after
+   end-to-end live probes through that remote worker;
+4. add synthetic progress events only after completion is reliable.
+
+Do not solve this by publishing port `3264`, marking catalog entries available,
+or weakening probe requirements.

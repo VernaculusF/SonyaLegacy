@@ -468,3 +468,19 @@ Workstream A получил первый answer-first вертикальный �
   for OpenRouter.
 - Nous bootstrap is complete through protected ingestion; provider-scoped model
   identity repair restored the full live Nous pool to 265 available models.
+
+## 2026-06-11 - FreeQwen web-proxy Phase 1
+
+- deployed a protected FreeQwenApi runtime outside Git and a localhost-only
+  `sonya-freeqwen.service` on `127.0.0.1:3264`
+- registered `freeqwen` as a substrate-owned `web_proxy` provider with one
+  encrypted internal proxy account
+- added lifecycle adapter support for `web_proxy`
+- made live tiny inference probes mandatory before any web-proxy model offering
+  becomes eligible
+- health and model catalog work; 27 models are advertised
+- live inference is blocked because `chat.qwen.ai` serves an anti-bot AES
+  challenge to the Google VPS and the old bridge API paths return HTML
+- available FreeQwen offerings remain intentionally zero
+- next: run browser bridge on a connected remote worker and route it through a
+  Sonya-owned authenticated gateway

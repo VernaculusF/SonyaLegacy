@@ -67,6 +67,16 @@ _PRESETS: dict[str, dict[str, Any]] = {
             "preferred_models": ["nvidia/nemotron-3-ultra-550b-a55b"],
         },
     },
+    "freeqwen": {
+        "display_name": "FreeQwen Web Proxy",
+        "adapter_kind": "web_proxy",
+        "base_url": "http://127.0.0.1:3264/api",
+        "metadata": {
+            "source": "operator_import",
+            "localhost_only": True,
+            "web_proxy": True,
+        },
+    },
 }
 
 
