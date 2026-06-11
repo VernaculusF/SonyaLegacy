@@ -10,6 +10,7 @@ import solid from 'vite-plugin-solid';
 
 export default defineConfig({
   plugins: [solid()],
+  base: '/atrium/',
   clearScreen: false,
   server: {
     port: 1420,

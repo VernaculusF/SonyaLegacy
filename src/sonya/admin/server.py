@@ -11,6 +11,7 @@ import os
 import secrets
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from sonya.admin.static import ADMIN_HTML
@@ -33,6 +34,7 @@ except ImportError:
 # Simple auth
 _ADMIN_PASSWORD = None  # Set via env SONYA_ADMIN_PASSWORD
 _ATRIUM_WS_TICKET_TTL_SECONDS = 45
+_ATRIUM_DIST_DIR = Path(__file__).resolve().parents[3] / "packages" / "atrium" / "dist"
 
 
 async def _json_body(request: web.Request) -> dict[str, Any]:
@@ -197,6 +199,28 @@ def _is_core_running(config: AppConfig) -> bool:
 
 async def handle_index(request: web.Request) -> web.Response:
     return web.Response(text=ADMIN_HTML, content_type="text/html")
+
+
+async def handle_atrium_app(request: web.Request) -> web.Response:
+    index = _ATRIUM_DIST_DIR / "index.html"
+    if not index.is_file():
+        return web.json_response(
+            {"error": "atrium_bundle_missing", "detail": "build packages/atrium on the server"},
+            status=503,
+        )
+    relative = str(request.match_info.get("path", "") or "").strip("/")
+    candidate = (_ATRIUM_DIST_DIR / relative).resolve() if relative else index.resolve()
+    try:
+        candidate.relative_to(_ATRIUM_DIST_DIR.resolve())
+    except ValueError:
+        raise web.HTTPNotFound()
+    if candidate.is_file():
+        return web.FileResponse(candidate)
+    return web.FileResponse(index)
+
+
+async def handle_atrium_redirect(request: web.Request) -> web.Response:
+    raise web.HTTPFound("/atrium/")
 
 
 async def handle_login(request: web.Request) -> web.Response:
@@ -2944,6 +2968,8 @@ def create_app() -> web.Application:
     app["admin_password"] = admin_password
     app["atrium_ws_tickets"] = {}
     app.router.add_get("/", handle_index)
+    app.router.add_get("/atrium", handle_atrium_redirect)
+    app.router.add_get("/atrium/{path:.*}", handle_atrium_app)
     app.router.add_route("*", "/login", handle_login)
     app.router.add_get("/api/dashboard", api_dashboard)
     app.router.add_get("/api/thoughts", api_thoughts)
