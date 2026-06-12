@@ -652,3 +652,16 @@ than postponed:
 - shared-state ownership and scheduler backpressure;
 - separation of subjective continuity from technical telemetry;
 - independent WorkItem acceptance evidence.
+
+### 11. Upcoming Priorities (June 2026)
+These are planned functional evolutions and fixes:
+
+1. **Rework Provider Account Visibility:** Remove global account visibility. Create a mechanism to isolate/hide specific provider keys instead of assigning lists of keys per model.
+2. **Subagent Execution Check:** Verify subagent execution pathways and ensure overall reliability.
+3. **Model Acceptance Testing System:** Build a comprehensive system to test all available models on tool acceptance, response format, skill usage, and error correction. Prune the model pool to only retain the ones that reliably pass.
+4. **Tool and Response Formatting:** Migrate from Telegram-centric output parsing to direct unparsed formatting for Atrium. Ensure Sonya perceives tools correctly and parse outputs only for Telegram (which needs fixes).
+5. **Rebalance Reasoning and Drive Engines:** Fix the constantly maxed out `curiosity_analog` and ensure personas, emotions, and drive counters function harmoniously.
+6. **Global Admin UI Redesign:** Visually and functionally align the fallback Admin panel with the modern Atrium aesthetic.
+7. **Migrate Settings out of Atrium:** Remove administrative settings from the Atrium interface, keeping Atrium pure as a workspace and communication window. Duplicated configs belong solely in the Admin panel.
+8. **Audit Existing Skills:** Validate and fix all existing tools, notably the web search tool which is currently unreliable.
+9. **Self-Healing and Error Correction:** Enable and encourage Sonya to utilize her self-modification/repair skills automatically when encountering actionable errors, removing the hesitance or lack of awareness.

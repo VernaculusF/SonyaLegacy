@@ -534,57 +534,37 @@ function ProvidersPanel(props) {
         </Show>
         <Show when={editing()}>
           <div class="form-grid">
+            <datalist id="models-list">
+              <option value="">(none)</option>
+              <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
+            </datalist>
             <label>active provider
               <input type="text" value={draft().active_provider}
                 onInput={(e) => setDraft({ ...draft(), active_provider: e.currentTarget.value })} />
             </label>
             <label>default model
-              <select value={draft().default_model} onInput={(e) => setDraft({ ...draft(), default_model: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().default_model} onInput={(e) => setDraft({ ...draft(), default_model: e.currentTarget.value })} />
             </label>
             <label>default fallback
-              <select value={draft().default_fallback} onInput={(e) => setDraft({ ...draft(), default_fallback: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().default_fallback} onInput={(e) => setDraft({ ...draft(), default_fallback: e.currentTarget.value })} />
             </label>
             <label>fast model
-              <select value={draft().fast_model} onInput={(e) => setDraft({ ...draft(), fast_model: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().fast_model} onInput={(e) => setDraft({ ...draft(), fast_model: e.currentTarget.value })} />
             </label>
             <label>fast fallback
-              <select value={draft().fast_fallback} onInput={(e) => setDraft({ ...draft(), fast_fallback: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().fast_fallback} onInput={(e) => setDraft({ ...draft(), fast_fallback: e.currentTarget.value })} />
             </label>
             <label>deep model
-              <select value={draft().deep_model} onInput={(e) => setDraft({ ...draft(), deep_model: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().deep_model} onInput={(e) => setDraft({ ...draft(), deep_model: e.currentTarget.value })} />
             </label>
             <label>deep fallback
-              <select value={draft().deep_fallback} onInput={(e) => setDraft({ ...draft(), deep_fallback: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().deep_fallback} onInput={(e) => setDraft({ ...draft(), deep_fallback: e.currentTarget.value })} />
             </label>
             <label>vision model
-              <select value={draft().vision_model} onInput={(e) => setDraft({ ...draft(), vision_model: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().vision_model} onInput={(e) => setDraft({ ...draft(), vision_model: e.currentTarget.value })} />
             </label>
             <label>vision fallback
-              <select value={draft().vision_fallback} onInput={(e) => setDraft({ ...draft(), vision_fallback: e.currentTarget.value })}>
-                <option value="">(none)</option>
-                <For each={models()}>{m => { const p = providersList().find(x=>x.provider_id===m.provider); return <option value={m.model_id}>{(p?.display_name || m.provider) + '/' + (m.model_name || m.model_id)}</option>; }}</For>
-              </select>
+              <input type="text" list="models-list" value={draft().vision_fallback} onInput={(e) => setDraft({ ...draft(), vision_fallback: e.currentTarget.value })} />
             </label>
           </div>
         </Show>

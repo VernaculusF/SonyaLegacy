@@ -902,17 +902,18 @@ renderers.providers = function(d) {
     <div class="card"><h3>Model pool</h3><strong>${ms.length}</strong><span class="provider-meta">${available.size} available</span></div>
     <div class="card"><h3>Free models</h3><strong>${ms.filter(x=>x.is_free).length}</strong><span class="provider-meta">advertised</span></div>
     <div class="card"><h3>Observations</h3><strong>${os.length}</strong><span class="provider-meta">${qs.length} quota windows</span></div></div>`;
-  const modOpts = (sel) => `<option value="">(none)</option>` + ms.map(x=>{ const p = ps.find(p=>p.provider_id===x.provider); return `<option value="${escapeHtml(x.model_id)}" ${x.model_id===sel?'selected':''}>${escapeHtml(p?.display_name || x.provider)}/${escapeHtml(x.model_name || x.model_id)}</option>`; }).join('');
+  const modOpts = (sel) => `<option value="">(none)</option>` + ms.map(x=>{ const p = ps.find(p=>p.provider_id===x.provider); return `<option value="${escapeHtml(x.model_id)}">${escapeHtml(p?.display_name || x.provider)}/${escapeHtml(x.model_name || x.model_id)}</option>`; }).join('');
   const settings=`<div class="card"><h3>Runtime defaults</h3><div class="provider-form">
+    <datalist id="models-list">${modOpts('')}</datalist>
     <label>Active provider</label><select id="prov-active">${ps.map(x=>`<option value="${escapeHtml(x.provider_id)}" ${x.provider_id===s.active_provider?'selected':''}>${escapeHtml(x.display_name)} (${escapeHtml(x.provider_id)})</option>`).join('')}</select>
-    <label>Default model</label><select id="prov-model">${modOpts(s.default_model)}</select>
-    <label>Default fallback</label><select id="prov-default-fallback">${modOpts(s.default_fallback)}</select>
-    <label>Fast model</label><select id="prov-fast">${modOpts(s.fast_model)}</select>
-    <label>Fast fallback</label><select id="prov-fast-fallback">${modOpts(s.fast_fallback)}</select>
-    <label>Deep model</label><select id="prov-deep">${modOpts(s.deep_model)}</select>
-    <label>Deep fallback</label><select id="prov-deep-fallback">${modOpts(s.deep_fallback)}</select>
-    <label>Vision model</label><select id="prov-vision">${modOpts(s.vision_model)}</select>
-    <label>Vision fallback</label><select id="prov-vision-fallback">${modOpts(s.vision_fallback)}</select></div>
+    <label>Default model</label><input type="text" id="prov-model" list="models-list" value="${escapeHtml(s.default_model||'')}">
+    <label>Default fallback</label><input type="text" id="prov-default-fallback" list="models-list" value="${escapeHtml(s.default_fallback||'')}">
+    <label>Fast model</label><input type="text" id="prov-fast" list="models-list" value="${escapeHtml(s.fast_model||'')}">
+    <label>Fast fallback</label><input type="text" id="prov-fast-fallback" list="models-list" value="${escapeHtml(s.fast_fallback||'')}">
+    <label>Deep model</label><input type="text" id="prov-deep" list="models-list" value="${escapeHtml(s.deep_model||'')}">
+    <label>Deep fallback</label><input type="text" id="prov-deep-fallback" list="models-list" value="${escapeHtml(s.deep_fallback||'')}">
+    <label>Vision model</label><input type="text" id="prov-vision" list="models-list" value="${escapeHtml(s.vision_model||'')}">
+    <label>Vision fallback</label><input type="text" id="prov-vision-fallback" list="models-list" value="${escapeHtml(s.vision_fallback||'')}"></div>
     <div class="provider-actions" style="margin-top:10px"><button class="provider-button primary" onclick="providersSaveSettings()">Save defaults</button><span class="provider-meta">Substrate-owned; this does not define Sonya.</span></div></div>`;
   const pools=`<div class="card"><div class="provider-head"><h3>Provider pools</h3><button class="provider-button primary" onclick="providersCreateRegistry()">Add provider</button></div><div class="provider-stack">${ps.map(x=>{
     const ac=as.filter(a=>a.provider_id===x.provider_id).length, mc=ms.filter(m=>m.provider===x.provider_id).length;
