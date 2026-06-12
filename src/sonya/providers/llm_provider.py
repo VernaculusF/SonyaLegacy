@@ -118,13 +118,15 @@ _PROVIDER_DEFAULT_MODEL: dict[str, str] = {
 }
 
 
-def _model_for_purpose(purpose: str) -> str:
-    """Legacy compatibility hook.
-
-    Purpose names no longer imply fixed models. Model choice comes from the
-    provider/model pool and explicit caller overrides.
-    """
-    return ""
+def _model_for_purpose(purpose: str, settings: Any) -> str:
+    """Return model based on purpose from settings."""
+    if "vision" in purpose:
+        return settings.vision_model or settings.default_model
+    if purpose in ("fast_text", "active_session", "task_worker_fast"):
+        return settings.fast_model or settings.default_model
+    if purpose in ("deep_text", "self_mod", "task_worker_deep", "planning"):
+        return settings.deep_model or settings.default_model
+    return settings.default_model
 
 
 def _provider_fallback_chain(store: KeyStore, primary_provider: str, *, explicit_provider: bool) -> list[str]:
@@ -250,10 +252,10 @@ class LLMProvider:
                     **{**kwargs, "_vision_stripped": True},
                 )
 
-        provider = str(kwargs.get("_provider") or settings.active_provider or "").strip() or settings.active_provider
-        max_attempts = max(1, kwargs.get("_max_key_attempts", 5))
+        provider = str(kwargs.get("_provider") or "").strip()
+        max_attempts = max(1, kwargs.get("_max_key_attempts", 20))
         purpose = kwargs.get("purpose", "unknown")
-        explicit_provider = bool(str(kwargs.get("_provider", "")).strip())
+        explicit_provider = bool(provider)
 
         # Model selection: explicit _model > role-based from provider_models pool > purpose hint > provider default.
         if "_model" in kwargs:
@@ -271,7 +273,7 @@ class LLMProvider:
                     else:
                         preferred_model = role_matches[0].model_id
             if not preferred_model:
-                preferred_model = _model_for_purpose(purpose)
+                preferred_model = _model_for_purpose(purpose, settings)
 
         fallback_chain = _provider_fallback_chain(self._store, provider, explicit_provider=explicit_provider)
 
@@ -284,7 +286,7 @@ class LLMProvider:
             # If a concrete model is selected, pick only accounts that offer it.
             for prov in fallback_chain:
                 key = (
-                    await self._store.acquire_for_model(prov, preferred_model)
+                    await self._store.acquire_for_model(preferred_model, prov)
                     if preferred_model else
                     await self._store.acquire(prov)
                 )

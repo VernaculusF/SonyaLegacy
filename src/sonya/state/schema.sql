@@ -1406,14 +1406,13 @@ CREATE TABLE IF NOT EXISTS provider_settings (
 
     id INTEGER PRIMARY KEY CHECK (id = 1),
 
-
-
     active_provider TEXT NOT NULL DEFAULT 'openrouter',
     default_model TEXT NOT NULL DEFAULT '',
+    fast_model TEXT NOT NULL DEFAULT '',
+    deep_model TEXT NOT NULL DEFAULT '',
+    vision_model TEXT NOT NULL DEFAULT '',
     default_base_url TEXT NOT NULL DEFAULT 'https://openrouter.ai/api/v1',
     updated_at TEXT NOT NULL
-
-
 
 );
 

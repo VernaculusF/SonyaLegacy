@@ -30,6 +30,8 @@ def ensure_critical_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "provider_keys", "slot", "TEXT NOT NULL DEFAULT 'text'")
     _add_column_if_missing(conn, "provider_settings", "vision_provider", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "provider_settings", "vision_model", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "provider_settings", "fast_model", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "provider_settings", "deep_model", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "provider_settings", "vision_base_url", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "episodic_events", "record_type", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "episodic_events", "scope", "TEXT NOT NULL DEFAULT ''")

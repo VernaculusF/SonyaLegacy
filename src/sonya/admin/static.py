@@ -905,6 +905,9 @@ renderers.providers = function(d) {
   const settings=`<div class="card"><h3>Runtime defaults</h3><div class="provider-form">
     <label>Active provider</label><select id="prov-active">${ps.map(x=>`<option value="${escapeHtml(x.provider_id)}" ${x.provider_id===s.active_provider?'selected':''}>${escapeHtml(x.display_name)} (${escapeHtml(x.provider_id)})</option>`).join('')}</select>
     <label>Default model</label><input id="prov-model" value="${escapeHtml(s.default_model||'')}" placeholder="provider/model">
+    <label>Fast model</label><input id="prov-fast" value="${escapeHtml(s.fast_model||'')}" placeholder="provider/model">
+    <label>Deep model</label><input id="prov-deep" value="${escapeHtml(s.deep_model||'')}" placeholder="provider/model">
+    <label>Vision model</label><input id="prov-vision" value="${escapeHtml(s.vision_model||'')}" placeholder="provider/model">
     <label>Recovery base URL</label><input id="prov-base" value="${escapeHtml(s.default_base_url||'')}" placeholder="normally empty"></div>
     <div class="provider-actions" style="margin-top:10px"><button class="provider-button primary" onclick="providersSaveSettings()">Save defaults</button><span class="provider-meta">Substrate-owned; this does not define Sonya.</span></div></div>`;
   const pools=`<div class="card"><div class="provider-head"><h3>Provider pools</h3><button class="provider-button primary" onclick="providersCreateRegistry()">Add provider</button></div><div class="provider-stack">${ps.map(x=>{
@@ -963,6 +966,9 @@ async function providersSaveSettings() {
   const body = {
     active_provider: document.getElementById('prov-active').value.trim(),
     default_model: document.getElementById('prov-model').value.trim(),
+    fast_model: document.getElementById('prov-fast').value.trim(),
+    deep_model: document.getElementById('prov-deep').value.trim(),
+    vision_model: document.getElementById('prov-vision').value.trim(),
     default_base_url: document.getElementById('prov-base').value.trim(),
   };
   try {

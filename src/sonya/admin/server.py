@@ -1391,6 +1391,9 @@ async def api_providers_settings(request: web.Request) -> web.Response:
         settings = store.set_settings(
             active_provider=data.get("active_provider"),
             default_model=data.get("default_model"),
+            fast_model=data.get("fast_model"),
+            deep_model=data.get("deep_model"),
+            vision_model=data.get("vision_model"),
             default_base_url=data.get("default_base_url"),
         )
         return web.json_response({
@@ -1398,6 +1401,9 @@ async def api_providers_settings(request: web.Request) -> web.Response:
             "settings": {
                 "active_provider": settings.active_provider,
                 "default_model": settings.default_model,
+                "fast_model": settings.fast_model,
+                "deep_model": settings.deep_model,
+                "vision_model": settings.vision_model,
                 "default_base_url": settings.default_base_url,
             },
         })

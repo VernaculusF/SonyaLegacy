@@ -1391,7 +1391,7 @@ class InternalProcess:
                 if next_item is not None:
                     # Auto-resume in_progress; pending tasks remain pending until she
                     # decides to pick (so she can choose, not be forced).
-                    from sonya.tasks.models import WorkItemStatus as _TS
+                    from sonya.work.models import WorkItemStatus as _TS
                     if next_item.status is _TS.IN_PROGRESS:
                         remaining = []
                         # Build a rich hint that includes the previous session's
@@ -1833,7 +1833,7 @@ class InternalProcess:
             try:
                 from sonya.work.service import WorkItemService
                 from sonya.work.store import WorkItemStore
-                from sonya.tasks.models import WorkItemStatus as _TS
+                from sonya.work.models import WorkItemStatus as _TS
                 svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
                 cur = svc.list_due_ivan_tasks()
                 in_prog = [t for t in cur if t.status is _TS.IN_PROGRESS]
@@ -1927,7 +1927,7 @@ class InternalProcess:
                 return
             from sonya.work.service import WorkItemService
             from sonya.work.store import WorkItemStore
-            from sonya.tasks.models import WorkItemStatus
+            from sonya.work.models import WorkItemStatus
 
             svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
             # Worker picks URGENT tasks first (deadline-soon / urgency=urgent /
@@ -2416,7 +2416,7 @@ class InternalProcess:
                         # remembers the blocked item. The notification is
                         # gated by OutboundGate so it respects daily caps.
                         try:
-                            from sonya.tasks.models import WorkItemStatus as _TS
+                            from sonya.work.models import WorkItemStatus as _TS
                             blocked_now = svc.get(item.item_id)
                             if (
                                 blocked_now.status is _TS.BLOCKED

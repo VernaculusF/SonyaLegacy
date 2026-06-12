@@ -201,7 +201,7 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 - subagent.list — список всех субагентов (pending/running/done/failed)
 - subagent.result [subagent_id] — забрать результат завершённого субагента
 
-- chat.dialog — block form, JSON: {"to": "Ivan" | "subagent_id", "message": "..."} — отправить сообщение адресату. Основной канал диалога: ответы, отчёты, прогресс. Если получатель не указан или формат не JSON, сообщение отправляется Ивану.
+- chat.dialog — block form: `[TOOL: chat.dialog]\nТекст сообщения\n` — отправить сообщение Ивану. Основной канал диалога: ответы, отчёты, прогресс. Не используй JSON, пиши просто сырой текст.
 - chat.tell_ivan [message] — алиас на chat.dialog. То же самое.
 
 ## How to finish
@@ -2194,10 +2194,28 @@ def _h_chat_dialog(arg: str, ctx: _ToolContext) -> str:
             data = json.loads(text)
             if "message" in data:
                 text = str(data["message"]).strip()
+            elif "text" in data:
+                text = str(data["text"]).strip()
             if "to" in data:
                 addressee = str(data["to"]).strip()
         except Exception:
             pass
+            
+    # Extra protection against markdown wrapped JSON
+    if text.startswith("```json"):
+        import re
+        m = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if m:
+            try:
+                data = json.loads(m.group(1))
+                if "message" in data:
+                    text = str(data["message"]).strip()
+                elif "text" in data:
+                    text = str(data["text"]).strip()
+                if "to" in data:
+                    addressee = str(data["to"]).strip()
+            except Exception:
+                pass
             
     if not text:
         return "[ERROR] chat.dialog: empty message"
