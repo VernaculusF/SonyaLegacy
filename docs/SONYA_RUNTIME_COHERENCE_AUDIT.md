@@ -527,7 +527,7 @@ Priority meanings:
 ### 7.2 Agency, Causality, and Scheduling
 
 - [x] `P0` #5 stop self-propelling interaction cycles through meaningful change
-- [ ] `P0` #6 separate thought, addressed reply, action, and report
+- [x] `P0` #6 separate thought, addressed reply, action, and report
 - [ ] `P0` #21 causal graph and stable correlation IDs
 - [ ] `P0` #22 durable idempotency and processing checkpoints
 - [ ] `P0` #23 shared-state and outward-action ownership/conflict semantics
@@ -552,7 +552,7 @@ Priority meanings:
 
 - [ ] `P1` #13 causal, stable, non-spamming body expression lifecycle
 - [ ] `P0` #14 focus lifecycle tied to live work/activity
-- [ ] `P0` #15 one authoritative outfit/embodiment state
+- [x] `P0` #15 one authoritative outfit/embodiment state
 
 ### 7.5 Providers, Models, and Context
 

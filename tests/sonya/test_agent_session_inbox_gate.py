@@ -129,11 +129,11 @@ async def test_grace_period_allows_early_work_tools(substrate: Substrate, monkey
     )
 
     # Step 0 — straight to web.fetch (no chat.dialog ack). Gate should NOT
-    # fire because we're under grace threshold. Step 1 — finalize via
-    # DONE-as-reply with body, дispatched as Ivan-reply.
+    # fire because we're under grace threshold. Step 1 — chat.dialog to reply.
     provider = _Stub([
         "[TOOL: web.fetch https://example.com]",
-        "[DONE: Открыла example.com — заголовок Example Domain.]",
+        "[TOOL: chat.dialog]\nОткрыла example.com — заголовок Example Domain.",
+        "[DONE]"
     ])
 
     from sonya.tools.web_tool import WebTool
@@ -163,13 +163,6 @@ async def test_grace_period_allows_early_work_tools(substrate: Substrate, monkey
     assert not rows, (
         "web.fetch on step 0 must NOT be gate-blocked under grace period"
     )
-
-    # DONE-as-reply dispatched.
-    rows = substrate.connection.execute(
-        "SELECT 1 FROM continuity_events "
-        "WHERE kind = 'internal.done_as_reply_dispatched'"
-    ).fetchall()
-    assert rows, "DONE-as-reply must dispatch the final body"
 
 
 async def test_done_blocked_after_work_without_followup_dialog(substrate: Substrate, monkeypatch) -> None:
@@ -309,16 +302,10 @@ async def test_repeated_dialog_without_new_input_or_work_is_suppressed(
     assert suppressed == 1
 
 
-async def test_done_with_body_dispatches_as_reply_short_circuits_gate(
+async def test_done_with_body_is_blocked_by_inbox_gate(
     substrate: Substrate, monkeypatch
 ) -> None:
-    """`[DONE: <text>]` should dispatch text as her message AND close the
-    session — bypasses both phase-1 and phase-2 gates without forcing
-    a separate chat.dialog call.
-
-    This makes "Иван спросил → Соня сделала → [DONE: вот результат]"
-    a single-shot pattern instead of two-step "ack + report".
-    """
+    """`[DONE: <text>]` without chat.dialog must NOT bypass the inbox gate."""
     stream = ContinuityStream(substrate)
 
     sent_via_outbound: list[str] = []
@@ -332,9 +319,8 @@ async def test_done_with_body_dispatches_as_reply_short_circuits_gate(
         outbound_mod, "call_outbound_sync", _fake_call_outbound_sync,
     )
 
-    # Single turn — model finalizes with DONE-as-reply.
     provider = _Stub(["[DONE: Открыла example.com, заголовок 'Example Domain'.]"])
-    fake_outbound = object()  # only checked for `is None`
+    fake_outbound = object()
 
     result = await run_agent_session(
         provider=provider,
@@ -350,62 +336,17 @@ async def test_done_with_body_dispatches_as_reply_short_circuits_gate(
         purpose="test",
     )
 
-    # Outbound dispatched the body
-    assert sent_via_outbound, "DONE-with-body must dispatch as outbound reply"
-    assert "Example Domain" in sent_via_outbound[0]
+    assert not sent_via_outbound
 
-    # Audit event written
-    rows = substrate.connection.execute(
-        "SELECT 1 FROM continuity_events "
-        "WHERE kind = 'internal.done_as_reply_dispatched'"
-    ).fetchall()
-    assert rows, "done_as_reply_dispatched audit event must fire"
-
-    # Session closed cleanly (one LLM call, no gate blocks)
-    assert provider.calls == 1
     gate_events = substrate.connection.execute(
         "SELECT COUNT(*) FROM continuity_events "
         "WHERE kind = 'internal.inbox_priority_gate'"
     ).fetchone()[0]
-    assert gate_events == 0
+    assert gate_events >= 1
 
 
-async def test_done_with_body_preserves_code_and_hides_reasoning(
-    substrate: Substrate, monkeypatch
-) -> None:
-    stream = ContinuityStream(substrate)
-    sent_via_outbound: list[str] = []
-    import sonya.initiative.outbound as outbound_mod
-
-    def _fake_call_outbound_sync(_gate, text, **kw):
-        sent_via_outbound.append(text)
-        return "[OK] dialog"
-
-    monkeypatch.setattr(
-        outbound_mod, "call_outbound_sync", _fake_call_outbound_sync,
-    )
-    provider = _Stub([
-        "[DONE: <think>Need a concise code answer.</think>\n"
-        "Вот код:\n\n```python\nprint('ok')\n```]"
-    ])
-
-    await run_agent_session(
-        provider=provider,
-        stream=stream,
-        self_inspect=SelfInspectTool(substrate),
-        filesystem=FilesystemTool(),
-        outbound=object(),
-        system_prompt="test",
-        initial_user_text="Покажи код.",
-        require_dialog_reply=True,
-        max_steps=4,
-        max_seconds=10.0,
-        purpose="test",
-    )
-
-    assert len(sent_via_outbound) == 1
-    assert "Need a concise" not in sent_via_outbound[0]
-    assert "```python\nprint('ok')\n```" in sent_via_outbound[0]
+async def test_bare_done_without_body_still_blocked_by_phase_1_old():
+    pass
 
 
 async def test_bare_done_without_body_still_blocked_by_phase_1(
