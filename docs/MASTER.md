@@ -72,6 +72,7 @@
 
 Операционный reference:
 - `docs/operations/VPS.md`
+- `docs/operations/RUNTIME_COHERENCE_WORKFLOW.md`
 
 ### Следующий обязательный слой
 
@@ -129,6 +130,7 @@ Atrium должен стать не только интерфейсом обще
 - `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`
 - `docs/STATE.md`
 - `docs/HANDOFF.md`
+- `docs/operations/RUNTIME_COHERENCE_WORKFLOW.md`
 
 ### Core
 
