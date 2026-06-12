@@ -577,9 +577,9 @@ Priority meanings:
 - [ ] `P1` #41 measure and govern SQLite writer contention
 - [ ] `P1` #42 govern mixed-version schema access during deploy
 - [ ] `P0` #45 prevent sensitive-data leakage through reason streams/traces
-- [ ] `P0` #46 credential exposure inventory and rotation lifecycle
+- [x] `P0` #46 credential exposure inventory and rotation lifecycle
 - [ ] `P1` #19 prove Telegram session reliability over restart/deploy cycles
-- [ ] `P1` #51 machine-check canonical documentation precedence/staleness
+- [x] `P1` #51 machine-check canonical documentation precedence/staleness
 
 ### 7.7 Evidence Required for Every Checked Item
 

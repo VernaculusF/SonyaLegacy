@@ -16,12 +16,9 @@ documentation is `advertised`; neither is benchmark truth.
 | Nous Research | OpenAI-compatible | bootstrap priority | credential available | Base `https://inference-api.nousresearch.com/v1`; user reports 50 RPM / 500k TPM |
 | Google AI Studio | Google native | bootstrap priority | project credential available | Native model discovery; quota is per project/model and dynamic |
 | kimchi.dev | OpenAI-compatible | production imported fallback | 15 encrypted accounts | Base `https://llm.kimchi.dev/openai/v1`; account budgets must be observed |
-| agentrouter.org | Anthropic/bridge candidate | experimental | test credential available | Official docs show Claude Code/Anthropic setup; latency and content constraints reported |
 | FreeQwenApi | browser bridge with local OpenAI API | experimental | browser sessions | Local endpoint `http://localhost:3264/api`; must prove on VPS |
 | NVIDIA NIM | official OpenAI-compatible API | onboarding | 3 operator-supplied keys | Free model pool; preferred carrier candidate `nvidia/nemotron-3-ultra-550b-a55b` |
-| freemodel.dev | CLI bridge candidate | research | account available | Transport/model/quota contract must be verified |
 | codex.sale | OpenAI-compatible/special modes | premium last resort | credential available | Paid; use only after budget/risk decision |
-| Fireworks | OpenAI-compatible | unavailable | all known accounts banned | Remove from defaults and routing assumptions |
 
 ## Bootstrap Candidate Offerings
 
@@ -37,7 +34,6 @@ These are initial candidates, not a permanent routing table.
 | OpenRouter | free catalog group | Laguna, GPT-OSS, Nemotron, Gemma, Kimi, Qwen, Llama, Riverflow, Hermes, Liquid candidates | user_observed; live IDs required |
 | Google | Gemma 4 26B / 31B; available Gemini text models | account-visible candidates; exact API IDs and quotas require discovery | user_observed |
 | kimchi.dev | `kimi-k2.6`, `kimi-k2.5`, `minimax-m2.7`, `minimax-m2.5`, `nemotron-3-super-fp4` | low-cost fallback pool | advertised/user_observed |
-| agentrouter | `glm-5.1`, possible Claude offerings | GLM reportedly usable; provider latency/constraints require probes | user_observed |
 | FreeQwenApi | `qwen3.7-max`, `qwen3.7-plus`, `qwen3.6-plus` | browser-backed coding/multimodal experiment | local catalog |
 | codex.sale | `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5` | paid critical-path text pool | user_observed |
 | codex.sale | `gpt-image-2`, `gpt-4o-transcribe` | special non-text workers, not normal text subagents | user_observed |
@@ -140,9 +136,5 @@ Do not load every credential before account/offering/quota modeling exists.
   `https://ai.google.dev/gemini-api/docs/rate-limits`
 - Nous inference API:
   `https://portal.nousresearch.com/api-docs`
-- AgentRouter Claude Code setup:
-  `https://docs.agentrouter.org/en/start.html`
 - Kimchi model API overview:
   `https://docs.kimchi.dev/docs/model-apis-overview`
-- freemodel dashboard docs:
-  `https://freemodel.dev/dashboard/docs`

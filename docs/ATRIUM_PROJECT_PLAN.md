@@ -513,7 +513,6 @@ not turn Atrium into an admin surface.
 - [x] OpenRouter free-model availability and discovery
 - [x] Google AI Studio
 - [x] Nous Research
-- [ ] agentrouter.org
 - [x] codexsale
 - [ ] future web-proxy model bridge
 

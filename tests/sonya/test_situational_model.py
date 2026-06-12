@@ -11,7 +11,8 @@ from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.state.situational import (
     SituationalStore, 
     record_ivan_activity,
-    SituationalMetrics
+    SituationalMetrics,
+    CredentialExposureStore
 )
 from sonya.state.substrate import Substrate
 
@@ -216,6 +217,35 @@ def test_situational_metrics(tmp_path: Path) -> None:
         
         # test1 provided one stale active and one invalidated.
         assert len(res.frequent_sources) > 0
+        
+    finally:
+        sub.close()
+
+
+def test_credential_exposure_store(tmp_path: Path) -> None:
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        store = CredentialExposureStore(sub)
+        
+        # record
+        e1 = store.record_exposure(source_kind="env.set", credential_label="aws_key", source_ref="sys")
+        assert e1.status == "unresolved"
+        
+        e2 = store.record_exposure(source_kind="scan", credential_label="db_pass")
+        
+        # list unresolved
+        unresolved = store.list_unresolved()
+        assert len(unresolved) == 2
+        labels = {e.credential_label for e in unresolved}
+        assert labels == {"aws_key", "db_pass"}
+        
+        # resolve
+        assert store.resolve(e1.exposure_id, note="rotated") is True
+        assert store.resolve(e1.exposure_id) is False # already resolved
+        
+        unresolved_after = store.list_unresolved()
+        assert len(unresolved_after) == 1
+        assert unresolved_after[0].credential_label == "db_pass"
         
     finally:
         sub.close()

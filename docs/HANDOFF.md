@@ -113,6 +113,8 @@ Checklist status:
 - #3 closed;
 - #4 closed;
 - #1 and #50 closed (generalized contradiction handling and SituationalMetrics);
+- #46 closed (CredentialExposureStore);
+- #51 closed (canonical documentation staleness test);
 - #2 still open.
 
 Additional deployed progress on #1:
@@ -123,6 +125,7 @@ Additional deployed progress on #1:
 - focused VPS suite passed (`49 passed`), compileall clean, production services
   active, `environment_state=0`, `credential_env_rows=0`, `quick_check=ok`;
 - commit `95f9f0b` added generalized contradiction handling (`invalidates_ids`) and `SituationalMetrics`, closing #1 and #50.
+- subsequent work added `CredentialExposureStore` and `test_doc_staleness.py`, closing #46 and #51.
 
 Known verification note: one old `test_internal_process_emits_on_idle_timeout`
 is a fragile 150 ms timing test on VPS and failed independently of the

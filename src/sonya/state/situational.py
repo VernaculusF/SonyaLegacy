@@ -340,4 +340,97 @@ __all__ = [
     "SituationalMetricsResult",
     "is_credential_shaped_key",
     "record_ivan_activity",
+    "CredentialExposure",
+    "CredentialExposureStore",
 ]
+@dataclass(frozen=True, slots=True)
+class CredentialExposure:
+    exposure_id: str
+    source_kind: str
+    source_ref: str
+    credential_label: str
+    discovered_at: str
+    status: str
+    metadata: dict[str, Any]
+
+class CredentialExposureStore:
+    def __init__(self, sub: Substrate) -> None:
+        self._sub = sub
+
+    def record_exposure(
+        self,
+        *,
+        source_kind: str,
+        credential_label: str,
+        source_ref: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> CredentialExposure:
+        exposure_id = f"ce-{uuid.uuid4().hex[:16]}"
+        now = _utc_now_iso()
+        self._sub.connection.execute(
+            "INSERT INTO credential_exposures("
+            "exposure_id, source_kind, source_ref, credential_label, "
+            "discovered_at, status, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, 'unresolved', ?)",
+            (
+                exposure_id,
+                source_kind,
+                source_ref,
+                credential_label,
+                now,
+                json.dumps(metadata or {}, ensure_ascii=False),
+            ),
+        )
+        self._sub.connection.commit()
+        return CredentialExposure(
+            exposure_id=exposure_id,
+            source_kind=source_kind,
+            source_ref=source_ref,
+            credential_label=credential_label,
+            discovered_at=now,
+            status="unresolved",
+            metadata=metadata or {},
+        )
+
+    def list_unresolved(self) -> list[CredentialExposure]:
+        rows = self._sub.connection.execute(
+            "SELECT exposure_id, source_kind, source_ref, credential_label, "
+            "discovered_at, status, metadata_json "
+            "FROM credential_exposures WHERE status = 'unresolved' "
+            "ORDER BY discovered_at DESC"
+        ).fetchall()
+        
+        res = []
+        for row in rows:
+            res.append(CredentialExposure(
+                exposure_id=row[0],
+                source_kind=row[1],
+                source_ref=row[2],
+                credential_label=row[3],
+                discovered_at=row[4],
+                status=row[5],
+                metadata=json.loads(row[6]),
+            ))
+        return res
+
+    def resolve(self, exposure_id: str, note: str = "") -> bool:
+        cur = self._sub.connection.execute(
+            "UPDATE credential_exposures SET status = 'resolved' "
+            "WHERE exposure_id = ? AND status = 'unresolved'",
+            (exposure_id,)
+        )
+        if cur.rowcount > 0 and note:
+            # Optionally update metadata with resolution note
+            row = self._sub.connection.execute(
+                "SELECT metadata_json FROM credential_exposures WHERE exposure_id = ?",
+                (exposure_id,)
+            ).fetchone()
+            if row:
+                md = json.loads(row[0])
+                md["resolution_note"] = note
+                self._sub.connection.execute(
+                    "UPDATE credential_exposures SET metadata_json = ? WHERE exposure_id = ?",
+                    (json.dumps(md, ensure_ascii=False), exposure_id)
+                )
+        self._sub.connection.commit()
+        return cur.rowcount > 0

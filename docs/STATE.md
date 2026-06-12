@@ -120,6 +120,8 @@ Deployed commit `95f9f0b` completes checklist items #1 and #50:
 
 - `assert_fact` now supports explicit `invalidates_ids` for cross-predicate contradiction handling;
 - `SituationalMetrics` exposes quality metrics including stale active facts, low confidence facts, contradiction counts, and source quality;
+- `CredentialExposureStore` implemented to track and resolve credential exposures (closes #46);
+- `test_doc_staleness.py` implemented to machine-check canonical documentation staleness (closes #51);
 - isolated VPS focused suite passed, production fast-forward and restart completed successfully.
 
 ## Current execution state - 2026-06-11
