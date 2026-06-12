@@ -84,6 +84,7 @@ class SituationalStore:
         scope: str = "global",
         visibility: str = "normal",
         metadata: dict[str, Any] | None = None,
+        invalidates_ids: list[str] | None = None,
     ) -> SituationalAssertion:
         subject = (subject or "").strip()
         predicate = (predicate or "").strip()
@@ -110,6 +111,16 @@ class SituationalStore:
                 "WHERE assertion_id = ?",
                 (assertion_id, supersedes_id),
             )
+        
+        if invalidates_ids:
+            for inv_id in invalidates_ids:
+                if inv_id == supersedes_id:
+                    continue
+                self._sub.connection.execute(
+                    "UPDATE situational_assertions SET active = 0, superseded_by = ? "
+                    "WHERE assertion_id = ?",
+                    (assertion_id, inv_id),
+                )
         self._sub.connection.execute(
             "INSERT INTO situational_assertions("
             "assertion_id, subject, predicate, value, source, source_ref, confidence, "
@@ -183,6 +194,78 @@ class SituationalStore:
         return cur.rowcount > 0
 
 
+@dataclass(frozen=True, slots=True)
+class SituationalMetricsResult:
+    total_active: int
+    stale_active: int
+    low_confidence: int
+    invalidated_count: int
+    frequent_sources: list[tuple[str, int]]
+    invalidated_sources: list[tuple[str, int]]
+
+
+class SituationalMetrics:
+    """Computes quality metrics for the SituationalModel."""
+
+    def __init__(self, substrate: Substrate) -> None:
+        self._sub = substrate
+
+    def calculate(self, scope: str = "global") -> SituationalMetricsResult:
+        now_iso = _utc_now_iso()
+        
+        # Total active assertions (whether expired or not)
+        total = self._sub.connection.execute(
+            "SELECT COUNT(*) FROM situational_assertions WHERE active = 1 AND scope = ?",
+            (scope,)
+        ).fetchone()[0]
+
+        # Stale active: active = 1 but expires_at < now (and expires_at != '')
+        stale = self._sub.connection.execute(
+            "SELECT COUNT(*) FROM situational_assertions "
+            "WHERE active = 1 AND scope = ? AND expires_at != '' AND expires_at < ?",
+            (scope, now_iso)
+        ).fetchone()[0]
+
+        # Low confidence: active = 1 and confidence < 0.5
+        low_conf = self._sub.connection.execute(
+            "SELECT COUNT(*) FROM situational_assertions "
+            "WHERE active = 1 AND scope = ? AND confidence < 0.5",
+            (scope,)
+        ).fetchone()[0]
+
+        # Invalidated/Superseded assertions: active = 0 and superseded_by != ''
+        invalidated = self._sub.connection.execute(
+            "SELECT COUNT(*) FROM situational_assertions "
+            "WHERE active = 0 AND scope = ? AND superseded_by != ''",
+            (scope,)
+        ).fetchone()[0]
+
+        # Sources that provided currently active assertions (most frequent first)
+        freq_sources = self._sub.connection.execute(
+            "SELECT source, COUNT(*) as cnt FROM situational_assertions "
+            "WHERE active = 1 AND scope = ? "
+            "GROUP BY source ORDER BY cnt DESC LIMIT 5",
+            (scope,)
+        ).fetchall()
+
+        # Sources that frequently provided assertions which got invalidated
+        inv_sources = self._sub.connection.execute(
+            "SELECT source, COUNT(*) as cnt FROM situational_assertions "
+            "WHERE active = 0 AND scope = ? AND superseded_by != '' "
+            "GROUP BY source ORDER BY cnt DESC LIMIT 5",
+            (scope,)
+        ).fetchall()
+
+        return SituationalMetricsResult(
+            total_active=total,
+            stale_active=stale,
+            low_confidence=low_conf,
+            invalidated_count=invalidated,
+            frequent_sources=[(row[0], row[1]) for row in freq_sources],
+            invalidated_sources=[(row[0], row[1]) for row in inv_sources],
+        )
+
+
 def record_ivan_activity(
     substrate: Substrate,
     *,
@@ -253,6 +336,8 @@ def _row_to_assertion(row: Any) -> SituationalAssertion:
 __all__ = [
     "SituationalAssertion",
     "SituationalStore",
+    "SituationalMetrics",
+    "SituationalMetricsResult",
     "is_credential_shaped_key",
     "record_ivan_activity",
 ]

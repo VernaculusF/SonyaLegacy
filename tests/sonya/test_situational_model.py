@@ -8,7 +8,11 @@ import pytest
 
 from sonya.state.environment import EnvironmentStore
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
-from sonya.state.situational import SituationalStore, record_ivan_activity
+from sonya.state.situational import (
+    SituationalStore, 
+    record_ivan_activity,
+    SituationalMetrics
+)
 from sonya.state.substrate import Substrate
 
 
@@ -157,5 +161,61 @@ def test_v33_migration_removes_credential_values_and_records_exposure(tmp_path: 
         assert sub.connection.execute(
             "SELECT COUNT(*) FROM environment_state"
         ).fetchone() == (0,)
+    finally:
+        sub.close()
+
+
+def test_invalidates_ids_handles_contradictions(tmp_path: Path) -> None:
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        store = SituationalStore(sub)
+        
+        # Original fact
+        f1 = store.assert_fact(subject="ivan", predicate="status", value="sleeping", source="sys")
+        
+        # Another fact that logically contradicts it
+        f2 = store.assert_fact(subject="ivan", predicate="activity", value="typing", source="ui", invalidates_ids=[f1.assertion_id])
+        
+        # Ensure f1 is inactive and superseded by f2
+        active = sub.connection.execute(
+            "SELECT active, superseded_by FROM situational_assertions WHERE assertion_id = ?",
+            (f1.assertion_id,)
+        ).fetchone()
+        assert active[0] == 0
+        assert active[1] == f2.assertion_id
+        
+    finally:
+        sub.close()
+
+
+def test_situational_metrics(tmp_path: Path) -> None:
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        store = SituationalStore(sub)
+        metrics = SituationalMetrics(sub)
+        
+        # stale fact
+        expired = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
+        store.assert_fact(subject="test", predicate="stale", value="yes", expires_at=expired, source="test1")
+        
+        # low confidence
+        store.assert_fact(subject="test", predicate="guess", value="maybe", confidence=0.3, source="test2")
+        
+        # high confidence active
+        store.assert_fact(subject="test", predicate="fact", value="yes", confidence=0.9, source="test2")
+        
+        # invalidated
+        f1 = store.assert_fact(subject="test", predicate="wrong", value="no", source="test1")
+        store.assert_fact(subject="test", predicate="wrong", value="yes", invalidates_ids=[f1.assertion_id], source="test2")
+        
+        res = metrics.calculate()
+        assert res.total_active == 4
+        assert res.stale_active == 1
+        assert res.low_confidence == 1
+        assert res.invalidated_count == 1
+        
+        # test1 provided one stale active and one invalidated.
+        assert len(res.frequent_sources) > 0
+        
     finally:
         sub.close()
