@@ -170,6 +170,9 @@ class TasksTool:
             return "(no open task to pick)"
         try:
             task = self._service.set_in_progress(task.task_id)
+            from sonya.state.embodiment import EmbodimentStore
+            store = EmbodimentStore(self._service._store._sub)
+            store.set_focus(f"работает: {task.title[:100]}")
         except TaskTransitionError as err:
             return f"[ERROR] {err}"
         return f"[OK] picked\n{_format_task(task)}"
@@ -263,6 +266,9 @@ class TasksTool:
             return "[ERROR] tasks.complete: task_id required"
         try:
             task = self._service.complete(task_id, result)
+            from sonya.state.embodiment import EmbodimentStore
+            store = EmbodimentStore(self._service._store._sub)
+            store.set_focus("internal")
         except (TaskNotFoundError, TaskTransitionError) as err:
             return f"[ERROR] {err}"
         return f"[OK] task done\n{_format_task(task)}"
@@ -289,6 +295,9 @@ class TasksTool:
             return "[ERROR] tasks.fail: task_id and reason required"
         try:
             task = self._service.fail(task_id, reason)
+            from sonya.state.embodiment import EmbodimentStore
+            store = EmbodimentStore(self._service._store._sub)
+            store.set_focus("internal")
         except (TaskNotFoundError, TaskTransitionError) as err:
             return f"[ERROR] {err}"
         return f"[OK] task failed\n{_format_task(task)}"
@@ -315,6 +324,9 @@ class TasksTool:
             return "[ERROR] tasks.block: task_id and blocker required"
         try:
             task = self._service.block(task_id, blocker)
+            from sonya.state.embodiment import EmbodimentStore
+            store = EmbodimentStore(self._service._store._sub)
+            store.set_focus("internal")
         except (TaskNotFoundError, TaskTransitionError) as err:
             return f"[ERROR] {err}"
         return f"[OK] task blocked\n{_format_task(task)}"
@@ -331,6 +343,9 @@ class TasksTool:
         task_id = arg.strip()
         try:
             task = self._service.pause(task_id)
+            from sonya.state.embodiment import EmbodimentStore
+            store = EmbodimentStore(self._service._store._sub)
+            store.set_focus("internal")
         except TaskNotFoundError as err:
             return f"[ERROR] {err}"
         return f"[OK] paused\n{_format_task(task)}"
@@ -372,6 +387,9 @@ class TasksTool:
             task = self._service.record_session_handoff(
                 task_id, notes=notes, next_step=next_step,
             )
+            from sonya.state.embodiment import EmbodimentStore
+            store = EmbodimentStore(self._service._store._sub)
+            store.set_focus("internal")
         except TaskNotFoundError as err:
             return f"[ERROR] {err}"
         return f"[OK] handoff recorded ({task.sessions_used}/{task.max_sessions or '∞'})\n{_format_task(task)}"

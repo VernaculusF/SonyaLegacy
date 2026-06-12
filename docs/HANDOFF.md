@@ -8,7 +8,7 @@
 
 - Branch: `develop`
 - Latest pushed/deployed runtime baseline before this documentation slice:
-  `96664e6`
+  `b10bd07`
 - Production host: `jester-sonya@34.38.255.149`
 - Production repo: `/home/jester-sonya/Sonya`
 - Production substrate: `/home/jester-sonya/.sonya/sonya_substrate.db`

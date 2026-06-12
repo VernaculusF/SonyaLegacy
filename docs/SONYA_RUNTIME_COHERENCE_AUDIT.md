@@ -532,7 +532,7 @@ Priority meanings:
 - [ ] `P0` #22 durable idempotency and processing checkpoints
 - [ ] `P0` #23 shared-state and outward-action ownership/conflict semantics
 - [ ] `P0` #24 scheduler fairness and backpressure
-- [ ] `P0` #25 explicit addressee/channel selection
+- [x] `P0` #25 explicit addressee/channel selection
 - [ ] `P0` #47 enforced Canonical Response/action contract
 - [ ] `P1` #7 close all independently measured spam sources
 - [ ] `P2` #8 separate lifecycle noise from subjective continuity
@@ -551,7 +551,7 @@ Priority meanings:
 ### 7.4 Embodiment and Current Self-State
 
 - [ ] `P1` #13 causal, stable, non-spamming body expression lifecycle
-- [ ] `P0` #14 focus lifecycle tied to live work/activity
+- [x] `P0` #14 focus lifecycle tied to live work/activity
 - [x] `P0` #15 one authoritative outfit/embodiment state
 
 ### 7.5 Providers, Models, and Context
