@@ -32,12 +32,12 @@ from sonya.state import Substrate, seed_identity_if_empty
 from sonya.state.continuity_stream import ContinuityStream
 from sonya.subject.agent_session import (
     _ToolContext,
-    _h_tasks_complete,
-    _h_tasks_fail,
+    _h_work_complete,
+    _h_work_fail,
 )
 from sonya.tools.filesystem import FilesystemTool
 from sonya.tools.self_inspect import SelfInspectTool
-from sonya.tools.tasks_tool import TasksTool
+from sonya.tools.work_tool import WorkTool
 
 
 class _FakeChannel:
@@ -72,12 +72,12 @@ def env(tmp_path: Path):
         max_per_day=20,
         min_quiet_minutes=0,
     )
-    tasks = TasksTool(sub, stream=stream, default_created_by="ivan")
+    tasks = WorkTool(sub, stream=stream, default_created_by="ivan")
     yield sub, stream, gate, fake, tasks
     sub.close()
 
 
-def _make_ctx(sub: Substrate, gate, tasks: TasksTool, *, outbound_sent=None) -> _ToolContext:
+def _make_ctx(sub: Substrate, gate, tasks: WorkTool, *, outbound_sent=None) -> _ToolContext:
     return _ToolContext(
         self_inspect=SelfInspectTool(sub),
         filesystem=FilesystemTool(),
@@ -116,7 +116,7 @@ async def test_complete_with_result_notifies_ivan(env) -> None:
         "task_id": task.task_id,
         "result": "Нашла backup.sql на /admin/. Доказательства собраны.",
     })
-    out = _h_tasks_complete(arg, ctx)
+    out = _h_work_complete(arg, ctx)
     await _flush_loop()
     assert "[OK] task done" in out
     assert "notify queued" in out
@@ -138,7 +138,7 @@ async def test_complete_silent_mode_skips_notify(env) -> None:
         "task_id": task.task_id,
         "result": "результат — silent task, не отправлять",
     })
-    out = _h_tasks_complete(arg, ctx)
+    out = _h_work_complete(arg, ctx)
     await _flush_loop()
     assert "[OK] task done" in out
     assert "notify queued" not in out
@@ -155,7 +155,7 @@ async def test_complete_empty_result_skips_notify(env) -> None:
     )
     ctx = _make_ctx(sub, gate, tasks)
     arg = json.dumps({"task_id": task.task_id, "result": ""})
-    out = _h_tasks_complete(arg, ctx)
+    out = _h_work_complete(arg, ctx)
     await _flush_loop()
     assert "[OK] task done" in out
     assert "notify queued" not in out
@@ -173,7 +173,7 @@ async def test_complete_dedups_against_prior_chat_tell_ivan(env) -> None:
     same_text = "Готово. Нашла дамп backup.sql, всё подтверждено."
     ctx = _make_ctx(sub, gate, tasks, outbound_sent=[same_text])
     arg = json.dumps({"task_id": task.task_id, "result": same_text})
-    out = _h_tasks_complete(arg, ctx)
+    out = _h_work_complete(arg, ctx)
     await _flush_loop()
     assert "[OK] task done" in out
     assert "suppressed" in out
@@ -195,7 +195,7 @@ async def test_fail_with_reason_notifies_ivan(env) -> None:
         "task_id": task.task_id,
         "reason": "Cloudflare на всех путях, без residential прокси не пройти.",
     })
-    out = _h_tasks_fail(arg, ctx)
+    out = _h_work_fail(arg, ctx)
     await _flush_loop()
     assert "task failed" in out.lower() or "[OK]" in out
     assert any(
@@ -212,7 +212,7 @@ async def test_fail_silent_skips_notify(env) -> None:
     )
     ctx = _make_ctx(sub, gate, tasks)
     arg = json.dumps({"task_id": task.task_id, "reason": "no go"})
-    _h_tasks_fail(arg, ctx)
+    _h_work_fail(arg, ctx)
     await _flush_loop()
     assert fake.sent == []
 
@@ -234,7 +234,7 @@ async def test_complete_works_with_no_outbound(env) -> None:
         outbound=None,
         outbound_sent=[],
     )
-    out = _h_tasks_complete(
+    out = _h_work_complete(
         json.dumps({"task_id": task.task_id, "result": "done"}),
         ctx,
     )

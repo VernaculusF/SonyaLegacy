@@ -58,11 +58,11 @@ def _build_focus_block(open_tasks: list, user_input: str) -> str:
     in_progress = [t for t in open_tasks if t.status.value == "in_progress"]
     pending_ivan = [
         t for t in open_tasks
-        if t.status.value == "pending" and t.created_by == "ivan"
+        if t.status.value == "pending" and t.origin == "ivan"
     ]
     pending_self = [
         t for t in open_tasks
-        if t.status.value == "pending" and t.created_by == "self"
+        if t.status.value == "pending" and t.origin == "self"
     ]
     blocked = [t for t in open_tasks if t.status.value == "blocked"]
 
@@ -115,7 +115,7 @@ def _build_focus_block(open_tasks: list, user_input: str) -> str:
     lines = [
         "## СЕЙЧАС",
         f"Главная задача: **{primary.title}**{deadline_pressure}",
-        f"task_id: `{primary.task_id}`",
+        f"item_id: `{primary.item_id}`",
     ]
     if next_step:
         lines.append(f"Следующий шаг: {next_step[:300]}")
@@ -211,7 +211,7 @@ def _time_awareness_block(substrate=None) -> str:
         try:
             from sonya.state.situational import SituationalStore
             situational = SituationalStore(substrate)
-            items = situational.list_current_for_subject("ivan")
+            items = situational.list_current(subject="ivan")
             active_status = False
 
             if items:
@@ -551,10 +551,10 @@ def build_full_context(
     # exists — distinguishing "no tasks" from "I can't see them".
     open_tasks_for_focus = []
     try:
-        from sonya.tasks.goals import GoalStore
-        from sonya.tasks.store import TaskStore
-        active_goals = GoalStore(substrate).list_active()
-        open_tasks = TaskStore(substrate).list_open()
+        from sonya.work.store import WorkItemStore
+        from sonya.work.store import WorkItemStore
+        active_goals = WorkItemStore(substrate).list_active()
+        open_tasks = WorkItemStore(substrate).list_open()
         open_tasks_for_focus = open_tasks
 
         goals_block = "\n\n## Мои цели (долгосрочные):\n"
@@ -573,7 +573,7 @@ def build_full_context(
                 done = len(t.completed_steps)
                 total = len(t.plan_steps)
                 progress = f" [{done}/{total}]" if total else ""
-                tasks_block += f"- [{t.status.value}] {t.task_id}: {t.title}{progress}\n"
+                tasks_block += f"- [{t.status.value}] {t.item_id}: {t.title}{progress}\n"
                 if t.status.value == "blocked" and t.blocker:
                     tasks_block += f"    blocker: {t.blocker[:120]}\n"
                 if t.next_step_hint:
@@ -587,7 +587,7 @@ def build_full_context(
         # task is dead and no worker will pick it up. Seeing 'failed' lets
         # her decide: retry via tasks.unblock + new approach, repurpose, or
         # genuinely close.
-        recent_failed = TaskStore(substrate).list_recently_failed(hours=6, limit=3)
+        recent_failed = WorkItemStore(substrate).list_recently_failed(hours=6, limit=3)
         if recent_failed:
             failed_block = "\n## Недавно упавшие задачи (за 6ч):\n"
             for t in recent_failed:
@@ -595,7 +595,7 @@ def build_full_context(
                 if t.max_sessions and t.sessions_used >= t.max_sessions:
                     budget = " (бюджет сессий исчерпан)"
                 failed_block += (
-                    f"- [failed]{budget} {t.task_id}: {t.title}\n"
+                    f"- [failed]{budget} {t.item_id}: {t.title}\n"
                 )
                 if t.last_session_notes:
                     failed_block += f"    last_notes: {t.last_session_notes[:200]}\n"
@@ -604,7 +604,7 @@ def build_full_context(
             failed_block += (
                 "\nWorker эти задачи не подхватит — они в `failed`. Если важно "
                 "продолжить: в active session `tasks.unblock` (если хочешь "
-                "тот же task_id) или `tasks.create` с новым подходом, не "
+                "тот же item_id) или `tasks.create` с новым подходом, не "
                 "пиши Ивану `жду` — никто не работает над этим.\n"
             )
             system_prompt += failed_block

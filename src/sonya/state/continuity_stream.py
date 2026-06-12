@@ -50,8 +50,24 @@ class ContinuityStream:
         # fields are not set (callers in pre-v20 code не знали про channel).
         channel = event.channel or (event.payload.get("channel") if isinstance(event.payload, dict) else "") or ""
         private_val = event.private
-        if not private_val and isinstance(event.payload, dict):
-            private_val = bool(event.payload.get("private", False))
+        
+        payload = dict(event.payload) if isinstance(event.payload, dict) else event.payload
+        if isinstance(payload, dict):
+            if not private_val:
+                private_val = bool(payload.get("private", False))
+                
+            from sonya.state.causal import correlation_id_var, causal_parent_id_var
+            cid = correlation_id_var.get()
+            pid = causal_parent_id_var.get()
+            if cid and "correlation_id" not in payload:
+                payload["correlation_id"] = cid
+            if pid and "causal_parent_id" not in payload:
+                payload["causal_parent_id"] = pid
+                
+        # Audit Item #8: Separate lifecycle noise from subjective continuity.
+        if not private_val and (event.kind.startswith("internal.") or event.kind.startswith("lifecycle.")):
+            private_val = True
+
         cursor = self._sub.connection.execute(
             "INSERT INTO continuity_events("
             "kind, principal_id, payload_json, channel, private, created_at"
@@ -59,7 +75,7 @@ class ContinuityStream:
             (
                 event.kind,
                 event.principal_id,
-                json.dumps(event.payload, ensure_ascii=False),
+                json.dumps(payload, ensure_ascii=False),
                 str(channel),
                 1 if private_val else 0,
                 now,
@@ -70,7 +86,7 @@ class ContinuityStream:
         appended = ContinuityEvent(
             kind=event.kind,
             principal_id=event.principal_id,
-            payload=event.payload,
+            payload=payload,
             channel=str(channel),
             private=bool(private_val),
             seq=int(seq),

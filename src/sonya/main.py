@@ -1444,10 +1444,10 @@ async def _supervisor(config: AppConfig) -> int:
             # висит без активности до 30-минутного worker-tick interval.
             # См. audit 31.05 п.1: «long-running tasks» pause после crash.
             try:
-                from sonya.tasks.service import TaskService
-                from sonya.tasks.store import TaskStore
-                from sonya.tasks.models import TaskStatus as _TS
-                _svc = TaskService(TaskStore(substrate))
+                from sonya.work.service import WorkItemService
+                from sonya.work.store import WorkItemStore
+                from sonya.work.models import WorkItemStatus as _TS
+                _svc = WorkItemService(WorkItemStore(substrate))
                 _open = _svc.list_open()
                 _in_progress = [t for t in _open if t.status is _TS.IN_PROGRESS]
                 if _in_progress and bundle.internal_process is not None:
@@ -1508,8 +1508,8 @@ async def _supervisor(config: AppConfig) -> int:
             # block was missing entirely (audit 2026-05-30: 0 goals.* calls
             # in 24h despite SOUL.md spelling out the L0-L3 hierarchy).
             try:
-                from sonya.tasks.goals import GoalStore
-                gs = GoalStore(substrate)
+                from sonya.work.store import WorkItemStore
+                gs = WorkItemStore(substrate)
                 existing_titles = {g.title for g in gs.list_active()}
                 _DEFAULT_GOALS = [
                     (

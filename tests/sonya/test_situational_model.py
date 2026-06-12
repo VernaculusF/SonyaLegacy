@@ -147,7 +147,7 @@ def test_v33_migration_removes_credential_values_and_records_exposure(tmp_path: 
 
     sub = Substrate.open(path)
     try:
-        assert sub.schema_version == 34
+        assert sub.schema_version >= 34
         assert EnvironmentStore(sub).get("ivan_status")["value"] == "спит"
         assert EnvironmentStore(sub).get("atrium_last_seen") is None
         assert sub.connection.execute(
@@ -247,5 +247,36 @@ def test_credential_exposure_store(tmp_path: Path) -> None:
         assert len(unresolved_after) == 1
         assert unresolved_after[0].credential_label == "db_pass"
         
+    finally:
+        sub.close()
+
+
+def test_refute_fact_prevents_silent_repromotion(tmp_path: Path) -> None:
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        store = SituationalStore(sub)
+        
+        store.assert_fact(subject="ivan", predicate="status", value="sleeping", source="observation")
+        assert store.get_current(subject="ivan", predicate="status").value == "sleeping"
+
+        refuted = store.refute_fact(subject="ivan", predicate="status", reason="he just texted me")
+        assert refuted.value == "[REFUTED]"
+        assert refuted.metadata["refuted_value"] == "sleeping"
+
+        assert store.get_current(subject="ivan", predicate="status") is None
+
+        items = store.list_current(subject="ivan")
+        assert all(i.value != "[REFUTED]" for i in items)
+
+        import pytest
+        with pytest.raises(ValueError, match="Cannot silently re-promote refuted fact"):
+            store.assert_fact(subject="ivan", predicate="status", value="sleeping", source="observation")
+        
+        store.assert_fact(subject="ivan", predicate="status", value="sleeping", source="observation", force_repromote=True)
+        assert store.get_current(subject="ivan", predicate="status").value == "sleeping"
+
+        store.refute_fact(subject="ivan", predicate="status", reason="woke up")
+        store.assert_fact(subject="ivan", predicate="status", value="active", source="observation")
+        assert store.get_current(subject="ivan", predicate="status").value == "active"
     finally:
         sub.close()

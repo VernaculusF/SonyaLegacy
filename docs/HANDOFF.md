@@ -8,7 +8,7 @@
 
 - Branch: `develop`
 - Latest pushed/deployed runtime baseline before this documentation slice:
-  `b10bd07`
+  `56b327c`
 - Production host: `jester-sonya@34.38.255.149`
 - Production repo: `/home/jester-sonya/Sonya`
 - Production substrate: `/home/jester-sonya/.sonya/sonya_substrate.db`
@@ -117,7 +117,8 @@ Checklist status:
 - #51 closed (canonical documentation staleness test);
 - #2 closed (EnvironmentStore deleted, SituationalStore full migration, explicit uncertainty marker);
 - #5 closed (Stop self-propelling interaction cycles);
-- #15 closed (One authoritative outfit/embodiment state).
+- #15 closed (One authoritative outfit/embodiment state);
+- #21 closed (Events lack causal graph: added `causal_context` for correlation/causal IDs).
 
 Additional deployed progress on #1:
 

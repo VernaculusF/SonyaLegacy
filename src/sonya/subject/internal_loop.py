@@ -264,9 +264,9 @@ class InternalProcess:
         if substrate is None:
             return self._task_worker_interval
         try:
-            from sonya.tasks.service import TaskService
-            from sonya.tasks.store import TaskStore
-            svc = TaskService(TaskStore(substrate), stream=self._stream)
+            from sonya.work.service import WorkItemService
+            from sonya.work.store import WorkItemStore
+            svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
             if svc.list_urgent_due_tasks():
                 return 180.0  # 3 minutes
         except Exception:
@@ -541,7 +541,7 @@ class InternalProcess:
                 # Worker has its own internal max_seconds cap (60s urgent,
                 # 300s normal, 900s background) but wrap with hard timeout
                 # as belt-and-suspenders. Worker runs in fire-and-forget
-                # task — wrap inside that task.
+                # task — wrap inside that item.
                 async def _worker_with_timeout() -> None:
                     try:
                         await asyncio.wait_for(self._run_task_worker(), timeout=1200.0)
@@ -908,7 +908,7 @@ class InternalProcess:
                 SelfInspectTool,
                 SelfModTool,
                 ShellTool,
-                TasksTool,
+                WorkTool,
                 WebTool,
             )
 
@@ -935,7 +935,7 @@ class InternalProcess:
             self_inspect = SelfInspectTool(substrate)
             filesystem = FilesystemTool(project_root=project_root) if project_root else FilesystemTool()
             selfmod = SelfModTool(substrate)
-            tasks_tool = TasksTool(substrate, stream=self._stream, default_created_by="self")
+            work_tool = WorkTool(substrate, stream=self._stream, default_origin="self")
             web_tool = WebTool()
             code_tool = CodeTool(sandbox_dir=project_root) if project_root else CodeTool()
             memory_tool = MemoryTool(substrate)
@@ -1174,7 +1174,7 @@ class InternalProcess:
             # gives her the right context immediately.
             #
             # Self-improvement budget: every Nth active session is reserved
-            # for selfmod / capability work even if there's an open Ivan-task.
+            # for selfmod / capability work even if there's an open Ivan-item.
             # Without this, a long-running Ivan-task (sweetcow recon) consumes
             # 100% of active-session ticks and Sonya never updates her own code
             # → "не само-совершенствуется". Threshold N=4 means at most one
@@ -1384,36 +1384,36 @@ class InternalProcess:
                     pass
 
             try:
-                from sonya.tasks.service import TaskService
-                from sonya.tasks.store import TaskStore
-                svc = TaskService(TaskStore(substrate), stream=self._stream)
-                next_task = svc.pick_next() if (not force_selfmod_track and not initial_thought) else None
-                if next_task is not None:
+                from sonya.work.service import WorkItemService
+                from sonya.work.store import WorkItemStore
+                svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
+                next_item = svc.pick_next() if (not force_selfmod_track and not initial_thought) else None
+                if next_item is not None:
                     # Auto-resume in_progress; pending tasks remain pending until she
                     # decides to pick (so she can choose, not be forced).
-                    from sonya.tasks.models import TaskStatus as _TS
-                    if next_task.status is _TS.IN_PROGRESS:
-                        remaining = next_task.remaining_steps()
+                    from sonya.tasks.models import WorkItemStatus as _TS
+                    if next_item.status is _TS.IN_PROGRESS:
+                        remaining = []
                         # Build a rich hint that includes the previous session's
                         # handoff notes and the next-step hint, so this session
                         # doesn't re-discover from scratch.
                         bits = [
-                            f"You have an in-progress task: {next_task.title}",
-                            f"task_id: {next_task.task_id}",
+                            f"You have an in-progress item: {next_item.title}",
+                            f"item_id: {next_item.item_id}",
                         ]
-                        if next_task.description:
-                            bits.append(f"description: {next_task.description}")
-                        if next_task.max_sessions:
+                        if next_item.description:
+                            bits.append(f"description: {next_item.description}")
+                        if next_item.max_sessions:
                             bits.append(
-                                f"Session budget: {next_task.sessions_used}/{next_task.max_sessions} used"
+                                f"Session budget: {next_item.sessions_used}/{next_item.max_sessions} used"
                             )
-                        if next_task.next_step_hint:
-                            bits.append(f"Next step (from previous session): {next_task.next_step_hint}")
+                        if next_item.next_step_hint:
+                            bits.append(f"Next step (from previous session): {next_item.next_step_hint}")
                         elif remaining:
                             bits.append(f"Next plan step: {remaining[0]}")
-                        if next_task.last_session_notes:
+                        if next_item.last_session_notes:
                             bits.append(
-                                f"Notes from previous session:\n{next_task.last_session_notes[:1500]}"
+                                f"Notes from previous session:\n{next_item.last_session_notes[:1500]}"
                             )
                         # Handoff history (last 3 sessions) — without it
                         # active session sees only the most recent notes
@@ -1423,10 +1423,10 @@ class InternalProcess:
                         try:
                             cursor = substrate.connection.execute(
                                 "SELECT payload_json FROM continuity_events "
-                                "WHERE kind = 'task.session_handoff' "
+                                "WHERE kind = 'item.session_handoff' "
                                 "  AND payload_json LIKE ? "
                                 "ORDER BY seq DESC LIMIT 3",
-                                (f'%"{next_task.task_id}"%',),
+                                (f'%"{next_item.item_id}"%',),
                             )
                             handoff_rows = cursor.fetchall()
                             if handoff_rows:
@@ -1467,10 +1467,10 @@ class InternalProcess:
                         # likely stuck on the wrong approach. Surface this
                         # so she can switch tactics or escalate to Ivan
                         # rather than burn a 23rd identical session.
-                        if next_task.sessions_used >= 10:
+                        if next_item.sessions_used >= 10:
                             bits.append(
                                 f"\n[STUCK-TASK ALERT] Эта задача провела "
-                                f"{next_task.sessions_used} сессий без "
+                                f"{next_item.sessions_used} сессий без "
                                 f"`tasks.complete`. Это сильный сигнал что "
                                 f"подход не работает.\n"
                                 "Варианты сейчас:\n"
@@ -1496,8 +1496,8 @@ class InternalProcess:
                         initial_thought = "\n".join(bits)
                     else:
                         initial_thought = (
-                            f"There's a pending task you haven't started: {next_task.title} "
-                            f"(task_id: {next_task.task_id}). "
+                            f"There's a pending task you haven't started: {next_item.title} "
+                            f"(item_id: {next_item.item_id}). "
                             f"Use tasks.pick to claim it, or tasks.list for all open tasks."
                         )
             except Exception:
@@ -1770,7 +1770,7 @@ class InternalProcess:
                     "self_inspect": self_inspect,
                     "filesystem": filesystem,
                     "selfmod": selfmod,
-                    "tasks": tasks_tool,
+                    "work": work_tool,
                     "web": web_tool,
                     "code": code_tool,
                     "shell": shell_tool,
@@ -1831,10 +1831,10 @@ class InternalProcess:
             # forgot to call tasks.handoff. Without this, max_sessions cap could
             # be bypassed by simply never calling handoff.
             try:
-                from sonya.tasks.service import TaskService
-                from sonya.tasks.store import TaskStore
-                from sonya.tasks.models import TaskStatus as _TS
-                svc = TaskService(TaskStore(substrate), stream=self._stream)
+                from sonya.work.service import WorkItemService
+                from sonya.work.store import WorkItemStore
+                from sonya.tasks.models import WorkItemStatus as _TS
+                svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
                 cur = svc.list_due_ivan_tasks()
                 in_prog = [t for t in cur if t.status is _TS.IN_PROGRESS]
                 # Only auto-bump if "tasks.handoff" wasn't among the actions.
@@ -1871,7 +1871,7 @@ class InternalProcess:
                             auto_next_step = line[:200]
                             break
                     svc.record_session_handoff(
-                        in_prog[0].task_id,
+                        in_prog[0].item_id,
                         notes=auto_notes,
                         next_step=auto_next_step,
                     )
@@ -1893,7 +1893,7 @@ class InternalProcess:
         """Autonomous continuation of Ivan-issued tasks.
 
         Runs every ~2 minutes when Ivan has open due tasks. Short LLM session
-        (5 steps, 60 sec) focused on advancing one Ivan-task. Self-tasks
+        (5 steps, 60 sec) focused on advancing one Ivan-item. Self-tasks
         (created_by='self', e.g. ideas Sonya generated in idle thinking) are
         deliberately NOT picked up here — those go through active session
         every 2 hours, since they're optional / her own initiative and
@@ -1925,11 +1925,11 @@ class InternalProcess:
             substrate = self._substrate or getattr(self._stream, "_sub", None)
             if substrate is None:
                 return
-            from sonya.tasks.service import TaskService
-            from sonya.tasks.store import TaskStore
-            from sonya.tasks.models import TaskStatus
+            from sonya.work.service import WorkItemService
+            from sonya.work.store import WorkItemStore
+            from sonya.tasks.models import WorkItemStatus
 
-            svc = TaskService(TaskStore(substrate), stream=self._stream)
+            svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
             # Worker picks URGENT tasks first (deadline-soon / urgency=urgent /
             # Ivan-tasks with notify_mode=progress). If no urgent — fall back
             # to ANY in_progress task (including self-tasks). Self-tasks like
@@ -1941,8 +1941,8 @@ class InternalProcess:
             due_urgent = svc.list_urgent_due_tasks()
             if due_urgent:
                 # Urgent path — same as before.
-                in_progress = [t for t in due_urgent if t.status is TaskStatus.IN_PROGRESS]
-                pending = [t for t in due_urgent if t.status is TaskStatus.PENDING]
+                in_progress = [t for t in due_urgent if t.status is WorkItemStatus.IN_PROGRESS]
+                pending = [t for t in due_urgent if t.status is WorkItemStatus.PENDING]
                 actionable = in_progress + sorted(pending, key=lambda t: t.created_at)
             else:
                 # Background fallback: any in_progress task (urgent already
@@ -1951,19 +1951,19 @@ class InternalProcess:
                 # human / scheduler to set in_progress.
                 all_open = svc.list_open()
                 in_progress_bg = [
-                    t for t in all_open if t.status is TaskStatus.IN_PROGRESS
+                    t for t in all_open if t.status is WorkItemStatus.IN_PROGRESS
                 ]
                 actionable = sorted(
                     in_progress_bg, key=lambda t: t.updated_at
                 )
             if not actionable:
                 return
-            task = actionable[0]
+            item = actionable[0]
 
             # Auto-promote pending → in_progress
-            if task.status is TaskStatus.PENDING:
+            if item.status is WorkItemStatus.PENDING:
                 try:
-                    task = svc.set_in_progress(task.task_id)
+                    item = svc.set_in_progress(item.item_id)
                 except Exception:
                     pass
 
@@ -1976,26 +1976,26 @@ class InternalProcess:
             # Threshold: 3 consecutive handoffs with the same next_step.
             # The 26.05 sweetcow case had 9× identical "Проверить gravity_forms/"
             # in a row before Ivan noticed — should have caught it at #3.
-            stuck_reason = self._detect_stuck_loop(task.task_id)
+            stuck_reason = self._detect_stuck_loop(item.item_id)
             if stuck_reason:
                 try:
-                    svc.block(task.task_id, blocker=stuck_reason)
+                    svc.block(item.item_id, blocker=stuck_reason)
                     self._stream.append(ContinuityEvent(
                         kind="internal.task_worker_stuck_blocked",
                         payload={
-                            "task_id": task.task_id,
+                            "item_id": item.item_id,
                             "blocker": stuck_reason[:300],
                         },
                     ))
                     # Notify Ivan so a blocked task doesn't die silently.
-                    if task.created_by == "ivan" and task.notify_mode != "silent":
+                    if item.origin == "ivan" and "progress" != "silent":
                         try:
                             if self._outbound is not None:
                                 msg = (
-                                    f"Задача «{task.title}» заблокирована — "
+                                    f"Задача «{item.title}» заблокирована — "
                                     f"зациклилась на одном шаге.\n"
                                     f"Причина: {stuck_reason[:150]}\n"
-                                    f"ID: {task.task_id}\n"
+                                    f"ID: {item.item_id}\n"
                                     f"Разблокирую или попробую другой подход — "
                                     f"скажи как.\n"
                                 )
@@ -2009,19 +2009,19 @@ class InternalProcess:
             # Continuity: prefer next_step_hint (set by tasks.handoff at the
             # end of the previous session). plan_steps are voluntary scaffolding
             # — fall back to first remaining step only if no handoff hint.
-            if task.next_step_hint:
-                next_step = task.next_step_hint
+            if item.next_step_hint:
+                next_step = item.next_step_hint
             else:
-                remaining = task.remaining_steps()
+                remaining = []
                 next_step = remaining[0] if remaining else "(no plan; pick up from notes / description)"
 
             self._stream.append(ContinuityEvent(
                 kind="internal.task_worker_tick",
                 payload={
-                    "task_id": task.task_id,
-                    "title": task.title,
+                    "item_id": item.item_id,
+                    "title": item.title,
                     "next_step": next_step[:200],
-                    "notify_mode": task.notify_mode,
+                    "notify_mode": "progress",
                 },
             ))
 
@@ -2050,12 +2050,12 @@ class InternalProcess:
                     "Никаких сообщений Ивану по этой задаче. Работай молча, отметь шаги "
                     "через tasks.step. Иван сам спросит."
                 ),
-            }.get(task.notify_mode, "После осмысленного шага можешь отправить апдейт.")
+            }.get("progress", "После осмысленного шага можешь отправить апдейт.")
 
             session_budget_line = ""
-            if task.max_sessions:
+            if item.max_sessions:
                 session_budget_line = (
-                    f"\nSession budget: {task.sessions_used}/{task.max_sessions} used. "
+                    f"\nSession budget: {item.sessions_used}/{item.max_sessions} used. "
                     "If you can't finish in remaining sessions, say so via `chat.tell_ivan` "
                     "and call `tasks.fail` with reason — don't burn the budget on dead ends.\n"
                 )
@@ -2068,10 +2068,10 @@ class InternalProcess:
             try:
                 cursor = substrate.connection.execute(
                     "SELECT payload_json FROM continuity_events "
-                    "WHERE kind = 'task.session_handoff' "
+                    "WHERE kind = 'item.session_handoff' "
                     "  AND payload_json LIKE ? "
                     "ORDER BY seq DESC LIMIT 2",
-                    (f'%"{task.task_id}"%',),
+                    (f'%"{item.item_id}"%',),
                 )
                 handoff_rows = cursor.fetchall()
                 if handoff_rows:
@@ -2090,23 +2090,23 @@ class InternalProcess:
             except Exception:
                 handoff_block = ""
             # Fallback: if no history rows, use task fields directly
-            if not handoff_block and (task.last_session_notes or task.next_step_hint):
+            if not handoff_block and (item.last_session_notes or item.next_step_hint):
                 handoff_block = "\n## Handoff from previous session:\n"
-                if task.next_step_hint:
-                    handoff_block += f"Next step: {task.next_step_hint}\n"
-                if task.last_session_notes:
-                    handoff_block += f"Notes: {task.last_session_notes[:1500]}\n"
+                if item.next_step_hint:
+                    handoff_block += f"Next step: {item.next_step_hint}\n"
+                if item.last_session_notes:
+                    handoff_block += f"Notes: {item.last_session_notes[:1500]}\n"
 
             from sonya.prompts import load_session_suffix
 
             worker_prompt = (
                 "Ты Соня. Это автономная мини-сессия — продолжаешь работу над "
                 "задачей Ивана в фоне, между TG-сообщениями.\n\n"
-                f"Текущая задача: {task.title}\n"
-                f"task_id: {task.task_id}\n"
-                f"description: {task.description}\n"
+                f"Текущая задача: {item.title}\n"
+                f"item_id: {item.item_id}\n"
+                f"description: {item.description}\n"
                 f"следующий шаг (план): {next_step}\n"
-                f"notify_mode: {task.notify_mode}"
+                f"notify_mode: progress\n"
                 f"{session_budget_line}\n"
                 f"{handoff_block}"
                 f"\n{notify_hint}\n\n"
@@ -2175,7 +2175,7 @@ class InternalProcess:
                     "background": (30, 900.0),
                 }
                 w_steps, w_seconds = _budget_by_urgency.get(
-                    (task.urgency or "normal").lower(),
+                    (item.urgency or "normal").lower(),
                     (20, 300.0),
                 )
 
@@ -2198,7 +2198,7 @@ class InternalProcess:
                         "browser": tools.get("browser"),
                         "projects": tools.get("projects"),
                     },
-                    initial_thought=f"Продолжай: {task.title}. Следующий шаг: {next_step}",
+                    initial_thought=f"Продолжай: {item.title}. Следующий шаг: {next_step}",
                     max_steps=w_steps,
                     max_seconds=w_seconds,
                     outbound=tools["outbound"],
@@ -2212,7 +2212,7 @@ class InternalProcess:
                 self._stream.append(ContinuityEvent(
                     kind="internal.task_worker_outcome",
                     payload={
-                        "task_id": task.task_id,
+                        "item_id": item.item_id,
                         "steps": result.steps,
                         "actions": result.actions[:5],
                         "budget_exceeded": result.budget_exceeded,
@@ -2224,7 +2224,7 @@ class InternalProcess:
                     from sonya.planning.memory_wiring import record_session_outcome_as_memory
                     record_session_outcome_as_memory(
                         substrate,
-                        purpose=f"task_worker:{task.task_id}",
+                        purpose=f"task_worker:{item.item_id}",
                         steps=result.steps,
                         actions=list(result.actions),
                         summary=(result.final_output or "").strip(),
@@ -2251,10 +2251,10 @@ class InternalProcess:
                 #      as no real movement; sending it as "progress" is
                 #      just noise.
                 #   2. Min-interval throttle: ≥10 minutes between auto
-                #      notifies for the SAME task. Audit table read.
+                #      notifies for the SAME item. Audit table read.
                 try:
-                    notify = (task.notify_mode or "progress").lower()
-                    if notify == "progress" and task.is_ivan_task() and tools.get("outbound"):
+                    notify = ("progress" or "progress").lower()
+                    if notify == "progress" and (item.origin == "ivan") and tools.get("outbound"):
                         used_chat = any(
                             a.startswith("chat.tell_ivan") for a in result.actions
                         )
@@ -2266,14 +2266,14 @@ class InternalProcess:
                         # Pull next_step_hint after the handoff was applied
                         refreshed_hint = ""
                         try:
-                            refreshed = TaskStore(substrate).get(task.task_id)
+                            refreshed = WorkItemStore(substrate).get(item.item_id)
                             refreshed_hint = (refreshed.next_step_hint or "").strip()
                         except Exception:
                             pass
                         # Stuck-loop / no-progress filter — don't notify
                         # Ivan when the handoff itself is a retry marker.
                         is_no_progress = refreshed_hint.lower().startswith("[no-progress")
-                        # Min-interval throttle (10 min) per task_id.
+                        # Min-interval throttle (10 min) per item_id.
                         from datetime import datetime, timezone, timedelta
                         ten_min_ago = (
                             datetime.now(timezone.utc) - timedelta(minutes=10)
@@ -2284,7 +2284,7 @@ class InternalProcess:
                             "  AND created_at > ? "
                             "  AND payload_json LIKE ? "
                             "LIMIT 1",
-                            (ten_min_ago, f'%"task_id": "{task.task_id}"%'),
+                            (ten_min_ago, f'%"item_id": "{item.item_id}"%'),
                         ).fetchone()
                         throttled = recent_notify is not None
                         if not used_chat and meaningful and not is_no_progress and not throttled:
@@ -2298,7 +2298,7 @@ class InternalProcess:
                                 if tname not in tools_tried:
                                     tools_tried.append(tname)
                             notify_text = (
-                                f"Worker по «{task.title[:60]}»: "
+                                f"Worker по «{item.title[:60]}»: "
                                 f"{result.steps} шага через "
                                 f"{', '.join(tools_tried[:4]) or 'tools'}. "
                             )
@@ -2312,7 +2312,7 @@ class InternalProcess:
                                 self._stream.append(ContinuityEvent(
                                     kind="internal.worker_auto_progress_notify",
                                     payload={
-                                        "task_id": task.task_id,
+                                        "item_id": item.item_id,
                                         "preview": notify_text[:200],
                                     },
                                 ))
@@ -2325,7 +2325,7 @@ class InternalProcess:
                                 self._stream.append(ContinuityEvent(
                                     kind="internal.worker_auto_progress_suppressed",
                                     payload={
-                                        "task_id": task.task_id,
+                                        "item_id": item.item_id,
                                         "reason": (
                                             "no_progress_retry" if is_no_progress
                                             else "throttled_10min"
@@ -2385,7 +2385,7 @@ class InternalProcess:
                         # no-progress retries and surface that in the next_step
                         # so Sonya sees "tried 3x already, change approach".
                         if no_progress:
-                            retry_count = self._count_recent_no_progress(task.task_id)
+                            retry_count = self._count_recent_no_progress(item.item_id)
                             # Strip ALL pre-existing "[no-progress retry #N]"
                             # prefixes before we add our own. Otherwise prefixes
                             # accumulate ("[#4] [#3] [#2] [#1] real_step"),
@@ -2403,7 +2403,7 @@ class InternalProcess:
                                 f"[no-progress retry #{retry_count + 1}] {auto_next_step}"
                             )
                         svc.record_session_handoff(
-                            task.task_id,
+                            item.item_id,
                             notes=auto_notes,
                             next_step=auto_next_step,
                         )
@@ -2413,11 +2413,11 @@ class InternalProcess:
                         # the worker stops doesn't last hours. Without this
                         # the next surface only happens when active session
                         # picks up (every 2h) and even then only if she
-                        # remembers the blocked task. The notification is
+                        # remembers the blocked item. The notification is
                         # gated by OutboundGate so it respects daily caps.
                         try:
-                            from sonya.tasks.models import TaskStatus as _TS
-                            blocked_now = svc.get(task.task_id)
+                            from sonya.tasks.models import WorkItemStatus as _TS
+                            blocked_now = svc.get(item.item_id)
                             if (
                                 blocked_now.status is _TS.BLOCKED
                                 and blocked_now.is_ivan_task()
@@ -2437,7 +2437,7 @@ class InternalProcess:
             except Exception as err:
                 self._stream.append(ContinuityEvent(
                     kind="internal.task_worker_error",
-                    payload={"task_id": task.task_id, "error": str(err)[:300]},
+                    payload={"item_id": item.item_id, "error": str(err)[:300]},
                 ))
         except Exception as err:
             # Outer fallback — covers exceptions before the per-task try block
@@ -2445,7 +2445,7 @@ class InternalProcess:
             try:
                 self._stream.append(ContinuityEvent(
                     kind="internal.task_worker_error",
-                    payload={"task_id": "(setup)", "error": str(err)[:300]},
+                    payload={"item_id": "(setup)", "error": str(err)[:300]},
                 ))
             except Exception:
                 pass
@@ -2527,7 +2527,7 @@ class InternalProcess:
             # Drift detection: if any dimension has gap >= 0.3 for
             # >=3 consecutive evaluations, emit a self-improvement
             # intention. This is the "intrinsic dissatisfaction" signal:
-            # Sonya notices she's not improving and creates her own task.
+            # Sonya notices she's not improving and creates her own item.
             try:
                 for dim, delta in nudges.items():
                     row = conn.execute(
@@ -2819,9 +2819,9 @@ class InternalProcess:
 
         # 3. Create urgent self-task to investigate
         try:
-            from sonya.tasks.service import TaskService
-            from sonya.tasks.store import TaskStore
-            svc = TaskService(TaskStore(substrate), stream=self._stream)
+            from sonya.work.service import WorkItemService
+            from sonya.work.store import WorkItemStore
+            svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
             svc.create(
                 title="[DRIFT-CHECK] investigate anchor drift signal",
                 description=(
@@ -2855,9 +2855,9 @@ class InternalProcess:
         if substrate is None:
             return
         try:
-            from sonya.tasks.store import TaskStore
+            from sonya.work.store import WorkItemStore
             from sonya.tasks.recurring import RecurrenceScheduler
-            scheduler = RecurrenceScheduler(TaskStore(substrate))
+            scheduler = RecurrenceScheduler(WorkItemStore(substrate))
             results = scheduler.run_once()
             for r in results:
                 if r.get("new_task_id"):
@@ -2998,7 +2998,7 @@ class InternalProcess:
         except Exception:
             pass
 
-    def _count_recent_no_progress(self, task_id: str) -> int:
+    def _count_recent_no_progress(self, item_id: str) -> int:
         """Count consecutive recent handoffs marked '(...no progress)' for
         this task, walking backward from the most recent. Stops at the first
         productive handoff.
@@ -3010,10 +3010,10 @@ class InternalProcess:
             import json as _json
             cursor = substrate.connection.execute(
                 "SELECT payload_json FROM continuity_events "
-                "WHERE kind = 'task.session_handoff' "
+                "WHERE kind = 'item.session_handoff' "
                 "  AND payload_json LIKE ? "
                 "ORDER BY seq DESC LIMIT 20",
-                (f'%"{task_id}"%',),
+                (f'%"{item_id}"%',),
             )
             count = 0
             for (pj,) in cursor.fetchall():
@@ -3021,11 +3021,11 @@ class InternalProcess:
                     payload = _json.loads(pj or "{}")
                 except Exception:
                     break
-                if payload.get("task_id") != task_id:
+                if payload.get("item_id") != item_id:
                     break
                 # The notes field carries the "(... no progress)" marker.
                 # We can't read it from the handoff payload directly (only
-                # task_id + sessions_used + next_step are there), so we
+                # item_id + sessions_used + next_step are there), so we
                 # check next_step prefix which our auto-handoff tags.
                 ns = (payload.get("next_step") or "")
                 if ns.startswith("[no-progress retry"):
@@ -3036,9 +3036,9 @@ class InternalProcess:
         except Exception:
             return 0
 
-    def _detect_stuck_loop(self, task_id: str, *, lookback: int = 3) -> str:
+    def _detect_stuck_loop(self, item_id: str, *, lookback: int = 3) -> str:
         """Return a non-empty blocker reason if the last ``lookback`` handoffs
-        for ``task_id`` produced essentially the same ``next_step``.
+        for ``item_id`` produced essentially the same ``next_step``.
 
         Each worker tick handoffs with what it'll do next. If three ticks in
         a row write the same instruction, the approach is failing repeatedly
@@ -3059,10 +3059,10 @@ class InternalProcess:
 
             cursor = substrate.connection.execute(
                 "SELECT payload_json FROM continuity_events "
-                "WHERE kind = 'task.session_handoff' "
+                "WHERE kind = 'item.session_handoff' "
                 "  AND payload_json LIKE ? "
                 "ORDER BY seq DESC LIMIT ?",
-                (f'%"{task_id}"%', lookback),
+                (f'%"{item_id}"%', lookback),
             )
             rows = cursor.fetchall()
             if len(rows) < lookback:
@@ -3074,7 +3074,7 @@ class InternalProcess:
                     payload = _json.loads(pj or "{}")
                 except Exception:
                     return ""
-                if payload.get("task_id") != task_id:
+                if payload.get("item_id") != item_id:
                     return ""
                 ns = (payload.get("next_step") or "").strip()
                 if not ns:
@@ -3116,7 +3116,7 @@ class InternalProcess:
                 f"stuck loop detected: last {lookback} handoffs all wrote the "
                 f"same next_step ({sample!r}). Worker tried this approach "
                 f"{lookback}x in a row without progress. Change approach, "
-                f"escalate to active session for replanning, or fail the task. "
+                f"escalate to active session for replanning, or fail the item. "
                 f"To resume after blocker: tasks.unblock + new next_step_hint."
             )
         except Exception:

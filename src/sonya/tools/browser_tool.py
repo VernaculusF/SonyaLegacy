@@ -229,12 +229,13 @@ class BrowserTool:
         if err:
             return err
         try:
+            from sonya.tools.sanitize import sanitize_untrusted
             if sel:
                 node = self._page.query_selector(sel)
                 if not node:
                     return f"[ERROR] not found: {sel}"
-                return node.inner_text()[:12000]
-            return self._page.inner_text("body")[:12000]
+                return sanitize_untrusted(node.inner_text()[:12000])
+            return sanitize_untrusted(self._page.inner_text("body")[:12000])
         except Exception as e:
             return f"[ERROR] {type(e).__name__}: {e}"
 
@@ -248,11 +249,12 @@ class BrowserTool:
         if err:
             return err
         try:
+            from sonya.tools.sanitize import sanitize_untrusted
             result = self._page.evaluate(js)
             try:
-                return json.dumps(result, ensure_ascii=False)[:6000]
+                return sanitize_untrusted(json.dumps(result, ensure_ascii=False)[:6000])
             except Exception:
-                return str(result)[:6000]
+                return sanitize_untrusted(str(result)[:6000])
         except Exception as e:
             return f"[ERROR] {type(e).__name__}: {e}"
 

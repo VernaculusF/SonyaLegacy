@@ -116,6 +116,8 @@ class Window:
     inbox_drain: Callable[[], list[str]] | None = None
     drives_callback: Callable[[], None] | None = None
     purpose: str = ""
+    correlation_id: str = ""
+    causal_parent_id: str = ""
 
 
 _DEFAULT_BUDGETS: dict[str, tuple[int, float]] = {
@@ -157,37 +159,44 @@ async def run_window(
     steps, seconds = _resolve_budget(window)
     tools = window.tools or {}
     purpose = window.purpose or window.kind
-    return await run_agent_session(
-        provider=provider,
-        stream=stream,
-        self_inspect=tools.get("self_inspect"),
-        filesystem=tools.get("filesystem"),
-        system_prompt=window.system_prompt,
-        selfmod=tools.get("selfmod"),
-        tasks=tools.get("tasks"),
-        web=tools.get("web"),
-        code=tools.get("code"),
-        shell=tools.get("shell"),
-        memory=tools.get("memory"),
-        env=tools.get("env"),
-        skills=tools.get("skills"),
-        knowledge=tools.get("knowledge"),
-        providers=tools.get("providers"),
-        browser=tools.get("browser"),
-        projects=tools.get("projects"),
-        outbound=window.outbound,
-        initial_thought=window.initial_thought,
-        initial_user_message=window.initial_user_message,
-        initial_user_text=window.initial_user_text,
-        prior_messages=window.prior_messages,
-        workspace_id=window.workspace_id,
-        require_dialog_reply=window.require_dialog_reply,
-        max_steps=steps,
-        max_seconds=seconds,
-        purpose=purpose,
-        inbox_drain=window.inbox_drain,
-        drives_callback=window.drives_callback,
-    )
+    
+    from sonya.state.causal import causal_context
+    import uuid
+    corr_id = window.correlation_id or str(uuid.uuid4())
+    parent_id = window.causal_parent_id or ""
+    
+    with causal_context(correlation_id=corr_id, causal_parent_id=parent_id):
+        return await run_agent_session(
+            provider=provider,
+            stream=stream,
+            self_inspect=tools.get("self_inspect"),
+            filesystem=tools.get("filesystem"),
+            system_prompt=window.system_prompt,
+            selfmod=tools.get("selfmod"),
+            tasks=tools.get("tasks"),
+            web=tools.get("web"),
+            code=tools.get("code"),
+            shell=tools.get("shell"),
+            memory=tools.get("memory"),
+            env=tools.get("env"),
+            skills=tools.get("skills"),
+            knowledge=tools.get("knowledge"),
+            providers=tools.get("providers"),
+            browser=tools.get("browser"),
+            projects=tools.get("projects"),
+            outbound=window.outbound,
+            initial_thought=window.initial_thought,
+            initial_user_message=window.initial_user_message,
+            initial_user_text=window.initial_user_text,
+            prior_messages=window.prior_messages,
+            workspace_id=window.workspace_id,
+            require_dialog_reply=window.require_dialog_reply,
+            max_steps=steps,
+            max_seconds=seconds,
+            purpose=purpose,
+            inbox_drain=window.inbox_drain,
+            drives_callback=window.drives_callback,
+        )
 
 
 __all__ = [

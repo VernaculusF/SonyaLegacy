@@ -13,8 +13,8 @@ class SubstrateVersionError(RuntimeError):
 class Substrate:
     """Persistent substrate of Sonya. Long-lived connection, single owner."""
 
-    WRITABLE_VERSION: int = 34
-    READABLE_VERSIONS: frozenset[int] = frozenset({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34})
+    WRITABLE_VERSION: int = 35
+    READABLE_VERSIONS: frozenset[int] = frozenset({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35})
 
     def __init__(self, path: Path, connection: sqlite3.Connection, version: int) -> None:
         self._path = path
@@ -39,6 +39,9 @@ class Substrate:
             # WAL gives better concurrency for one writer + multiple readers
             # (admin panel reads while core writes). Idempotent.
             conn.execute("PRAGMA journal_mode = WAL")
+            # Audit Item #41: Govern SQLite writer contention explicitly.
+            # 10s timeout prevents immediate SQLITE_BUSY under load.
+            conn.execute("PRAGMA busy_timeout = 10000")
 
         version = read_current_version(conn)
         if version == 0 and not read_only:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 34
+CURRENT_VERSION = 35
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -45,6 +45,10 @@ def ensure_critical_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "provider_models", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_provider_models_provider_scoped(conn)
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            key TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS subagent_tasks (
             subagent_id TEXT PRIMARY KEY,
             workspace_id TEXT NOT NULL DEFAULT '',
@@ -1171,7 +1175,56 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         conn.commit()
         version = 34
 
-    if version < CURRENT_VERSION:
+    if version == 34:
+        # v34 -> v35: unified work items table
+        conn.executescript(_SCHEMA_FILE.read_text(encoding="utf-8"))
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (35, now),
+        )
+        # Migrate existing tasks to work_items
+        conn.execute("""
+            INSERT OR IGNORE INTO work_items (
+                item_id, item_type, title, description, status,
+                owner_principal_id, origin, parent_item_id, deadline,
+                dependencies_json, progress_json, context_anchors_json,
+                validation_evidence_json, urgency, max_sessions,
+                sessions_used, last_session_notes, next_step_hint,
+                stuck_loop_count, created_at, updated_at, last_activity_at
+            )
+            SELECT 
+                task_id, 'task', title, description, status,
+                principal_id, created_by, parent_task_id, deadline,
+                '[]', completed_steps_json, '[]',
+                '[]', urgency, max_sessions,
+                sessions_used, last_session_notes, next_step_hint,
+                stuck_loop_count, created_at, updated_at, updated_at
+            FROM tasks
+        """)
+        # Migrate existing goals to work_items
+        conn.execute("""
+            INSERT OR IGNORE INTO work_items (
+                item_id, item_type, title, description, status,
+                owner_principal_id, origin, parent_item_id, deadline,
+                dependencies_json, progress_json, context_anchors_json,
+                validation_evidence_json, urgency, max_sessions,
+                sessions_used, last_session_notes, next_step_hint,
+                stuck_loop_count, created_at, updated_at, last_activity_at
+            )
+            SELECT 
+                goal_id, 'goal', title, description, status,
+                'ivan', 'self', NULL, NULL,
+                '[]', '[]', '[]',
+                '[]', 'normal', 0,
+                0, '', '',
+                0, created_at, updated_at, updated_at
+            FROM goals
+        """)
+        conn.commit()
+        version = 35
+
+    if version != CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")
 
     return version

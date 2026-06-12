@@ -21,7 +21,7 @@ from sonya.tools.self_inspect import SelfInspectTool
 from sonya.tools.skills_tool import SkillsTool
 from sonya.tools.selfmod_tool import SelfModTool
 from sonya.tools.shell_tool import ShellTool
-from sonya.tools.tasks_tool import TasksTool
+from sonya.tools.work_tool import WorkTool
 from sonya.tools.web_tool import WebTool
 
 
@@ -132,7 +132,7 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
 - selfmod.rollback [proposal_id] [reason?]
 - selfmod.soft_restart [reason?]
 
-- tasks.create — block form, JSON: {
+- work.create — block form, JSON: {
     "title": "...",
     "description": "...",
     "plan_steps": ["step1", "step2"],
@@ -152,17 +152,17 @@ Use block form when args contain newlines, brackets, or > ~200 chars.
   - notify_mode=progress: chat.tell_ivan after each step. final: only on done. silent: never.
   - max_sessions: hard budget cap. Use when Ivan says "не пытайся продолжать после N попыток".
   - recurring_spec: для повторяющихся задач. Когда current copy → DONE/FAILED, после cadence создаётся новая PENDING. Форматы: `{"every": "30m"}` (каждые 30 минут), `{"every": "1h"}`, `{"every": "1d"}` (раз в день после completed_at), `{"every": "1d", "at": "09:00"}` (каждый день в 09:00 UTC). Используй для регулярных ритуалов: "каждое утро спросить как настроение", "раз в неделю проверить балансы".
-- tasks.list [status_filter?] — pending / in_progress / blocked / done / failed / open
-- tasks.get [task_id]
-- tasks.pick — pick next open task and mark in_progress
-- tasks.complete — block form, JSON: {"task_id": "...", "result": "..."}
-- tasks.fail — block form, JSON: {"task_id": "...", "reason": "..."}
-- tasks.block — block form, JSON: {"task_id": "...", "blocker": "..."}
-- tasks.unblock [task_id]
-- tasks.pause [task_id]
-- tasks.handoff — block form, JSON: {"task_id": "...", "notes": "where I left off, what I learned, what's blocking", "next_step": "concrete one-liner for next session"}
+- work.list [status_filter?] — pending / in_progress / blocked / done / failed / open
+- work.get [task_id]
+- work.pick — pick next open task and mark in_progress
+- work.complete — block form, JSON: {"task_id": "...", "result": "..."}
+- work.fail — block form, JSON: {"task_id": "...", "reason": "..."}
+- work.block — block form, JSON: {"task_id": "...", "blocker": "..."}
+- work.unblock [task_id]
+- work.pause [task_id]
+- work.handoff — block form, JSON: {"task_id": "...", "notes": "where I left off, what I learned, what's blocking", "next_step": "concrete one-liner for next session"}
   **Call BEFORE [DONE]** when ending a session on an unfinished task. This is THE continuity carrier across sessions — without handoff, the next session starts blind. Bumps sessions_used; if max_sessions reached, task auto-fails.
-- tasks.plan / tasks.step — legacy step-tracking tools. Optional. Use ONLY if the task already has plan_steps you want to mark off. For continuity prefer tasks.handoff.
+- work.plan / work.step — legacy step-tracking tools. Optional. Use ONLY if the task already has plan_steps you want to mark off. For continuity prefer work.handoff.
 
 Tasks survive sessions. When active session starts you pick up your in_progress task.
 
@@ -513,8 +513,8 @@ _BLOCKER_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
 
 # Tools where 'empty result' is normal and shouldn't fire (no false positives).
 _EMPTY_OK_TOOLS = frozenset({
-    "tasks.complete", "tasks.fail", "tasks.block", "tasks.unblock",
-    "tasks.handoff", "tasks.pause", "tasks.create", "tasks.pick",
+    "work.complete", "work.fail", "work.block", "work.unblock",
+    "work.handoff", "work.pause", "work.create", "work.pick",
     "env.set", "env.clear", "goals.create", "goals.achieve",
     "goals.abandon", "skills.register_builtins", "skills.register_runtime",
     "memory.index_status",
@@ -526,14 +526,14 @@ _EMPTY_OK_TOOLS = frozenset({
 # descriptions, knowledge base, memory recall). These NEVER make external
 # calls so HTTP/auth blocker detection on their output is always a FP.
 _LOCAL_DATA_TOOLS = frozenset({
-    # tasks.* — read AND write paths return task content (title, blocker,
+    # work.* — read AND write paths return task content (title, blocker,
     # next_step_hint, last_session_notes) which can legitimately contain
     # "403", "forbidden", "Cloudflare", etc. as part of stored description.
-    # The 31.05 task-225 case: tasks.block on a Cloudflare-blocked task
+    # The 31.05 task-225 case: work.block on a Cloudflare-blocked task
     # echoed back blocker text containing "403" → false-positive auth_403.
-    "tasks.get", "tasks.list", "tasks.plan", "tasks.step",
-    "tasks.create", "tasks.complete", "tasks.fail", "tasks.block",
-    "tasks.unblock", "tasks.pause", "tasks.handoff", "tasks.pick",
+    "work.get", "work.list", "work.plan", "work.step",
+    "work.create", "work.complete", "work.fail", "work.block",
+    "work.unblock", "work.pause", "work.handoff", "work.pick",
     "memory.recall", "memory.index_status",
     "memory.recall_visual",
     "knowledge.list", "knowledge.read", "knowledge.search",
@@ -576,7 +576,7 @@ def _detect_blocker(tool_name: str, observation: str) -> tuple[str, str] | None:
         return None
     # Local-data tools never produce HTTP/auth failures — their bodies often
     # contain the words '403' / 'forbidden' / etc. as task descriptions or
-    # notes (the FP we saw in the wild where every tasks.get fired auth_403
+    # notes (the FP we saw in the wild where every work.get fired auth_403
     # because the task title was about web reconnaissance).
     if tool_name in _LOCAL_DATA_TOOLS:
         return None
@@ -671,7 +671,7 @@ async def run_agent_session(
     filesystem: FilesystemTool,
     system_prompt: str,
     selfmod: SelfModTool | None = None,
-    tasks: TasksTool | None = None,
+    work: WorkTool | None = None,
     web: WebTool | None = None,
     code: CodeTool | None = None,
     shell: ShellTool | None = None,
@@ -778,7 +778,7 @@ async def run_agent_session(
     # Mind/body/expression/focus etc don't count — they're internal state,
     # not externally meaningful work.
     #
-    # tasks.block / tasks.fail / tasks.complete are EXCLUDED — they are
+    # work.block / work.fail / work.complete are EXCLUDED — they are
     # terminal task transitions that already include their own user-facing
     # notification (notify_mode in service.py auto-dispatches). Requiring
     # an EXTRA chat.dialog after them produces the duplicate-report stutter
@@ -800,11 +800,11 @@ async def run_agent_session(
         "providers.list", "providers.balance", "providers.health",
         "providers.add", "providers.disable", "providers.enable",
         "providers.set_active",
-        # NOTE: tasks.complete/fail/block intentionally NOT here — they
-        # carry their own report. tasks.handoff is for inter-session
+        # NOTE: work.complete/fail/block intentionally NOT here — they
+        # carry their own report. work.handoff is for inter-session
         # continuity, not Ivan-facing, but creates a state-change worth
         # reporting → kept in for now.
-        "tasks.handoff", "tasks.create",
+        "work.handoff", "work.create",
         "self_inspect.code", "self_inspect.identity", "self_inspect.state",
         "self_inspect.thoughts", "self_inspect.memories", "self_inspect.drift",
     })
@@ -832,7 +832,7 @@ async def run_agent_session(
                         "быть `chat.dialog` с ответом ему. body.expression "
                         "разрешён, но ТОЛЬКО как дополнение к chat.dialog в "
                         "том же шаге. Никаких web.search / shell.run / "
-                        "knowledge.* / filesystem.* / tasks.* — пока не "
+                        "knowledge.* / filesystem.* / work.* — пока не "
                         "ответишь. Иван ждёт ТЕКСТ от тебя в чат, а не "
                         "молчаливое выражение лица."
                     ),
@@ -1091,7 +1091,7 @@ async def run_agent_session(
             # Execute tool
             observation = _execute_tool(
                 tool_name, tool_arg, self_inspect, filesystem, stream,
-                selfmod, tasks, web, code, shell, outbound, memory, env, skills,
+                selfmod, work, web, code, shell, outbound, memory, env, skills,
                 knowledge=knowledge,
                 outbound_sent=result.outbound_sent,
                 providers=providers,
@@ -1172,9 +1172,9 @@ async def run_agent_session(
             # Terminal task transitions (complete/fail/block) ALSO clear
             # the flag — they auto-notify Ivan via notify_mode, no extra
             # chat.dialog needed. Without this Соня писала дублирующий
-            # отчёт после `tasks.block` (the 31.05 task-225 case).
+            # отчёт после `work.block` (the 31.05 task-225 case).
             _TERMINAL_TASK_TOOLS = {
-                "tasks.complete", "tasks.fail", "tasks.block",
+                "work.complete", "work.fail", "work.block",
             }
             if tool_name in _DIALOG_TOOLS:
                 if observation:
@@ -1424,7 +1424,7 @@ class _ToolContext:
     self_inspect: SelfInspectTool
     filesystem: FilesystemTool
     selfmod: SelfModTool | None
-    tasks: TasksTool | None
+    work: WorkTool | None
     web: WebTool | None
     code: CodeTool | None
     shell: ShellTool | None
@@ -1664,55 +1664,42 @@ def _h_goals_list(arg: str, ctx: _ToolContext) -> str:
     sub = _substrate_from(ctx)
     if sub is None:
         return "[ERROR] no substrate"
-    from sonya.tasks.goals import GoalStore
-    goals = GoalStore(sub).list_active()
+    from sonya.work.store import WorkItemStore
+    items = WorkItemStore(sub).list_open()
+    goals = [i for i in items if i.item_type == "goal"]
     if not goals:
         return "(no active goals)"
     lines = ["Active goals:"]
     for g in goals:
-        lines.append(f"  [{g.goal_id}] (prio={g.priority}) {g.title}")
+        lines.append(f"  [{g.item_id}] {g.title}")
         if g.description:
             lines.append(f"    {g.description[:150]}")
     return "\n".join(lines)
 
 
 def _h_goals_create(arg: str, ctx: _ToolContext) -> str:
-    sub = _substrate_from(ctx)
-    if sub is None:
-        return "[ERROR] no substrate"
-    from sonya.tasks.goals import GoalStore
+    if ctx.work is None:
+        return "[ERROR] no work tool"
     parts = arg.split("|")
     title = parts[0].strip() if parts else ""
     desc = parts[1].strip() if len(parts) > 1 else ""
-    prio = int(parts[2].strip()) if len(parts) > 2 and parts[2].strip().isdigit() else 0
     if not title:
-        return "[ERROR] goals.create needs: title | description | priority"
-    g = GoalStore(sub).create(title, desc, prio)
-    return f"[OK] goal created: {g.goal_id} — {g.title} (priority={g.priority})"
+        return "[ERROR] goals.create needs: title | description"
+    import json
+    data = {"title": title, "description": desc, "item_type": "goal", "urgency": "background"}
+    return ctx.work.create(json.dumps(data))
 
 
 def _h_goals_achieve(arg: str, ctx: _ToolContext) -> str:
-    sub = _substrate_from(ctx)
-    if sub is None:
-        return "[ERROR] no substrate"
-    from sonya.tasks.goals import GoalStore
-    try:
-        g = GoalStore(sub).achieve(arg.strip())
-        return f"[OK] goal {g.goal_id} achieved: {g.title}"
-    except KeyError:
-        return f"[ERROR] goal {arg.strip()!r} not found"
+    if ctx.work is None:
+        return "[ERROR] no work tool"
+    return ctx.work.complete(arg.strip())
 
 
 def _h_goals_abandon(arg: str, ctx: _ToolContext) -> str:
-    sub = _substrate_from(ctx)
-    if sub is None:
-        return "[ERROR] no substrate"
-    from sonya.tasks.goals import GoalStore
-    try:
-        g = GoalStore(sub).abandon(arg.strip())
-        return f"[OK] goal {g.goal_id} abandoned: {g.title}"
-    except KeyError:
-        return f"[ERROR] goal {arg.strip()!r} not found"
+    if ctx.work is None:
+        return "[ERROR] no work tool"
+    return ctx.work.fail(f"{arg.strip()}|abandoned")
 
 
 # --- plugins.* ---
@@ -1939,43 +1926,43 @@ def _h_selfmod_soft_restart(arg: str, ctx: _ToolContext) -> str:
     return err if err else ctx.selfmod.soft_restart_runtime(arg.strip())
 
 
-# --- tasks.* ---
+# --- work.* ---
 
 
-def _h_tasks_create(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.create(arg)
+def _h_work_create(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.create(arg)
 
 
-def _h_tasks_list(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.list(arg)
+def _h_work_list(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.list(arg)
 
 
-def _h_tasks_get(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.get(arg)
+def _h_work_get(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.get(arg)
 
 
-def _h_tasks_pick(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.pick(arg)
+def _h_work_pick(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.pick(arg)
 
 
-def _h_tasks_plan(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.plan(arg)
+def _h_work_plan(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.plan(arg)
 
 
-def _h_tasks_step(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.step(arg)
+def _h_work_step(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.step(arg)
 
 
 def _is_dup_of_outbound_sent(text: str, sent: list[str] | None) -> bool:
     """True if ``text`` is essentially the same as any prior tell_ivan
     message in this session — used to suppress double-notify when the
-    model called BOTH chat.tell_ivan AND tasks.complete with the same
+    model called BOTH chat.tell_ivan AND work.complete with the same
     body."""
     if not sent or not text:
         return False
@@ -2010,13 +1997,13 @@ def _auto_notify_terminal(
     outbound_sent so channel_session._extract_reply suppresses any [DONE: text]
     echo of the same content (prevents double-message regression).
 
-    Used by tasks.complete (result -> Ivan) and tasks.fail (reason -> Ivan).
+    Used by work.complete (result -> Ivan) and work.fail (reason -> Ivan).
     """
-    if ctx.tasks is None or not notify_text or ctx.outbound is None:
+    if ctx.work is None or not notify_text or ctx.outbound is None:
         return ""
     # Look up notify_mode
     try:
-        task = ctx.tasks._service.get(task_id)
+        item = ctx.work._service.get(item_id)
     except Exception:
         return ""
     if (task.notify_mode or "progress") == "silent":
@@ -2038,11 +2025,11 @@ def _auto_notify_terminal(
     return " (notify queued to Ivan)"
 
 
-def _h_tasks_complete(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
+def _h_work_complete(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
     if err:
         return err
-    base_result = ctx.tasks.complete(arg)
+    base_result = ctx.work.complete(arg)
     if base_result.startswith("[ERROR]"):
         return base_result
     # Pull task_id + result text from arg (mirrors TasksTool.complete parsing)
@@ -2067,11 +2054,11 @@ def _h_tasks_complete(arg: str, ctx: _ToolContext) -> str:
     return base_result + notify_suffix
 
 
-def _h_tasks_fail(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
+def _h_work_fail(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
     if err:
         return err
-    base_result = ctx.tasks.fail(arg)
+    base_result = ctx.work.fail(arg)
     if base_result.startswith("[ERROR]"):
         return base_result
     task_id, reason_text = "", ""
@@ -2097,24 +2084,24 @@ def _h_tasks_fail(arg: str, ctx: _ToolContext) -> str:
     return base_result + notify_suffix
 
 
-def _h_tasks_block(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.block(arg)
+def _h_work_block(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.block(arg)
 
 
-def _h_tasks_unblock(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.unblock(arg)
+def _h_work_unblock(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.unblock(arg)
 
 
-def _h_tasks_pause(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.pause(arg)
+def _h_work_pause(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.pause(arg)
 
 
-def _h_tasks_handoff(arg: str, ctx: _ToolContext) -> str:
-    err = _require(ctx.tasks, "tasks")
-    return err if err else ctx.tasks.handoff(arg)
+def _h_work_handoff(arg: str, ctx: _ToolContext) -> str:
+    err = _require(ctx.work, "work")
+    return err if err else ctx.work.handoff(arg)
 
 
 # --- web.* / code / shell / chat ---
@@ -2868,19 +2855,19 @@ _TOOL_HANDLERS: dict[str, Callable[[str, "_ToolContext"], str]] = {
     "selfmod.check_governed": _h_selfmod_check_governed,
     "selfmod.rollback": _h_selfmod_rollback,
     "selfmod.soft_restart": _h_selfmod_soft_restart,
-    # tasks.*
-    "tasks.create": _h_tasks_create,
-    "tasks.list": _h_tasks_list,
-    "tasks.get": _h_tasks_get,
-    "tasks.pick": _h_tasks_pick,
-    "tasks.plan": _h_tasks_plan,
-    "tasks.step": _h_tasks_step,
-    "tasks.complete": _h_tasks_complete,
-    "tasks.fail": _h_tasks_fail,
-    "tasks.block": _h_tasks_block,
-    "tasks.unblock": _h_tasks_unblock,
-    "tasks.pause": _h_tasks_pause,
-    "tasks.handoff": _h_tasks_handoff,
+    # work.*
+    "work.create": _h_work_create,
+    "work.list": _h_work_list,
+    "work.get": _h_work_get,
+    "work.pick": _h_work_pick,
+    "work.plan": _h_work_plan,
+    "work.step": _h_work_step,
+    "work.complete": _h_work_complete,
+    "work.fail": _h_work_fail,
+    "work.block": _h_work_block,
+    "work.unblock": _h_work_unblock,
+    "work.pause": _h_work_pause,
+    "work.handoff": _h_work_handoff,
     # web / code / shell / chat
     "web.search": _h_web_search,
     "web.fetch": _h_web_fetch,
@@ -2941,7 +2928,7 @@ def _execute_tool(
     filesystem: FilesystemTool,
     stream: ContinuityStream | None = None,
     selfmod: SelfModTool | None = None,
-    tasks: TasksTool | None = None,
+    work: WorkTool | None = None,
     web: WebTool | None = None,
     code: CodeTool | None = None,
     shell: ShellTool | None = None,
@@ -2973,7 +2960,7 @@ def _execute_tool(
         self_inspect=self_inspect,
         filesystem=filesystem,
         selfmod=selfmod,
-        tasks=tasks,
+        work=work,
         web=web,
         code=code,
         shell=shell,

@@ -113,7 +113,7 @@ class EnvTool:
     def list_all(self) -> str:
         try:
             # We list all active assertions for subject "ivan"
-            items = self._situational.list_current_for_subject("ivan")
+            items = self._situational.list_current(subject="ivan")
             if not items:
                 return "(no environment state recorded for ivan)"
             lines = ["Environment state (ivan):"]

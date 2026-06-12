@@ -85,6 +85,7 @@ class SituationalStore:
         visibility: str = "normal",
         metadata: dict[str, Any] | None = None,
         invalidates_ids: list[str] | None = None,
+        force_repromote: bool = False,
     ) -> SituationalAssertion:
         subject = (subject or "").strip()
         predicate = (predicate or "").strip()
@@ -112,6 +113,16 @@ class SituationalStore:
         ).fetchone()
         supersedes_id = previous[0] if previous else ""
         if supersedes_id:
+            # Check for silent re-promotion of a refuted fact
+            prev_row = self._sub.connection.execute(
+                "SELECT value, metadata_json FROM situational_assertions WHERE assertion_id = ?",
+                (supersedes_id,)
+            ).fetchone()
+            if prev_row and prev_row[0] == "[REFUTED]" and not force_repromote:
+                prev_md = json.loads(prev_row[1] or "{}")
+                if prev_md.get("refuted_value") == value:
+                    raise ValueError(f"Cannot silently re-promote refuted fact '{subject}.{predicate}={value}'. Explicitly override with force_repromote=True or assert a different value.")
+
             self._sub.connection.execute(
                 "UPDATE situational_assertions SET active = 0, superseded_by = ? "
                 "WHERE assertion_id = ?",
@@ -166,6 +177,7 @@ class SituationalStore:
             "confidence, observed_at, expires_at, scope, visibility, supersedes_id, "
             "metadata_json FROM situational_assertions "
             "WHERE subject = ? AND predicate = ? AND scope = ? AND active = 1 "
+            "AND value != '[REFUTED]' "
             "AND (expires_at = '' OR expires_at > ?) "
             "ORDER BY observed_at DESC LIMIT 1",
             (subject, predicate, scope, _utc_now_iso()),
@@ -184,7 +196,7 @@ class SituationalStore:
             "SELECT assertion_id, subject, predicate, value, source, source_ref, "
             "confidence, observed_at, expires_at, scope, visibility, supersedes_id, "
             "metadata_json FROM situational_assertions "
-            "WHERE scope = ? AND active = 1 AND (expires_at = '' OR expires_at > ?) "
+            "WHERE scope = ? AND active = 1 AND value != '[REFUTED]' AND (expires_at = '' OR expires_at > ?) "
             f"{subject_sql}ORDER BY subject, predicate",
             tuple(params),
         ).fetchall()
@@ -198,6 +210,30 @@ class SituationalStore:
         )
         self._sub.connection.commit()
         return cur.rowcount > 0
+
+    def invalidate_predicate(self, *, subject: str, predicate: str, reason: str, scope: str = "global") -> bool:
+        cur = self._sub.connection.execute(
+            "UPDATE situational_assertions SET active = 0, superseded_by = ? "
+            "WHERE subject = ? AND predicate = ? AND scope = ? AND active = 1",
+            (f"invalidated_{reason}", subject, predicate, scope),
+        )
+        self._sub.connection.commit()
+        return cur.rowcount > 0
+
+    def refute_fact(self, *, subject: str, predicate: str, reason: str, source: str = "inference", source_ref: str = "", scope: str = "global") -> SituationalAssertion:
+        current = self.get_current(subject=subject, predicate=predicate, scope=scope)
+        old_value = current.value if current else ""
+        metadata = {"refuted_value": old_value, "reason": reason}
+        return self.assert_fact(
+            subject=subject,
+            predicate=predicate,
+            value="[REFUTED]",
+            source=source,
+            source_ref=source_ref,
+            scope=scope,
+            metadata=metadata,
+            force_repromote=True
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,21 +257,21 @@ class SituationalMetrics:
         
         # Total active assertions (whether expired or not)
         total = self._sub.connection.execute(
-            "SELECT COUNT(*) FROM situational_assertions WHERE active = 1 AND scope = ?",
+            "SELECT COUNT(*) FROM situational_assertions WHERE active = 1 AND value != '[REFUTED]' AND scope = ?",
             (scope,)
         ).fetchone()[0]
 
         # Stale active: active = 1 but expires_at < now (and expires_at != '')
         stale = self._sub.connection.execute(
             "SELECT COUNT(*) FROM situational_assertions "
-            "WHERE active = 1 AND scope = ? AND expires_at != '' AND expires_at < ?",
+            "WHERE active = 1 AND value != '[REFUTED]' AND scope = ? AND expires_at != '' AND expires_at < ?",
             (scope, now_iso)
         ).fetchone()[0]
 
         # Low confidence: active = 1 and confidence < 0.5
         low_conf = self._sub.connection.execute(
             "SELECT COUNT(*) FROM situational_assertions "
-            "WHERE active = 1 AND scope = ? AND confidence < 0.5",
+            "WHERE active = 1 AND value != '[REFUTED]' AND scope = ? AND confidence < 0.5",
             (scope,)
         ).fetchone()[0]
 
@@ -249,7 +285,7 @@ class SituationalMetrics:
         # Sources that provided currently active assertions (most frequent first)
         freq_sources = self._sub.connection.execute(
             "SELECT source, COUNT(*) as cnt FROM situational_assertions "
-            "WHERE active = 1 AND scope = ? "
+            "WHERE active = 1 AND value != '[REFUTED]' AND scope = ? "
             "GROUP BY source ORDER BY cnt DESC LIMIT 5",
             (scope,)
         ).fetchall()

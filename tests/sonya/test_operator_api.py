@@ -26,8 +26,8 @@ from sonya.admin.server import (
 from sonya.config import AppConfig
 from sonya.state import Substrate, seed_identity_if_empty
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
-from sonya.tasks.service import TaskService
-from sonya.tasks.store import TaskStore
+from sonya.work.service import WorkItemService
+from sonya.work.store import WorkItemStore
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ async def test_snapshot_counts_failed_tasks(admin_client) -> None:
     client, cfg = admin_client
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
-        svc = TaskService(TaskStore(sub), stream=ContinuityStream(sub))
+        svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
         t = svc.create(title="x", created_by="ivan")
         svc.fail(t.task_id, reason="test")
     finally:
@@ -232,7 +232,7 @@ async def test_task_action_fail(admin_client) -> None:
     client, cfg = admin_client
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
-        svc = TaskService(TaskStore(sub), stream=ContinuityStream(sub))
+        svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
         t = svc.create(title="dead-end", created_by="ivan")
     finally:
         sub.close()
@@ -249,7 +249,7 @@ async def test_task_action_repurpose_resets(admin_client) -> None:
     client, cfg = admin_client
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
-        svc = TaskService(TaskStore(sub), stream=ContinuityStream(sub))
+        svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
         t = svc.create(title="retry-able", created_by="ivan")
         svc.fail(t.task_id, reason="first attempt died")
     finally:
@@ -278,7 +278,7 @@ async def test_task_action_delete(admin_client) -> None:
     client, cfg = admin_client
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
-        svc = TaskService(TaskStore(sub), stream=ContinuityStream(sub))
+        svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
         t = svc.create(title="trash", created_by="ivan")
     finally:
         sub.close()
@@ -304,7 +304,7 @@ async def test_task_action_unknown_rejected(admin_client) -> None:
     client, cfg = admin_client
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
-        svc = TaskService(TaskStore(sub), stream=ContinuityStream(sub))
+        svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
         t = svc.create(title="x", created_by="ivan")
     finally:
         sub.close()

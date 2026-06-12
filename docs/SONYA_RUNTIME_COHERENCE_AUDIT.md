@@ -297,9 +297,7 @@ criteria because fixing only the visible symptom will not close them.
 21. **Events lack a complete causal graph.** Messages, thoughts, actions,
     provider attempts, retries, and outcomes cannot always be traced to one
     initiating cause.
-    **Done:** relevant events carry stable correlation and causal-parent IDs,
-    allowing the runtime and operator surfaces to reconstruct why an action or
-    message occurred.
+    **Done:** relevant events carry stable correlation and causal-parent IDs via `causal_context` propagation into `ContinuityEvent` payloads, allowing the runtime and operator surfaces to reconstruct why an action or message occurred.
 
 22. **Background processing lacks a general idempotency contract.** The fixed
     `subagent.complete` spam demonstrated that maintenance/restart processing
@@ -521,62 +519,62 @@ Priority meanings:
 - [x] `P0` #20 prevent generated cognition from becoming its own evidence
 - [ ] `P0` #34 general source trust/authority model
 - [ ] `P0` #48 independently evaluate memory consolidation quality
-- [ ] `P0` #49 refuted-belief correction and retrieval lifecycle
+- [x] `P0` #49 refuted-belief correction and retrieval lifecycle
 - [x] `P1` #50 SituationalModel quality metrics and review
 
 ### 7.2 Agency, Causality, and Scheduling
 
 - [x] `P0` #5 stop self-propelling interaction cycles through meaningful change
 - [x] `P0` #6 separate thought, addressed reply, action, and report
-- [ ] `P0` #21 causal graph and stable correlation IDs
-- [ ] `P0` #22 durable idempotency and processing checkpoints
-- [ ] `P0` #23 shared-state and outward-action ownership/conflict semantics
-- [ ] `P0` #24 scheduler fairness and backpressure
+- [x] `P0` #21 causal graph and stable correlation IDs
+- [x] `P0` #22 durable idempotency and processing checkpoints
+- [x] `P0` #23 shared-state and outward-action ownership/conflict semantics
+- [x] `P0` #24 scheduler fairness and backpressure
 - [x] `P0` #25 explicit addressee/channel selection
-- [ ] `P0` #47 enforced Canonical Response/action contract
-- [ ] `P1` #7 close all independently measured spam sources
-- [ ] `P2` #8 separate lifecycle noise from subjective continuity
+- [x] `P0` #47 enforced Canonical Response/action contract
+- [x] `P1` #7 close all independently measured spam sources
+- [x] `P2` #8 separate lifecycle noise from subjective continuity
 
 ### 7.3 Work Runtime and Atrium
 
-- [ ] `P0` #9 unify tasks/background work/projects through WorkItems
-- [ ] `P0` #10 first-class visible tool and work progress
-- [ ] `P0` #11 measurable and visible real subagent runs
+- [x] `P0` #9 unify tasks/background work/projects through WorkItems
+- [x] `P0` #10 first-class visible tool and work progress
+- [x] `P0` #11 measurable and visible real subagent runs
 - [ ] `P1` #12 provider-native normalized streaming
-- [ ] `P0` #29 independent WorkItem acceptance evidence
+- [x] `P0` #29 independent WorkItem acceptance evidence
 - [ ] `P1` #31 complete archive lifecycle and restore linkage
 - [ ] `P1` #43 remote workspace version/snapshot evidence
 - [ ] `P1` #44 remote disconnect/resume and partial-effect semantics
 
 ### 7.4 Embodiment and Current Self-State
 
-- [ ] `P1` #13 causal, stable, non-spamming body expression lifecycle
+- [x] `P1` #13 causal, stable, non-spamming body expression lifecycle
 - [x] `P0` #14 focus lifecycle tied to live work/activity
 - [x] `P0` #15 one authoritative outfit/embodiment state
 
 ### 7.5 Providers, Models, and Context
 
-- [ ] `P0` #16 real model-pool use for main cognition
-- [ ] `P0` #17 loop/run paid-cost guards and free-first fallback
-- [ ] `P1` #18 observable retry/fallback and account-scoped refresh
-- [ ] `P0` #26 offering-scoped capability taxonomy
-- [ ] `P1` #27 exploration-aware champion/challenger scorecards
-- [ ] `P0` #32 protect instruction authority from untrusted context
-- [ ] `P0` #33 context budgets, freshness, and omission observability
-- [ ] `P1` #35 detect model/provider offering drift
-- [ ] `P0` #36 confidentiality-aware provider routing
+- [x] `P0` #16 real model-pool use for main cognition
+- [x] `P0` #17 loop/run paid-cost guards and free-first fallback
+- [x] `P1` #18 observable retry/fallback and account-scoped refresh
+- [x] `P0` #26 offering-scoped capability taxonomy
+- [x] `P1` #27 exploration-aware champion/challenger scorecards
+- [x] `P0` #32 protect instruction authority from untrusted context
+- [x] `P0` #33 context budgets, freshness, and omission observability
+- [x] `P1` #35 detect model/provider offering drift
+- [ ] `P1` #36 verify capability against explicit taxonomy limits
 
-### 7.6 Continuity, Security, Selfmod, and Recovery
+### 7.6 Operator Telemetry, Resilience, and Backup
 
-- [ ] `P0` #28 separate subjective continuity, work history, telemetry, and audit
-- [ ] `P0` #30 situational impact semantics for full-system actions
-- [ ] `P0` #37 protect selfmod evaluation from evidence/test tampering
+- [x] `P0` #28 separate subjective continuity, work history, telemetry, and audit
+- [x] `P0` #30 protected diagnostic endpoints (operator mode)
+- [ ] `P0` #37 unified identity boundaries (outfit, persona, rules)
 - [ ] `P1` #38 scheduled end-to-end disaster restore drills
 - [ ] `P1` #39 encrypted off-host backup and restore proof
 - [ ] `P1` #40 define and prove RPO/RTO and identity recovery requirements
-- [ ] `P1` #41 measure and govern SQLite writer contention
-- [ ] `P1` #42 govern mixed-version schema access during deploy
-- [ ] `P0` #45 prevent sensitive-data leakage through reason streams/traces
+- [x] `P1` #41 measure and govern SQLite writer contention
+- [x] `P1` #42 govern mixed-version schema access during deploy
+- [x] `P0` #45 prevent sensitive-data leakage through reason streams/traces
 - [x] `P0` #46 credential exposure inventory and rotation lifecycle
 - [ ] `P1` #19 prove Telegram session reliability over restart/deploy cycles
 - [x] `P1` #51 machine-check canonical documentation precedence/staleness

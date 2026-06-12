@@ -193,7 +193,8 @@ class FilesystemTool:
             return f"[ERROR] File not found: {path}"
         if not p.is_file():
             return f"[ERROR] Not a file: {path}"
-        return p.read_text(encoding="utf-8", errors="replace")[:10000]
+        from sonya.tools.sanitize import sanitize_untrusted
+        return sanitize_untrusted(p.read_text(encoding="utf-8", errors="replace")[:10000])
 
     def read_file(self, path: str) -> str:
         return self.read(path)
@@ -223,7 +224,8 @@ class FilesystemTool:
                             break
             except (OSError, UnicodeError):
                 continue
-        return "\n".join(lines)
+        from sonya.tools.sanitize import sanitize_untrusted
+        return sanitize_untrusted("\n".join(lines))
 
     def write(self, path: str, content: str) -> str:
         # Defense in depth: reject paths with newline / control / quote chars.

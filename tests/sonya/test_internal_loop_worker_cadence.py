@@ -25,7 +25,7 @@ from sonya.state.continuity_stream import ContinuityStream
 from sonya.state.pending import PendingIntentionStore
 from sonya.state.substrate import Substrate
 from sonya.subject.internal_loop import InternalProcess
-from sonya.tasks.store import TaskStore
+from sonya.work.store import WorkItemStore
 
 
 @pytest.fixture
@@ -108,9 +108,9 @@ async def test_request_worker_soon_idempotent(
 
 def _seed_urgent_task(substrate: Substrate) -> None:
     """Insert an in_progress Ivan-task with notify_mode=progress (urgent)."""
-    from sonya.tasks.service import TaskService
-    store = TaskStore(substrate)
-    svc = TaskService(store, stream=ContinuityStream(substrate))
+    from sonya.work.service import WorkItemService
+    store = WorkItemStore(substrate)
+    svc = WorkItemService(store, stream=ContinuityStream(substrate))
     task = store.create(
         title="Test urgent task",
         description="—",

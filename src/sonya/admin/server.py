@@ -1646,20 +1646,20 @@ async def api_llm_calls(request: web.Request) -> web.Response:
 
 async def api_tasks(request: web.Request) -> web.Response:
     """List recent tasks with full state."""
-    from sonya.tasks.store import TaskStore
+    from sonya.work.store import WorkItemStore
     config = request.app["config"]
     sub = _get_substrate(config)
     try:
-        store = TaskStore(sub)
+        store = WorkItemStore(sub)
         tasks = store.list_all(limit=100)
         return web.json_response({
             "tasks": [
                 {
-                    "task_id": t.task_id,
+                    "item_id": t.item_id,
                     "title": t.title,
                     "description": t.description,
                     "status": t.status.value,
-                    "created_by": t.created_by,
+                    "created_by": t.origin,
                     "scheduled_for": t.scheduled_for,
                     "notify_mode": t.notify_mode,
                     "plan_steps": t.plan_steps,
@@ -1684,18 +1684,18 @@ async def api_tasks(request: web.Request) -> web.Response:
 
 async def api_tasks_delete(request: web.Request) -> web.Response:
     """Hard-delete a task by id."""
-    from sonya.tasks.store import TaskStore
-    task_id = request.match_info.get("task_id", "").strip()
-    if not task_id:
-        return web.json_response({"error": "missing task_id"}, status=400)
+    from sonya.work.store import WorkItemStore
+    item_id = request.match_info.get("item_id", "").strip()
+    if not item_id:
+        return web.json_response({"error": "missing item_id"}, status=400)
     config = request.app["config"]
     sub = _get_substrate_writable(config)
     try:
-        store = TaskStore(sub)
-        deleted = store.delete(task_id)
+        store = WorkItemStore(sub)
+        deleted = store.delete(item_id)
         if not deleted:
-            return web.json_response({"error": f"task {task_id} not found"}, status=404)
-        return web.json_response({"ok": True, "task_id": task_id, "deleted": True})
+            return web.json_response({"error": f"task {item_id} not found"}, status=404)
+        return web.json_response({"ok": True, "item_id": item_id, "deleted": True})
     finally:
         sub.close()
 
@@ -1706,23 +1706,23 @@ async def api_task_detail(request: web.Request) -> web.Response:
     Handoff history is reconstructed from continuity_events (kinds:
     task.session_handoff, task.session_budget_exhausted, task.created,
     task.picked_up, task.step_done, task.failed, task.blocked, task.completed,
-    task.unblocked) filtered by task_id in payload.
+    task.unblocked) filtered by item_id in payload.
     """
     import json as _json
-    from sonya.tasks.store import TaskStore
-    task_id = request.match_info.get("task_id", "").strip()
-    if not task_id:
-        return web.json_response({"error": "missing task_id"}, status=400)
+    from sonya.work.store import WorkItemStore
+    item_id = request.match_info.get("item_id", "").strip()
+    if not item_id:
+        return web.json_response({"error": "missing item_id"}, status=400)
     config = request.app["config"]
     sub = _get_substrate(config)
     try:
-        store = TaskStore(sub)
+        store = WorkItemStore(sub)
         try:
-            t = store.get(task_id)
+            t = store.get(item_id)
         except Exception:
-            return web.json_response({"error": f"task {task_id} not found"}, status=404)
+            return web.json_response({"error": f"task {item_id} not found"}, status=404)
 
-        # Pull all task-related continuity events for this task_id.
+        # Pull all task-related continuity events for this item_id.
         # Filter via JSON LIKE (cheap and indexed-table-scan; tasks are
         # typically <1000 events each).
         cursor = sub.connection.execute(
@@ -1734,7 +1734,7 @@ async def api_task_detail(request: web.Request) -> web.Response:
             ORDER BY seq ASC
             LIMIT 200
             """,
-            (f'%"{task_id}"%',),
+            (f'%"{item_id}"%',),
         )
         events: list[dict] = []
         for seq, kind, payload_json, created_at in cursor.fetchall():
@@ -1742,9 +1742,9 @@ async def api_task_detail(request: web.Request) -> web.Response:
                 payload = _json.loads(payload_json) if payload_json else {}
             except Exception:
                 payload = {}
-            # Only keep events that actually reference this task_id (LIKE
+            # Only keep events that actually reference this item_id (LIKE
             # could false-positive on substring match in summaries).
-            if payload.get("task_id") != task_id:
+            if payload.get("item_id") != item_id:
                 continue
             events.append({
                 "seq": int(seq),
@@ -1754,11 +1754,11 @@ async def api_task_detail(request: web.Request) -> web.Response:
             })
 
         return web.json_response({
-            "task_id": t.task_id,
+            "item_id": t.item_id,
             "title": t.title,
             "description": t.description,
             "status": t.status.value,
-            "created_by": t.created_by,
+            "created_by": t.origin,
             "principal_id": t.principal_id,
             "scheduled_for": t.scheduled_for,
             "deadline": t.deadline,
@@ -1882,8 +1882,8 @@ async def api_operator_snapshot(request: web.Request) -> web.Response:
                     "last_step_at": last_step[2],
                 }
         # Open tasks summary
-        from sonya.tasks.store import TaskStore
-        store = TaskStore(sub)
+        from sonya.work.store import WorkItemStore
+        store = WorkItemStore(sub)
         open_tasks = store.list_open()
         recent_failed = store.list_recently_failed(hours=24, limit=10)
         summary = {
@@ -2016,7 +2016,7 @@ async def api_operator_live_steps(request: web.Request) -> web.Response:
                 }
             elif r[1].startswith("task."):
                 short = {
-                    "task_id": p.get("task_id"),
+                    "item_id": p.get("item_id"),
                     "status": p.get("status"),
                     "next_step": (p.get("next_step") or "")[:200],
                 }
@@ -2124,7 +2124,7 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
     """Operator-side task lifecycle actions.
 
     Body: {"action": "fail|unblock|repurpose|delete", "reason": "..."}
-    Path: /api/operator/task/{task_id}/action
+    Path: /api/operator/task/{item_id}/action
 
     Actions:
       fail      — force-fail with operator reason (reflects to TG via
@@ -2133,11 +2133,11 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
       repurpose — failed/done → pending, fresh start; clears next_step_hint
       delete    — hard remove (alias for existing api_tasks_delete)
     """
-    from sonya.tasks.store import TaskStore
-    from sonya.tasks.service import TaskService
-    from sonya.tasks.models import TaskStatus
+    from sonya.work.store import WorkItemStore
+    from sonya.work.service import WorkItemService
+    from sonya.work.models import WorkItemStatus
     config = request.app["config"]
-    task_id = request.match_info["task_id"]
+    item_id = request.match_info["item_id"]
     try:
         data = await _json_body(request)
     except Exception:
@@ -2150,83 +2150,83 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
         )
     sub = _get_substrate_writable(config)
     try:
-        from sonya.tasks.models import TaskNotFoundError
-        store = TaskStore(sub)
+        from sonya.work.models import WorkItemNotFoundError
+        store = WorkItemStore(sub)
         try:
-            task = store.get(task_id)
-        except TaskNotFoundError:
+            task = store.get(item_id)
+        except WorkItemNotFoundError:
             return web.json_response({"error": "task not found"}, status=404)
-        svc = TaskService(store, stream=ContinuityStream(sub))
+        svc = WorkItemService(store, stream=ContinuityStream(sub))
         if action == "pause":
-            if task.status in (TaskStatus.DONE, TaskStatus.FAILED):
+            if task.status in (WorkItemStatus.DONE, WorkItemStatus.FAILED):
                 return web.json_response(
                     {"error": f"cannot pause a {task.status.value} task"}, status=409)
-            store.update_status(task_id, TaskStatus.PAUSED)
+            store.update_status(item_id, WorkItemStatus.PAUSED)
             from sonya.state.continuity_stream import ContinuityEvent
             ContinuityStream(sub).append(ContinuityEvent(
                 kind="task.paused",
-                payload={"task_id": task_id, "operator_reason": reason},
+                payload={"item_id": item_id, "operator_reason": reason},
             ))
-            return web.json_response({"ok": True, "task_id": task_id, "status": "paused"})
+            return web.json_response({"ok": True, "item_id": item_id, "status": "paused"})
         if action == "resume":
-            if task.status != TaskStatus.PAUSED:
+            if task.status != WorkItemStatus.PAUSED:
                 return web.json_response(
                     {"error": f"task is {task.status.value}, not paused"}, status=409)
-            store.update_status(task_id, TaskStatus.IN_PROGRESS)
+            store.update_status(item_id, WorkItemStatus.IN_PROGRESS)
             from sonya.state.continuity_stream import ContinuityEvent
             ContinuityStream(sub).append(ContinuityEvent(
                 kind="task.resumed",
-                payload={"task_id": task_id, "operator_reason": reason},
+                payload={"item_id": item_id, "operator_reason": reason},
             ))
-            return web.json_response({"ok": True, "task_id": task_id, "status": "in_progress"})
+            return web.json_response({"ok": True, "item_id": item_id, "status": "in_progress"})
         if action == "fail":
-            updated = svc.fail(task_id, reason=f"[operator] {reason}")
-            return web.json_response({"ok": True, "task_id": task_id, "status": updated.status.value})
+            updated = svc.fail(item_id, reason=f"[operator] {reason}")
+            return web.json_response({"ok": True, "item_id": item_id, "status": updated.status.value})
         if action == "unblock":
             # If not currently blocked, force flip via store directly so
             # operator can also revive an in_progress→stuck task.
             try:
-                updated = svc.unblock(task_id)
+                updated = svc.unblock(item_id)
             except Exception:
                 updated = task
             if updated.status.value != "in_progress":
-                from sonya.tasks.models import TaskStatus
-                updated = store.update_status(task_id, TaskStatus.IN_PROGRESS)
+                from sonya.work.models import WorkItemStatus
+                updated = store.update_status(item_id, WorkItemStatus.IN_PROGRESS)
                 from sonya.state.continuity_stream import ContinuityEvent
                 ContinuityStream(sub).append(ContinuityEvent(
                     kind="task.unblocked",
-                    payload={"task_id": task_id, "operator_reason": reason},
+                    payload={"item_id": item_id, "operator_reason": reason},
                 ))
             # If reason given, set as next_step_hint
             if reason:
                 sub.connection.execute(
-                    "UPDATE tasks SET next_step_hint = ?, updated_at = ? WHERE task_id = ?",
-                    (reason, datetime.now(timezone.utc).isoformat(), task_id),
+                    "UPDATE tasks SET next_step_hint = ?, updated_at = ? WHERE item_id = ?",
+                    (reason, datetime.now(timezone.utc).isoformat(), item_id),
                 )
                 sub.connection.commit()
-            return web.json_response({"ok": True, "task_id": task_id, "status": updated.status.value})
+            return web.json_response({"ok": True, "item_id": item_id, "status": updated.status.value})
         if action == "repurpose":
             sub.connection.execute(
                 "UPDATE tasks SET status='pending', blocker='', "
                 "next_step_hint='', last_session_notes='', "
-                "sessions_used=0, updated_at=? WHERE task_id=?",
-                (datetime.now(timezone.utc).isoformat(), task_id),
+                "sessions_used=0, updated_at=? WHERE item_id=?",
+                (datetime.now(timezone.utc).isoformat(), item_id),
             )
             sub.connection.commit()
             from sonya.state.continuity_stream import ContinuityEvent
             ContinuityStream(sub).append(ContinuityEvent(
                 kind="task.repurposed",
                 payload={
-                    "task_id": task_id,
+                    "item_id": item_id,
                     "operator_reason": reason,
                     "previous_status": task.status.value,
                 },
             ))
-            return web.json_response({"ok": True, "task_id": task_id, "status": "pending"})
+            return web.json_response({"ok": True, "item_id": item_id, "status": "pending"})
         if action == "delete":
-            sub.connection.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+            sub.connection.execute("DELETE FROM tasks WHERE item_id = ?", (item_id,))
             sub.connection.commit()
-            return web.json_response({"ok": True, "task_id": task_id, "deleted": True})
+            return web.json_response({"ok": True, "item_id": item_id, "deleted": True})
         return web.json_response({"error": "unreachable"}, status=500)
     finally:
         sub.close()
@@ -2404,7 +2404,7 @@ def _atrium_event_to_json(ev) -> dict:
         "channel": ev.channel,
         "src": src,
         "session_id": payload.get("session_id") if isinstance(payload, dict) else None,
-        "task_id": payload.get("task_id") if isinstance(payload, dict) else None,
+        "item_id": payload.get("item_id") if isinstance(payload, dict) else None,
         "principal_id": ev.principal_id,
         "text": payload.get("text", "") if isinstance(payload, dict) else "",
         "payload": payload,
@@ -3082,8 +3082,8 @@ def create_app() -> web.Application:
     # LLM call audit + tasks (admin observability)
     app.router.add_get("/api/llm_calls", api_llm_calls)
     app.router.add_get("/api/tasks", api_tasks)
-    app.router.add_get("/api/tasks/{task_id}", api_task_detail)
-    app.router.add_delete("/api/tasks/{task_id}", api_tasks_delete)
+    app.router.add_get("/api/tasks/{item_id}", api_task_detail)
+    app.router.add_delete("/api/tasks/{item_id}", api_tasks_delete)
     # Approvals (shell.run / pip.install / governed selfmod gates)
     app.router.add_get("/api/approvals", api_approvals_get)
     app.router.add_post("/api/approvals/{request_id}/{decision}", api_approvals_decide)
@@ -3092,7 +3092,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/operator/live", api_operator_live_steps)
     app.router.add_post("/api/operator/trigger-active", api_operator_trigger_active)
     app.router.add_post("/api/operator/inject-message", api_operator_inject_message)
-    app.router.add_post("/api/operator/task/{task_id}/action", api_operator_task_action)
+    app.router.add_post("/api/operator/task/{item_id}/action", api_operator_task_action)
     # Atrium (multichannel UI/output package — Этап 0)
     app.router.add_post("/api/atrium/ws-ticket", atrium_ws_ticket)
     app.router.add_options("/api/atrium/ws-ticket", atrium_options)

@@ -124,7 +124,9 @@ class WebTool:
         if not query:
             return "[ERROR] web.search needs a query"
         try:
-            return _run_async(lambda: self._do_search(query))
+            from sonya.tools.sanitize import sanitize_untrusted
+            res = _run_async(lambda: self._do_search(query))
+            return sanitize_untrusted(res)
         except Exception as err:
             return f"[ERROR] web.search failed: {type(err).__name__}: {err}"
 
@@ -285,7 +287,9 @@ class WebTool:
         if not (url.startswith("http://") or url.startswith("https://")):
             return "[ERROR] web.fetch needs http(s):// URL"
         try:
-            return _run_async(lambda: self._do_fetch(url))
+            from sonya.tools.sanitize import sanitize_untrusted
+            res = _run_async(lambda: self._do_fetch(url))
+            return sanitize_untrusted(res)
         except Exception as err:
             return f"[ERROR] web.fetch failed: {type(err).__name__}: {err}"
 
