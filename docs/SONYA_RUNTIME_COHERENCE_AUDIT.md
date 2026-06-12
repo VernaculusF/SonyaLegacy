@@ -514,7 +514,7 @@ Priority meanings:
 
 ### 7.1 Situational and Epistemic Foundation
 
-- [ ] `P0` #1 missing/stale environment and subject status
+- [x] `P0` #1 missing/stale environment and subject status
 - [ ] `P0` #2 coherent model of other subjects and their participation
 - [x] `P0` #3 replace eternal EnvironmentStore semantics with SituationalModel
 - [x] `P0` #4 remove credentials from environment/current-state storage
@@ -522,7 +522,7 @@ Priority meanings:
 - [ ] `P0` #34 general source trust/authority model
 - [ ] `P0` #48 independently evaluate memory consolidation quality
 - [ ] `P0` #49 refuted-belief correction and retrieval lifecycle
-- [ ] `P1` #50 SituationalModel quality metrics and review
+- [x] `P1` #50 SituationalModel quality metrics and review
 
 ### 7.2 Agency, Causality, and Scheduling
 

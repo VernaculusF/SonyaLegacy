@@ -8,7 +8,7 @@
 
 - Branch: `develop`
 - Latest pushed/deployed runtime baseline before this documentation slice:
-  `aa2753a`
+  `95f9f0b`
 - Production host: `jester-sonya@34.38.255.149`
 - Production repo: `/home/jester-sonya/Sonya`
 - Production substrate: `/home/jester-sonya/.sonya/sonya_substrate.db`
@@ -112,7 +112,8 @@ Checklist status:
 
 - #3 closed;
 - #4 closed;
-- #1 and #2 still open.
+- #1 and #50 closed (generalized contradiction handling and SituationalMetrics);
+- #2 still open.
 
 Additional deployed progress on #1:
 
@@ -121,8 +122,7 @@ Additional deployed progress on #1:
 - it records `world_state.ivan_activity_invalidated_status`;
 - focused VPS suite passed (`49 passed`), compileall clean, production services
   active, `environment_state=0`, `credential_env_rows=0`, `quick_check=ok`;
-- do not close #1 yet: generalized contradiction handling and WorldState
-  quality metrics are still missing.
+- commit `95f9f0b` added generalized contradiction handling (`invalidates_ids`) and `SituationalMetrics`, closing #1 and #50.
 
 Known verification note: one old `test_internal_process_emits_on_idle_timeout`
 is a fragile 150 ms timing test on VPS and failed independently of the

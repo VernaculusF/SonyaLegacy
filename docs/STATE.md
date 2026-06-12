@@ -93,10 +93,7 @@ Production proof:
   `quick_check=ok`;
 - recent warning journal: no entries.
 
-Checklist items #1 and #2 remain open. The first slice provides the storage and
-compatibility foundation, but full contradiction handling, subject
-participation semantics, automatic invalidation, and WorldState quality review
-are not complete yet.
+Checklist items #1 and #50 are now closed. The SituationalModel supports generalized contradiction handling (via `invalidates_ids`) and WorldState quality review (via `SituationalMetrics`). Checklist item #2 remains open.
 
 Follow-up deployed commit `358b43d` adds the first automatic invalidation rule
 for checklist item #1:
@@ -119,8 +116,11 @@ Production proof for `358b43d`:
   `credential_env_rows=0`, `quick_check=ok`;
 - recent warning journal: no entries.
 
-Checklist item #1 remains open until contradiction handling is generalized and
-WorldState quality metrics/review exist.
+Deployed commit `95f9f0b` completes checklist items #1 and #50:
+
+- `assert_fact` now supports explicit `invalidates_ids` for cross-predicate contradiction handling;
+- `SituationalMetrics` exposes quality metrics including stale active facts, low confidence facts, contradiction counts, and source quality;
+- isolated VPS focused suite passed, production fast-forward and restart completed successfully.
 
 ## Current execution state - 2026-06-11
 
