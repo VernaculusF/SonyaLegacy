@@ -4,14 +4,14 @@ db_path = '/home/jester-sonya/.sonya/sonya_substrate.db'
 conn = sqlite3.connect(db_path)
 c = conn.cursor()
 
-# Set all openrouter keys to priority -1
-c.execute("UPDATE provider_keys SET priority = -1 WHERE provider = 'openrouter'")
+# Set all openrouter accounts to priority -1
+c.execute("UPDATE provider_accounts SET priority = -1 WHERE provider_id = 'openrouter'")
 
 # Set sonyamain to priority 100
-c.execute("UPDATE provider_keys SET priority = 100 WHERE key_id = 'pa-f07374aa9f74'")
+c.execute("UPDATE provider_accounts SET priority = 100 WHERE name = 'sonyamain'")
 
 conn.commit()
-print("Priorities updated successfully.")
+print("Account priorities updated successfully.")
 
-for row in c.execute("SELECT key_id, name, priority FROM provider_keys WHERE provider = 'openrouter' ORDER BY priority DESC"):
+for row in c.execute("SELECT account_id, name, priority FROM provider_accounts WHERE provider_id = 'openrouter' ORDER BY priority DESC"):
     print(row)

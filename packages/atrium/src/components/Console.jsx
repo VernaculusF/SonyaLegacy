@@ -388,6 +388,9 @@ function ProvidersPanel(props) {
       setDraft({
         active_provider: r.settings?.active_provider || '',
         default_model: r.settings?.default_model || '',
+        fast_model: r.settings?.fast_model || '',
+        deep_model: r.settings?.deep_model || '',
+        vision_model: r.settings?.vision_model || '',
         default_base_url: r.settings?.default_base_url || '',
       });
     }
@@ -513,6 +516,9 @@ function ProvidersPanel(props) {
           <div class="kv-grid">
             <div><span class="kv-k">active</span><span class="kv-v mono">{settings_().active_provider || '—'}</span></div>
             <div><span class="kv-k">model</span><span class="kv-v mono">{settings_().default_model || '—'}</span></div>
+            <div><span class="kv-k">fast model</span><span class="kv-v mono">{settings_().fast_model || '—'}</span></div>
+            <div><span class="kv-k">deep model</span><span class="kv-v mono">{settings_().deep_model || '—'}</span></div>
+            <div><span class="kv-k">vision model</span><span class="kv-v mono">{settings_().vision_model || '—'}</span></div>
             <div><span class="kv-k">base url</span><span class="kv-v mono small">{settings_().default_base_url || '—'}</span></div>
           </div>
         </Show>
@@ -525,6 +531,18 @@ function ProvidersPanel(props) {
             <label>default model
               <input type="text" value={draft().default_model}
                 onInput={(e) => setDraft({ ...draft(), default_model: e.currentTarget.value })} />
+            </label>
+            <label>fast model
+              <input type="text" value={draft().fast_model}
+                onInput={(e) => setDraft({ ...draft(), fast_model: e.currentTarget.value })} />
+            </label>
+            <label>deep model
+              <input type="text" value={draft().deep_model}
+                onInput={(e) => setDraft({ ...draft(), deep_model: e.currentTarget.value })} />
+            </label>
+            <label>vision model
+              <input type="text" value={draft().vision_model}
+                onInput={(e) => setDraft({ ...draft(), vision_model: e.currentTarget.value })} />
             </label>
             <label>default base url
               <input type="text" value={draft().default_base_url}
