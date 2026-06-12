@@ -2296,24 +2296,10 @@ def _h_mind_focus(arg: str, ctx: _ToolContext) -> str:
     sub = _substrate_from(ctx)
     if sub is None:
         return "[ERROR] mind.focus: substrate not available"
-    # Read previous
-    try:
-        row = sub.connection.execute(
-            "SELECT current_focus FROM subject_state WHERE id = 1"
-        ).fetchone()
-        previous = (row[0] if row else "") or ""
-    except Exception:
-        previous = ""
-    # Update state (replace)
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    sub.connection.execute(
-        "INSERT INTO subject_state(id, current_focus, updated_at) VALUES (1, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET current_focus = excluded.current_focus, "
-        "updated_at = excluded.updated_at",
-        (text, now),
-    )
-    sub.connection.commit()
+    from sonya.state.embodiment import EmbodimentStore
+    store = EmbodimentStore(sub)
+    previous = store.load().focus
+    store.set_focus(text)
     # Emit event
     if ctx.stream is not None:
         ctx.stream.append(ContinuityEvent(
@@ -2404,24 +2390,12 @@ def _h_body_expression(arg: str, ctx: _ToolContext) -> str:
     sub = _substrate_from(ctx)
     if sub is None:
         return "[ERROR] body.expression: substrate not available"
-    try:
-        row = sub.connection.execute(
-            "SELECT current_expression FROM subject_state WHERE id = 1"
-        ).fetchone()
-        previous = (row[0] if row else "neutral") or "neutral"
-    except Exception:
-        previous = "neutral"
+    from sonya.state.embodiment import EmbodimentStore
+    store = EmbodimentStore(sub)
+    previous = store.load().expression
     if previous == marker:
         return f"[OK] expression unchanged: {marker}"
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    sub.connection.execute(
-        "INSERT INTO subject_state(id, current_expression, updated_at) VALUES (1, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET current_expression = excluded.current_expression, "
-        "updated_at = excluded.updated_at",
-        (marker, now),
-    )
-    sub.connection.commit()
+    store.set_expression(marker)
     if ctx.stream is not None:
         ctx.stream.append(ContinuityEvent(
             kind="outgoing.body_expression",
@@ -2452,22 +2426,10 @@ def _h_body_outfit(arg: str, ctx: _ToolContext) -> str:
     sub = _substrate_from(ctx)
     if sub is None:
         return "[ERROR] body.outfit: substrate not available"
-    try:
-        row = sub.connection.execute(
-            "SELECT current_outfit FROM subject_state WHERE id = 1"
-        ).fetchone()
-        previous = (row[0] if row else "home") or "home"
-    except Exception:
-        previous = "home"
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    sub.connection.execute(
-        "INSERT INTO subject_state(id, current_outfit, updated_at) VALUES (1, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET current_outfit = excluded.current_outfit, "
-        "updated_at = excluded.updated_at",
-        (outfit, now),
-    )
-    sub.connection.commit()
+    from sonya.state.embodiment import EmbodimentStore
+    store = EmbodimentStore(sub)
+    previous = store.load().outfit
+    store.set_outfit(outfit)
     if ctx.stream is not None:
         ctx.stream.append(ContinuityEvent(
             kind="outgoing.body_outfit",
@@ -2493,22 +2455,10 @@ def _h_mind_mood_tint(arg: str, ctx: _ToolContext) -> str:
     sub = _substrate_from(ctx)
     if sub is None:
         return "[ERROR] mind.mood_tint: substrate not available"
-    try:
-        row = sub.connection.execute(
-            "SELECT mood_tint FROM subject_state WHERE id = 1"
-        ).fetchone()
-        previous = (row[0] if row else "neutral") or "neutral"
-    except Exception:
-        previous = "neutral"
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
-    sub.connection.execute(
-        "INSERT INTO subject_state(id, mood_tint, updated_at) VALUES (1, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET mood_tint = excluded.mood_tint, "
-        "updated_at = excluded.updated_at",
-        (tint, now),
-    )
-    sub.connection.commit()
+    from sonya.state.embodiment import EmbodimentStore
+    store = EmbodimentStore(sub)
+    previous = store.load().mood_tint
+    store.set_mood_tint(tint)
     if ctx.stream is not None:
         ctx.stream.append(ContinuityEvent(
             kind="outgoing.mood_tint",

@@ -2432,15 +2432,13 @@ def _atrium_meta(sub, stream) -> dict:
     """Build periodic meta-message: private count + current focus + drives."""
     private_count = stream.private_count_recent(hours=1)
     try:
-        row = sub.connection.execute(
-            "SELECT current_focus, current_outfit, current_expression, mood_tint "
-            "FROM subject_state WHERE id = 1"
-        ).fetchone()
+        from sonya.state.embodiment import EmbodimentStore
+        emb = EmbodimentStore(sub).load()
         current = {
-            "current_focus": row[0] if row else "",
-            "current_outfit": row[1] if row else "home",
-            "current_expression": row[2] if row else "neutral",
-            "mood_tint": row[3] if row else "neutral",
+            "current_focus": emb.focus,
+            "current_outfit": emb.outfit,
+            "current_expression": emb.expression,
+            "mood_tint": emb.mood_tint,
         }
     except Exception:
         current = {}

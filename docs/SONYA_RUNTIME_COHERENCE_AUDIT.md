@@ -526,7 +526,7 @@ Priority meanings:
 
 ### 7.2 Agency, Causality, and Scheduling
 
-- [ ] `P0` #5 stop self-propelling interaction cycles through meaningful change
+- [x] `P0` #5 stop self-propelling interaction cycles through meaningful change
 - [ ] `P0` #6 separate thought, addressed reply, action, and report
 - [ ] `P0` #21 causal graph and stable correlation IDs
 - [ ] `P0` #22 durable idempotency and processing checkpoints

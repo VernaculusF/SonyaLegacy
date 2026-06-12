@@ -8,7 +8,7 @@
 
 - Branch: `develop`
 - Latest pushed/deployed runtime baseline before this documentation slice:
-  `a88c8dc`
+  `00f3823`
 - Production host: `jester-sonya@34.38.255.149`
 - Production repo: `/home/jester-sonya/Sonya`
 - Production substrate: `/home/jester-sonya/.sonya/sonya_substrate.db`
@@ -115,7 +115,8 @@ Checklist status:
 - #1 and #50 closed (generalized contradiction handling and SituationalMetrics);
 - #46 closed (CredentialExposureStore);
 - #51 closed (canonical documentation staleness test);
-- #2 closed (EnvironmentStore deleted, SituationalStore full migration, explicit uncertainty marker).
+- #2 closed (EnvironmentStore deleted, SituationalStore full migration, explicit uncertainty marker);
+- #5 closed (Stop self-propelling interaction cycles).
 
 Additional deployed progress on #1:
 

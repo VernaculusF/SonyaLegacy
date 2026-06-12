@@ -334,6 +334,20 @@ def build_full_context(
     from sonya.state.subject_state import SubjectStateStore
     state = SubjectStateStore(substrate).load()
 
+    # Embodiment state
+    try:
+        from sonya.state.embodiment import EmbodimentStore
+        emb = EmbodimentStore(substrate).load()
+        system_prompt += (
+            f"\n\n## Моё текущее состояние (Embodiment)\n"
+            f"- Текущий наряд (body.outfit): {emb.outfit}\n"
+            f"- Выражение лица (body.expression): {emb.expression}\n"
+            f"- Общий настрой (mind.mood_tint): {emb.mood_tint}\n"
+            f"- Текущий фокус (mind.focus): {emb.focus}\n"
+        )
+    except Exception:
+        pass
+
     # Recent episodic memories — AUTO-RAG (Stage 4).
     # Hybrid approach: relevance (semantic recall on user_input) + recency.
     # This replaces the old "last 15 by timestamp" which made Sonya forget
