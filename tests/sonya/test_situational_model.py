@@ -280,3 +280,30 @@ def test_refute_fact_prevents_silent_repromotion(tmp_path: Path) -> None:
         assert store.get_current(subject="ivan", predicate="status").value == "active"
     finally:
         sub.close()
+
+def test_trust_context_and_history(tmp_path: Path) -> None:
+    from sonya.state.situational import TrustContext
+    sub = Substrate.open(tmp_path / "test.db")
+    try:
+        store = SituationalStore(sub)
+        tctx: TrustContext = {"authority_level": "authoritative", "trust_signals": ["system_derived"]}
+        
+        f1 = store.assert_fact(subject="ivan", predicate="mood", value="happy", source="system", trust_context=tctx)
+        
+        # Verify trust_context is persisted
+        curr = store.get_current(subject="ivan", predicate="mood")
+        assert curr is not None
+        assert curr.metadata.get("trust") == {"authority_level": "authoritative", "trust_signals": ["system_derived"]}
+        
+        f2 = store.assert_fact(subject="ivan", predicate="mood", value="sad", source="system")
+        
+        f3 = store.assert_fact(subject="ivan", predicate="status", value="sleeping", source="system")
+        f4 = store.assert_fact(subject="ivan", predicate="status", value="awake", source="system", invalidates_ids=[f3.assertion_id, f2.assertion_id])
+        
+        history_f4 = store.get_assertion_history(f4.assertion_id)
+        # f4 invalidated f3 and f2. f2 superseded f1. So the tree includes f1, f2, f3, f4.
+        ids = {h.assertion_id for h in history_f4}
+        assert ids == {f1.assertion_id, f2.assertion_id, f3.assertion_id, f4.assertion_id}
+        
+    finally:
+        sub.close()
