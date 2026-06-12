@@ -209,14 +209,19 @@ def _time_awareness_block(substrate=None) -> str:
             pass
 
         try:
-            from sonya.state.environment import EnvironmentStore
-            env = EnvironmentStore(substrate).list_all()
-            if env:
+            from sonya.state.situational import SituationalStore
+            situational = SituationalStore(substrate)
+            items = situational.list_current_for_subject("ivan")
+            active_status = False
+
+            if items:
                 lines.append("- Что я наблюдаю про Ивана / окружение:")
-                for key, item in env.items():
+                for item in items:
+                    if item.predicate == "status":
+                        active_status = True
                     age = ""
                     try:
-                        when = datetime.fromisoformat(item["updated_at"])
+                        when = datetime.fromisoformat(item.observed_at.replace("Z", "+00:00")) if item.observed_at else now_utc
                         delta = now_utc - when
                         mins = int(delta.total_seconds() / 60)
                         if mins < 60:
@@ -227,11 +232,9 @@ def _time_awareness_block(substrate=None) -> str:
                             age = f" (записала {mins // 1440}д назад)"
                     except Exception:
                         pass
-                    confidence = float(item.get("confidence", 0.5))
-                    source = item.get("source", "unknown")
                     lines.append(
-                        f"  - **{key}**: {item['value']}{age} "
-                        f"(source={source}, confidence={confidence:.2f})"
+                        f"  - **{item.predicate}**: {item.value}{age} "
+                        f"(source={item.source}, confidence={item.confidence:.2f})"
                     )
             else:
                 lines.append(
@@ -239,6 +242,27 @@ def _time_awareness_block(substrate=None) -> str:
                     "Если из разговора понятно (он сказал что спит, ушёл по делам, занят) — "
                     "вызови `[TOOL: env.set ivan_status <значение>]` чтобы я помнила."
                 )
+
+            # Explicit Uncertainty Injection (Audit Item #2)
+            # If we don't have an active status AND Ivan hasn't spoken in 2 hours,
+            # explicitly inject uncertainty so the model doesn't hallucinate continuation.
+            if not active_status:
+                is_stale = True
+                if last_ivan_ts:
+                    try:
+                        when = datetime.fromisoformat(last_ivan_ts.replace("Z", "+00:00"))
+                        if (now_utc - when).total_seconds() < 7200: # 2 hours
+                            is_stale = False
+                    except Exception:
+                        pass
+                
+                if is_stale:
+                    lines.append(
+                        "\n> [!WARNING] [Неизвестность]\n"
+                        "> Статус Ивана неизвестен, так как он давно не проявлял активности и нет свежих записей. "
+                        "Не делай уверенных предположений о том, что он сейчас делает или готов ли он к диалогу."
+                    )
+
         except Exception:
             pass
     return "\n".join(lines) + "\n"

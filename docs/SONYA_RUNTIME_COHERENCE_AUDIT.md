@@ -515,7 +515,7 @@ Priority meanings:
 ### 7.1 Situational and Epistemic Foundation
 
 - [x] `P0` #1 missing/stale environment and subject status
-- [ ] `P0` #2 coherent model of other subjects and their participation
+- [x] `P0` #2 coherent model of other subjects and their participation
 - [x] `P0` #3 replace eternal EnvironmentStore semantics with SituationalModel
 - [x] `P0` #4 remove credentials from environment/current-state storage
 - [x] `P0` #20 prevent generated cognition from becoming its own evidence

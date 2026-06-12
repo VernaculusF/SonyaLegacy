@@ -16,29 +16,34 @@ The OutboundGate respects ivan_status='спит'/'занят' and won't initiate
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
-from sonya.state.environment import EnvironmentStore
 from sonya.state.situational import SituationalStore
 from sonya.state.substrate import Substrate
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class EnvTool:
-    """Agent-facing wrapper around EnvironmentStore."""
+    """Agent-facing wrapper around SituationalStore (legacy env tool)."""
 
     def __init__(self, substrate: Substrate) -> None:
         self._sub = substrate
-        self._store = EnvironmentStore(substrate)
         self._situational = SituationalStore(substrate)
 
     def set(self, arg: str) -> str:
-        """Record a legacy key/value or a structured situational assertion."""
+        """Record a structured situational assertion."""
         if not arg or not arg.strip():
             return "[ERROR] env.set needs: <key> <value>"
+        
+        # Fast path for explicit JSON
         if arg.lstrip().startswith("{"):
             try:
                 data = json.loads(arg)
                 assertion = self._situational.assert_fact(
-                    subject=str(data.get("subject", "")).strip(),
+                    subject=str(data.get("subject", "ivan")).strip(),
                     predicate=str(data.get("predicate", "")).strip(),
                     value=str(data.get("value", "")),
                     source=str(data.get("source", "observation")),
@@ -55,43 +60,87 @@ class EnvTool:
                 f"[OK] env.set {assertion.subject}.{assertion.predicate}="
                 f"{assertion.value!r} confidence={assertion.confidence:.2f}"
             )
+            
+        # Fallback for simple `<key> <value>`
         parts = arg.strip().split(None, 1)
         if len(parts) < 2:
             return "[ERROR] env.set needs: <key> <value>"
+        
+        # For legacy `env.set ivan_status спит` mapping
+        # If predicate has "status", or key is "ivan_status", map to subject="ivan", predicate="status"
         key, value = parts[0], parts[1]
+        
+        subject = "ivan"
+        predicate = key
+        if key == "ivan_status":
+            predicate = "status"
+
+        # Auto-expiry TTL
+        hours = 8 if value.lower() in ("спит", "сплю", "sleeping", "asleep") else 4
+        expires_at = (_utc_now() + timedelta(hours=hours)).isoformat()
+
         try:
-            self._store.set(key, value, source="observation", updated_by="agent")
+            assertion = self._situational.assert_fact(
+                subject=subject,
+                predicate=predicate,
+                value=value,
+                source="observation",
+                expires_at=expires_at,
+            )
         except Exception as exc:
             return f"[ERROR] env.set failed: {exc}"
-        return f"[OK] env.set {key}={value!r}"
+            
+        return f"[OK] env.set {subject}.{predicate}={assertion.value!r} (expires in {hours}h)"
 
     def get(self, key: str) -> str:
         key = key.strip()
         if not key:
             return "[ERROR] env.get needs a key"
-        item = self._store.get(key)
-        if item is None:
-            return f"(no env value for {key!r})"
-        return f"{key}: {item['value']} (source={item['source']}, updated_at={item['updated_at'][:19]})"
+        
+        subject = "ivan"
+        predicate = key
+        if key == "ivan_status":
+            predicate = "status"
+
+        try:
+            item = self._situational.get_current(subject=subject, predicate=predicate)
+            if item is None:
+                return f"(no active assertion for {subject}.{predicate})"
+            return f"{subject}.{predicate}: {item.value} (source={item.source}, expires_at={item.expires_at[:19] if item.expires_at else 'none'})"
+        except Exception as exc:
+            return f"[ERROR] env.get failed: {exc}"
 
     def list_all(self) -> str:
-        items = self._store.list_all()
-        if not items:
-            return "(no environment state recorded)"
-        lines = ["Environment state:"]
-        for k, v in items.items():
-            lines.append(
-                f"- {k}: {v['value']} "
-                f"(source={v['source']}, at={v['updated_at'][:19]})"
-            )
-        return "\n".join(lines)
+        try:
+            # We list all active assertions for subject "ivan"
+            items = self._situational.list_current_for_subject("ivan")
+            if not items:
+                return "(no environment state recorded for ivan)"
+            lines = ["Environment state (ivan):"]
+            for v in items:
+                lines.append(
+                    f"- {v.predicate}: {v.value} "
+                    f"(source={v.source}, expires_at={v.expires_at[:19] if v.expires_at else 'none'})"
+                )
+            return "\n".join(lines)
+        except Exception as exc:
+            return f"[ERROR] env.list_all failed: {exc}"
 
     def clear(self, key: str) -> str:
         key = key.strip()
         if not key:
             return "[ERROR] env.clear needs a key"
-        ok = self._store.clear(key)
-        return f"[OK] env.clear {key}" if ok else f"(no env value to clear for {key!r})"
+        
+        subject = "ivan"
+        predicate = key
+        if key == "ivan_status":
+            predicate = "status"
+
+        try:
+            invalidated = self._situational.invalidate_predicate(subject=subject, predicate=predicate, reason="agent_cleared")
+            return f"[OK] env.clear {subject}.{predicate}" if invalidated else f"(no active assertion to clear for {subject}.{predicate})"
+        except Exception as exc:
+            return f"[ERROR] env.clear failed: {exc}"
 
 
 __all__ = ["EnvTool"]

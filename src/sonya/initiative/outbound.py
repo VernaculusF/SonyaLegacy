@@ -287,18 +287,19 @@ class OutboundGate:
             return True, ""
         # Initiative message (idle thoughts marker, unsolicited)
         if self._sent_today >= self._max_per_day:
-            return False, f"daily cap reached ({self._sent_today}/{self._max_per_day})"        # Environment-status gate: Sonya may have observed Ivan is sleeping /
+            return False, f"daily cap reached ({self._sent_today}/{self._max_per_day})"
+        # Environment-status gate: Sonya may have observed Ivan is sleeping /
         # busy / unavailable and recorded it via env.set. Respect that.
         if self._substrate is not None:
             try:
-                from sonya.state.environment import EnvironmentStore
-                status = EnvironmentStore(self._substrate).get("ivan_status")
+                from sonya.state.situational import SituationalStore
+                status = SituationalStore(self._substrate).get_current(subject="ivan", predicate="status")
                 if status:
-                    val = status.get("value", "").lower()
+                    val = status.value.lower()
                     blocking = ("спит", "сплю", "asleep", "sleeping",
                                 "занят", "busy", "не беспокоить", "dnd")
                     if any(b in val for b in blocking):
-                        return False, f"observed status: ivan_status={status['value']!r}"
+                        return False, f"observed status: ivan.status={status.value!r}"
             except Exception:
                 pass
         # Quiet window — look for latest tg event in continuity
