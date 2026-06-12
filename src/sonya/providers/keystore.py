@@ -326,6 +326,15 @@ class KeyStore:
             raise ValueError(f"unknown provider: {provider_id}")
         account_id = account_id or f"pa-{uuid4().hex[:12]}"
         now = _utc_now_iso()
+        if not legacy_key_id:
+            legacy_key_id = account_id
+            self._sub.connection.execute(
+                "INSERT INTO provider_keys (key_id, provider, name, api_key, base_url, model, "
+                "status, priority, cooldown_until, last_used_at, last_error, last_error_at, "
+                "request_count, success_count, error_count, created_at, updated_at, slot) "
+                "VALUES (?, ?, ?, '', '', '', ?, ?, '', '', '', '', 0, 0, 0, ?, ?, 'text')",
+                (account_id, provider_id, name, status, priority, now, now),
+            )
         self._sub.connection.execute(
             "INSERT INTO provider_accounts "
             "(account_id, provider_id, name, secret_ref, secret_masked, legacy_key_id, status, priority, "
@@ -477,6 +486,25 @@ class KeyStore:
                 f"UPDATE provider_accounts SET {', '.join(fields)} WHERE account_id = ?",
                 params,
             )
+            # Sync to provider_keys if a mirroring key exists
+            key_fields = []
+            key_params = []
+            if name is not None:
+                key_fields.append("name = ?")
+                key_params.append(name)
+            if status is not None:
+                key_fields.append("status = ?")
+                key_params.append(status)
+            if priority is not None:
+                key_fields.append("priority = ?")
+                key_params.append(priority)
+            if key_fields:
+                key_fields.append("updated_at = ?")
+                key_params.append(_utc_now_iso())
+                self._sub.connection.execute(
+                    f"UPDATE provider_keys SET {', '.join(key_fields)} WHERE key_id = (SELECT legacy_key_id FROM provider_accounts WHERE account_id = ?) OR key_id = ?",
+                    (*key_params, account_id, account_id),
+                )
             self._sub.connection.commit()
         account = self.get_provider_account(account_id)
         if account is None:
@@ -484,6 +512,11 @@ class KeyStore:
         return account
 
     def delete_provider_account(self, account_id: str) -> None:
+        account = self.get_provider_account(account_id)
+        if account and account.legacy_key_id:
+            self._sub.connection.execute("DELETE FROM provider_keys WHERE key_id = ?", (account.legacy_key_id,))
+        elif account:
+            self._sub.connection.execute("DELETE FROM provider_keys WHERE key_id = ?", (account_id,))
         self._sub.connection.execute(
             "DELETE FROM provider_account_offerings WHERE account_id = ?",
             (account_id,),
