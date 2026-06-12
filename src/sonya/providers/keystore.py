@@ -99,9 +99,13 @@ class ProviderKey:
 class ProviderSettings:
     active_provider: str
     default_model: str
+    default_fallback: str
     fast_model: str
+    fast_fallback: str
     deep_model: str
+    deep_fallback: str
     vision_model: str
+    vision_fallback: str
     default_base_url: str
     updated_at: str
 
@@ -222,19 +226,23 @@ class KeyStore:
 
     def get_settings(self) -> ProviderSettings:
         row = self._sub.connection.execute(
-            "SELECT active_provider, default_model, fast_model, deep_model, vision_model, default_base_url, updated_at "
+            "SELECT active_provider, default_model, default_fallback, fast_model, fast_fallback, deep_model, deep_fallback, vision_model, vision_fallback, default_base_url, updated_at "
             "FROM provider_settings WHERE id = 1"
         ).fetchone()
         if row is None:
-            return ProviderSettings("openrouter", "", "", "", "", "https://openrouter.ai/api/v1", "")
+            return ProviderSettings("openrouter", "", "", "", "", "", "", "", "", "https://openrouter.ai/api/v1", "")
         return ProviderSettings(
             active_provider=row[0],
             default_model=row[1],
-            fast_model=row[2],
-            deep_model=row[3],
-            vision_model=row[4],
-            default_base_url=row[5],
-            updated_at=row[6],
+            default_fallback=row[2],
+            fast_model=row[3],
+            fast_fallback=row[4],
+            deep_model=row[5],
+            deep_fallback=row[6],
+            vision_model=row[7],
+            vision_fallback=row[8],
+            default_base_url=row[9],
+            updated_at=row[10],
         )
 
     def set_settings(
@@ -242,27 +250,37 @@ class KeyStore:
         *,
         active_provider: str | None = None,
         default_model: str | None = None,
+        default_fallback: str | None = None,
         fast_model: str | None = None,
+        fast_fallback: str | None = None,
         deep_model: str | None = None,
+        deep_fallback: str | None = None,
         vision_model: str | None = None,
+        vision_fallback: str | None = None,
         default_base_url: str | None = None,
     ) -> ProviderSettings:
         cur = self.get_settings()
         ap = active_provider if active_provider is not None else cur.active_provider
         dm = default_model if default_model is not None else cur.default_model
+        df = default_fallback if default_fallback is not None else cur.default_fallback
         fm = fast_model if fast_model is not None else cur.fast_model
+        ff = fast_fallback if fast_fallback is not None else cur.fast_fallback
         dp = deep_model if deep_model is not None else cur.deep_model
+        dfp = deep_fallback if deep_fallback is not None else cur.deep_fallback
         vm = vision_model if vision_model is not None else cur.vision_model
+        vf = vision_fallback if vision_fallback is not None else cur.vision_fallback
         bu = default_base_url if default_base_url is not None else cur.default_base_url
         now = _utc_now_iso()
         self._sub.connection.execute(
-            "INSERT INTO provider_settings(id, active_provider, default_model, fast_model, deep_model, vision_model, default_base_url, updated_at) "
-            "VALUES (1, ?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO provider_settings(id, active_provider, default_model, default_fallback, fast_model, fast_fallback, deep_model, deep_fallback, vision_model, vision_fallback, default_base_url, updated_at) "
+            "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET active_provider=excluded.active_provider, "
-            "default_model=excluded.default_model, fast_model=excluded.fast_model, "
-            "deep_model=excluded.deep_model, vision_model=excluded.vision_model, "
+            "default_model=excluded.default_model, default_fallback=excluded.default_fallback, "
+            "fast_model=excluded.fast_model, fast_fallback=excluded.fast_fallback, "
+            "deep_model=excluded.deep_model, deep_fallback=excluded.deep_fallback, "
+            "vision_model=excluded.vision_model, vision_fallback=excluded.vision_fallback, "
             "default_base_url=excluded.default_base_url, updated_at=excluded.updated_at",
-            (ap, dm, fm, dp, vm, bu, now),
+            (ap, dm, df, fm, ff, dp, dfp, vm, vf, bu, now),
         )
         self._sub.connection.commit()
         return self.get_settings()

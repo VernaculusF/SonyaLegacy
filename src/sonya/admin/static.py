@@ -902,13 +902,17 @@ renderers.providers = function(d) {
     <div class="card"><h3>Model pool</h3><strong>${ms.length}</strong><span class="provider-meta">${available.size} available</span></div>
     <div class="card"><h3>Free models</h3><strong>${ms.filter(x=>x.is_free).length}</strong><span class="provider-meta">advertised</span></div>
     <div class="card"><h3>Observations</h3><strong>${os.length}</strong><span class="provider-meta">${qs.length} quota windows</span></div></div>`;
+  const modOpts = (sel) => `<option value="">(none)</option>` + ms.map(x=>`<option value="${escapeHtml(x.model_id)}" ${x.model_id===sel?'selected':''}>${escapeHtml(x.model_id)}</option>`).join('');
   const settings=`<div class="card"><h3>Runtime defaults</h3><div class="provider-form">
     <label>Active provider</label><select id="prov-active">${ps.map(x=>`<option value="${escapeHtml(x.provider_id)}" ${x.provider_id===s.active_provider?'selected':''}>${escapeHtml(x.display_name)} (${escapeHtml(x.provider_id)})</option>`).join('')}</select>
-    <label>Default model</label><input id="prov-model" value="${escapeHtml(s.default_model||'')}" placeholder="provider/model">
-    <label>Fast model</label><input id="prov-fast" value="${escapeHtml(s.fast_model||'')}" placeholder="provider/model">
-    <label>Deep model</label><input id="prov-deep" value="${escapeHtml(s.deep_model||'')}" placeholder="provider/model">
-    <label>Vision model</label><input id="prov-vision" value="${escapeHtml(s.vision_model||'')}" placeholder="provider/model">
-    <label>Recovery base URL</label><input id="prov-base" value="${escapeHtml(s.default_base_url||'')}" placeholder="normally empty"></div>
+    <label>Default model</label><select id="prov-model">${modOpts(s.default_model)}</select>
+    <label>Default fallback</label><select id="prov-default-fallback">${modOpts(s.default_fallback)}</select>
+    <label>Fast model</label><select id="prov-fast">${modOpts(s.fast_model)}</select>
+    <label>Fast fallback</label><select id="prov-fast-fallback">${modOpts(s.fast_fallback)}</select>
+    <label>Deep model</label><select id="prov-deep">${modOpts(s.deep_model)}</select>
+    <label>Deep fallback</label><select id="prov-deep-fallback">${modOpts(s.deep_fallback)}</select>
+    <label>Vision model</label><select id="prov-vision">${modOpts(s.vision_model)}</select>
+    <label>Vision fallback</label><select id="prov-vision-fallback">${modOpts(s.vision_fallback)}</select></div>
     <div class="provider-actions" style="margin-top:10px"><button class="provider-button primary" onclick="providersSaveSettings()">Save defaults</button><span class="provider-meta">Substrate-owned; this does not define Sonya.</span></div></div>`;
   const pools=`<div class="card"><div class="provider-head"><h3>Provider pools</h3><button class="provider-button primary" onclick="providersCreateRegistry()">Add provider</button></div><div class="provider-stack">${ps.map(x=>{
     const ac=as.filter(a=>a.provider_id===x.provider_id).length, mc=ms.filter(m=>m.provider===x.provider_id).length;
@@ -966,10 +970,13 @@ async function providersSaveSettings() {
   const body = {
     active_provider: document.getElementById('prov-active').value.trim(),
     default_model: document.getElementById('prov-model').value.trim(),
+    default_fallback: document.getElementById('prov-default-fallback').value.trim(),
     fast_model: document.getElementById('prov-fast').value.trim(),
+    fast_fallback: document.getElementById('prov-fast-fallback').value.trim(),
     deep_model: document.getElementById('prov-deep').value.trim(),
+    deep_fallback: document.getElementById('prov-deep-fallback').value.trim(),
     vision_model: document.getElementById('prov-vision').value.trim(),
-    default_base_url: document.getElementById('prov-base').value.trim(),
+    vision_fallback: document.getElementById('prov-vision-fallback').value.trim(),
   };
   try {
     const resp = await fetch(`${API}/api/providers/settings`, {

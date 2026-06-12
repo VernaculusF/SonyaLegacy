@@ -376,6 +376,7 @@ const SUBAGENT_ROLES = new Set(['worker', 'tool', 'utility', 'subagent', 'agent'
 function ProvidersPanel(props) {
   const [keys, setKeys] = createSignal([]);
   const [settings_, setSettings] = createSignal({});
+  const [models, setModels] = createSignal([]);
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal({});
   const [editKeyId, setEditKeyId] = createSignal(null);
@@ -385,13 +386,17 @@ function ProvidersPanel(props) {
       const r = await api.getProviders();
       setKeys(r.keys || []);
       setSettings(r.settings || {});
+      setModels(r.models || []);
       setDraft({
         active_provider: r.settings?.active_provider || '',
         default_model: r.settings?.default_model || '',
+        default_fallback: r.settings?.default_fallback || '',
         fast_model: r.settings?.fast_model || '',
+        fast_fallback: r.settings?.fast_fallback || '',
         deep_model: r.settings?.deep_model || '',
+        deep_fallback: r.settings?.deep_fallback || '',
         vision_model: r.settings?.vision_model || '',
-        default_base_url: r.settings?.default_base_url || '',
+        vision_fallback: r.settings?.vision_fallback || '',
       });
     }
     catch (e) { props.onErr('providers: ' + e.message); }
@@ -516,10 +521,13 @@ function ProvidersPanel(props) {
           <div class="kv-grid">
             <div><span class="kv-k">active</span><span class="kv-v mono">{settings_().active_provider || '—'}</span></div>
             <div><span class="kv-k">model</span><span class="kv-v mono">{settings_().default_model || '—'}</span></div>
+            <div><span class="kv-k">model fallb</span><span class="kv-v mono">{settings_().default_fallback || '—'}</span></div>
             <div><span class="kv-k">fast model</span><span class="kv-v mono">{settings_().fast_model || '—'}</span></div>
+            <div><span class="kv-k">fast fallb</span><span class="kv-v mono">{settings_().fast_fallback || '—'}</span></div>
             <div><span class="kv-k">deep model</span><span class="kv-v mono">{settings_().deep_model || '—'}</span></div>
+            <div><span class="kv-k">deep fallb</span><span class="kv-v mono">{settings_().deep_fallback || '—'}</span></div>
             <div><span class="kv-k">vision model</span><span class="kv-v mono">{settings_().vision_model || '—'}</span></div>
-            <div><span class="kv-k">base url</span><span class="kv-v mono small">{settings_().default_base_url || '—'}</span></div>
+            <div><span class="kv-k">vision fallb</span><span class="kv-v mono">{settings_().vision_fallback || '—'}</span></div>
           </div>
         </Show>
         <Show when={editing()}>
@@ -529,24 +537,52 @@ function ProvidersPanel(props) {
                 onInput={(e) => setDraft({ ...draft(), active_provider: e.currentTarget.value })} />
             </label>
             <label>default model
-              <input type="text" value={draft().default_model}
-                onInput={(e) => setDraft({ ...draft(), default_model: e.currentTarget.value })} />
+              <select value={draft().default_model} onInput={(e) => setDraft({ ...draft(), default_model: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
+            </label>
+            <label>default fallback
+              <select value={draft().default_fallback} onInput={(e) => setDraft({ ...draft(), default_fallback: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
             </label>
             <label>fast model
-              <input type="text" value={draft().fast_model}
-                onInput={(e) => setDraft({ ...draft(), fast_model: e.currentTarget.value })} />
+              <select value={draft().fast_model} onInput={(e) => setDraft({ ...draft(), fast_model: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
+            </label>
+            <label>fast fallback
+              <select value={draft().fast_fallback} onInput={(e) => setDraft({ ...draft(), fast_fallback: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
             </label>
             <label>deep model
-              <input type="text" value={draft().deep_model}
-                onInput={(e) => setDraft({ ...draft(), deep_model: e.currentTarget.value })} />
+              <select value={draft().deep_model} onInput={(e) => setDraft({ ...draft(), deep_model: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
+            </label>
+            <label>deep fallback
+              <select value={draft().deep_fallback} onInput={(e) => setDraft({ ...draft(), deep_fallback: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
             </label>
             <label>vision model
-              <input type="text" value={draft().vision_model}
-                onInput={(e) => setDraft({ ...draft(), vision_model: e.currentTarget.value })} />
+              <select value={draft().vision_model} onInput={(e) => setDraft({ ...draft(), vision_model: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
             </label>
-            <label>default base url
-              <input type="text" value={draft().default_base_url}
-                onInput={(e) => setDraft({ ...draft(), default_base_url: e.currentTarget.value })} />
+            <label>vision fallback
+              <select value={draft().vision_fallback} onInput={(e) => setDraft({ ...draft(), vision_fallback: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                <For each={models()}>{m => <option value={m.model_id}>{m.model_id}</option>}</For>
+              </select>
             </label>
           </div>
         </Show>

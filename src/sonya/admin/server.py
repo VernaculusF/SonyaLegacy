@@ -973,6 +973,13 @@ async def api_providers_get(request: web.Request) -> web.Response:
             "settings": {
                 "active_provider": settings.active_provider,
                 "default_model": settings.default_model,
+                "default_fallback": settings.default_fallback,
+                "fast_model": settings.fast_model,
+                "fast_fallback": settings.fast_fallback,
+                "deep_model": settings.deep_model,
+                "deep_fallback": settings.deep_fallback,
+                "vision_model": settings.vision_model,
+                "vision_fallback": settings.vision_fallback,
                 "default_base_url": settings.default_base_url,
                 "updated_at": settings.updated_at,
             },
@@ -1391,9 +1398,13 @@ async def api_providers_settings(request: web.Request) -> web.Response:
         settings = store.set_settings(
             active_provider=data.get("active_provider"),
             default_model=data.get("default_model"),
+            default_fallback=data.get("default_fallback"),
             fast_model=data.get("fast_model"),
+            fast_fallback=data.get("fast_fallback"),
             deep_model=data.get("deep_model"),
+            deep_fallback=data.get("deep_fallback"),
             vision_model=data.get("vision_model"),
+            vision_fallback=data.get("vision_fallback"),
             default_base_url=data.get("default_base_url"),
         )
         return web.json_response({
