@@ -23,11 +23,11 @@ def test_current_assertion_supersedes_previous(tmp_path: Path) -> None:
         store = SituationalStore(sub)
         first = store.assert_fact(
             subject="ivan", predicate="ivan_status", value="спит",
-            source="ivan_statement", confidence=0.95,
+            source="ivan_said", confidence=0.95,
         )
         second = store.assert_fact(
             subject="ivan", predicate="ivan_status", value="не сплю",
-            source="ivan_statement", confidence=1.0,
+            source="ivan_said", confidence=1.0,
         )
         assert second.supersedes_id == first.assertion_id
         assert store.get_current(subject="ivan", predicate="ivan_status").value == "не сплю"
@@ -57,7 +57,7 @@ def test_expired_assertion_is_not_current(tmp_path: Path) -> None:
 def test_environment_facade_routes_ivan_status_to_ivan(tmp_path: Path) -> None:
     sub = Substrate.open(tmp_path / "test.db")
     try:
-        EnvironmentStore(sub).set("ivan_status", "не сплю", source="ivan_statement")
+        EnvironmentStore(sub).set("ivan_status", "не сплю", source="ivan_said")
         item = EnvironmentStore(sub).get("ivan_status")
         assert item is not None
         assert item["subject"] == "ivan"
@@ -90,7 +90,7 @@ def test_runtime_state_is_not_in_environment_view(tmp_path: Path) -> None:
 def test_incoming_ivan_activity_invalidates_sleep_status(tmp_path: Path) -> None:
     sub = Substrate.open(tmp_path / "test.db")
     try:
-        EnvironmentStore(sub).set("ivan_status", "спит", source="ivan_statement")
+        EnvironmentStore(sub).set("ivan_status", "спит", source="ivan_said")
         stream = ContinuityStream(sub)
         incoming = stream.append(ContinuityEvent(
             kind="incoming.atrium_dialog",
@@ -116,7 +116,7 @@ def test_incoming_ivan_activity_invalidates_sleep_status(tmp_path: Path) -> None
 def test_incoming_ivan_activity_does_not_overwrite_specific_active_status(tmp_path: Path) -> None:
     sub = Substrate.open(tmp_path / "test.db")
     try:
-        EnvironmentStore(sub).set("ivan_status", "работает", source="ivan_statement")
+        EnvironmentStore(sub).set("ivan_status", "работает", source="ivan_said")
         updated = record_ivan_activity(sub, source="incoming.atrium_dialog")
         assert updated is None
         assert EnvironmentStore(sub).get("ivan_status")["value"] == "работает"
@@ -172,10 +172,10 @@ def test_invalidates_ids_handles_contradictions(tmp_path: Path) -> None:
         store = SituationalStore(sub)
         
         # Original fact
-        f1 = store.assert_fact(subject="ivan", predicate="status", value="sleeping", source="sys")
+        f1 = store.assert_fact(subject="ivan", predicate="status", value="sleeping", source="system")
         
         # Another fact that logically contradicts it
-        f2 = store.assert_fact(subject="ivan", predicate="activity", value="typing", source="ui", invalidates_ids=[f1.assertion_id])
+        f2 = store.assert_fact(subject="ivan", predicate="activity", value="typing", source="observation", invalidates_ids=[f1.assertion_id])
         
         # Ensure f1 is inactive and superseded by f2
         active = sub.connection.execute(
@@ -197,17 +197,17 @@ def test_situational_metrics(tmp_path: Path) -> None:
         
         # stale fact
         expired = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
-        store.assert_fact(subject="test", predicate="stale", value="yes", expires_at=expired, source="test1")
+        store.assert_fact(subject="test", predicate="stale", value="yes", expires_at=expired, source="system")
         
         # low confidence
-        store.assert_fact(subject="test", predicate="guess", value="maybe", confidence=0.3, source="test2")
+        store.assert_fact(subject="test", predicate="guess", value="maybe", confidence=0.3, source="hypothesis")
         
         # high confidence active
-        store.assert_fact(subject="test", predicate="fact", value="yes", confidence=0.9, source="test2")
+        store.assert_fact(subject="test", predicate="fact", value="yes", confidence=0.9, source="observation")
         
         # invalidated
-        f1 = store.assert_fact(subject="test", predicate="wrong", value="no", source="test1")
-        store.assert_fact(subject="test", predicate="wrong", value="yes", invalidates_ids=[f1.assertion_id], source="test2")
+        f1 = store.assert_fact(subject="test", predicate="wrong", value="no", source="system")
+        store.assert_fact(subject="test", predicate="wrong", value="yes", invalidates_ids=[f1.assertion_id], source="observation")
         
         res = metrics.calculate()
         assert res.total_active == 4

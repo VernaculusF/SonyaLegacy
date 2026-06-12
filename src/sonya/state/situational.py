@@ -89,12 +89,18 @@ class SituationalStore:
         subject = (subject or "").strip()
         predicate = (predicate or "").strip()
         scope = (scope or "global").strip()
+        source = (source or "").strip().lower()
         if not subject:
             raise ValueError("situational subject is required")
         if not predicate:
             raise ValueError("situational predicate is required")
         if is_credential_shaped_key(predicate):
             raise ValueError("credentials must use protected secret storage")
+            
+        allowed_sources = {"observation", "inference", "hypothesis", "imagination", "ivan_said", "system", "confirmed_fact", "incoming.atrium_dialog"}
+        if source not in allowed_sources and not source.startswith("incoming."):
+            raise ValueError(f"invalid situational source: '{source}'. must be one of {allowed_sources} or start with incoming.")
+        
         confidence = max(0.0, min(1.0, float(confidence)))
         observed_at = observed_at or _utc_now_iso()
         assertion_id = f"wa-{uuid.uuid4().hex[:16]}"

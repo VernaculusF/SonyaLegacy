@@ -35,6 +35,7 @@ def ensure_critical_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "episodic_events", "scope", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "episodic_events", "project_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "episodic_events", "retention_policy", "TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "episodic_events", "media_phash", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "semantic_facts", "scope", "TEXT NOT NULL DEFAULT 'global'")
     _add_column_if_missing(conn, "semantic_facts", "project_id", "TEXT NOT NULL DEFAULT ''")
     _add_column_if_missing(conn, "semantic_facts", "retention_policy", "TEXT NOT NULL DEFAULT 'long'")
@@ -848,6 +849,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         _add_column_if_missing(conn, "episodic_events", "scope", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "episodic_events", "project_id", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "episodic_events", "retention_policy", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "episodic_events", "media_phash", "TEXT NOT NULL DEFAULT ''")
         if _table_exists(conn, "episodic_events"):
             conn.execute("CREATE INDEX IF NOT EXISTS idx_episodic_record_type ON episodic_events(record_type)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_episodic_scope ON episodic_events(scope)")

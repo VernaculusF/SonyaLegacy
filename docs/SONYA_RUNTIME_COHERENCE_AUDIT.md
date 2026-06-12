@@ -518,7 +518,7 @@ Priority meanings:
 - [ ] `P0` #2 coherent model of other subjects and their participation
 - [x] `P0` #3 replace eternal EnvironmentStore semantics with SituationalModel
 - [x] `P0` #4 remove credentials from environment/current-state storage
-- [ ] `P0` #20 prevent generated cognition from becoming its own evidence
+- [x] `P0` #20 prevent generated cognition from becoming its own evidence
 - [ ] `P0` #34 general source trust/authority model
 - [ ] `P0` #48 independently evaluate memory consolidation quality
 - [ ] `P0` #49 refuted-belief correction and retrieval lifecycle

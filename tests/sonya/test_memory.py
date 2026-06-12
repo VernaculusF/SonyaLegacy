@@ -46,7 +46,7 @@ def test_episodic_get_by_type(substrate: Substrate) -> None:
 
 def test_episodic_mark_accessed_strengthens(substrate: Substrate) -> None:
     mem = EpisodicMemory(substrate)
-    event = mem.record(event_type="x", raw_content="y")
+    event = mem.record(event_type="dialogue_event", raw_content="y")
     mem.mark_accessed(event.event_id)
 
     recent = mem.get_recent()
@@ -118,8 +118,8 @@ def test_consolidation_promotes_high_importance(substrate: Substrate) -> None:
     sem = SemanticMemory(substrate)
     pipeline = ConsolidationPipeline(ep, sem)
 
-    ep.record(event_type="x", raw_content="low", normalized_summary="low importance", importance_score=0.3)
-    ep.record(event_type="x", raw_content="high", normalized_summary="high importance observation", importance_score=0.9)
+    ep.record(event_type="dialogue_event", raw_content="low", normalized_summary="low importance", importance_score=0.3)
+    ep.record(event_type="dialogue_event", raw_content="high", normalized_summary="high importance observation", importance_score=0.9)
 
     created = pipeline.run_consolidation(min_importance=0.7)
     assert created == 1
@@ -132,7 +132,7 @@ def test_consolidation_promotes_high_importance(substrate: Substrate) -> None:
 def test_persistent_across_reopen(tmp_path: Path) -> None:
     db = tmp_path / "s.db"
     sub1 = Substrate.open(db)
-    EpisodicMemory(sub1).record(event_type="x", raw_content="persist")
+    EpisodicMemory(sub1).record(event_type="dialogue_event", raw_content="persist")
     SemanticMemory(sub1).add_fact(fact_type="y", statement="persisted fact")
     sub1.close()
 

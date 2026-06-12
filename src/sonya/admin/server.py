@@ -3042,6 +3042,7 @@ def create_app() -> web.Application:
     app["atrium_ws_tickets"] = {}
     app.router.add_get("/", handle_index)
     app.router.add_get("/atrium", handle_atrium_redirect)
+    app.router.add_get("/atrium/feed", atrium_feed_ws)
     app.router.add_get("/atrium/{path:.*}", handle_atrium_app)
     app.router.add_route("*", "/login", handle_login)
     app.router.add_get("/api/dashboard", api_dashboard)
@@ -3095,7 +3096,6 @@ def create_app() -> web.Application:
     app.router.add_post("/api/operator/inject-message", api_operator_inject_message)
     app.router.add_post("/api/operator/task/{task_id}/action", api_operator_task_action)
     # Atrium (multichannel UI/output package — Этап 0)
-    app.router.add_get("/atrium/feed", atrium_feed_ws)
     app.router.add_post("/api/atrium/ws-ticket", atrium_ws_ticket)
     app.router.add_options("/api/atrium/ws-ticket", atrium_options)
     app.router.add_post("/api/atrium/nudge", atrium_nudge)

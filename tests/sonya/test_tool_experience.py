@@ -150,9 +150,10 @@ def test_episodic_mirror(tmp_path) -> None:
             tags=("subagent",),
         )
 
-        from sonya.memory.episodic import EpisodicMemory
-        ep = EpisodicMemory(sub)
-        events = ep.get_by_type("tool_event", limit=5)
+        from sonya.memory.trace_layer import TraceLayer
+        from sonya.memory.types import RecordType
+        trace = TraceLayer(sub)
+        events = trace.get_by_type(RecordType.tool_observation, limit=5)
         assert len(events) == 1
         assert "subagent.spawn" in events[0].raw_content
         assert "success" in events[0].normalized_summary
