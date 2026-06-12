@@ -902,7 +902,7 @@ renderers.providers = function(d) {
     <div class="card"><h3>Model pool</h3><strong>${ms.length}</strong><span class="provider-meta">${available.size} available</span></div>
     <div class="card"><h3>Free models</h3><strong>${ms.filter(x=>x.is_free).length}</strong><span class="provider-meta">advertised</span></div>
     <div class="card"><h3>Observations</h3><strong>${os.length}</strong><span class="provider-meta">${qs.length} quota windows</span></div></div>`;
-  const modOpts = (sel) => `<option value="">(none)</option>` + ms.map(x=>`<option value="${escapeHtml(x.model_id)}" ${x.model_id===sel?'selected':''}>${escapeHtml(x.model_id)}</option>`).join('');
+  const modOpts = (sel) => `<option value="">(none)</option>` + ms.map(x=>{ const p = ps.find(p=>p.provider_id===x.provider); return `<option value="${escapeHtml(x.model_id)}" ${x.model_id===sel?'selected':''}>${escapeHtml(p?.display_name || x.provider)}/${escapeHtml(x.model_name || x.model_id)}</option>`; }).join('');
   const settings=`<div class="card"><h3>Runtime defaults</h3><div class="provider-form">
     <label>Active provider</label><select id="prov-active">${ps.map(x=>`<option value="${escapeHtml(x.provider_id)}" ${x.provider_id===s.active_provider?'selected':''}>${escapeHtml(x.display_name)} (${escapeHtml(x.provider_id)})</option>`).join('')}</select>
     <label>Default model</label><select id="prov-model">${modOpts(s.default_model)}</select>
