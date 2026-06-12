@@ -65,7 +65,19 @@ class ContinuityStream:
                 payload["causal_parent_id"] = pid
                 
         # Audit Item #8: Separate lifecycle noise from subjective continuity.
-        if not private_val and (event.kind.startswith("internal.") or event.kind.startswith("lifecycle.")):
+        # Auto-privatize most internal.* / lifecycle.* events (inner thoughts,
+        # scheduler decisions, etc). Operator-visible events are exempted so
+        # the /atrium/events-history panel can show active session progress.
+        _INTERNAL_PUBLIC = frozenset({
+            "internal.agent_step",
+            "internal.agent_session_complete",
+            "internal.agent_session_outcome",
+            "internal.scheduler_pick",
+            "internal.task_worker_scheduled",
+        })
+        if not private_val and event.kind not in _INTERNAL_PUBLIC and (
+            event.kind.startswith("internal.") or event.kind.startswith("lifecycle.")
+        ):
             private_val = True
 
         cursor = self._sub.connection.execute(

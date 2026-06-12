@@ -36,15 +36,15 @@ def substrate(tmp_path: Path) -> Substrate:
 
 
 def _seed_handoff(sub: Substrate, *, task_id: str, next_step: str, minutes_ago: int = 0) -> None:
-    """Inject a backdated task.session_handoff event."""
+    """Inject a backdated item.session_handoff event."""
     when = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
     sub.connection.execute(
         "INSERT INTO continuity_events(kind, principal_id, payload_json, created_at) "
         "VALUES (?, ?, ?, ?)",
         (
-            "task.session_handoff",
+            "item.session_handoff",
             None,
-            _json.dumps({"task_id": task_id, "next_step": next_step, "sessions_used": 1}),
+            _json.dumps({"item_id": task_id, "next_step": next_step, "sessions_used": 1}),
             when,
         ),
     )

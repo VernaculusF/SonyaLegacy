@@ -34,7 +34,7 @@ def _ctx() -> _ToolContext:
         self_inspect=None,  # type: ignore[arg-type]
         filesystem=None,    # type: ignore[arg-type]
         selfmod=None,
-        tasks=None,
+        work=None,
         web=None,
         code=None,
         shell=None,

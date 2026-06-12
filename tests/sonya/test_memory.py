@@ -113,7 +113,7 @@ def test_semantic_reinforce(substrate: Substrate) -> None:
     assert all_facts[0].confidence == pytest.approx(0.6)
 
 
-def test_consolidation_promotes_high_importance(substrate: Substrate) -> None:
+def test_consolidation_promotes_high_importance_to_candidates(substrate: Substrate) -> None:
     ep = EpisodicMemory(substrate)
     sem = SemanticMemory(substrate)
     pipeline = ConsolidationPipeline(ep, sem)
@@ -124,9 +124,40 @@ def test_consolidation_promotes_high_importance(substrate: Substrate) -> None:
     created = pipeline.run_consolidation(min_importance=0.7)
     assert created == 1
 
+    # Should be in candidates, not directly in semantic facts
     facts = sem.get_all()
+    assert len(facts) == 0
+    
+    rows = substrate.connection.execute("SELECT statement FROM consolidation_candidates").fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "high importance observation"
+
+def test_compiler_evaluates_and_promotes_candidates(substrate: Substrate) -> None:
+    compiler = MemoryCompiler(substrate)
+    
+    # Insert candidates manually to bypass _compile_semantic_facts filters
+    substrate.connection.execute(
+        "INSERT INTO consolidation_candidates(candidate_id, statement, eval_status, created_at) "
+        "VALUES ('c1', 'short', 'pending', 'now')"
+    )
+    substrate.connection.execute(
+        "INSERT INTO consolidation_candidates(candidate_id, statement, eval_status, created_at) "
+        "VALUES ('c2', 'long enough statement to be approved', 'pending', 'now')"
+    )
+    substrate.connection.commit()
+    
+    promoted = compiler._evaluate_and_promote_candidates()
+    assert promoted == 1
+    
+    facts = SemanticMemory(substrate).get_all()
     assert len(facts) == 1
-    assert facts[0].statement == "high importance observation"
+    assert facts[0].statement == "long enough statement to be approved"
+    
+    # Check candidates table for statuses
+    rows = substrate.connection.execute("SELECT statement, eval_status FROM consolidation_candidates").fetchall()
+    status_map = {r[0]: r[1] for r in rows}
+    assert status_map["short"] == "rejected"
+    assert status_map["long enough statement to be approved"] == "approved"
 
 
 def test_persistent_across_reopen(tmp_path: Path) -> None:

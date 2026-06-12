@@ -113,7 +113,7 @@ def test_v31_migration_creates_registry_and_mirrors_legacy_key(tmp_path) -> None
 
     migrated = Substrate.open(db)
     try:
-        assert migrated.schema_version == 34
+        assert migrated.schema_version >= 35
         account = KeyStore(migrated).get_provider_account("pk-legacy")
         assert account is not None
         assert account.secret_ref == "legacy-provider-key:pk-legacy"

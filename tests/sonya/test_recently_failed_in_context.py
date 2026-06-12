@@ -44,24 +44,24 @@ def test_list_recently_failed_returns_recent(substrate: Substrate) -> None:
     """Tasks failed within the window surface."""
     store = WorkItemStore(substrate)
     svc = WorkItemService(store, stream=ContinuityStream(substrate))
-    t = svc.create(title="recon X", created_by="ivan", notify_mode="progress")
-    svc.fail(t.task_id, reason="impossible without proxy")
+    t = svc.create(title="recon X", origin="ivan")
+    svc.fail(t.item_id, reason="impossible without proxy")
     found = store.list_recently_failed(hours=6, limit=5)
     assert len(found) == 1
-    assert found[0].task_id == t.task_id
+    assert found[0].item_id == t.item_id
     assert found[0].status is WorkItemStatus.FAILED
 
 
 def test_list_recently_failed_skips_old(substrate: Substrate) -> None:
     """Tasks failed >6h ago do NOT surface."""
     svc = WorkItemService(WorkItemStore(substrate), stream=ContinuityStream(substrate))
-    t = svc.create(title="ancient", created_by="ivan")
-    svc.fail(t.task_id, reason="meh")
+    t = svc.create(title="ancient", origin="ivan")
+    svc.fail(t.item_id, reason="meh")
     # Backdate updated_at past the window
     long_ago = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
     substrate.connection.execute(
-        "UPDATE tasks SET updated_at = ? WHERE task_id = ?",
-        (long_ago, t.task_id),
+        "UPDATE work_items SET updated_at = ? WHERE item_id = ?",
+        (long_ago, t.item_id),
     )
     substrate.connection.commit()
 
@@ -72,8 +72,8 @@ def test_list_recently_failed_skips_old(substrate: Substrate) -> None:
 def test_list_recently_failed_limit(substrate: Substrate) -> None:
     svc = WorkItemService(WorkItemStore(substrate), stream=ContinuityStream(substrate))
     for i in range(5):
-        t = svc.create(title=f"t{i}", created_by="ivan")
-        svc.fail(t.task_id, reason="x")
+        t = svc.create(title=f"t{i}", origin="ivan")
+        svc.fail(t.item_id, reason="x")
     found = WorkItemStore(substrate).list_recently_failed(hours=6, limit=2)
     assert len(found) == 2
 
@@ -85,8 +85,8 @@ def test_context_builder_renders_failed_block(substrate: Substrate) -> None:
     from sonya.state.subject_state import SubjectStateStore
 
     svc = WorkItemService(WorkItemStore(substrate), stream=ContinuityStream(substrate))
-    t = svc.create(title="mpbacademy SQLi", created_by="ivan", notify_mode="progress")
-    svc.fail(t.task_id, reason="session budget exhausted, 5 attempts dead")
+    t = svc.create(title="mpbacademy SQLi", origin="ivan")
+    svc.fail(t.item_id, reason="session budget exhausted, 5 attempts dead")
 
     state = SubjectStateStore(substrate).load()
 

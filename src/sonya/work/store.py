@@ -90,6 +90,16 @@ class WorkItemStore:
         all_open = self.list_open()
         return [t for t in all_open if t.is_urgent()]
 
+    def list_recently_failed(self, *, hours: int = 6, limit: int = 5) -> list[WorkItem]:
+        """Return tasks that failed within the last ``hours`` hours, most recent first."""
+        cursor = self._sub.connection.execute(
+            "SELECT * FROM work_items WHERE status = 'failed' "
+            "AND updated_at >= datetime('now', ?) "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (f"-{hours} hours", limit),
+        )
+        return [_row_to_item(row) for row in cursor.fetchall()]
+
     def update_status(self, item_id: str, status: WorkItemStatus) -> WorkItem:
         return self._patch(item_id, {"status": status.value})
 

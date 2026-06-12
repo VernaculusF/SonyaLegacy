@@ -267,7 +267,7 @@ class InternalProcess:
             from sonya.work.service import WorkItemService
             from sonya.work.store import WorkItemStore
             svc = WorkItemService(WorkItemStore(substrate), stream=self._stream)
-            if svc.list_urgent_due_tasks():
+            if svc.list_urgent_due_items():
                 return 180.0  # 3 minutes
         except Exception:
             pass

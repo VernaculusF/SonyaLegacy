@@ -552,20 +552,23 @@ def build_full_context(
     open_tasks_for_focus = []
     try:
         from sonya.work.store import WorkItemStore
-        from sonya.work.store import WorkItemStore
-        active_goals = WorkItemStore(substrate).list_active()
         open_tasks = WorkItemStore(substrate).list_open()
         open_tasks_for_focus = open_tasks
 
-        goals_block = "\n\n## Мои цели (долгосрочные):\n"
-        if active_goals:
-            for g in active_goals[:5]:
-                goals_block += f"- [{g.goal_id}] (prio={g.priority}) {g.title}\n"
-                if g.description:
-                    goals_block += f"    {g.description[:120]}\n"
-        else:
-            goals_block += "(пока нет — создай через goals.create когда появится долгосрочная цель)\n"
-        system_prompt += goals_block
+        # Goals block
+        try:
+            active_goals = WorkItemStore(substrate).list_active()
+            goals_block = "\n\n## Мои цели (долгосрочные):\n"
+            if active_goals:
+                for g in active_goals[:5]:
+                    goals_block += f"- [{g.goal_id}] (prio={g.priority}) {g.title}\n"
+                    if g.description:
+                        goals_block += f"    {g.description[:120]}\n"
+            else:
+                goals_block += "(пока нет — создай через goals.create когда появится долгосрочная цель)\n"
+            system_prompt += goals_block
+        except Exception:
+            pass
 
         tasks_block = "\n\n## Мои текущие задачи:\n"
         if open_tasks:

@@ -48,7 +48,7 @@ async def admin_client(tmp_path: Path):
     app.router.add_get("/api/operator/live", api_operator_live_steps)
     app.router.add_post("/api/operator/trigger-active", api_operator_trigger_active)
     app.router.add_post("/api/operator/inject-message", api_operator_inject_message)
-    app.router.add_post("/api/operator/task/{task_id}/action", api_operator_task_action)
+    app.router.add_post("/api/operator/task/{item_id}/action", api_operator_task_action)
 
     server = TestServer(app)
     client = TestClient(server)
@@ -100,8 +100,8 @@ async def test_snapshot_counts_failed_tasks(admin_client) -> None:
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
         svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
-        t = svc.create(title="x", created_by="ivan")
-        svc.fail(t.task_id, reason="test")
+        t = svc.create(title="x", origin="ivan")
+        svc.fail(t.item_id, reason="test")
     finally:
         sub.close()
     resp = await client.get("/api/operator/snapshot")
@@ -233,11 +233,11 @@ async def test_task_action_fail(admin_client) -> None:
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
         svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
-        t = svc.create(title="dead-end", created_by="ivan")
+        t = svc.create(title="dead-end", origin="ivan")
     finally:
         sub.close()
     resp = await client.post(
-        f"/api/operator/task/{t.task_id}/action",
+        f"/api/operator/task/{t.item_id}/action",
         json={"action": "fail", "reason": "unreachable"},
     )
     assert resp.status == 200
@@ -250,12 +250,12 @@ async def test_task_action_repurpose_resets(admin_client) -> None:
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
         svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
-        t = svc.create(title="retry-able", created_by="ivan")
-        svc.fail(t.task_id, reason="first attempt died")
+        t = svc.create(title="retry-able", origin="ivan")
+        svc.fail(t.item_id, reason="first attempt died")
     finally:
         sub.close()
     resp = await client.post(
-        f"/api/operator/task/{t.task_id}/action",
+        f"/api/operator/task/{t.item_id}/action",
         json={"action": "repurpose", "reason": "different angle"},
     )
     data = await resp.json()
@@ -264,14 +264,13 @@ async def test_task_action_repurpose_resets(admin_client) -> None:
     sub = Substrate.open(cfg.substrate_path)
     try:
         row = sub.connection.execute(
-            "SELECT status, blocker, sessions_used FROM tasks WHERE task_id=?",
-            (t.task_id,),
+            "SELECT status, sessions_used FROM work_items WHERE item_id=?",
+            (t.item_id,),
         ).fetchone()
     finally:
         sub.close()
     assert row[0] == "pending"
-    assert row[1] == ""
-    assert row[2] == 0
+    assert row[1] == 0
 
 
 async def test_task_action_delete(admin_client) -> None:
@@ -279,11 +278,11 @@ async def test_task_action_delete(admin_client) -> None:
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
         svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
-        t = svc.create(title="trash", created_by="ivan")
+        t = svc.create(title="trash", origin="ivan")
     finally:
         sub.close()
     resp = await client.post(
-        f"/api/operator/task/{t.task_id}/action",
+        f"/api/operator/task/{t.item_id}/action",
         json={"action": "delete"},
     )
     data = await resp.json()
@@ -292,8 +291,8 @@ async def test_task_action_delete(admin_client) -> None:
     sub = Substrate.open(cfg.substrate_path)
     try:
         cnt = sub.connection.execute(
-            "SELECT COUNT(*) FROM tasks WHERE task_id=?",
-            (t.task_id,),
+            "SELECT COUNT(*) FROM work_items WHERE item_id=?",
+            (t.item_id,),
         ).fetchone()[0]
     finally:
         sub.close()
@@ -305,11 +304,11 @@ async def test_task_action_unknown_rejected(admin_client) -> None:
     sub = Substrate.open(cfg.substrate_path, read_only=False)
     try:
         svc = WorkItemService(WorkItemStore(sub), stream=ContinuityStream(sub))
-        t = svc.create(title="x", created_by="ivan")
+        t = svc.create(title="x", origin="ivan")
     finally:
         sub.close()
     resp = await client.post(
-        f"/api/operator/task/{t.task_id}/action",
+        f"/api/operator/task/{t.item_id}/action",
         json={"action": "explode"},
     )
     assert resp.status == 400

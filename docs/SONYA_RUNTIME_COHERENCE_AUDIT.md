@@ -518,7 +518,7 @@ Priority meanings:
 - [x] `P0` #4 remove credentials from environment/current-state storage
 - [x] `P0` #20 prevent generated cognition from becoming its own evidence
 - [x] `P0` #34 general source trust/authority model
-- [ ] `P0` #48 independently evaluate memory consolidation quality
+- [x] `P0` #48 independently evaluate memory consolidation quality
 - [x] `P0` #49 refuted-belief correction and retrieval lifecycle
 - [x] `P1` #50 SituationalModel quality metrics and review
 

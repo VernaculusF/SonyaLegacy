@@ -4,6 +4,12 @@ import logging
 from typing import Any
 
 from sonya.memory.episodic import EpisodicMemory, EpisodicEvent
+import json
+from uuid import uuid4
+from datetime import datetime, timezone
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 from sonya.memory.semantic import SemanticMemory
 from sonya.memory.procedural import ProceduralMemory
 from sonya.memory.trace_layer import TraceLayer, TraceEntry
@@ -42,7 +48,8 @@ class MemoryCompiler:
             "archived_traces": 0,
         }
 
-        results["facts_created"] = self._compile_semantic_facts(since_hours=since_hours)
+        self._compile_semantic_facts(since_hours=since_hours)
+        results["facts_created"] = self._evaluate_and_promote_candidates()
         results["lessons_created"] = self._compile_procedural_lessons(since_hours=since_hours)
         results["project_summaries"] = self._compile_project_summaries(since_hours=since_hours)
         results["subagent_summaries"] = self._compile_subagent_summaries(since_hours=since_hours)
@@ -78,11 +85,21 @@ class MemoryCompiler:
             if ev.channel and ev.channel.startswith("project_"):
                 project_id = ev.channel.replace("project_", "", 1)
 
-            self._semantic.add_fact(
-                fact_type="consolidated_observation",
-                statement=summary,
-                source_event_ids=(ev.event_id,),
-                confidence=min(1.0, ev.importance_score + 0.1),
+            now = _utc_now_iso()
+            candidate_id = f"cc-{uuid4().hex[:12]}"
+            self._sub.connection.execute(
+                "INSERT INTO consolidation_candidates"
+                "(candidate_id, statement, source_event_ids_json, confidence, scope, project_id, eval_status, eval_reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?)",
+                (
+                    candidate_id,
+                    summary,
+                    json.dumps([ev.event_id], ensure_ascii=False),
+                    min(1.0, ev.importance_score + 0.1),
+                    scope,
+                    project_id,
+                    now
+                )
             )
             existing.add(summary.lower())
             created += 1
@@ -99,18 +116,68 @@ class MemoryCompiler:
             if summary.lower() in existing:
                 continue
 
-            self._semantic.add_fact(
-                fact_type="trace_compiled_fact",
-                statement=summary,
-                source_event_ids=(t.trace_id,),
-                confidence=min(1.0, t.importance + 0.1),
+            now = _utc_now_iso()
+            candidate_id = f"cc-{uuid4().hex[:12]}"
+            self._sub.connection.execute(
+                "INSERT INTO consolidation_candidates"
+                "(candidate_id, statement, source_event_ids_json, confidence, scope, project_id, eval_status, eval_reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?)",
+                (
+                    candidate_id,
+                    summary,
+                    json.dumps([t.trace_id], ensure_ascii=False),
+                    min(1.0, t.importance + 0.1),
+                    "global",
+                    "",
+                    now
+                )
             )
             existing.add(summary.lower())
             created += 1
             if created >= 50:
                 break
 
+        self._sub.connection.commit()
         return created
+
+    def _evaluate_and_promote_candidates(self) -> int:
+        """Evaluates pending consolidation candidates and promotes good ones."""
+        rows = self._sub.connection.execute(
+            "SELECT candidate_id, statement, source_event_ids_json, confidence, scope, project_id "
+            "FROM consolidation_candidates WHERE eval_status = 'pending' LIMIT 100"
+        ).fetchall()
+        
+        promoted = 0
+        for row in rows:
+            candidate_id, statement, src_json, conf, scope, project_id = row
+            src_ids = json.loads(src_json or "[]")
+            
+            # Automated quality check
+            if len(statement.strip()) < 15:
+                status = "rejected"
+                reason = "rejected by heuristic: statement too short"
+            else:
+                status = "approved"
+                reason = "approved by heuristic"
+                
+            self._sub.connection.execute(
+                "UPDATE consolidation_candidates SET eval_status = ?, eval_reason = ? WHERE candidate_id = ?",
+                (status, reason, candidate_id)
+            )
+            
+            if status == "approved":
+                self._semantic.add_fact(
+                    fact_type="consolidated_observation",
+                    statement=statement,
+                    source_event_ids=tuple(src_ids),
+                    confidence=conf,
+                    scope=scope,
+                    project_id=project_id
+                )
+                promoted += 1
+                
+        self._sub.connection.commit()
+        return promoted
 
     def _compile_procedural_lessons(self, *, since_hours: int = 24) -> int:
         existing = {l.statement.strip().lower() for l in self._procedural.get_all(limit=500)}

@@ -107,18 +107,18 @@ async def test_request_worker_soon_idempotent(
 
 
 def _seed_urgent_task(substrate: Substrate) -> None:
-    """Insert an in_progress Ivan-task with notify_mode=progress (urgent)."""
+    """Insert an in_progress urgent task."""
     from sonya.work.service import WorkItemService
     store = WorkItemStore(substrate)
     svc = WorkItemService(store, stream=ContinuityStream(substrate))
     task = store.create(
         title="Test urgent task",
         description="—",
-        principal_id="ivan",
-        created_by="ivan",
-        notify_mode="progress",
+        owner_principal_id="ivan",
+        origin="ivan",
+        urgency="urgent",
     )
-    svc.set_in_progress(task.task_id)
+    svc.set_in_progress(task.item_id)
 
 
 @pytest.mark.asyncio

@@ -2896,6 +2896,24 @@ CREATE INDEX IF NOT EXISTS idx_sa_current
 CREATE INDEX IF NOT EXISTS idx_sa_expires ON situational_assertions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_sa_observed ON situational_assertions(observed_at);
 
+-- ====================================================================
+-- v48 additions: Memory consolidation quality (#48)
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS consolidation_candidates (
+    candidate_id TEXT PRIMARY KEY,
+    statement TEXT NOT NULL,
+    source_event_ids_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0.5,
+    scope TEXT NOT NULL DEFAULT 'global',
+    project_id TEXT NOT NULL DEFAULT '',
+    eval_status TEXT NOT NULL DEFAULT 'pending',
+    eval_reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cc_status ON consolidation_candidates(eval_status);
+
+
 CREATE TABLE IF NOT EXISTS credential_exposures (
     exposure_id TEXT PRIMARY KEY,
     source_kind TEXT NOT NULL,

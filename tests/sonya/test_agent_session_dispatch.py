@@ -48,7 +48,7 @@ def test_registry_has_expected_tool_families() -> None:
     names = set(_TOOL_HANDLERS)
     families = {n.split(".", 1)[0] for n in names}
     assert {"self_inspect", "filesystem", "memory", "env", "skills", "goals",
-            "plugins", "selfmod", "tasks", "web", "code", "shell", "pip", "chat"} <= families
+            "plugins", "selfmod", "work", "web", "code", "shell", "pip", "chat"} <= families
 
 
 def test_registry_no_duplicate_names() -> None:
