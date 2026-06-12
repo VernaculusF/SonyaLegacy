@@ -52,6 +52,8 @@ main chat remains shared interaction rather than an autonomous self-dialog.
 ## Current Architecture Priority
 
 Read first: `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+For audit-driven runtime work on the VPS, follow
+`docs/operations/RUNTIME_COHERENCE_WORKFLOW.md`.
 
 That document is now the master execution checklist for 51 active runtime
 problems. An item is not complete until its checklist box has linked

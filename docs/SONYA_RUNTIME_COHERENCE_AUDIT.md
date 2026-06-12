@@ -5,6 +5,9 @@
 **Scope:** situational understanding, autonomy, work execution, embodiment,
 provider routing, observability, and runtime hygiene.
 
+Implementation and deployment workflow for this audit:
+[`docs/operations/RUNTIME_COHERENCE_WORKFLOW.md`](operations/RUNTIME_COHERENCE_WORKFLOW.md).
+
 ## 1. Governing Position
 
 There is no universal hardcoded "correct behavior" for Sonya.

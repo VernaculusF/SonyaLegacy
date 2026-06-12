@@ -36,6 +36,8 @@ claims may age; use `STATE.md` for current implementation reality.
   - target product/architecture spec; partially implemented
 - [operations/VPS.md](operations/VPS.md)
   - deployment and recovery reference
+- [operations/RUNTIME_COHERENCE_WORKFLOW.md](operations/RUNTIME_COHERENCE_WORKFLOW.md)
+  - exact workflow for implementing and proving audit/runtime-coherence slices
 - [operations/SUBAGENT_MODELS.md](operations/SUBAGENT_MODELS.md)
   - subagent model-selection policy
 - [operations/PROVIDER_SYSTEM_DESIGN.md](operations/PROVIDER_SYSTEM_DESIGN.md)
