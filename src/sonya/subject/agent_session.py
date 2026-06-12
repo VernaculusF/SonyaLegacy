@@ -767,6 +767,7 @@ async def run_agent_session(
     _unanswered_inbox = bool(require_dialog_reply)
     _work_done_since_last_dialog = False
     _dialog_sent_since_last_input = False
+    _idle_streak = 0  # Number of consecutive non-work tools without Ivan's input
     _recent_tools: list[tuple[str, str]] = []  # (tool, arg-prefix) — last 4
 
     # Tools that count as "real work" — after one of these fires, the next
@@ -840,6 +841,7 @@ async def run_agent_session(
             if new_msgs:
                 _unanswered_inbox = True
                 _dialog_sent_since_last_input = False
+                _idle_streak = 0  # Ivan sent something, we are no longer idle
 
         # Send a wrap-up nudge in the last 2 steps OR when ~80% of time is gone.
         # This gives the model a chance to emit [DONE: ...] before hard-stop.
@@ -880,6 +882,32 @@ async def run_agent_session(
         tool_call = _extract_tool_call(response)
         if tool_call is not None:
             tool_name, tool_arg = tool_call
+
+            if tool_name in _WORK_TOOLS:
+                _idle_streak = 0
+            else:
+                _idle_streak += 1
+
+            if _idle_streak >= 4:
+                stream.append(ContinuityEvent(
+                    kind="internal.session_idle_loop_broken",
+                    payload={"step": step, "tool": tool_name},
+                ))
+                break
+
+            if _idle_streak >= 3:
+                observation = (
+                    "[BLOCKED] У тебя нет новой работы и нет новых сообщений от Ивана. "
+                    "Запрещено тратить шаги на внутренние размышления. "
+                    "НЕМЕДЛЕННО заверши сессию через [DONE: ...] или возьми настоящую задачу."
+                )
+                stream.append(ContinuityEvent(
+                    kind="internal.session_idle_blocked",
+                    payload={"step": step, "tool": tool_name},
+                ))
+                messages.append({"role": "assistant", "content": response})
+                messages.append({"role": "user", "content": f"[Observation from {tool_name}]:\n{observation}"})
+                continue
 
             # Project policy consent gate: before executing sensitive tools,
             # check if the current project policy requires Ivan's consent.
