@@ -201,7 +201,7 @@ Tasks survive sessions. When active session starts you pick up your in_progress 
 - subagent.list — список всех субагентов (pending/running/done/failed)
 - subagent.result [subagent_id] — забрать результат завершённого субагента
 
-- chat.dialog [message] — отправить сообщение Ивану (TG + Atrium). Основной канал диалога: ответы, отчёты, прогресс. Повтор без нового сообщения Ивана или выполненной работы блокируется.
+- chat.dialog — block form, JSON: {"to": "Ivan" | "subagent_id", "message": "..."} — отправить сообщение адресату. Основной канал диалога: ответы, отчёты, прогресс. Если получатель не указан или формат не JSON, сообщение отправляется Ивану.
 - chat.tell_ivan [message] — алиас на chat.dialog. То же самое.
 
 ## How to finish
@@ -2194,8 +2194,39 @@ def _h_chat_tell_ivan(arg: str, ctx: _ToolContext) -> str:
 # См. docs/atrium/CHANNELS.md §2 для семантики.
 
 def _h_chat_dialog(arg: str, ctx: _ToolContext) -> str:
-    """Same behavior as chat.tell_ivan — explicit channel naming."""
-    return _h_chat_tell_ivan(arg, ctx)
+    """Explicit addressee dialog.
+    
+    Accepts JSON block form `{"to": "addressee", "message": "text"}` or
+    string for BC (implies to="Ivan").
+    """
+    text = (arg or "").strip()
+    addressee = "Ivan"
+    
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            data = json.loads(text)
+            if "message" in data:
+                text = str(data["message"]).strip()
+            if "to" in data:
+                addressee = str(data["to"]).strip()
+        except Exception:
+            pass
+            
+    if not text:
+        return "[ERROR] chat.dialog: empty message"
+        
+    if addressee.lower() != "ivan":
+        # Dispatched directly to continuity stream for subagents/other actors
+        if ctx.stream is None:
+            return "[ERROR] chat.dialog: no continuity stream to send to " + addressee
+        ctx.stream.append(ContinuityEvent(
+            kind="outgoing.dialog",
+            channel="dialog",
+            payload={"text": text, "to": addressee},
+        ))
+        return f"[OK] message routed to {addressee[:20]}"
+        
+    return _h_chat_tell_ivan(text, ctx)
 
 
 def _h_chat_emergency(arg: str, ctx: _ToolContext) -> str:
