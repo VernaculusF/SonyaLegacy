@@ -833,6 +833,9 @@ def _extract_reply(result: SessionResult) -> str:
     - duplicates content already sent via chat.tell_ivan during the session
       (model split same message between progress update and final reply)
     """
+    if result.outbound_sent:
+        return ""
+
     candidate = ""
     final = (result.final_output or "").strip()
 

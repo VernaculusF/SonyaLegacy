@@ -268,7 +268,7 @@ _DONE_WITH_BODY_RE = re.compile(
 )
 # Block form: [TOOL: name]\n```optional-lang\n<arg>\n```
 _TOOL_BLOCK_RE = re.compile(
-    r"\[TOOL:\s*([^\s\]]+)\s*\]\s*\n```[a-zA-Z0-9_-]*\n(.*?)\n```",
+    r"\[TOOL:\s*([^\s\]]+)\s*\]\s*\n(?:`\s*){3,}[a-zA-Z0-9_-]*\n(.*?)\n(?:`\s*){3,}",
     re.DOTALL,
 )
 # Soft block form (no code fence): [TOOL: name]\n<text>...
