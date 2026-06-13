@@ -150,6 +150,8 @@ Atrium reason-stream, expression stability, and dialog-spam guard:
 - Fixed Telegram parser: captured message tails correctly after `[DONE]` tags and enhanced `_scrub`.
 - Bypassed Atrium output cleaning: developer UI now receives raw formatting (with tool tags).
 - Updated Substrate `provider_settings` schema and populated active fallback models.
+- **Fixed Atrium Silence Bug:** Added `internal.agent_stream_chunk` to `_INTERNAL_PUBLIC` in `continuity_stream.py` to prevent stream events from being hidden from Atrium UI.
+- Fixed missing `ABANDONED` enum status and `list_active()` compatibility method in the new WorkItem store logic during deploy.
 
 
 - reason-stream drawer now closes through its button, `Escape`, or backdrop;
