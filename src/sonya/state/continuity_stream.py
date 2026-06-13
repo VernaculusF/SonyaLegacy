@@ -74,6 +74,7 @@ class ContinuityStream:
             "internal.agent_session_outcome",
             "internal.scheduler_pick",
             "internal.task_worker_scheduled",
+            "internal.agent_stream_chunk",
         })
         if not private_val and event.kind not in _INTERNAL_PUBLIC and (
             event.kind.startswith("internal.") or event.kind.startswith("lifecycle.")
