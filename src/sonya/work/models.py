@@ -16,6 +16,7 @@ class WorkItemStatus(str, Enum):
     DONE = "done"
     FAILED = "failed"
     ARCHIVED = "archived"
+    ABANDONED = "abandoned"
 
 
 class WorkItemUrgency(str, Enum):

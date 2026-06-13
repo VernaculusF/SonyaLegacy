@@ -1510,7 +1510,7 @@ async def _supervisor(config: AppConfig) -> int:
             try:
                 from sonya.work.store import WorkItemStore
                 gs = WorkItemStore(substrate)
-                existing_titles = {g.title for g in gs.list_active()}
+                existing_titles = {g.title for g in gs.list_open() if g.item_type == "goal"}
                 _DEFAULT_GOALS = [
                     (
                         "L0: быть рядом с Иваном",
