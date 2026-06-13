@@ -662,7 +662,7 @@ These are planned functional evolutions and fixes, broken down into detailed act
 - [x] **2. Subagent Execution Check**
   - **Problem:** Subagent invocation paths might be fragile, and their state persistence or error bubbling might drop critical context.
   - **Action:** Perform a deep-dive trace of `src/sonya/subject/subagent_*.py`. Implement end-to-end tests for subagent delegation. Ensure that subagents can correctly report back nested JSON results without breaking the parent's ReAct loop, and verify that their context windows do not bleed into the main session unexpectedly.
-- [ ] **3. Model Acceptance Testing System**
+- [x] **3. Model Acceptance Testing System**
   - **Problem:** We have many models configured, but no automated way to know if a model actually understands the specific ReAct format, JSON tool arguments, or gracefully handles tool failures.
   - **Action:** Build a standalone evaluation suite (e.g., `tests/eval_models.py`) that runs every active model through a rigorous gauntlet: extracting complex tool arguments, fixing a simulated syntax error, and understanding implicit instructions. Automatically disable or flag models that fail this baseline acceptance test to keep the model pool highly reliable.
 - [x] **4. Tool and Response Formatting**
