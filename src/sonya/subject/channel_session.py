@@ -833,9 +833,6 @@ def _extract_reply(result: SessionResult) -> str:
     - duplicates content already sent via chat.tell_ivan during the session
       (model split same message between progress update and final reply)
     """
-    if result.outbound_sent:
-        return ""
-
     candidate = ""
     final = (result.final_output or "").strip()
 
@@ -866,10 +863,12 @@ def _extract_reply(result: SessionResult) -> str:
                 candidate = cleaned
                 break
                 
-    if not candidate and result.outbound_sent:
-        # If no explicit final reply but model used chat.dialog,
+    if result.outbound_sent:
+        # If no explicit final reply but model used chat.dialog (or if it output a dummy),
         # use the last outbound message it attempted to send.
-        candidate = result.outbound_sent[-1]
+        c_low = candidate.lower() if candidate else ""
+        if not candidate or "ожида" in c_low or "жду" in c_low or "заверш" in c_low:
+            candidate = result.outbound_sent[-1]
 
     if not candidate:
         return ""
