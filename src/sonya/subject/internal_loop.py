@@ -582,7 +582,11 @@ class InternalProcess:
                                 ))
                             except Exception:
                                 pass
-                asyncio.create_task(_worker_with_timeout())
+                task = asyncio.create_task(_worker_with_timeout())
+                if not hasattr(self, "_bg_tasks"):
+                    self._bg_tasks = set()
+                self._bg_tasks.add(task)
+                task.add_done_callback(self._bg_tasks.discard)
             elif chosen_kind == KIND_IDLE_THOUGHT:
                 if self._provider is not None:
                     if not self._busy_lock.locked():

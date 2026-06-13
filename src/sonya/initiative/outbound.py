@@ -710,7 +710,11 @@ def call_outbound_sync(
             coro = gate._dispatch(text, reason="tool", workspace_id=workspace_id)
 
     if loop is not None and loop.is_running():
-        loop.create_task(coro)
+        task = loop.create_task(coro)
+        if not hasattr(gate, "_bg_tasks"):
+            gate._bg_tasks = set()
+        gate._bg_tasks.add(task)
+        task.add_done_callback(gate._bg_tasks.discard)
         if channel != "dialog":
             return f"[QUEUED] {channel} event recorded"
         return "[QUEUED] message scheduled for delivery (continuity will record outcome)"

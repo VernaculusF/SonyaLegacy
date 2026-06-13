@@ -1119,6 +1119,7 @@ async def run_agent_session(
                 projects=projects,
                 model_eval=model_eval,
                 workspace_id=workspace_id,
+                purpose=purpose,
             )
 
             # Record in continuity
@@ -1459,6 +1460,7 @@ class _ToolContext:
     substrate: Any | None = None
     projects: Any | None = None
     workspace_id: str = ""
+    is_tg: bool = False
 
 
 def _require(tool: Any, name: str) -> str | None:
@@ -2173,11 +2175,14 @@ def _h_chat_tell_ivan(arg: str, ctx: _ToolContext) -> str:
                 "say something genuinely different."
             )
     from sonya.initiative.outbound import call_outbound_sync
+    # If this is a TG session, we MUST mirror to TG even if Atrium is live.
+    force_tg = getattr(ctx, "is_tg", False)
     result = call_outbound_sync(
         ctx.outbound,
         text,
         channel="dialog",
         workspace_id=ctx.workspace_id or "",
+        emergency_override=force_tg
     )
     # Record sent text so channel_session can suppress a [DONE: ...] echo
     # of the same content (prevents duplicate messages to Ivan).
@@ -2981,6 +2986,7 @@ def _execute_tool(
     projects: Any | None = None,
     model_eval: Any | None = None,
     workspace_id: str = "",
+    purpose: str = "",
 ) -> str:
     """Execute a tool by name. Returns observation string.
 
@@ -3013,6 +3019,7 @@ def _execute_tool(
         substrate=substrate,
         projects=projects,
         workspace_id=workspace_id,
+        is_tg=(purpose == "tg_session"),
     )
 
     _t0 = time.monotonic()
