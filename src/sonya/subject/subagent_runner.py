@@ -261,11 +261,12 @@ class SubagentRunner:
                 pass
 
         # Emit continuity event
-        from sonya.state.continuity_stream import ContinuityEvent
+        from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
         try:
-            self._sub.connection.execute(
-                "INSERT INTO continuity_events (kind, payload_json) VALUES (?, ?)",
-                ("subagent.complete", json.dumps({
+            stream = ContinuityStream(self._sub)
+            stream.append(ContinuityEvent(
+                kind="subagent.complete",
+                payload={
                     "subagent_id": task.subagent_id,
                     "task": task.task[:200],
                     "provider": task.provider,
@@ -273,11 +274,10 @@ class SubagentRunner:
                     "status": task.status,
                     "steps": task.steps_taken,
                     "result": task.result[:500],
-                }, ensure_ascii=False)),
-            )
-            self._sub.connection.commit()
-        except Exception:
-            pass
+                }
+            ))
+        except Exception as e:
+            _log.error(f"Failed to emit subagent.complete: {e}")
 
         return result
 

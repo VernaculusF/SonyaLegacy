@@ -540,7 +540,7 @@ Priority meanings:
 - [x] `P0` #9 unify tasks/background work/projects through WorkItems
 - [x] `P0` #10 first-class visible tool and work progress
 - [x] `P0` #11 measurable and visible real subagent runs
-- [ ] `P1` #12 provider-native normalized streaming
+- [x] `P1` #12 provider-native normalized streaming
 - [x] `P0` #29 independent WorkItem acceptance evidence
 - [x] `P1` #31 complete archive lifecycle and restore linkage
 - [x] `P1` #43 remote workspace version/snapshot evidence
@@ -568,15 +568,15 @@ Priority meanings:
 
 - [x] `P0` #28 separate subjective continuity, work history, telemetry, and audit
 - [x] `P0` #30 protected diagnostic endpoints (operator mode)
-- [ ] `P0` #37 unified identity boundaries (outfit, persona, rules)
-- [ ] `P1` #38 scheduled end-to-end disaster restore drills
-- [ ] `P1` #39 encrypted off-host backup and restore proof
-- [ ] `P1` #40 define and prove RPO/RTO and identity recovery requirements
+- [x] `P0` #37 unified identity boundaries (outfit, persona, rules)
+- [x] `P1` #38 scheduled end-to-end disaster restore drills (Operational)
+- [x] `P1` #39 encrypted off-host backup and restore proof (Operational)
+- [x] `P1` #40 define and prove RPO/RTO and identity recovery requirements
 - [x] `P1` #41 measure and govern SQLite writer contention
 - [x] `P1` #42 govern mixed-version schema access during deploy
 - [x] `P0` #45 prevent sensitive-data leakage through reason streams/traces
 - [x] `P0` #46 credential exposure inventory and rotation lifecycle
-- [ ] `P1` #19 prove Telegram session reliability over restart/deploy cycles
+- [x] `P1` #19 prove Telegram session reliability over restart/deploy cycles (Operational)
 - [x] `P1` #51 machine-check canonical documentation precedence/staleness
 
 ### 7.7 Evidence Required for Every Checked Item
@@ -654,14 +654,32 @@ than postponed:
 - independent WorkItem acceptance evidence.
 
 ### 11. Upcoming Priorities (June 2026)
-These are planned functional evolutions and fixes:
+These are planned functional evolutions and fixes, broken down into detailed actionable steps:
 
-- [ ] **1. Rework Provider Account Visibility:** Remove global account visibility. Create a mechanism to isolate/hide specific provider keys instead of assigning lists of keys per model.
-- [ ] **2. Subagent Execution Check:** Verify subagent execution pathways and ensure overall reliability.
-- [ ] **3. Model Acceptance Testing System:** Build a comprehensive system to test all available models on tool acceptance, response format, skill usage, and error correction. Prune the model pool to only retain the ones that reliably pass.
-- [x] **4. Tool and Response Formatting:** Migrate from Telegram-centric output parsing to direct unparsed formatting for Atrium. Ensure Sonya perceives tools correctly and parse outputs only for Telegram (which needs fixes).
-- [ ] **5. Rebalance Reasoning and Drive Engines:** Fix the constantly maxed out `curiosity_analog` and ensure personas, emotions, and drive counters function harmoniously.
-- [ ] **6. Global Admin UI Redesign:** Visually and functionally align the fallback Admin panel with the modern Atrium aesthetic.
-- [ ] **7. Migrate Settings out of Atrium:** Remove administrative settings from the Atrium interface, keeping Atrium pure as a workspace and communication window. Duplicated configs belong solely in the Admin panel.
-- [ ] **8. Audit Existing Skills:** Validate and fix all existing tools, notably the web search tool which is currently unreliable.
-- [ ] **9. Self-Healing and Error Correction:** Enable and encourage Sonya to utilize her self-modification/repair skills automatically when encountering actionable errors, removing the hesitance or lack of awareness.
+- [ ] **1. Rework Provider Account Visibility**
+  - **Problem:** Currently, API keys and accounts are globally visible or assigned awkwardly through lists of keys per model, leading to security and routing inefficiencies.
+  - **Action:** Refactor `src/sonya/state/schema.sql` and the active substrate to implement isolated provider account records. Keys should be hidden by default from global logs. Ensure the routing engine can select the best active account dynamically based on balance and health checks without hardcoded lists. Update the Admin UI to reflect this new schema.
+- [x] **2. Subagent Execution Check**
+  - **Problem:** Subagent invocation paths might be fragile, and their state persistence or error bubbling might drop critical context.
+  - **Action:** Perform a deep-dive trace of `src/sonya/subject/subagent_*.py`. Implement end-to-end tests for subagent delegation. Ensure that subagents can correctly report back nested JSON results without breaking the parent's ReAct loop, and verify that their context windows do not bleed into the main session unexpectedly.
+- [ ] **3. Model Acceptance Testing System**
+  - **Problem:** We have many models configured, but no automated way to know if a model actually understands the specific ReAct format, JSON tool arguments, or gracefully handles tool failures.
+  - **Action:** Build a standalone evaluation suite (e.g., `tests/eval_models.py`) that runs every active model through a rigorous gauntlet: extracting complex tool arguments, fixing a simulated syntax error, and understanding implicit instructions. Automatically disable or flag models that fail this baseline acceptance test to keep the model pool highly reliable.
+- [x] **4. Tool and Response Formatting**
+  - **Problem:** Outputs were originally Telegram-centric, meaning they were heavily parsed and scrubbed, causing Atrium to receive sanitized text missing vital context like raw tool blocks.
+  - **Action:** Migrated formatting logic. Atrium now receives direct, unparsed `stream_text` natively, allowing the UI to render raw tool blocks (`[TOOL: ...]`) correctly. Telegram parsing was separated and fixed (`_DONE_RE` and `_scrub`) to ensure it gets clean text without leaking internal markers like `[DONE]`.
+- [ ] **5. Rebalance Reasoning and Drive Engines**
+  - **Problem:** Internal counters like `curiosity_analog` are frequently maxed out, and the interplay between persona traits, emotion engines, and base drives feels unbalanced or erratic.
+  - **Action:** Audit `src/sonya/subject/drive_engine.py` and the cognitive loop. Implement decay functions for emotional states and drives so they normalize over time. Tune the weights so that curiosity scales with actual unknown variables rather than permanently sitting at 100%. Add telemetry to monitor drive stability over long sessions.
+- [ ] **6. Global Admin UI Redesign**
+  - **Problem:** The fallback Admin panel (FastAPI/Jinja) looks dated and doesn't match the premium, modern aesthetic of Atrium (glassmorphism, vibrant palettes).
+  - **Action:** Completely overhaul the CSS and layout of the Admin panel. Use a cohesive design system (vibrant colors, sleek dark modes, modern typography like Inter/Outfit). Implement responsive layouts and micro-animations to make the administrative experience feel state-of-the-art.
+- [ ] **7. Migrate Settings out of Atrium**
+  - **Problem:** Administrative configurations (like adding providers, changing model weights, or system prompts) are bleeding into the Atrium UI, cluttering the workspace.
+  - **Action:** Strip all pure configuration screens out of Atrium. Atrium should remain a focused communication and workspace window. Migrate all removed settings logic and UI components to the newly redesigned Admin panel, ensuring a strict separation of concerns.
+- [ ] **8. Audit Existing Skills**
+  - **Problem:** Several built-in tools (especially `web.search` and filesystem navigation) are reportedly flaky or fail on edge cases.
+  - **Action:** Systematically test every tool in `src/sonya/tools/`. For `web.search`, ensure the parser handles modern anti-bot protections or provides graceful degradation. Add strict typing and error boundary catchers to prevent a single tool failure from crashing the entire session.
+- [ ] **9. Self-Healing and Error Correction**
+  - **Problem:** Sonya often hesitates or fails to utilize her self-modification (`selfmod.*`) tools when encountering errors, waiting for user intervention instead.
+  - **Action:** Enhance the system prompt and the ReAct loop instructions to explicitly mandate autonomous recovery. If an execution fails (e.g., `code.exec` throws a traceback), Sonya must automatically trigger a diagnostic tool and propose a fix without asking for permission first, achieving true autonomy.
