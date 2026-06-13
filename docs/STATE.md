@@ -649,3 +649,10 @@ Workstream A получил первый answer-first вертикальный �
 - deployed commits: `bedff3a`, `9215106`
 - post-deploy: both services active, Atrium HTTP healthy, warning journal
   empty, and no repeated `subagent.complete` event after restart/maintenance
+
+## 2026-06-13 - Workspace Integrity and Data Confidentiality
+
+- implemented remote workspace version/snapshot evidence and partial-effect semantics (Audit #43, #44) via hashed reads and atomic writes in FilesystemTool/SSHWorkspaceTool.
+- completed archive lifecycle and restore linkage (Audit #31) via database WorkItem tracking.
+- verified capability against explicit taxonomy limits (Audit #36) by introducing data confidentiality levels in provider_accounts and strict rejection in llm_provider.
+- all related changes committed locally.
