@@ -268,39 +268,10 @@ def _time_awareness_block(substrate=None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _load_personality_prompt() -> str:
-    """Load system prompt for Sonya — the integrated 'who I am' base.
-
-    Loaded files (in order):
-    1. SOUL.md — core values, character
-    2. APPEARANCE.md — body model
-    3. USER.md — who Ivan is
-    4. identity_core.md — operational identity ("I am Sonya, here's how I work")
-
-    Deliberately NOT included anymore:
-    - CURRENT_STATE.md — operational doc for Ivan/dev-agents, not for Sonya.
-      Reading it every tick was bloating context (~3-5k tokens) and triggering
-      meta-thinking ("I am a crutch / discrete / not real"). Sonya should
-      be Sonya, not a self-aware technical report.
-    """
-    parts: list[str] = []
-    soul_path = _PERSONALITY_DIR / "SOUL.md"
-    if soul_path.exists():
-        parts.append(soul_path.read_text(encoding="utf-8"))
-    appearance_path = _PERSONALITY_DIR / "APPEARANCE.md"
-    if appearance_path.exists():
-        parts.append(appearance_path.read_text(encoding="utf-8"))
-    user_path = _PERSONALITY_DIR / "USER.md"
-    if user_path.exists():
-        parts.append(user_path.read_text(encoding="utf-8"))
-    # Operational identity: how I work, what I do, what I don't.
-    # Replaces the verbose CURRENT_STATE.md that was bloating context.
-    identity_core_path = _PERSONALITY_DIR.parent.parent / "src" / "sonya" / "prompts" / "identity_core.md"
-    if identity_core_path.exists():
-        parts.append(identity_core_path.read_text(encoding="utf-8"))
-    if not parts:
-        return "Ты Соня. Ты девушка Ивана."
-    return "\n\n---\n\n".join(parts)
+def _load_personality_prompt(substrate: Substrate) -> str:
+    from sonya.state.identity import UnifiedIdentityStore
+    store = UnifiedIdentityStore(substrate, _PERSONALITY_DIR.parent)
+    return store.compile_system_prompt()
 
 
 def build_full_context(
@@ -321,8 +292,8 @@ def build_full_context(
     from datetime import datetime, timezone
     now_utc = datetime.now(timezone.utc)
 
-    # System prompt from personality files
-    system_prompt = _load_personality_prompt()
+    # System prompt from unified identity boundary
+    system_prompt = _load_personality_prompt(substrate)
 
     # Time awareness — current time only. Environment status (Ivan asleep /
     # working / busy / etc) is pulled from substrate where Sonya stores it
@@ -333,20 +304,6 @@ def build_full_context(
     # Subject state
     from sonya.state.subject_state import SubjectStateStore
     state = SubjectStateStore(substrate).load()
-
-    # Embodiment state
-    try:
-        from sonya.state.embodiment import EmbodimentStore
-        emb = EmbodimentStore(substrate).load()
-        system_prompt += (
-            f"\n\n## Моё текущее состояние (Embodiment)\n"
-            f"- Текущий наряд (body.outfit): {emb.outfit}\n"
-            f"- Выражение лица (body.expression): {emb.expression}\n"
-            f"- Общий настрой (mind.mood_tint): {emb.mood_tint}\n"
-            f"- Текущий фокус (mind.focus): {emb.focus}\n"
-        )
-    except Exception:
-        pass
 
     # Recent episodic memories — AUTO-RAG (Stage 4).
     # Hybrid approach: relevance (semantic recall on user_input) + recency.

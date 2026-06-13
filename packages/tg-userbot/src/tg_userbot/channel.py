@@ -470,7 +470,7 @@ def build(config: Any) -> "TelegramChannel | None":
     return TelegramChannel(
         api_id=api_id,
         api_hash=getattr(config, "tg_api_hash", ""),
-        session_path=getattr(config, "tg_session_path", "./tg.session"),
+        session_path=getattr(config, "tg_session_path", "") or "~/.sonya/tg.session",
         allowed_sender_ids=allowed,
         media_dir=str(getattr(config, "media_dir", "")) or None,
         sticker_store=None,

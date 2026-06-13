@@ -11,6 +11,9 @@ from sonya.tools.projects_tool import ProjectsTool
 
 
 class _FastProvider:
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
+
     async def complete_text(self, messages, **kwargs):
         return "[DONE] project executor result"
 
@@ -18,6 +21,9 @@ class _FastProvider:
 class _FailThenSucceedProvider:
     def __init__(self) -> None:
         self.calls = 0
+
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
 
     async def complete_text(self, messages, **kwargs):
         self.calls += 1
@@ -27,6 +33,9 @@ class _FailThenSucceedProvider:
 
 
 class _BlockingProvider:
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
+
     async def complete_text(self, messages, **kwargs):
         await asyncio.sleep(30)
         return "[DONE] should have been cancelled"
@@ -35,6 +44,9 @@ class _BlockingProvider:
 class _PlanningProvider:
     def __init__(self) -> None:
         self.purposes: list[str] = []
+
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
 
     async def complete_text(self, messages, **kwargs):
         purpose = str(kwargs.get("purpose", ""))
@@ -53,6 +65,9 @@ class _PlanningProvider:
 
 
 class _WorkspaceReadingProvider:
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
+
     async def complete_text(self, messages, **kwargs):
         if any("[OBS: filesystem.read]" in str(message.get("content", "")) for message in messages):
             observation = next(

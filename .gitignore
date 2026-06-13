@@ -9,6 +9,7 @@ tg.session
 tg.session-journal
 *.sqlite
 .env
+.kilo
 
 # Sonya personal scratch space — research notes, session dumps, intermediate work.
 # Not code, not docs. Per-instance state on VPS; snapshotted in ~/.sonya/backups.

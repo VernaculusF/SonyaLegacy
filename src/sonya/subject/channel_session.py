@@ -847,10 +847,9 @@ def _extract_reply(result: SessionResult) -> str:
     if not candidate and final:
         # First try [DONE: body] — explicit text
         m = _DONE_RE.search(final)
-        if m and ((m.group("body") or "").strip() or (m.group("tail") or "").strip()):
+        if m and (m.group("body") or "").strip():
             body = (m.group("body") or "").strip()
-            tail = (m.group("tail") or "").strip()
-            candidate = _scrub(body + "\n" + tail).strip()
+            candidate = _scrub(body).strip()
         else:
             # [DONE] without body — stitch with prior thoughts.
             stitched = _stitch_post_action_thoughts(result, final)

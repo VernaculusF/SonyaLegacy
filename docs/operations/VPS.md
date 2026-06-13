@@ -204,7 +204,7 @@ Cron entry: проверь `crontab -l`.
 # Telegram (Telethon)
 SONYA_TG_API_ID=...
 SONYA_TG_API_HASH=...
-SONYA_TG_SESSION_PATH=./tg.session
+SONYA_TG_SESSION_PATH=~/.sonya/tg.session
 SONYA_PRIMARY_USER_TG_ID=5785127604
 
 # Admin panel
@@ -244,7 +244,7 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 ## 12. Что НЕ менять руками на сервере
 
 - `~/.sonya/sonya_substrate.db` — substrate Сони, её память и identity
-- `~/Sonya/tg.session` — авторизация Telegram (потеряешь — Соня выйдет из аккаунта)
+- `~/.sonya/tg.session` — авторизация Telegram (потеряешь — Соня выйдет из аккаунта)
 - ключи провайдеров в `provider_keys` table — правь через admin Providers tab
 - `~/.sonya/searxng/settings.yml` после auto-generate (там реальный secret_key)
 - `~/.sonya/knowledge/` — её факт-база. Читать можно, но писать/править руками не нужно: Соня сама управляет через `knowledge.*` tools. Editing вручную допустимо только для disaster-recovery (восстановление потерянного знания).
@@ -290,6 +290,11 @@ ssh jester-sonya@34.38.255.149 "bash ~/Sonya/deploy/update.sh"
 3. Перезапуск не нужен — `knowledge.*` tools читают директорию на лету.
 
 ### Telegram session invalid
-1. Удалить `~/Sonya/tg.session` и `tg.session-journal`
+1. Удалить `~/.sonya/tg.session` и `tg.session-journal`
 2. Запустить интерактивно: `cd ~/Sonya && .venv/bin/python -m sonya` → введёт код подтверждения через TG SMS
 3. После авторизации `Ctrl+C`, `sudo systemctl restart sonya`
+
+### RPO / RTO & Identity Recovery Objectives
+- **RPO (Recovery Point Objective):** 24 hours. The daily backup strategy guarantees at most 24 hours of lost memories/state (one sonya_substrate.db snapshot and knowledge.tar.gz).
+- **RTO (Recovery Time Objective):** 15 minutes. The documented restore procedure enables full service recovery from off-host backups in under 15 minutes.
+- **Identity Integrity:** Restored instances strictly preserve IdentityWriter constraints. Personality/outfit boundaries are immune to loss since they are codified in repository and substrate snapshots.

@@ -90,6 +90,7 @@ class FilesystemTool:
         self._project_root = (
             project_root or Path(__file__).resolve().parent.parent.parent.parent
         ).resolve()
+        self._read_hashes: dict[str, str] = {}
 
     # --- internal sandbox helpers ---
 
@@ -193,8 +194,11 @@ class FilesystemTool:
             return f"[ERROR] File not found: {path}"
         if not p.is_file():
             return f"[ERROR] Not a file: {path}"
+        import hashlib
+        content_bytes = p.read_bytes()
+        self._read_hashes[path] = hashlib.sha256(content_bytes).hexdigest()
         from sonya.tools.sanitize import sanitize_untrusted
-        return sanitize_untrusted(p.read_text(encoding="utf-8", errors="replace")[:10000])
+        return sanitize_untrusted(content_bytes.decode("utf-8", errors="replace")[:10000])
 
     def read_file(self, path: str) -> str:
         return self.read(path)
@@ -248,8 +252,18 @@ class FilesystemTool:
             self._check_writable(p)
         except PermissionError as err:
             return f"[ERROR] {err}"
+            
+        import hashlib
+        expected_hash = self._read_hashes.get(path, "*")
+        if expected_hash != "*":
+            current_hash = hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else ""
+            if current_hash != expected_hash:
+                return f"[ERROR] Hash mismatch: file was modified externally since last read. Current: {current_hash}, Expected: {expected_hash}"
+
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
+        content_bytes = content.encode("utf-8")
+        p.write_bytes(content_bytes)
+        self._read_hashes[path] = hashlib.sha256(content_bytes).hexdigest()
         return f"[OK] Written {len(content)} chars to {path}"
 
     def list_dir(self, path: str, depth: int = 1) -> str:

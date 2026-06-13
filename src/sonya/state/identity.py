@@ -182,3 +182,76 @@ class IdentityWriter:
                 },
             )
         )
+
+from pathlib import Path
+from sonya.state.embodiment import EmbodimentState, EmbodimentStore
+import logging
+
+logger = logging.getLogger(__name__)
+
+@dataclass(frozen=True, slots=True)
+class UnifiedIdentityState:
+    soul: str
+    appearance: str
+    user_context: str
+    identity_core: str
+    embodiment: EmbodimentState
+    record: IdentityRecord
+
+class UnifiedIdentityStore:
+    def __init__(self, substrate: Substrate, docs_dir: Path) -> None:
+        self._sub = substrate
+        self._docs_dir = docs_dir
+        self._embodiment_store = EmbodimentStore(substrate)
+        self._identity_writer = IdentityWriter(substrate)
+
+    def load(self) -> UnifiedIdentityState:
+        personality_dir = self._docs_dir / 'personality'
+        def _read_safe(path: Path) -> str:
+            try:
+                if path.exists():
+                    return path.read_text(encoding='utf-8')
+            except Exception as e:
+                logger.warning(f'Failed to read personality file {path}: {e}')
+            return ''
+
+        soul = _read_safe(personality_dir / 'SOUL.md')
+        appearance = _read_safe(personality_dir / 'APPEARANCE.md')
+        user_context = _read_safe(personality_dir / 'USER.md')
+
+        identity_core_path = self._docs_dir.parent / 'src' / 'sonya' / 'prompts' / 'identity_core.md'
+        identity_core = _read_safe(identity_core_path)
+
+        embodiment = self._embodiment_store.load()
+        record = self._identity_writer.load()
+
+        return UnifiedIdentityState(
+            soul=soul,
+            appearance=appearance,
+            user_context=user_context,
+            identity_core=identity_core,
+            embodiment=embodiment,
+            record=record,
+        )
+
+    def compile_system_prompt(self) -> str:
+        state = self.load()
+        parts: list[str] = []
+        if state.soul:
+            parts.append(state.soul)
+        if state.appearance:
+            parts.append(state.appearance)
+        if state.user_context:
+            parts.append(state.user_context)
+        if state.identity_core:
+            parts.append(state.identity_core)
+            
+        base_prompt = "\n\n---\n\n".join(parts) if parts else "Ты Соня. Ты девушка Ивана."
+        embodiment_prompt = (
+            f"\n\n## Моё текущее состояние (Embodiment)\n"
+            f"- Текущий наряд (body.outfit): {state.embodiment.outfit}\n"
+            f"- Выражение лица (body.expression): {state.embodiment.expression}\n"
+            f"- Общий настрой (mind.mood_tint): {state.embodiment.mood_tint}\n"
+            f"- Текущий фокус (mind.focus): {state.embodiment.focus}\n"
+        )
+        return base_prompt + embodiment_prompt

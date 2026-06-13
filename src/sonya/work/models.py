@@ -56,6 +56,8 @@ class WorkItem:
     last_session_notes: str = ""
     next_step_hint: str = ""
     stuck_loop_count: int = 0
+    archive_manifest: str = "{}"
+    archive_checksum: str = ""
     
     created_at: str = ""
     updated_at: str = ""

@@ -7,6 +7,8 @@ from __future__ import annotations
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.work.models import WorkItem, WorkItemNotFoundError, WorkItemStatus, WorkItemTransitionError
 from sonya.work.store import WorkItemStore
+import hashlib
+import json
 
 
 class WorkItemService:
@@ -160,8 +162,35 @@ class WorkItemService:
         item = self._store.get(item_id)
         if item.status is WorkItemStatus.ARCHIVED:
             return item
-        updated = self._store.update_status(item_id, WorkItemStatus.ARCHIVED)
+            
+        manifest = json.dumps({
+            "title": item.title,
+            "description": item.description,
+            "final_status": item.status.value,
+            "progress_steps": len(item.progress_json),
+            "evidence_count": len(item.validation_evidence_json),
+        }, separators=(',', ':'))
+        checksum = hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+        
+        updated = self._store._patch(item_id, {
+            "status": WorkItemStatus.ARCHIVED.value,
+            "archive_manifest": manifest,
+            "archive_checksum": checksum
+        })
         self._emit("work.archived", updated)
+        return updated
+
+    def restore(self, item_id: str) -> WorkItem:
+        item = self._store.get(item_id)
+        if item.status is not WorkItemStatus.ARCHIVED:
+            raise WorkItemTransitionError(
+                f"item {item_id} is {item.status.value}, not archived"
+            )
+        # Restore as pending
+        updated = self._store._patch(item_id, {
+            "status": WorkItemStatus.PENDING.value,
+        })
+        self._emit("work.restored", updated)
         return updated
 
     def block(self, item_id: str, blocker: str) -> WorkItem:

@@ -15,6 +15,9 @@ class _CaptureProvider:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
+
     async def complete_text(self, messages, **kwargs):
         self.calls.append({"messages": messages, **kwargs})
         return "[DONE] ok"

@@ -13,6 +13,14 @@ from sonya.work.models import WorkItem, WorkItemNotFoundError, WorkItemStatus
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+_COLS = (
+    "item_id, item_type, title, description, status, "
+    "owner_principal_id, origin, parent_item_id, deadline, "
+    "dependencies_json, progress_json, context_anchors_json, validation_evidence_json, "
+    "urgency, max_sessions, sessions_used, last_session_notes, next_step_hint, "
+    "stuck_loop_count, archive_manifest, archive_checksum, created_at, updated_at, last_activity_at"
+)
+
 
 class WorkItemStore:
     """SQLite-backed CRUD for work_items."""
@@ -40,9 +48,9 @@ class WorkItemStore:
             "owner_principal_id, origin, parent_item_id, deadline, "
             "dependencies_json, progress_json, context_anchors_json, validation_evidence_json, "
             "urgency, max_sessions, sessions_used, last_session_notes, next_step_hint, "
-            "stuck_loop_count, created_at, updated_at, last_activity_at) "
+            "stuck_loop_count, archive_manifest, archive_checksum, created_at, updated_at, last_activity_at) "
             "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, '[]', '[]', '[]', '[]', "
-            "?, ?, 0, '', '', 0, ?, ?, ?)",
+            "?, ?, 0, '', '', 0, '{}', '', ?, ?, ?)",
             (
                 item_id, item_type, title, description, owner_principal_id, origin,
                 parent_item_id, deadline, urgency, int(max_sessions), now, now, now
@@ -53,12 +61,7 @@ class WorkItemStore:
 
     def get(self, item_id: str) -> WorkItem:
         row = self._sub.connection.execute(
-            "SELECT item_id, item_type, title, description, status, "
-            "owner_principal_id, origin, parent_item_id, deadline, "
-            "dependencies_json, progress_json, context_anchors_json, validation_evidence_json, "
-            "urgency, max_sessions, sessions_used, last_session_notes, next_step_hint, "
-            "stuck_loop_count, created_at, updated_at, last_activity_at "
-            "FROM work_items WHERE item_id = ?",
+            f"SELECT {_COLS} FROM work_items WHERE item_id = ?",
             (item_id,),
         ).fetchone()
         if row is None:
@@ -66,7 +69,7 @@ class WorkItemStore:
         return _row_to_item(row)
 
     def list_all(self, *, status: str | None = None, item_type: str | None = None, limit: int = 100) -> list[WorkItem]:
-        query = "SELECT * FROM work_items WHERE 1=1"
+        query = f"SELECT {_COLS} FROM work_items WHERE 1=1"
         params = []
         if status:
             query += " AND status = ?"
@@ -82,7 +85,7 @@ class WorkItemStore:
 
     def list_open(self) -> list[WorkItem]:
         cursor = self._sub.connection.execute(
-            "SELECT * FROM work_items WHERE status IN ('pending', 'in_progress', 'blocked', 'paused') ORDER BY urgency DESC, last_activity_at DESC"
+            f"SELECT {_COLS} FROM work_items WHERE status IN ('pending', 'in_progress', 'blocked', 'paused') ORDER BY urgency DESC, last_activity_at DESC"
         )
         return [_row_to_item(row) for row in cursor.fetchall()]
 
@@ -93,7 +96,7 @@ class WorkItemStore:
     def list_recently_failed(self, *, hours: int = 6, limit: int = 5) -> list[WorkItem]:
         """Return tasks that failed within the last ``hours`` hours, most recent first."""
         cursor = self._sub.connection.execute(
-            "SELECT * FROM work_items WHERE status = 'failed' "
+            f"SELECT {_COLS} FROM work_items WHERE status = 'failed' "
             "AND updated_at >= datetime('now', ?) "
             "ORDER BY updated_at DESC LIMIT ?",
             (f"-{hours} hours", limit),
@@ -178,7 +181,9 @@ def _row_to_item(row) -> WorkItem:
         last_session_notes=row[16],
         next_step_hint=row[17],
         stuck_loop_count=int(row[18] or 0),
-        created_at=row[19],
-        updated_at=row[20],
-        last_activity_at=row[21],
+        archive_manifest=row[19] or "{}",
+        archive_checksum=row[20] or "",
+        created_at=row[21],
+        updated_at=row[22],
+        last_activity_at=row[23],
     )

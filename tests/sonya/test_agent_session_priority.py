@@ -27,6 +27,9 @@ class _StubProvider:
         self._responses = list(responses)
         self.calls = 0
 
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
+
     async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
         self.calls += 1
         if not self._responses:

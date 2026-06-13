@@ -31,6 +31,9 @@ class _CapturingProvider:
         self.last_messages: list[dict[str, Any]] = []
         self.calls = 0
 
+    async def stream_text(self, *args, **kwargs):
+        yield await self.complete_text(*args, **kwargs)
+
     async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
         self.calls += 1
         self.last_messages = list(messages)

@@ -15,7 +15,7 @@ from sonya.tools.filesystem import FilesystemTool
 
 _MAX_OUTPUT_BYTES = 200_000
 _REMOTE_SCRIPT = r"""
-import json, os, pathlib, subprocess, sys, tempfile
+import json, os, pathlib, subprocess, sys, tempfile, hashlib, shutil
 p=json.loads(__import__("base64").b64decode(sys.argv[1]).decode())
 root=pathlib.Path(p["root"]).resolve()
 target=(root / p.get("path", "")).resolve()
@@ -23,11 +23,29 @@ try: target.relative_to(root)
 except ValueError: raise SystemExit("path outside workspace")
 forbidden={".env",".env.local",".git","tg.session","tg.session-journal"}
 if any(part in forbidden for part in target.parts): raise SystemExit("forbidden workspace path")
+def get_hash(path):
+    if not path.exists(): return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 op=p["op"]
 if op=="probe":
  print(json.dumps({"ok": root.is_dir()}))
 elif op=="read":
- print(target.read_text(encoding="utf-8", errors="replace")[:10000])
+ content = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+ print(json.dumps({"content": content[:10000], "hash": get_hash(target)}))
+elif op=="write":
+ expected = p.get("expected_hash")
+ current = get_hash(target)
+ if expected and expected != "*" and current != expected: raise SystemExit(f"hash mismatch: {current} vs {expected}")
+ content = p.get("content", "")
+ target.parent.mkdir(parents=True, exist_ok=True)
+ tmp = target.with_suffix(".tmp")
+ try:
+  tmp.write_text(content, encoding="utf-8")
+  shutil.move(tmp, target)
+  print(json.dumps({"ok": True, "hash": get_hash(target)}))
+ except Exception as e:
+  tmp.unlink(missing_ok=True)
+  raise SystemExit(str(e))
 elif op=="list":
  print("\n".join(("d " if x.is_dir() else "f ")+x.name for x in sorted(target.iterdir()) if x.name not in forbidden)[:20000])
 elif op=="search":
@@ -81,6 +99,7 @@ class SSHWorkspaceTool:
     def __init__(self, workspace: SSHWorkspace, *, timeout_seconds: int = 30) -> None:
         self._workspace = workspace
         self._timeout = timeout_seconds
+        self._read_hashes: dict[str, str] = {}
 
     def probe(self) -> bool:
         result = self._invoke({"op": "probe", "root": self._workspace.root, "path": ""})
@@ -90,7 +109,25 @@ class SSHWorkspaceTool:
             return False
 
     def read_file(self, path: str) -> str:
-        return self._safe_invoke("read", path=path)
+        try:
+            res = json.loads(self._safe_invoke("read", path=path))
+            self._read_hashes[path] = res.get("hash", "")
+            return res.get("content", "")
+        except Exception as e:
+            return f"[ERROR] failed to read: {e}"
+
+    def write_file(self, path: str, content: str) -> str:
+        expected_hash = self._read_hashes.get(path, "*")
+        try:
+            res = json.loads(self._safe_invoke("write", path=path, content=content, expected_hash=expected_hash))
+            if res.get("ok"):
+                self._read_hashes[path] = res.get("hash", "")
+                return f"Successfully wrote to {path}"
+            return f"[ERROR] write failed"
+        except Exception as e:
+            # We catch SystemExit strings from _safe_invoke as JSON decoding errors or raw string output
+            raw = self._safe_invoke("write", path=path, content=content, expected_hash=expected_hash)
+            return raw
 
     def list_dir(self, path: str = "") -> str:
         return self._safe_invoke("list", path=path)

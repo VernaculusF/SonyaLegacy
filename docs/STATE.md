@@ -124,7 +124,7 @@ Deployed commit `95f9f0b` completes checklist items #1 and #50:
 - `test_doc_staleness.py` implemented to machine-check canonical documentation staleness (closes #51);
 - isolated VPS focused suite passed, production fast-forward and restart completed successfully.
 
-## Current execution state - 2026-06-11
+## Current execution state - 2026-06-13
 
 ## 2026-06-13 - Streaming and Output Formatting
 - Deployed real provider-native streaming (`stream_text`) to the Atrium UI. `active_stream` state replaces artificial progressive reveal.
@@ -656,3 +656,12 @@ Workstream A получил первый answer-first вертикальный �
 - completed archive lifecycle and restore linkage (Audit #31) via database WorkItem tracking.
 - verified capability against explicit taxonomy limits (Audit #36) by introducing data confidentiality levels in provider_accounts and strict rejection in llm_provider.
 - all related changes committed locally.
+
+
+### Audit Items 37, 38, 39, 40, 19
+**Evidence**:
+- **37**: src/sonya/state/identity.py now exports UnifiedIdentityStore covering DB (Embodiment) + FileSystem (personality *.md), enforcing a single boundary. context_builder.py now uses it.
+- **38 & 39**: Created scripts/ops/backup_encrypted.sh and scripts/ops/restore_drill.sh ensuring encrypted off-host DB + TG session backups.
+- **40**: docs/operations/VPS.md updated with RPO=24h and RTO=15m.
+- **19**: TG Session path shifted to ~/.sonya/tg.session to ensure it stays unified with substrate state for seamless reliability.
+**Status**: Completed and verified via code inspection.
