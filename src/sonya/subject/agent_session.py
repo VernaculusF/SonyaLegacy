@@ -11,7 +11,8 @@ import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
-import typing, Callable, Protocol
+import typing
+from typing import Callable, Protocol
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.tools.code_tool import CodeTool

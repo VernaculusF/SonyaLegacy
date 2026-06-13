@@ -136,6 +136,7 @@ class ProviderAccount:
     priority: int
     constraints_json: str
     metadata_json: str
+    confidentiality_level: str
     created_at: str
     updated_at: str
     default_model: str = ""
@@ -350,6 +351,7 @@ class KeyStore:
         priority: int = 0,
         constraints_json: str = "{}",
         metadata_json: str = "{}",
+        confidentiality_level: str = "public",
         account_id: str = "",
         legacy_key_id: str = "",
     ) -> ProviderAccount:
@@ -369,11 +371,11 @@ class KeyStore:
         self._sub.connection.execute(
             "INSERT INTO provider_accounts "
             "(account_id, provider_id, name, secret_ref, secret_masked, legacy_key_id, status, priority, "
-            "constraints_json, metadata_json, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "constraints_json, metadata_json, confidentiality_level, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 account_id, provider_id, name, secret_ref, "", legacy_key_id, status,
-                priority, constraints_json, metadata_json, now, now,
+                priority, constraints_json, metadata_json, confidentiality_level, now, now,
             ),
         )
         if secret_value:
@@ -394,7 +396,7 @@ class KeyStore:
     def get_provider_account(self, account_id: str) -> ProviderAccount | None:
         row = self._sub.connection.execute(
             "SELECT account_id, provider_id, name, secret_ref, secret_masked, legacy_key_id, status, "
-            "priority, constraints_json, metadata_json, created_at, updated_at "
+            "priority, constraints_json, metadata_json, confidentiality_level, created_at, updated_at "
             "FROM provider_accounts WHERE account_id = ?",
             (account_id,),
         ).fetchone()
@@ -404,15 +406,15 @@ class KeyStore:
         if provider_id:
             rows = self._sub.connection.execute(
                 "SELECT account_id, provider_id, name, secret_ref, secret_masked, legacy_key_id, status, "
-                "priority, constraints_json, metadata_json, created_at, updated_at "
-                "FROM provider_accounts WHERE provider_id = ? ORDER BY priority DESC, created_at",
+                "priority, constraints_json, metadata_json, confidentiality_level, created_at, updated_at "
+                "FROM provider_accounts WHERE status != 'deleted' AND provider_id = ? ORDER BY priority DESC, created_at",
                 (provider_id,),
             ).fetchall()
         else:
             rows = self._sub.connection.execute(
                 "SELECT account_id, provider_id, name, secret_ref, secret_masked, legacy_key_id, status, "
-                "priority, constraints_json, metadata_json, created_at, updated_at "
-                "FROM provider_accounts ORDER BY provider_id, priority DESC, created_at"
+                "priority, constraints_json, metadata_json, confidentiality_level, created_at, updated_at "
+                "FROM provider_accounts WHERE status != 'deleted' ORDER BY provider_id, priority DESC, created_at"
             ).fetchall()
         return [_row_to_provider_account(row) for row in rows]
 
@@ -491,6 +493,7 @@ class KeyStore:
         priority: int | None = None,
         constraints_json: str | None = None,
         metadata_json: str | None = None,
+        confidentiality_level: str | None = None,
     ) -> ProviderAccount:
         fields: list[str] = []
         params: list[Any] = []
@@ -509,6 +512,9 @@ class KeyStore:
         if metadata_json is not None:
             fields.append("metadata_json = ?")
             params.append(metadata_json)
+        if confidentiality_level is not None:
+            fields.append("confidentiality_level = ?")
+            params.append(confidentiality_level)
         if fields:
             fields.append("updated_at = ?")
             params.append(_utc_now_iso())
@@ -898,8 +904,8 @@ class KeyStore:
         self._sub.connection.execute(
             "INSERT INTO provider_accounts "
             "(account_id, provider_id, name, secret_ref, secret_masked, legacy_key_id, status, priority, "
-            "constraints_json, metadata_json, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, '{}', '{}', ?, ?) "
+            "constraints_json, metadata_json, confidentiality_level, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, '{}', '{}', 'public', ?, ?) "
             "ON CONFLICT(account_id) DO UPDATE SET provider_id=excluded.provider_id, "
             "name=excluded.name, status=excluded.status, priority=excluded.priority, "
             "secret_masked=excluded.secret_masked, updated_at=excluded.updated_at",
@@ -1222,8 +1228,9 @@ def _row_to_provider_account(row: Iterable[Any]) -> ProviderAccount:
         priority=int(r[7] or 0),
         constraints_json=r[8],
         metadata_json=r[9],
-        created_at=r[10],
-        updated_at=r[11],
+        confidentiality_level=r[10],
+        created_at=r[11],
+        updated_at=r[12],
     )
 
 

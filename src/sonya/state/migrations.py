@@ -3,10 +3,11 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 _SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
-CURRENT_VERSION = 35
+CURRENT_VERSION = 37
 
 
 def apply_initial_schema(conn: sqlite3.Connection) -> None:
@@ -1229,6 +1230,27 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
         """)
         conn.commit()
         version = 35
+
+    if version == 35:
+        now = datetime.now(timezone.utc).isoformat()
+        _add_column_if_missing(conn, "work_items", "archive_manifest", "TEXT NOT NULL DEFAULT '{}'")
+        _add_column_if_missing(conn, "work_items", "archive_checksum", "TEXT NOT NULL DEFAULT ''")
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (36, now),
+        )
+        conn.commit()
+        version = 36
+
+    if version == 36:
+        now = datetime.now(timezone.utc).isoformat()
+        _add_column_if_missing(conn, "provider_accounts", "confidentiality_level", "TEXT NOT NULL DEFAULT 'public'")
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version(version, applied_at) VALUES (?, ?)",
+            (37, now),
+        )
+        conn.commit()
+        version = 37
 
     if version != CURRENT_VERSION:
         raise RuntimeError(f"no migration path from version {version}")

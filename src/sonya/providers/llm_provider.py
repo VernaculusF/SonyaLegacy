@@ -293,6 +293,18 @@ class LLMProvider:
                     await self._store.acquire(prov)
                 )
                 if key is not None:
+                    data_confidentiality = kwargs.get("data_confidentiality", "public")
+                    account = self._store.get_provider_account(key.key_id)
+                    if account is not None:
+                        if data_confidentiality == "secret" and account.confidentiality_level != "secret":
+                            _log.warning(f"Key {key.key_id} rejected due to confidentiality constraints (needs secret)")
+                            key = None
+                            continue
+                        if data_confidentiality == "internal" and account.confidentiality_level not in ("internal", "secret"):
+                            _log.warning(f"Key {key.key_id} rejected due to confidentiality constraints (needs internal/secret)")
+                            key = None
+                            continue
+
                     picked_provider = prov
                     if prov != provider and attempt == 0:
                         _log.info(
@@ -558,6 +570,18 @@ class LLMProvider:
                     await self._store.acquire(prov)
                 )
                 if key is not None:
+                    data_confidentiality = kwargs.get("data_confidentiality", "public")
+                    account = self._store.get_provider_account(key.key_id)
+                    if account is not None:
+                        if data_confidentiality == "secret" and account.confidentiality_level != "secret":
+                            _log.warning(f"Key {key.key_id} rejected due to confidentiality constraints (needs secret)")
+                            key = None
+                            continue
+                        if data_confidentiality == "internal" and account.confidentiality_level not in ("internal", "secret"):
+                            _log.warning(f"Key {key.key_id} rejected due to confidentiality constraints (needs internal/secret)")
+                            key = None
+                            continue
+
                     picked_provider = prov
                     if prov != provider and attempt == 0:
                         _log.info(

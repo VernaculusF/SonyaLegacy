@@ -158,7 +158,7 @@ def test_acquire_for_model_uses_only_accounts_with_enabled_offering(tmp_path) ->
         )
         store.set_account_offering(second.key_id, model.model_id, enabled=True)
 
-        acquired = asyncio.run(store.acquire_for_model("openrouter", model.model_id))
+        acquired = asyncio.run(store.acquire_for_model(model.model_id, "openrouter"))
 
         assert acquired is not None
         assert acquired.key_id == second.key_id
@@ -195,7 +195,7 @@ def test_acquire_for_model_reactivates_account_after_bounded_cooldown(tmp_path) 
         )
         sub.connection.commit()
 
-        assert asyncio.run(store.acquire_for_model("openrouter", model.model_id)) is None
+        assert asyncio.run(store.acquire_for_model(model.model_id, "openrouter")) is None
 
         past = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
         sub.connection.execute(
@@ -204,7 +204,7 @@ def test_acquire_for_model_reactivates_account_after_bounded_cooldown(tmp_path) 
         )
         sub.connection.commit()
 
-        acquired = asyncio.run(store.acquire_for_model("openrouter", model.model_id))
+        acquired = asyncio.run(store.acquire_for_model(model.model_id, "openrouter"))
         assert acquired is not None
         assert acquired.key_id == key.key_id
         assert acquired.status is KeyStatus.ACTIVE

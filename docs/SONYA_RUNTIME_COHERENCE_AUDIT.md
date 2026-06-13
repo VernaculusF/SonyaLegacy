@@ -542,9 +542,9 @@ Priority meanings:
 - [x] `P0` #11 measurable and visible real subagent runs
 - [ ] `P1` #12 provider-native normalized streaming
 - [x] `P0` #29 independent WorkItem acceptance evidence
-- [ ] `P1` #31 complete archive lifecycle and restore linkage
-- [ ] `P1` #43 remote workspace version/snapshot evidence
-- [ ] `P1` #44 remote disconnect/resume and partial-effect semantics
+- [x] `P1` #31 complete archive lifecycle and restore linkage
+- [x] `P1` #43 remote workspace version/snapshot evidence
+- [x] `P1` #44 remote disconnect/resume and partial-effect semantics
 
 ### 7.4 Embodiment and Current Self-State
 
@@ -562,7 +562,7 @@ Priority meanings:
 - [x] `P0` #32 protect instruction authority from untrusted context
 - [x] `P0` #33 context budgets, freshness, and omission observability
 - [x] `P1` #35 detect model/provider offering drift
-- [ ] `P1` #36 verify capability against explicit taxonomy limits
+- [x] `P1` #36 verify capability against explicit taxonomy limits
 
 ### 7.6 Operator Telemetry, Resilience, and Backup
 
