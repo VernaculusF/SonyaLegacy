@@ -378,14 +378,23 @@ export default function DialogPane(props) {
             )}
           </For>
         </Show>
-        <Show when={feed.her_typing}>
-          <div class="typing-row">
-            <span class="typing-name">соня</span>
-            <span class="typing-bubble">
-              <span class="typing-dot"></span>
-              <span class="typing-dot"></span>
-              <span class="typing-dot"></span>
-            </span>
+        <Show when={feed.active_stream || feed.her_typing}>
+          <div class="msg-row" data-seq="stream">
+            <div class="ts her-ts">
+              <span class="msg-name">соня</span>
+              <span class="msg-time">...</span>
+            </div>
+            <div class="bubble her">
+              <Show when={feed.active_stream} fallback={
+                <span class="typing-bubble" style="display:inline-block; padding: 4px;">
+                  <span class="typing-dot"></span>
+                  <span class="typing-dot"></span>
+                  <span class="typing-dot"></span>
+                </span>
+              }>
+                <pre class="bubble-text" style="white-space: pre-wrap; font-family: 'Fira Code', monospace; font-size: 11px; color: var(--ink-2); background: transparent; padding: 0;">{feed.active_stream}</pre>
+              </Show>
+            </div>
           </div>
         </Show>
       </div>

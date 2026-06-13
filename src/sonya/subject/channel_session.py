@@ -847,8 +847,10 @@ def _extract_reply(result: SessionResult) -> str:
     if not candidate and final:
         # First try [DONE: body] — explicit text
         m = _DONE_RE.search(final)
-        if m and (m.group("body") or "").strip():
-            candidate = _scrub(m.group("body"))
+        if m and ((m.group("body") or "").strip() or (m.group("tail") or "").strip()):
+            body = (m.group("body") or "").strip()
+            tail = (m.group("tail") or "").strip()
+            candidate = _scrub(body + "\n" + tail).strip()
         else:
             # [DONE] without body — stitch with prior thoughts.
             stitched = _stitch_post_action_thoughts(result, final)
@@ -861,6 +863,11 @@ def _extract_reply(result: SessionResult) -> str:
             if cleaned:
                 candidate = cleaned
                 break
+                
+    if not candidate and result.outbound_sent:
+        # If no explicit final reply but model used chat.dialog,
+        # use the last outbound message it attempted to send.
+        candidate = result.outbound_sent[-1]
 
     if not candidate:
         return ""

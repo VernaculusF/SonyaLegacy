@@ -247,6 +247,8 @@ export const [feed, setFeed] = createStore({
   last_seq: 0,
   // Dialog (filtered to channel=dialog)
   dialog_messages: [], // {seq, ts, sender: 'her'|'him', text}
+  active_stream: '',
+  active_stream_session: '',
   // Reason-stream (everything else worth showing)
   stream_events: [], // {seq, ts, kind, src, channel, body, payload}
   // Mind state (from meta)

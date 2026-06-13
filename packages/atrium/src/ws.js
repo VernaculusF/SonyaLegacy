@@ -146,13 +146,27 @@ function handleEvent(msg) {
   // never reached UI" bug — Ivan saw the first message but the work-result
   // reply was lost in transit).
 
+
+  // Stream chunk from agent session
+  if (kind === 'internal.agent_stream_chunk') {
+    if (payload.step === 1) { // We might reset active_stream if it's a new stream
+       // We can just append to active_stream
+       setFeed('active_stream', feed.active_stream + (payload.delta || ''));
+       setFeed('active_stream_session', payload.session_id || '');
+    } else {
+       setFeed('active_stream', feed.active_stream + (payload.delta || ''));
+    }
+    return;
+  }
+
   // Dialog messages (her replies in TG/Atrium)
   if (isAtriumDialogOutgoing(kind, channel)) {
     if (text) {
-      const cleaned = cleanDialogText(text);
+      const cleaned = text; // Direct unparsed formatting for Atrium
       if (cleaned) {
         const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
         const wsId = payload.workspace_id || inheritWorkspaceContext();
+        setFeed('active_stream', '');
         pushDialogMessage({ seq, ts, sender: 'her', text: cleaned, attachments: atts, reveal: feed.synced, ...(wsId ? { workspace_id: wsId } : {}) });
         // Only flash/notify for live events, not during the initial backlog
         // replay (otherwise a cold start spams the avatar + notifications).
@@ -170,7 +184,7 @@ function handleEvent(msg) {
   }
   // Incoming from Ivan
   if (isHisIncoming(kind) && (text || (payload.attachments && payload.attachments.length) || payload.media_kind)) {
-    const cleaned = cleanDialogText(text);
+    const cleaned = text; // Direct unparsed formatting
     const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
     if (!atts.length && payload.media_kind) {
       atts.push({

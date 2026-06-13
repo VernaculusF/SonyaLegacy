@@ -143,6 +143,14 @@ surfaces.
 ## Latest Deployed Slice
 
 Atrium reason-stream, expression stability, and dialog-spam guard:
+- [Previous slice details preserved in git history]
+
+## Current Active Work: Streaming and Output Formatting (June 13)
+- Implemented `stream_text` and Atrium `active_stream` state for true provider-native streaming.
+- Fixed Telegram parser: captured message tails correctly after `[DONE]` tags and enhanced `_scrub`.
+- Bypassed Atrium output cleaning: developer UI now receives raw formatting (with tool tags).
+- Updated Substrate `provider_settings` schema and populated active fallback models.
+
 
 - reason-stream drawer now closes through its button, `Escape`, or backdrop;
 - reason-stream displays newest events first and loads older history when the

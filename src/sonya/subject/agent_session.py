@@ -10,7 +10,8 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol
+from typing import Any
+import typing, Callable, Protocol
 
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
 from sonya.tools.code_tool import CodeTool
@@ -28,6 +29,10 @@ from sonya.tools.web_tool import WebTool
 class AgentProvider(Protocol):
     async def complete_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
         ...
+
+    async def stream_text(self, messages: list[dict[str, Any]], **kwargs: Any) -> typing.AsyncIterator[str]:
+        ...
+
 
 
 @dataclass(slots=True)

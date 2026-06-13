@@ -20,6 +20,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
+import typing
 
 import httpx
 
@@ -109,6 +110,7 @@ _PURPOSE_MODEL_HINT: dict[str, str] = {}
 
 _PROVIDER_DEFAULT_BASE_URL: dict[str, str] = {
     "codexsale": "https://codex.sale/v1",
+    "nvidia": "https://integrate.api.nvidia.com/v1",
 }
 
 _PROVIDER_DEFAULT_MODEL: dict[str, str] = {
@@ -490,6 +492,249 @@ class LLMProvider:
             )
             await self._store.report_success(key.key_id)
             return content
+
+        if last_err is not None:
+            raise last_err
+        raise NoKeysAvailable(f"all {max_attempts} key attempts exhausted for provider '{provider}'")
+
+    
+    async def stream_text(
+        self,
+        messages: list[dict[str, Any]],
+        **kwargs: Any,
+    ) -> typing.AsyncIterator[str]:
+        """Stream provider-native text deltas."""
+        settings = self._store.get_settings()
+
+        # Vision routing is bypassed for streaming since describing visuals is non-streaming.
+        has_images = (
+            not kwargs.get("_vision_stripped")
+            and _has_image_content(messages)
+        )
+        if has_images:
+            # Fall back to synchronous complete_text and yield its result as a single chunk
+            full_text = await self.complete_text(messages, **kwargs)
+            yield full_text
+            return
+
+        provider = str(kwargs.get("_provider") or "").strip()
+        max_attempts = max(1, kwargs.get("_max_key_attempts", 20))
+        purpose = kwargs.get("purpose", "unknown")
+        explicit_provider = bool(provider)
+
+        if "_model" in kwargs:
+            preferred_model = str(kwargs["_model"])
+        else:
+            role = str(kwargs.get("role", "auto")).strip()
+            preferred_model = ""
+            if role and role != "auto":
+                pool_models = self._store.list_available_provider_models(provider)
+                role_matches = [m for m in pool_models if m.role_preference == role and m.enabled]
+                if role_matches:
+                    free_matches = [m for m in role_matches if m.is_free]
+                    if free_matches:
+                        preferred_model = free_matches[0].model_id
+                    else:
+                        preferred_model = role_matches[0].model_id
+            if not preferred_model:
+                preferred_model = _model_for_purpose(purpose, settings)
+
+        fallback_chain = _provider_fallback_chain(self._store, provider, explicit_provider=explicit_provider)
+
+        last_err: Exception | None = None
+
+        import json
+        import httpx
+        import asyncio
+        import time
+
+        for attempt in range(max_attempts):
+            key = None
+            picked_provider = provider
+            for prov in fallback_chain:
+                key = (
+                    await self._store.acquire_for_model(preferred_model, prov)
+                    if preferred_model else
+                    await self._store.acquire(prov)
+                )
+                if key is not None:
+                    picked_provider = prov
+                    if prov != provider and attempt == 0:
+                        _log.info(
+                            "provider_fallback_acquired_stream",
+                            extra={"primary": provider, "fallback": prov, "purpose": purpose},
+                        )
+                    break
+
+            if key is None:
+                if attempt == 0:
+                    raise NoKeysAvailable(
+                        f"no active keys for provider '{provider}' or any fallback. "
+                        f"Add via admin -> Providers tab."
+                    )
+                break
+
+            model = preferred_model or key.model or _PROVIDER_DEFAULT_MODEL.get(picked_provider) or settings.default_model
+            base_url = key.base_url or _PROVIDER_DEFAULT_BASE_URL.get(picked_provider) or settings.default_base_url
+            url = f"{base_url.rstrip('/')}/chat/completions"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {_resolve_key_secret(self._store, key)}",
+            }
+            payload = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": kwargs.get("max_tokens", 4000),
+                "temperature": kwargs.get("temperature", 0.9),
+                "stream": True,
+            }
+
+            t_start = time.time()
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(self._timeout, connect=10.0),
+                ) as client:
+                    async with client.stream("POST", url, headers=headers, json=payload) as resp:
+                        latency_ms = int((time.time() - t_start) * 1000)
+                        
+                        if resp.status_code in (401, 403):
+                            await resp.aread()
+                            _log.warning("key_auth_error_stream", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
+                            _record_call(
+                                self._store, key_id=key.key_id, provider=picked_provider, model=model,
+                                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                                latency_ms=latency_ms, status="auth", http_status=resp.status_code,
+                                error=resp.text[:300],
+                            )
+                            await self._store.report_failure(
+                                key.key_id, kind="auth_error",
+                                error_message=f"HTTP {resp.status_code}: {resp.text[:300]}",
+                            )
+                            last_err = RuntimeError(f"auth error from {provider}")
+                            continue
+
+                        if resp.status_code == 429:
+                            await resp.aread()
+                            retry_after = self._parse_retry_after(resp)
+                            _log.warning("key_rate_limited_stream", extra={"key_id": key.key_id, "retry_after": retry_after})
+                            _record_call(
+                                self._store, key_id=key.key_id, provider=picked_provider, model=model,
+                                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                                latency_ms=latency_ms, status="rate_limit", http_status=429,
+                                error=resp.text[:300],
+                            )
+                            await self._store.report_failure(
+                                key.key_id, kind="rate_limit",
+                                error_message=f"HTTP 429: {resp.text[:200]}",
+                                retry_after_seconds=retry_after,
+                            )
+                            last_err = RuntimeError("rate limit")
+                            continue
+
+                        if 500 <= resp.status_code < 600:
+                            await resp.aread()
+                            _log.warning("key_server_error_stream", extra={"key_id": key.key_id, "status": resp.status_code, "body": resp.text[:200]})
+                            _record_call(
+                                self._store, key_id=key.key_id, provider=picked_provider, model=model,
+                                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                                latency_ms=latency_ms, status="server_error", http_status=resp.status_code,
+                                error=resp.text[:300],
+                            )
+                            await self._store.report_failure(
+                                key.key_id, kind="server_error",
+                                error_message=f"HTTP {resp.status_code}: {resp.text[:200]}",
+                            )
+                            last_err = RuntimeError(f"upstream {resp.status_code}")
+                            await asyncio.sleep(1.5 * (attempt + 1))
+                            continue
+                            
+                        try:
+                            resp.raise_for_status()
+                        except Exception as err:
+                            await resp.aread()
+                            status = resp.status_code
+                            if status == 402 or "suspended" in resp.text.lower() or "credits" in resp.text.lower():
+                                failure_kind = "auth_error"
+                            elif status in (400, 404, 412):
+                                failure_kind = "config_error"
+                            else:
+                                failure_kind = "other"
+                            _log.warning("key_http_error_stream", extra={"key_id": key.key_id, "status": status, "kind": failure_kind, "body": resp.text[:200]})
+
+                            _record_call(
+                                self._store, key_id=key.key_id, provider=picked_provider, model=model,
+                                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                                latency_ms=latency_ms, status=failure_kind, http_status=status,
+                                error=resp.text[:300],
+                            )
+                            await self._store.report_failure(
+                                key.key_id, kind=failure_kind,
+                                error_message=f"HTTP {status}: {resp.text[:200]}",
+                            )
+                            last_err = err
+                            if failure_kind == "config_error":
+                                break
+                            continue
+                        
+                        # Process SSE stream
+                        async for line in resp.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                choices = chunk.get("choices", [])
+                                if not choices:
+                                    continue
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content")
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError:
+                                pass
+                            
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ConnectError) as err:
+                latency_ms = int((time.time() - t_start) * 1000)
+                _log.warning(
+                    "key_transient_error_stream",
+                    extra={"key_id": key.key_id, "provider": picked_provider, "type": type(err).__name__, "attempt": attempt},
+                )
+                _record_call(
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
+                    purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                    latency_ms=latency_ms, status="error", http_status=0,
+                    error=f"{type(err).__name__}: {err}",
+                )
+                await self._store.report_failure(
+                    key.key_id, kind="other", error_message=f"{type(err).__name__}: {err}"
+                )
+                last_err = err
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            except Exception as err:
+                latency_ms = int((time.time() - t_start) * 1000)
+                _log.error("key_unexpected_error_stream", extra={"key_id": key.key_id, "type": type(err).__name__})
+                _record_call(
+                    self._store, key_id=key.key_id, provider=picked_provider, model=model,
+                    purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                    latency_ms=latency_ms, status="error", http_status=0,
+                    error=f"{type(err).__name__}: {err}",
+                )
+                await self._store.report_failure(key.key_id, kind="other", error_message=str(err))
+                last_err = err
+                continue
+
+            # Stream finished successfully
+            _record_call(
+                self._store, key_id=key.key_id, provider=picked_provider, model=model,
+                purpose=purpose, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                latency_ms=int((time.time() - t_start) * 1000), status="ok", http_status=200,
+                error="",
+            )
+            await self._store.report_success(key.key_id)
+            return
 
         if last_err is not None:
             raise last_err

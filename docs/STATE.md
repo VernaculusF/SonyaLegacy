@@ -126,6 +126,13 @@ Deployed commit `95f9f0b` completes checklist items #1 and #50:
 
 ## Current execution state - 2026-06-11
 
+## 2026-06-13 - Streaming and Output Formatting
+- Deployed real provider-native streaming (`stream_text`) to the Atrium UI. `active_stream` state replaces artificial progressive reveal.
+- Atrium output parsing fixed: Dialog UI now renders direct unparsed formatting (including raw tool blocks) by bypassing `cleanDialogText`.
+- Telegram output parsing fixed: `_DONE_RE` correctly captures message tails, and `_scrub` cleanly strips `[DONE]` tags from output to prevent leakage.
+- Migrated `provider_settings` schema on the active substrate and populated model preferences for upcoming `Rework Provider Account Visibility` tasks.
+
+
 - production and repository substrate are at schema v33;
 - Atrium UI cleanup is the current active slice: inner/reason stream belongs in
   an explicit top-bar debug drawer, not in the main right pane; Telegram is a
