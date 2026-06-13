@@ -8,8 +8,9 @@ from sonya.initiative.drives import DriveCounters
 
 def test_initial_threshold_crossing_emits_once() -> None:
     dc = DriveCounters()
+    dc.boredom_rate = 0.012  # Mock to overcome decay
     # decay -0.006 then accrual +0.012 = net +0.006/tick.
-    # 0.700 → after decay 0.694 → after accrual 0.706.
+    # 0.700 -> after decay 0.694 -> after accrual 0.706.
     # prev (post-decay) = 0.694 < 0.7, cur = 0.706 ≥ 0.7 → crossing.
     dc.boredom_analog = 0.700
     crossed = dc.tick()
@@ -18,6 +19,7 @@ def test_initial_threshold_crossing_emits_once() -> None:
 
 def test_no_re_emit_immediately_after_crossing() -> None:
     dc = DriveCounters()
+    dc.boredom_rate = 0.012
     dc.boredom_analog = 0.700
     dc.tick()  # crossing
     crossed = dc.tick()  # next tick — already over threshold
@@ -26,6 +28,7 @@ def test_no_re_emit_immediately_after_crossing() -> None:
 
 def test_pinned_at_max_re_emits_every_60_ticks() -> None:
     dc = DriveCounters()
+    dc.boredom_rate = 0.012
     # Manually pin to max so we don't have to walk through 100+ ticks.
     dc.boredom_analog = dc.max_value
     # First N-1 ticks at max should NOT emit.
@@ -39,6 +42,7 @@ def test_pinned_at_max_re_emits_every_60_ticks() -> None:
 
 def test_re_emit_counter_resets_after_emit() -> None:
     dc = DriveCounters()
+    dc.boredom_rate = 0.012
     dc.boredom_analog = dc.max_value
     for _ in range(dc._max_re_emit_ticks):
         dc.tick()  # one emission happens at the end
@@ -58,6 +62,7 @@ def test_re_emit_counter_resets_when_falls_below_max() -> None:
     back would emit much sooner than 60 fresh ticks (carry-over).
     """
     dc = DriveCounters()
+    dc.boredom_rate = 0.012
     dc.boredom_analog = dc.max_value
     # Run 50 ticks at max — well into the re-emit window but not yet emit.
     for _ in range(50):
@@ -73,6 +78,8 @@ def test_re_emit_counter_resets_when_falls_below_max() -> None:
 
 def test_independent_drives_have_independent_counters() -> None:
     dc = DriveCounters()
+    dc.boredom_rate = 0.012
+    dc.curiosity_rate = 0.009
     dc.boredom_analog = dc.max_value
     # curiosity: decay 0.006, accrual 0.009 = net +0.003/tick.
     # 0.700 → after decay 0.694 → after accrual 0.703 → crossing.

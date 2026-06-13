@@ -343,7 +343,9 @@ class InternalProcess:
                 active_count = len(self._intentions.list_active())
             except Exception:
                 active_count = 0
-            self._drives.tick(active_intentions_count=active_count)
+            self._drives.tick(active_intentions_count=active_count, unknowns_count=active_count)
+            if self._tick_count % 10 == 0:
+                _log.info(f"DRIVE_TELEMETRY: {self._drives.to_dict()}")
 
             # Check idle timeout
             now = asyncio.get_event_loop().time()

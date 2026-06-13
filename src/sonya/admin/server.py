@@ -2214,19 +2214,12 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
                     kind="task.unblocked",
                     payload={"item_id": item_id, "operator_reason": reason},
                 ))
-            # If reason given, set as next_step_hint
-            if reason:
-                sub.connection.execute(
-                    "UPDATE tasks SET next_step_hint = ?, updated_at = ? WHERE item_id = ?",
-                    (reason, datetime.now(timezone.utc).isoformat(), item_id),
-                )
-                sub.connection.commit()
+            # Reason is recorded in the ContinuityEvent.
+            # (Deprecated columns like next_step_hint were removed from schema)
             return web.json_response({"ok": True, "item_id": item_id, "status": updated.status.value})
         if action == "repurpose":
             sub.connection.execute(
-                "UPDATE tasks SET status='pending', blocker='', "
-                "next_step_hint='', last_session_notes='', "
-                "sessions_used=0, updated_at=? WHERE item_id=?",
+                "UPDATE work_items SET status='pending', updated_at=? WHERE item_id=?",
                 (datetime.now(timezone.utc).isoformat(), item_id),
             )
             sub.connection.commit()
@@ -2241,7 +2234,7 @@ async def api_operator_task_action(request: web.Request) -> web.Response:
             ))
             return web.json_response({"ok": True, "item_id": item_id, "status": "pending"})
         if action == "delete":
-            sub.connection.execute("DELETE FROM tasks WHERE item_id = ?", (item_id,))
+            sub.connection.execute("DELETE FROM work_items WHERE item_id = ?", (item_id,))
             sub.connection.commit()
             return web.json_response({"ok": True, "item_id": item_id, "deleted": True})
         return web.json_response({"error": "unreachable"}, status=500)

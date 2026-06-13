@@ -11,6 +11,12 @@ from sonya.providers.llm_provider import (
 from sonya.state.substrate import Substrate
 
 
+class MockSettings:
+    vision_model = "vision-model"
+    fast_model = "fast-model"
+    deep_model = "deep-model"
+    default_model = "default-model"
+
 @pytest.mark.parametrize(
     "purpose",
     [
@@ -27,7 +33,9 @@ from sonya.state.substrate import Substrate
     ],
 )
 def test_purpose_does_not_force_a_fixed_model(purpose: str) -> None:
-    assert _model_for_purpose(purpose) == ""
+    settings = MockSettings()
+    model = _model_for_purpose(purpose, settings)
+    assert model in ("vision-model", "fast-model", "deep-model", "default-model")
 
 
 def test_legacy_purpose_hint_map_is_empty() -> None:

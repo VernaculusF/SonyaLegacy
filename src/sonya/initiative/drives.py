@@ -32,9 +32,10 @@ class DriveCounters:
     #   relational: +0.008 - 0.006 = +0.002/tick → 0.7 in 350 ticks (~175min)
     # pending_debt accrues only with active intentions; cap matches decay
     # so 1-2 intentions bleed off but 3+ slowly climb.
-    boredom_rate: float = 0.012
-    curiosity_rate: float = 0.009
-    relational_rate: float = 0.008
+    # Re-tuned so they naturally decay. Curiosity spikes dynamically.
+    boredom_rate: float = 0.004
+    curiosity_rate: float = 0.003
+    relational_rate: float = 0.003
     pending_debt_rate: float = 0.004
     pending_debt_cap_rate: float = 0.012
 
@@ -52,7 +53,7 @@ class DriveCounters:
     _max_re_emit_ticks: int = 60
     _ticks_since_max_emit: dict[str, int] = field(default_factory=dict)
 
-    def tick(self, active_intentions_count: int = 0) -> list[str]:
+    def tick(self, active_intentions_count: int = 0, unknowns_count: int = 0) -> list[str]:
         """Increment counters (with passive decay, clamped to [0, max_value]).
         Returns drives that crossed threshold this tick OR are pinned at max
         and re-emitting periodically."""
@@ -72,7 +73,8 @@ class DriveCounters:
             crossed.append("boredom_analog")
 
         prev = self.curiosity_analog
-        self.curiosity_analog = min(m, self.curiosity_analog + self.curiosity_rate)
+        inc_curiosity = self.curiosity_rate + (0.015 * unknowns_count)
+        self.curiosity_analog = min(m, self.curiosity_analog + inc_curiosity)
         if self._should_emit("curiosity_analog", prev, self.curiosity_analog, m):
             crossed.append("curiosity_analog")
 
