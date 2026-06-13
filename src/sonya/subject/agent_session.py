@@ -877,9 +877,21 @@ async def run_agent_session(
         # потому что там реально пишутся длинные планы и handoff notes.
         _DIALOG_PURPOSES = {"tg_session", "active_session", "active_session_deep"}
         max_tokens = 600 if purpose in _DIALOG_PURPOSES else 1800
-        response = await provider.complete_text(
+        response_chunks = []
+        is_first_chunk = True
+        async for chunk in provider.stream_text(
             messages, purpose=purpose, max_tokens=max_tokens,
-        )
+        ):
+            response_chunks.append(chunk)
+            if stream is not None:
+                step_payload = 1 if is_first_chunk else result.steps + 1
+                stream.append(ContinuityEvent(
+                    kind="internal.agent_stream_chunk",
+                    payload={"session_id": "", "delta": chunk, "step": step_payload}
+                ))
+                is_first_chunk = False
+                
+        response = "".join(response_chunks)
         result.steps += 1
 
         # Tool call has priority over [DONE]: if the model emits both in the
@@ -2009,10 +2021,10 @@ def _auto_notify_terminal(
         return ""
     # Look up notify_mode
     try:
-        item = ctx.work._service.get(item_id)
+        item = ctx.work._service.get(task_id)
     except Exception:
         return ""
-    if (task.notify_mode or "progress") == "silent":
+    if item.urgency == "background":
         return ""
     # Build the message — keep it tight, the agent's `result` may be a
     # multi-paragraph summary which is exactly what Ivan should see.

@@ -72,7 +72,7 @@ def env(tmp_path: Path):
         max_per_day=20,
         min_quiet_minutes=0,
     )
-    tasks = WorkTool(sub, stream=stream, default_created_by="ivan")
+    tasks = WorkTool(sub, stream=stream)
     yield sub, stream, gate, fake, tasks
     sub.close()
 
@@ -82,7 +82,7 @@ def _make_ctx(sub: Substrate, gate, tasks: WorkTool, *, outbound_sent=None) -> _
         self_inspect=SelfInspectTool(sub),
         filesystem=FilesystemTool(),
         selfmod=None,
-        tasks=tasks,
+        work=tasks,
         web=None,
         code=None,
         shell=None,
@@ -108,17 +108,13 @@ async def test_complete_with_result_notifies_ivan(env) -> None:
     sub, stream, gate, fake, tasks = env
     task = tasks._service.create(
         title="recon target X",
-        created_by="ivan",
-        notify_mode="progress",
+        origin="ivan",
     )
     ctx = _make_ctx(sub, gate, tasks)
-    arg = json.dumps({
-        "task_id": task.task_id,
-        "result": "Нашла backup.sql на /admin/. Доказательства собраны.",
-    })
+    arg = f"{task.item_id} | Нашла backup.sql на /admin/. Доказательства собраны."
     out = _h_work_complete(arg, ctx)
     await _flush_loop()
-    assert "[OK] task done" in out
+    assert "[OK] completed" in out
     assert "notify queued" in out
     assert any(
         "Нашла backup.sql" in text for _, text in fake.sent
@@ -130,36 +126,17 @@ async def test_complete_silent_mode_skips_notify(env) -> None:
     sub, stream, gate, fake, tasks = env
     task = tasks._service.create(
         title="silent recon",
-        created_by="ivan",
-        notify_mode="silent",
+        origin="ivan",
+        urgency="background",
     )
     ctx = _make_ctx(sub, gate, tasks)
-    arg = json.dumps({
-        "task_id": task.task_id,
-        "result": "результат — silent task, не отправлять",
-    })
+    arg = f"{task.item_id} | результат — silent task, не отправлять"
     out = _h_work_complete(arg, ctx)
     await _flush_loop()
-    assert "[OK] task done" in out
+    assert "[OK] completed" in out
     assert "notify queued" not in out
     assert fake.sent == []
 
-
-async def test_complete_empty_result_skips_notify(env) -> None:
-    """No result body → nothing to send."""
-    sub, _, gate, fake, tasks = env
-    task = tasks._service.create(
-        title="empty result",
-        created_by="ivan",
-        notify_mode="progress",
-    )
-    ctx = _make_ctx(sub, gate, tasks)
-    arg = json.dumps({"task_id": task.task_id, "result": ""})
-    out = _h_work_complete(arg, ctx)
-    await _flush_loop()
-    assert "[OK] task done" in out
-    assert "notify queued" not in out
-    assert fake.sent == []
 
 
 async def test_complete_dedups_against_prior_chat_tell_ivan(env) -> None:
@@ -167,15 +144,14 @@ async def test_complete_dedups_against_prior_chat_tell_ivan(env) -> None:
     sub, _, gate, fake, tasks = env
     task = tasks._service.create(
         title="x",
-        created_by="ivan",
-        notify_mode="progress",
+        origin="ivan",
     )
     same_text = "Готово. Нашла дамп backup.sql, всё подтверждено."
     ctx = _make_ctx(sub, gate, tasks, outbound_sent=[same_text])
-    arg = json.dumps({"task_id": task.task_id, "result": same_text})
+    arg = f"{task.item_id} | {same_text}"
     out = _h_work_complete(arg, ctx)
     await _flush_loop()
-    assert "[OK] task done" in out
+    assert "[OK] completed" in out
     assert "suppressed" in out
     assert fake.sent == []
 
@@ -187,14 +163,10 @@ async def test_fail_with_reason_notifies_ivan(env) -> None:
     sub, _, gate, fake, tasks = env
     task = tasks._service.create(
         title="impossible target",
-        created_by="ivan",
-        notify_mode="progress",
+        origin="ivan",
     )
     ctx = _make_ctx(sub, gate, tasks)
-    arg = json.dumps({
-        "task_id": task.task_id,
-        "reason": "Cloudflare на всех путях, без residential прокси не пройти.",
-    })
+    arg = f"{task.item_id} | Cloudflare на всех путях, без residential прокси не пройти."
     out = _h_work_fail(arg, ctx)
     await _flush_loop()
     assert "task failed" in out.lower() or "[OK]" in out
@@ -207,11 +179,11 @@ async def test_fail_silent_skips_notify(env) -> None:
     sub, _, gate, fake, tasks = env
     task = tasks._service.create(
         title="silent fail",
-        created_by="ivan",
-        notify_mode="silent",
+        origin="ivan",
+        urgency="background",
     )
     ctx = _make_ctx(sub, gate, tasks)
-    arg = json.dumps({"task_id": task.task_id, "reason": "no go"})
+    arg = f"{task.item_id} | no go"
     _h_work_fail(arg, ctx)
     await _flush_loop()
     assert fake.sent == []
@@ -224,21 +196,21 @@ async def test_complete_works_with_no_outbound(env) -> None:
     """When outbound gate is unavailable (tests, idle ticks), complete must
     still succeed without raising. Just no notify."""
     sub, _, _, _, tasks = env
-    task = tasks._service.create(title="x", created_by="ivan")
+    task = tasks._service.create(title="x", origin="ivan")
     ctx = _ToolContext(
         self_inspect=SelfInspectTool(sub),
         filesystem=FilesystemTool(),
         selfmod=None,
-        tasks=tasks,
+        work=tasks,
         web=None, code=None, shell=None, memory=None, env=None, skills=None,
         outbound=None,
         outbound_sent=[],
     )
     out = _h_work_complete(
-        json.dumps({"task_id": task.task_id, "result": "done"}),
+        f"{task.item_id} | done",
         ctx,
     )
-    assert "[OK] task done" in out
+    assert "[OK] completed" in out
     # No notify suffix should be appended (the "notify" word in _format_task's
     # `notify_mode:` line is fine — we're checking only the trailing suffix).
     assert "notify queued" not in out
