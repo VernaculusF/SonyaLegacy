@@ -879,17 +879,26 @@ async def run_agent_session(
         max_tokens = 600 if purpose in _DIALOG_PURPOSES else 1800
         response_chunks = []
         is_first_chunk = True
-        async for chunk in provider.stream_text(
-            messages, purpose=purpose, max_tokens=max_tokens,
-        ):
-            response_chunks.append(chunk)
-            if stream is not None:
-                step_payload = 1 if is_first_chunk else result.steps + 1
-                stream.append(ContinuityEvent(
-                    kind="internal.agent_stream_chunk",
-                    payload={"session_id": "", "delta": chunk, "step": step_payload}
-                ))
-                is_first_chunk = False
+        async def _consume_stream():
+            nonlocal is_first_chunk
+            async for chunk in provider.stream_text(
+                messages, purpose=purpose, max_tokens=max_tokens,
+            ):
+                response_chunks.append(chunk)
+                if stream is not None:
+                    step_payload = 1 if is_first_chunk else result.steps + 1
+                    stream.append(ContinuityEvent(
+                        kind="internal.agent_stream_chunk",
+                        payload={"session_id": "", "delta": chunk, "step": step_payload}
+                    ))
+                    is_first_chunk = False
+                    
+        import asyncio
+        try:
+            await asyncio.wait_for(_consume_stream(), timeout=180.0)
+        except asyncio.TimeoutError:
+            if not response_chunks:
+                raise RuntimeError("LLM provider timed out (no response in 180s)")
                 
         response = "".join(response_chunks)
         result.steps += 1
