@@ -2703,7 +2703,9 @@ async def atrium_history(request: web.Request) -> web.Response:
         )
         ph = ",".join("?" for _ in kinds)
         params: list[object] = list(kinds)
-        where_parts = []
+        where_parts = [
+            "(channel = '' OR channel = 'dialog' OR channel = 'atrium')"
+        ]
         if before_seq > 0:
             where_parts.append("seq < ?")
             params.append(before_seq)
