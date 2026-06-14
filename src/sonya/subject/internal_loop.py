@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import asyncio
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
+
+_log = logging.getLogger(__name__)
 
 from sonya.initiative.drives import DriveCounters
 from sonya.state.continuity_stream import ContinuityEvent, ContinuityStream
@@ -1946,7 +1949,7 @@ class InternalProcess:
             #   - worker triggers every 3-30 min but skipped self-tasks
             # Result: self-research lay dormant. Worker now picks them up
             # in the slow lane (background budget: 30 steps / 15 min).
-            due_urgent = svc.list_urgent_due_tasks()
+            due_urgent = svc.list_urgent_due_items()
             if due_urgent:
                 # Urgent path — same as before.
                 in_progress = [t for t in due_urgent if t.status is WorkItemStatus.IN_PROGRESS]
