@@ -364,6 +364,8 @@ class LLMProvider:
                 last_err = err
                 await asyncio.sleep(1.0 * (attempt + 1))
                 continue
+            except asyncio.CancelledError:
+                raise
             except Exception as err:
                 latency_ms = int((time.time() - t_start) * 1000)
                 _log.error("key_unexpected_error", extra={"key_id": key.key_id, "type": type(err).__name__})
@@ -737,6 +739,8 @@ class LLMProvider:
                 last_err = err
                 await asyncio.sleep(1.0 * (attempt + 1))
                 continue
+            except asyncio.CancelledError:
+                raise
             except Exception as err:
                 latency_ms = int((time.time() - t_start) * 1000)
                 _log.error("key_unexpected_error_stream", extra={"key_id": key.key_id, "type": type(err).__name__})
