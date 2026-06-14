@@ -157,6 +157,14 @@ Atrium reason-stream, expression stability, and dialog-spam guard:
   - Reverted the early return in `_extract_reply` (in `channel_session.py`) and instead added logic to override dummy `[DONE: ожидаю...]` messages with the actual message content sent via `chat.dialog`. This correctly restores the separation of channels (Telegram messages go to Telegram, Atrium messages go to Atrium).
 - Deployed commit `20ecb4c` to production VPS using fast-forward merge and restarted services.
 
+## Current Active Work: Coherence Audit Remnants and Atrium Communication Fix (June 14)
+- Fixed multiple runtime coherence deviations identified in the audit.
+- Removed legacy `stuck_loop_count` columns and tracking from `src/sonya/state/migrations.py` and `src/sonya/work/models.py`.
+- Deprecated legacy task tools (`tasks_tool.py`) to resolve subsystem fragmentation.
+- Rebalanced `curiosity_analog` drive bounds in `src/sonya/initiative/drives.py` to prevent runaway active sessions.
+- **Fixed Atrium Silence Bug:** Modified `_dispatch` and `call_outbound_sync` in `src/sonya/initiative/outbound.py` so that when `tg_emergency_mode` is disabled, Sonya's responses to Atrium queries are explicitly logged as `outgoing.dialog` (with `channel="dialog"`) while remaining visible to Telegram. This correctly binds responses to the Atrium project workspace feed instead of losing them as generic `outgoing.telegram_progress` events.
+- Commits pushed, VPS fast-forwarded and services restarted.
+
 
 - reason-stream drawer now closes through its button, `Escape`, or backdrop;
 - reason-stream displays newest events first and loads older history when the

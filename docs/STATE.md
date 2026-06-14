@@ -665,3 +665,12 @@ Workstream A получил первый answer-first вертикальный �
 - **40**: docs/operations/VPS.md updated with RPO=24h and RTO=15m.
 - **19**: TG Session path shifted to ~/.sonya/tg.session to ensure it stays unified with substrate state for seamless reliability.
 **Status**: Completed and verified via code inspection.
+
+## 2026-06-14 - Coherence Audit Remnants and Atrium Communication Fix
+
+- Deployed fixes for multiple runtime coherence deviations identified in the audit.
+- Removed legacy `stuck_loop_count` columns and tracking from `src/sonya/state/migrations.py` and `src/sonya/work/models.py`.
+- Deprecated legacy task tools (`tasks_tool.py`) to resolve subsystem fragmentation.
+- Rebalanced `curiosity_analog` drive bounds in `src/sonya/initiative/drives.py` to prevent runaway active sessions.
+- Fixed Atrium dialog routing failure in `src/sonya/initiative/outbound.py`: when `tg_emergency_mode` is disabled, Sonya's responses to Atrium are now correctly logged as `outgoing.dialog` with `channel="dialog"` while still being mirrored to Telegram. This ensures Atrium UI properly queries and displays Sonya's responses in the project/main workspace feed.
+- Commits pushed, VPS fast-forwarded and services restarted.
