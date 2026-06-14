@@ -504,43 +504,58 @@ class InternalProcess:
 
             chosen_kind = decision.chosen.kind
             if chosen_kind == KIND_ACTIVE_SESSION:
-                # Wrap whole active session in a hard timeout so a frozen
-                # LLM call can't pin busy_lock forever (the audit 31.05 #2:
-                # one provider hang = всё мышление мертво до systemd-restart).
-                # Timeout = max_seconds budget (1800) + 5min slack для
-                # post-processing + epi-record + drives save.
-                try:
-                    async with self._busy_lock:
-                        await asyncio.wait_for(
-                            self._run_active_session(),
-                            timeout=2100.0,
-                        )
-                except asyncio.TimeoutError:
-                    self._stream.append(ContinuityEvent(
-                        kind="internal.active_session_timeout",
-                        payload={"timeout_seconds": 2100.0},
-                    ))
-                except Exception as exc:
-                    # NoKeysAvailable → ставим outage cooldown 10 мин.
-                    if exc.__class__.__name__ == "NoKeysAvailable":
-                        self._provider_outage_until = now + 600.0
+                # Don't block the main loop if busy_lock is held by another
+                # cognitive path (task worker / idle thinking / TG session) —
+                # skip this tick and retry next. Without this check the main
+                # loop freezes for the lock holder's entire duration (up to 20
+                # minutes for a task worker), starving scheduler decisions and
+                # event processing. Fixes: busy_lock blocks forever on acquire.
+                if self._busy_lock.locked():
+                    try:
                         self._stream.append(ContinuityEvent(
-                            kind="internal.provider_outage_backoff",
-                            payload={
-                                "source": "active_session",
-                                "cooldown_seconds": 600.0,
-                                "error": str(exc)[:200],
-                            },
+                            kind="internal.active_session_deferred",
+                            payload={"reason": "busy_lock_held"},
                         ))
-                    else:
+                    except Exception:
+                        pass
+                else:
+                    # Wrap whole active session in a hard timeout so a frozen
+                    # LLM call can't pin busy_lock forever (the audit 31.05 #2:
+                    # one provider hang = всё мышление мертво до systemd-restart).
+                    # Timeout = max_seconds budget (1800) + 5min slack для
+                    # post-processing + epi-record + drives save.
+                    try:
+                        async with self._busy_lock:
+                            await asyncio.wait_for(
+                                self._run_active_session(),
+                                timeout=2100.0,
+                            )
+                    except asyncio.TimeoutError:
                         self._stream.append(ContinuityEvent(
-                            kind="internal.active_session_error",
-                            payload={"error": str(exc)[:300], "type": type(exc).__name__},
+                            kind="internal.active_session_timeout",
+                            payload={"timeout_seconds": 2100.0},
                         ))
-                self._last_active_session = now
-                if now - self._last_consolidation_at >= self._consolidation_interval:
-                    self._run_consolidation()
-                    self._last_consolidation_at = now
+                    except Exception as exc:
+                        # NoKeysAvailable → ставим outage cooldown 10 мин.
+                        if exc.__class__.__name__ == "NoKeysAvailable":
+                            self._provider_outage_until = now + 600.0
+                            self._stream.append(ContinuityEvent(
+                                kind="internal.provider_outage_backoff",
+                                payload={
+                                    "source": "active_session",
+                                    "cooldown_seconds": 600.0,
+                                    "error": str(exc)[:200],
+                                },
+                            ))
+                        else:
+                            self._stream.append(ContinuityEvent(
+                                kind="internal.active_session_error",
+                                payload={"error": str(exc)[:300], "type": type(exc).__name__},
+                            ))
+                    self._last_active_session = now
+                    if now - self._last_consolidation_at >= self._consolidation_interval:
+                        self._run_consolidation()
+                        self._last_consolidation_at = now
             elif chosen_kind == KIND_TASK_WORKER:
                 self._last_task_worker_at = now
                 # Worker has its own internal max_seconds cap (60s urgent,
