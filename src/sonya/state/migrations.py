@@ -1198,7 +1198,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 dependencies_json, progress_json, context_anchors_json,
                 validation_evidence_json, urgency, max_sessions,
                 sessions_used, last_session_notes, next_step_hint,
-                stuck_loop_count, created_at, updated_at, last_activity_at
+                created_at, updated_at, last_activity_at
             )
             SELECT 
                 task_id, 'task', title, description, status,
@@ -1206,7 +1206,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 '[]', completed_steps_json, '[]',
                 '[]', urgency, max_sessions,
                 sessions_used, last_session_notes, next_step_hint,
-                stuck_loop_count, created_at, updated_at, updated_at
+                created_at, updated_at, updated_at
             FROM tasks
         """)
         # Migrate existing goals to work_items
@@ -1217,7 +1217,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 dependencies_json, progress_json, context_anchors_json,
                 validation_evidence_json, urgency, max_sessions,
                 sessions_used, last_session_notes, next_step_hint,
-                stuck_loop_count, created_at, updated_at, last_activity_at
+                created_at, updated_at, last_activity_at
             )
             SELECT 
                 goal_id, 'goal', title, description, status,
@@ -1225,7 +1225,7 @@ def migrate_to_current(conn: sqlite3.Connection, current_version: int) -> int:
                 '[]', '[]', '[]',
                 '[]', 'normal', 0,
                 0, '', '',
-                0, created_at, updated_at, updated_at
+                created_at, updated_at, updated_at
             FROM goals
         """)
         conn.commit()

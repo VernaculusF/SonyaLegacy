@@ -882,8 +882,15 @@ def _extract_reply(result: SessionResult) -> str:
     # Suppress final reply if it duplicates a chat.tell_ivan message already sent
     # during the session. Model sometimes does both: progress update + final
     # echo, which causes double-message in TG.
-    if result.outbound_sent and _is_duplicate_of_outbound(candidate, result.outbound_sent):
-        return ""
+    if result.outbound_sent:
+        if _is_duplicate_of_outbound(candidate, result.outbound_sent):
+            return ""
+        # If the model already sent a message, and the candidate is purely English
+        # (e.g. "Sent goodnight kiss"), it's a leaked action report.
+        cyr = len(re.findall(r"[а-яА-ЯёЁ]", candidate))
+        latin = len(re.findall(r"[a-zA-Z]", candidate))
+        if cyr == 0 and latin >= 10:
+            return ""
 
     return candidate
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Any
 
 
@@ -73,7 +74,8 @@ class DriveCounters:
             crossed.append("boredom_analog")
 
         prev = self.curiosity_analog
-        inc_curiosity = self.curiosity_rate + (0.015 * unknowns_count)
+        # Logarithmic scaling for unknowns to prevent runaway curiosity spikes
+        inc_curiosity = self.curiosity_rate + (0.01 * math.log1p(unknowns_count))
         self.curiosity_analog = min(m, self.curiosity_analog + inc_curiosity)
         if self._should_emit("curiosity_analog", prev, self.curiosity_analog, m):
             crossed.append("curiosity_analog")
@@ -133,7 +135,7 @@ class DriveCounters:
     def on_action_completed(self) -> None:
         """Decrement on successful action."""
         self.pending_debt = max(0.0, self.pending_debt - 0.3)
-        self.curiosity_analog = max(0.0, self.curiosity_analog - 0.1)
+        self.curiosity_analog = max(0.0, self.curiosity_analog - 0.3)
 
     def to_dict(self) -> dict[str, float]:
         return {

@@ -1,3 +1,5 @@
+### УДАЛИТЬ ПЕРЕД ЗАПУСКОМ: This is a one-time import script. After running, delete this file and remove from git.
+
 """One-time import: pull provider keys from OmniRoute storage.sqlite into our own pool.
 
 OmniRoute encrypts api_keys with AES-256-GCM keyed by scrypt(STORAGE_ENCRYPTION_KEY,

@@ -272,29 +272,6 @@
 
 ---
 
-### CRUTCH-020: Single-channel TG dump (всё валится в одну ленту)
-
-**Что происходит:** Telegram userbot — единственный полноценный канал наружу. Поэтому worker progress, vision descriptions, ack-сообщения, initiative-мысли, deep-reasoning trace, idle thoughts — **всё валится в одну ленту**. Иван видит "Worker по задаче X: 5 шагов через Y" вперемешку с реальными разговорами.
-
-Защиты костыльные:
-- Throttle / daily caps (`INITIATIVE_MAX_PER_DAY=5`, `progress_updates_max_per_day=50`)
-- Cross-session dedup (Jaccard 0.80 / 6h окно) — fingerprint выравнивает повторяющийся "Продолжаю разведку sweetcow.com"
-- Escalating quiet (×2/×4 после неотвеченных)
-- Suppress-on-no-progress (auto handoff с "[no-progress retry #N]" не нотифицирует)
-- Notify-on-stuck-block (один chat.tell_ivan когда задача блокируется)
-
-Каждый из них ловит конкретный класс шума, но архитектурная причина (один renderer на всё) не устранена.
-
-**Почему это костыль:** Нарушение `cognition/COGNITION.md` §1-§7 ("channels are renderers, not surfaces"). Один renderer на всё = смешанные уровни вывода = шум.
-
-**Что будет вместо:** Atrium — пакет multichannel-вывода. Соня сама помечает channel при каждом outbound action (`chat.dialog | chat.worker_log | mind.* | body.* | voice.*`). TG bridge получает только `dialog`. Reason-streams pane в Atrium показывает worker_log/mind/body. См. `docs/atrium/PLAN.md`; старый `CHANNELS.md` может быть отсутствовать в worktree.
-
-**Снимет также:**
-- частично CRUTCH-012 (notify_mode становится менее костылистым потому что worker_log идёт в свою pane без ограничений; dialog-mode остаётся для real Dialog с гейтами)
-
-**Когда уйдёт:** Atrium Этап 0-1 (1-2 месяца работы, не блокировано железом).
-
----
 
 ## 3. Как Соня должна использовать этот документ
 

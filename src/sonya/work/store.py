@@ -18,7 +18,7 @@ _COLS = (
     "owner_principal_id, origin, parent_item_id, deadline, "
     "dependencies_json, progress_json, context_anchors_json, validation_evidence_json, "
     "urgency, max_sessions, sessions_used, last_session_notes, next_step_hint, "
-    "stuck_loop_count, archive_manifest, archive_checksum, created_at, updated_at, last_activity_at"
+    "archive_manifest, archive_checksum, created_at, updated_at, last_activity_at"
 )
 
 
@@ -48,9 +48,9 @@ class WorkItemStore:
             "owner_principal_id, origin, parent_item_id, deadline, "
             "dependencies_json, progress_json, context_anchors_json, validation_evidence_json, "
             "urgency, max_sessions, sessions_used, last_session_notes, next_step_hint, "
-            "stuck_loop_count, archive_manifest, archive_checksum, created_at, updated_at, last_activity_at) "
+            "archive_manifest, archive_checksum, created_at, updated_at, last_activity_at) "
             "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, '[]', '[]', '[]', '[]', "
-            "?, ?, 0, '', '', 0, '{}', '', ?, ?, ?)",
+            "?, ?, 0, '', '', '{}', '', ?, ?, ?)",
             (
                 item_id, item_type, title, description, owner_principal_id, origin,
                 parent_item_id, deadline, urgency, int(max_sessions), now, now, now
@@ -180,10 +180,9 @@ def _row_to_item(row) -> WorkItem:
         sessions_used=int(row[15] or 0),
         last_session_notes=row[16],
         next_step_hint=row[17],
-        stuck_loop_count=int(row[18] or 0),
-        archive_manifest=row[19] or "{}",
-        archive_checksum=row[20] or "",
-        created_at=row[21],
-        updated_at=row[22],
-        last_activity_at=row[23],
+        archive_manifest=row[18] or "{}",
+        archive_checksum=row[19] or "",
+        created_at=row[20],
+        updated_at=row[21],
+        last_activity_at=row[22],
     )

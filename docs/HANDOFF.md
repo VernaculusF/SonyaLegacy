@@ -153,9 +153,9 @@ Atrium reason-stream, expression stability, and dialog-spam guard:
 - **Fixed Atrium Silence Bug:** Added `internal.agent_stream_chunk` to `_INTERNAL_PUBLIC` in `continuity_stream.py` to prevent stream events from being hidden from Atrium UI.
 - Fixed missing `ABANDONED` enum status and `list_active()` compatibility method in the new WorkItem store logic during deploy.
 - **Fixed Telegram Parsing/Double-Messaging Bug:**
-  - Modified `_TOOL_BLOCK_RE` in `agent_session.py` to properly match tools containing backticks with spaces (e.g., `` ` ` ` ``).
-  - Modified `_extract_reply` in `channel_session.py` to return an empty string instead of extracting `[DONE: body]` fallback messages when the agent has already populated `outbound_sent` (e.g. used `chat.dialog`). This prevents Telegram from sending internal session summaries ("ожидаю следующего сообщения").
-- Deployed commit `87a037e` to production VPS using fast-forward merge and restarted services.
+  - Modified `_TOOL_BLOCK_RE` in `agent_session.py` to properly match tools containing backticks with spaces (e.g., `` ` ` ` ``) WITHOUT consuming the newline characters. This fixes the issue where `chat.dialog` failed silently in Atrium.
+  - Reverted the early return in `_extract_reply` (in `channel_session.py`) and instead added logic to override dummy `[DONE: ожидаю...]` messages with the actual message content sent via `chat.dialog`. This correctly restores the separation of channels (Telegram messages go to Telegram, Atrium messages go to Atrium).
+- Deployed commit `20ecb4c` to production VPS using fast-forward merge and restarted services.
 
 
 - reason-stream drawer now closes through its button, `Escape`, or backdrop;

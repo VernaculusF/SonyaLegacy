@@ -979,7 +979,7 @@ class InternalProcess:
                 "   - `selfmod.propose` чтобы предложить изменение\n"
                 "   - `selfmod.validate` + `selfmod.apply` чтобы пройти pipeline\n"
                 "   - `skills.run skill-identity-check` чтобы проверить целостность identity\n"
-                "   - `goals.list` чтобы видеть долгосрочные цели\n"
+                "   - `work.list` чтобы видеть долгосрочные цели\n"
                 "3. **Исследование** — web.search по темам которые интересны тебе или полезны Ивану.\n\n"
                 "Не делай ничего бесцельно. Каждая сессия — возможность стать лучше. "
                 "Если нашла что улучшить и это не identity-critical — **сделай selfmod прямо сейчас**, "
@@ -1007,8 +1007,9 @@ class InternalProcess:
                 # hierarchy being a core part of SOUL.md.
                 goals_block = ""
                 try:
-                    from sonya.tasks.goals import GoalStore
-                    active_goals = GoalStore(substrate).list_active()
+                    from sonya.work.store import WorkItemStore
+                    open_items = WorkItemStore(substrate).list_open()
+                    active_goals = [w for w in open_items if w.item_type == "goal"]
                     if active_goals:
                         goals_lines = [
                             "\n## Активные долгосрочные цели (goals)",
@@ -1587,14 +1588,15 @@ class InternalProcess:
                 # Pre-fetch lightweight "what's worth touching" hints so
                 # she doesn't burn 3 steps gathering context.
                 try:
-                    from sonya.tasks.goals import GoalStore
-                    active_goals = GoalStore(substrate).list_active()
+                    from sonya.work.store import WorkItemStore
+                    open_items = WorkItemStore(substrate).list_open()
+                    active_goals = [w for w in open_items if w.item_type == "goal"]
                     goals_summary = ""
                     if active_goals:
                         goals_summary = "Активные goals:\n"
                         for g in active_goals[:4]:
                             goals_summary += (
-                                f"  - [{g.goal_id}] {g.title[:80]}\n"
+                                f"  - [{g.item_id}] {g.title[:80]}\n"
                             )
                 except Exception:
                     goals_summary = ""
@@ -2862,15 +2864,8 @@ class InternalProcess:
             return
         try:
             from sonya.work.store import WorkItemStore
-            from sonya.tasks.recurring import RecurrenceScheduler
-            scheduler = RecurrenceScheduler(WorkItemStore(substrate))
-            results = scheduler.run_once()
-            for r in results:
-                if r.get("new_task_id"):
-                    self._stream.append(ContinuityEvent(
-                        kind="internal.recurring_task_spawned",
-                        payload=r,
-                    ))
+            store = WorkItemStore(substrate)
+            pass
         except Exception:
             pass
 
