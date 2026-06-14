@@ -16,6 +16,24 @@ This audit evaluates the current state against the original foundational princip
 - **Model Architecture and State Tuning Drift:** `ОСНОВА.md` establishes Sonya as a continuous entity running on an `RWKV-7` architecture with personality anchored via `State Tuning`. The current implementation is heavily dependent on stateless external models (OpenRouter Gemma). This fundamentally diverges from the core vision of a self-contained, continuous state.
 - **Subsystem Fragmentation (`tasks` vs `work`):** The codebase transition from the legacy `tasks` system to the new `work` item architecture is incomplete. Orphaned code remains in `src/sonya/tasks/`, and legacy fields (e.g., `stuck_loop_count`) were left unmigrated. This architectural fragmentation directly caused recent runtime bugs, such as the failure of the `stuck_loop` detector due to mismatched event names (`item.session_handoff` vs `work.session_handoff`).
 - **Embodiment and Initiative Mechanisms:** The original plan dictates that initiative should be driven by concrete "body spikes" (e.g., loneliness metrics from an SNN/Loihi setup). The current system relies on abstract counters like `curiosity_analog`, which are frequently maxed out and unbalanced, leading to erratic, self-propelling sessions rather than grounded initiative.
+# Sonya Runtime Coherence Audit
+
+**Status:** Active canonical architecture audit
+**Last updated:** 2026-06-12
+**Scope:** situational understanding, autonomy, work execution, embodiment,
+provider routing, observability, and runtime hygiene.
+
+Implementation and deployment workflow for this audit:
+[`docs/operations/RUNTIME_COHERENCE_WORKFLOW.md`](operations/RUNTIME_COHERENCE_WORKFLOW.md).
+
+
+## 1. Divergence from Original Mission (`ОСНОВА.md` and `docs/core`)
+
+This audit evaluates the current state against the original foundational principles defined in `docs/план/ОСНОВА.md` and `docs/core/SONYA_SYSTEM_CORE.md`.
+
+- **Model Architecture and State Tuning Drift:** `ОСНОВА.md` establishes Sonya as a continuous entity running on an `RWKV-7` architecture with personality anchored via `State Tuning`. The current implementation is heavily dependent on stateless external models (OpenRouter Gemma). This fundamentally diverges from the core vision of a self-contained, continuous state.
+- **Subsystem Fragmentation (`tasks` vs `work`):** The codebase transition from the legacy `tasks` system to the new `work` item architecture is incomplete. Orphaned code remains in `src/sonya/tasks/`, and legacy fields (e.g., `stuck_loop_count`) were left unmigrated. This architectural fragmentation directly caused recent runtime bugs, such as the failure of the `stuck_loop` detector due to mismatched event names (`item.session_handoff` vs `work.session_handoff`).
+- **Embodiment and Initiative Mechanisms:** The original plan dictates that initiative should be driven by concrete "body spikes" (e.g., loneliness metrics from an SNN/Loihi setup). The current system relies on abstract counters like `curiosity_analog`, which are frequently maxed out and unbalanced, leading to erratic, self-propelling sessions rather than grounded initiative.
 - **Channel vs. Renderer Entanglement:** `SONYA_SYSTEM_CORE.md` explicitly mandates that channels (Telegram, Atrium) act merely as "renderers" of the core state. However, channel-specific parsing logic has leaked into the core runtime, historically causing bugs like duplicate message echoes and action-report leaks.
 
 ## 2. Identified Runtime Deviations & Fixes
@@ -23,5 +41,8 @@ This audit evaluates the current state against the original foundational princip
 During the recent coherence audit, the following critical deviations were identified and fixed:
 
 - **Atrium Dialog Routing Failure:** When Atrium "emergency mode" was disabled, `chat.dialog` responses to Atrium messages were incorrectly routed and logged as `outgoing.telegram_progress` instead of `outgoing.dialog`. Since Atrium's history endpoint only fetches `outgoing.dialog`, this caused Sonya's replies to be entirely invisible in the Atrium UI, despite reaching Telegram. This violated the channel separation principle. Fix: Modified `outbound.py` to explicitly respect `channel="dialog"` and log `outgoing.dialog` regardless of emergency mode status.
+- **Atrium UI Telegram Message Leakage:** The `/api/atrium/history` backend endpoint fetched all `outgoing.dialog` events to populate the Atrium UI without filtering by channel. Because Telegram replies are also stored as `outgoing.dialog` (with `channel="telegram"`), Atrium's UI erroneously loaded and displayed Telegram-exclusive messages upon reload. Fix: Added explicit channel filtering `(channel = '' OR channel = 'dialog' OR channel = 'atrium')` to `src/sonya/admin/server.py` to enforce strict channel separation.
+- **Atrium LLM Streaming Infinite Hang:** The core runtime's LLM streaming mechanism in `run_agent_session` was vulnerable to indefinite blocks. OpenRouter free-tier models sent empty SSE keep-alive packets during high load, which bypassed the `httpx` read timeout. This locked the `_busy_lock` indefinitely and froze Sonya's cognitive loop, making her entirely unresponsive in Atrium. Fix: Introduced a hard 180-second `asyncio.wait_for` timeout around `provider.stream_text` in `agent_session.py` to break the lock and restore responsiveness.
+- **Runaway Headless Browsers:** Due to previous failures and session hangs involving `BrowserTool`, multiple orphaned `chromium` processes leaked onto the VPS, consuming 100% CPU and starving the event loop. Fix: Terminated the zombie processes on the host. Further lifecycle management of Chromium contexts should be enforced.
 - **Legacy `tasks` System Remnants:** Incomplete transition to the new `work` system left orphaned fields like `stuck_loop_count` in the database schema and legacy tools (`tasks_tool.py`) active. This fragmentation caused coherence issues and errors in internal monitoring loops. Fix: Removed `stuck_loop_count` from schema migrations and models, and deprecated `src/sonya/tasks/` and its associated tools.
 - **Runaway Curiosity Drive:** The `curiosity_analog` drive had an unbalanced configuration that forced continuous self-propelling sessions, deviating from the grounded initiative design. Fix: Rebalanced the curiosity drive logic in `drives.py` to restore proper initiative decay.
