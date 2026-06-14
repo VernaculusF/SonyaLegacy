@@ -596,7 +596,7 @@ class OutboundGate:
         suffix = " [private]" if is_private else ""
         return f"[OK] {channel}{suffix}"
 
-    async def _dispatch(self, text: str, *, reason: str, workspace_id: str = "") -> str:
+    async def _dispatch(self, text: str, *, reason: str, workspace_id: str = "", channel: str = "") -> str:
         try:
             ok = await self._registry.send(
                 self._channel,
@@ -624,17 +624,25 @@ class OutboundGate:
             self._sent_today += 1
         # Distinguish event kinds so downstream consumers (escalating quiet,
         # cross-session dedup, _unanswered_initiatives_streak) can tell
+
         # an ack/progress chat.tell_ivan from a real unsolicited initiative.
         # Earlier ALL outbound got kind=outgoing.telegram_initiative which
         # caused tool progress messages to inflate the unanswered counter
         # and trigger 2× / 4× quiet windows for Sonya even when she was
         # only sending requested progress updates.
-        event_kind = (
-            "outgoing.telegram_progress" if is_progress
-            else "outgoing.telegram_initiative"
-        )
+        if channel == "dialog":
+            event_kind = "outgoing.dialog"
+            event_channel = "dialog"
+        else:
+            event_kind = (
+                "outgoing.telegram_progress" if is_progress
+                else "outgoing.telegram_initiative"
+            )
+            event_channel = ""
+
         self._stream.append(ContinuityEvent(
             kind=event_kind,
+            channel=event_channel,
             payload={
                     "reason": reason,
                     "target": self._target,
@@ -707,7 +715,7 @@ def call_outbound_sync(
             ok, why = gate._check_gates(ignore_quiet=True)
             if not ok:
                 return f"[BLOCKED] initiative gate: {why}"
-            coro = gate._dispatch(text, reason="tool", workspace_id=workspace_id)
+            coro = gate._dispatch(text, reason="tool", workspace_id=workspace_id, channel=channel)
 
     if loop is not None and loop.is_running():
         task = loop.create_task(coro)
