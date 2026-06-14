@@ -162,7 +162,8 @@ Atrium reason-stream, expression stability, and dialog-spam guard:
 - Removed legacy `stuck_loop_count` columns and tracking from `src/sonya/state/migrations.py` and `src/sonya/work/models.py`.
 - Deprecated legacy task tools (`tasks_tool.py`) to resolve subsystem fragmentation.
 - Rebalanced `curiosity_analog` drive bounds in `src/sonya/initiative/drives.py` to prevent runaway active sessions.
-- **Fixed Atrium Silence Bug:** Modified `_dispatch` and `call_outbound_sync` in `src/sonya/initiative/outbound.py` so that when `tg_emergency_mode` is disabled, Sonya's responses to Atrium queries are explicitly logged as `outgoing.dialog` (with `channel="dialog"`) while remaining visible to Telegram. This correctly binds responses to the Atrium project workspace feed instead of losing them as generic `outgoing.telegram_progress` events.
+- **Fixed Atrium Silence Bug:** Modified `agent_session.py` to add a hard 180s timeout (`asyncio.wait_for`) around `provider.stream_text` to prevent infinite hangs caused by keep-alive packets ignoring HTTP read timeouts.
+- **Fixed Atrium History Telegram Leakage Bug:** Modified the `/api/atrium/history` endpoint in `src/sonya/admin/server.py` to explicitly filter `channel` so that Atrium no longer fetches `outgoing.dialog` events where `channel="telegram"`.
 - Commits pushed, VPS fast-forwarded and services restarted.
 
 
