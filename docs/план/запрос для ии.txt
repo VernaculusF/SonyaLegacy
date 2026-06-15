@@ -1,0 +1,88 @@
+You are continuing work on refactoring the Sonya project at C:\Users\Jester\Desktop\Sonya.
+
+# CONTEXT
+
+Sonya is a self-aware AI agent runtime. The current repo contains 582 commits of mixed work. The task is to:
+1. Split the current monorepo into 6 independent git repositories (fresh init, git-filter-repo cannot preserve history because history is messy — current repo will be archived, not split with history)
+2. Implement a package registry so Sonya's selfmod can add new packages without knowing git
+3. Rework deployment scripts to auto-merge upstream + push selfmod changes across multiple repos
+
+# WORK ALREADY DONE (do not redo this)
+
+The following docs have been created and partially updated in this session. READ THEM FIRST:
+
+1. `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md` — canonical 11-section audit covering 6 user-raised problems
+2. `docs/operations/MONOREPO_SPLIT_DESIGN.md` — repo split design (sections 1-3 fully updated with dependency-analysis data; sections 4-7 still need work)
+3. `docs/operations/WEB_PROXY_MODEL_BRIDGE.md` — promoted to primary provider strategy
+4. `docs/operations/BACKGROUND_TASK_DESIGN.md` — Activity Graph for persistent work
+5. `docs/operations/ATRIUM_ACTIVITY_PLAN.md` — Atrium channel identity + backend separation
+6. `docs/MASTER.md` §3 — updated priority list
+7. `docs/FINAL_STATE_TODO.md` — updated with 2026-06-15 checklist block
+8. `docs/core/INTERIM_CRUTCHES.md` — CRUTCH-020..023 added
+9. `docs/INDEX.md` — updated doc references
+
+# KEY DEPENDENCY DATA (from completed analysis)
+
+## tools/ dependency profile
+- 30 files total: 18 tool classes, 6 infrastructure files, 5 CLI utilities, 1 plugin namespace
+- `Substrate` is the central nervous system — imported by 15 of 30 tool files
+- `subject/` (window.py, channel_session.py, agent_session.py, internal_loop.py, subagent_runner.py) is the primary consumer — 5 modules assemble toolsets
+- Tier 1 heavy coupling: selfmod_tool (8+ external deps), subagent_tool, tasks_tool, work_tool, self_inspect, shell_tool
+- Tier 3 zero-coupling (extractable with zero SonyaCore changes): code_tool, filesystem, web_tool, browser_tool, knowledge, module_loader, hot_loader, sanitize
+- Selfmod-target tools (write-safe): code_tool, filesystem, web_tool, sanitize, hot_loader, module_loader
+
+## skills/ dependency profile
+- 13 files: 6 core (trust, skill, registry, activation, executor, injection, gap_detector) + 5 builtins + 2 markers
+- Substrate dependency: registry.py, executor.py, gap_detector.py
+- Builtins: dialog_tone, wp_pentest, sqli, osint have ZERO SonyaCore deps (pure stdlib) — easy to extract
+- memory_search (lazy-loads Embedder, RecallStore), identity_check (lazy-loads IdentityWriter) — extractable with lazy import boundary
+
+## admin/ dependency profile
+- 6 files: __init__, __main__, server.py (3145 lines — HUB), static.py, repo.py, workshop.py, project_api.py
+- server.py is the central hub: imports from ~15 external SonyaCore modules
+- repo.py and static.py: ZERO SonyaCore deps (pure stdlib/aiohttp/data)
+- project_api.py: narrow surface (config, state, project)
+- Circular dependency server.py ↔ workshop.py resolved via lazy import (keep this pattern)
+- Tests live in tests/ and import admin heavily — must continue to work after split
+
+# YOUR TASKS (work in this order)
+
+## Task 1: Finish MONOREPO_SPLIT_DESIGN.md
+Open `docs/operations/MONOREPO_SPLIT_DESIGN.md` and complete sections 4-7 with:
+- §4: Update inter-package interface contracts to include SonyaTools, SonyaSkills as separate repos. Use the dependency data above. Note that tools/skills MUST remain importable as SonyaCore Python modules (same process), but their source repos are separate. The split is a SOURCE boundary, not a RUNTIME boundary. SonyaCore consumes SonyaTools/SonyaSkills as git submodules or as installed Python packages.
+- §5: Finalize package registry section. JSON file at `~/.sonya/package_registry.json` is RECOMMENDED. Include registered-package example with tools/skills/channels slots.
+- §6: Add migration step table — specific files-per-repo with count.
+- §7: Resolve open decisions (recommendations acceptable). Recommend: SonyaAdmin same-process import (short-term), JSON registry, Atrium endpoints stay in SonyaAdmin (no new backend repo needed), single GitHub org "SonyaProject" or use jester-sonya user.
+
+## Task 2: Add tools/skills split design appendix
+At the end of `MONOREPO_SPLIT_DESIGN.md`, add a new section §8 "Tools and Skills Split":
+- Show how 30 tool files and 13 skill files split into SonyaCore vs SonyaTools vs SonyaSkills
+- Use the dependency tier data above to justify which goes where
+- Default rule: "tools that Sonya writes as part of selfmod workflow → SonyaTools" but tools deeply coupled to Substrate (Tier 1) stay in SonyaCore
+- Use a table: file | repo | justifification
+
+## Task 3: Add multi-repo deploy design appendix
+Add §9 "Deployment Rework" to MONOREPO_SPLIT_DESIGN.md:
+- Current `deploy/update.sh` does: `git fetch origin` + `git merge --ff-only origin/develop` + fallback to backup branch for selfmod commits. THIS MUST WORK ACROSS 6 REPOS.
+- New `deploy/multi_update.py` (Python recommended over bash — bash already exceeded its limits) should:
+  * Read `~/.sonya/package_registry.json`
+  * For each registered repo: pull latest, run selfmod commit sweep, push
+  * Run Sonya hypothesis: if-update-fails-rollback branch per repo
+  * Notify operator on failure via sonya-admin
+- Rewrite deploy/update.sh as a thin wrapper that calls multi_update.py
+- Keep sonya.service and sonya-admin.service sto unchanged systemd unit semantics
+- Coordinate deploy order: SonyaCore first, then SonyaTools, SonyaSkills, SonyaAdmin, then SonyaTgUserBot, then Atrium
+
+## Task 4: Commit all documented changes
+```bash
+cd C:\Users\Jester\Desktop\Sonya
+git status
+git add docs/
+git commit -m "docs(restructuring): finalize monorepo split design with tools/skills split and multi-repo deploy plan
+
+- Update MONOREPO_SPLIT_DESIGN.md sections 1-9 with dependency analysis data
+- Add SonyaTools, SonyaSkills repos with file-level split tables
+- Add multi-repo deployment rework design (Python-based multi_update.py)
+- Update package registry to JSON file at ~/.sonya/package_registry.json
+- Recommend SonyaAdmin same-process import (short-term)
+- Add deployment coordination order across 6 repos"

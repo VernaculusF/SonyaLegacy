@@ -1,5 +1,63 @@
 # FINAL STATE TODO
 
+## 2026-06-15 Runtime-Coherence Status Override
+
+The 2026-06-12 audit identified critical gaps in six areas. All items below
+must pass before the marketer package can begin. Canonical audit:
+`docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+
+### Monorepo split (audit §2)
+
+- [ ] Current monorepo archived as `SonyaLegacy` with full git history
+- [ ] Fresh `SonyaCore` repo created with clean history
+- [ ] `src/sonya/tools/` split into `SonyaTools`
+- [ ] `src/sonya/skills/` split into `SonyaSkills`
+- [ ] `src/sonya/admin/` separated from core into its own repo/module
+- [ ] Atrium frontend at its own repo with independent build
+- [ ] TgUserBot at its own repo with independent build
+- [ ] Package registry mechanism replaces hardcoded `packages/*/` scan
+- [ ] Sonya can add new packages through selfmod + registry
+- [ ] New repo layout boots against the same preserved VPS substrate/secrets/state
+- [ ] All existing tests pass in new layout
+
+### Atrium channel identity (audit §5)
+
+- [ ] Atrium messages arrive as `channel="atrium"`, not `"telegram_userbot"`
+- [ ] Sonya replies to Atrium messages are visible in Atrium
+- [ ] Atrium history contains only Atrium-sourced messages
+- [ ] Read-receipt path from Atrium to Sonya
+- [ ] Admin and Atrium endpoints served by separate sub-apps
+
+### Selfmod pipeline (audit §3)
+
+- [ ] Layer 2 sandbox is reproducible (no env-dependent test failures)
+- [ ] Rejection feedback is structured and actionable
+- [ ] Retry loop: Sonya can attempt 3+ proposals without losing intent
+- [ ] At least 3 real selfmod proposals pass all 4 layers
+
+### Web proxy providers (audit §6)
+
+- [ ] Remote browser worker connects VPS to browser-facing machine
+- [ ] At least one DeepSeek model completes live inference end-to-end
+- [ ] 10+ accounts per service provisioned by Ivan
+- [ ] Account rotation handles auth failure, rate limit, CAPTCHA
+- [ ] Context budget tracking prevents silent truncation
+- [ ] No bridge secret appears in Git, docs, logs, or continuity
+
+### Background task orchestration (audit §9)
+
+- [ ] Activity model and substrate table implemented
+- [ ] Persistent activities cycle correctly (running → review → running)
+- [ ] Auto-accept, review, and escalation paths work
+- [ ] Ivan can see active activities in Atrium
+- [ ] At least one persistent activity tested end-to-end
+
+### Project and subagent proofs (existing — audit §4)
+
+See FINAL_STATE_TODO.md §6. All items there must pass.
+
+---
+
 ## 2026-06-12 Runtime-Coherence Status Override
 
 The 2026-06-11 hosted project-stack foundation is deployed, but it is not the

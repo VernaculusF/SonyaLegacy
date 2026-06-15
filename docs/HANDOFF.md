@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** Session handoff
-**Last updated:** 2026-06-12
+**Last updated:** 2026-06-15
 
 ## Deployed Baseline
 
@@ -31,6 +31,26 @@ VPS unrelated:
 - `tg.session`
 
 Do not revert or commit these unless Ivan explicitly asks.
+
+## Current Active Work: Restructuring Baseline
+
+This session is not implementing the split yet. It is finishing the
+documentation baseline required before any repo migration begins.
+
+Current restructuring decisions:
+
+- preserve the current repo as `SonyaLegacy` with full `.git`;
+- start `SonyaCore` as a fresh repo with clean history;
+- split active work into `SonyaCore`, `SonyaTools`, `SonyaSkills`,
+  `SonyaAdmin`, `Atrium`, and `SonyaTgUserBot`;
+- preserve the same VPS substrate, secrets, provider state, web-proxy auth
+  state, package registry, and Telegram session state;
+- use `~/.sonya/package_registry.json` as the recommended package registry;
+- keep `SonyaAdmin` as a same-process importer of `SonyaCore` short-term;
+- keep Atrium backend endpoints in `SonyaAdmin` short-term, but with clear
+  internal separation from admin-only routes.
+
+Track the live state of this work in `docs/RESTRUCTURING_STATUS.md`.
 
 ## Current Product Truth
 

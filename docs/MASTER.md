@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Type:** High-level doctrine
-**Last updated:** 2026-06-12
+**Last updated:** 2026-06-15
 
 ---
 
@@ -75,6 +75,35 @@
 - `docs/operations/RUNTIME_COHERENCE_WORKFLOW.md`
 
 ### Следующий обязательный слой
+
+Canonical audit: `docs/SONYA_RUNTIME_COHERENCE_AUDIT.md`.
+
+Priority order (2026-06-15 update):
+
+1. **Monorepo split** — archive the current monorepo as `SonyaLegacy`, then
+   create fresh `SonyaCore`, `SonyaTools`, `SonyaSkills`, `SonyaAdmin`,
+   `Atrium`, and `SonyaTgUserBot` as independent repos while preserving the
+   same VPS substrate/secrets/runtime state. Design:
+   `docs/operations/MONOREPO_SPLIT_DESIGN.md`.
+2. **Atrium channel identity and backend separation** — fix the channel routing
+   so Atrium messages arrive as `channel="atrium"`, not `"telegram_userbot"`.
+   Separate Atrium backend from admin.
+   `docs/operations/ATRIUM_ACTIVITY_PLAN.md`.
+3. **Web proxy provider system** — promote browser-backed web model bridges to
+   primary provider strategy. DeepSeek, GLM, Kimi, Qwen through remote browser
+   worker. This breaks the weak-model deadlock blocking selfmod.
+   `docs/operations/WEB_PROXY_MODEL_BRIDGE.md`.
+4. **Selfmod pipeline repair** — fix Layer 2 sandbox fragility, add structured
+   rejection feedback, implement retry loop. Depends on better models from (3).
+5. **Project and subagent proofs** — validate the project executor and
+   subagent stack with end-to-end tests per FINAL_STATE_TODO.md §6.
+6. **Background task orchestration** — design persistent activity graph for
+   while-true work (marketer, monitoring). Design:
+   `docs/operations/BACKGROUND_TASK_DESIGN.md`.
+7. **Cognitive continuity stabilization** — self-improvement on any model,
+   memory-driven initiative, better session resumption.
+8. **Marketer package** — first project done *with* Sonya through Atrium.
+   Deferred until all above pass.
 
 Atrium должен стать не только интерфейсом общения, но и рабочей средой.
 

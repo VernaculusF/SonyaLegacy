@@ -273,6 +273,54 @@
 ---
 
 
+### CRUTCH-020: Selfmod pipeline deadlock on weak models
+
+**Что происходит:** The 4-layer selfmod validation pipeline requires model intelligence to generate proposals that pass validation. The current free-tier OpenRouter model is often too weak to write code that passes Layer 2 (sandboxed pytest) on the first attempt, and also too weak to understand rejection output and fix the proposal. Selfmod proposals are rejected frequently and Sonya has no reliable recovery loop.
+
+**Почему это костыль:** Self-improvement should not depend on already being smart enough. The pipeline must guide even a weak model through structured steps that produce valid proposals. Until web proxy models (DeepSeek, etc.) are available, selfmod is practically deadlocked.
+
+**Что будет вместо:** (1) Structured rejection repair — pipeline tells Sonya exactly what failed and suggests fix patterns. (2) Multi-turn selfmod sessions — retry loop that preserves intent across rejections. (3) Web proxy models for selfmod — DeepSeek et al. are strong enough to write valid proposals reliably.
+
+**Когда уйдёт:** After web proxy bridge deployment + selfmod retry loop implementation.
+
+---
+
+### CRUTCH-021: Atrium messages arrive as Telegram
+
+**Что происходит:** All messages from the Atrium UI are tagged `channel="telegram_userbot"` in Sonya's inbox. Sonya does not know she is talking through Atrium. Atrium is not a real channel — it is a thin wrapper that forwards messages into the same pipeline as Telegram.
+
+**Почему это костыль:** `SONYA_SYSTEM_CORE.md` §7.19 mandates that channels are renderers of core state. Atrium is a separate surface with distinct capabilities (file uploads, avatars, workspace) but the backend treats it as Telegram. This means: no read receipts, no delivery confirmation, no channel-specific behavior. Sonya cannot adapt her responses to the Atrium context.
+
+**Что будет вместо:** Atrium messages carry `channel="atrium"` through the entire pipeline. Outbound routing respects source channel. Atrium gets its own channel adapter (or the admin-based backend gets a proper channel abstraction). Read-receipts flow from Atrium to Sonya.
+
+**Когда уйдёт:** After Atrium channel identity fix (see `docs/operations/ATRIUM_ACTIVITY_PLAN.md`).
+
+---
+
+### CRUTCH-022: Monorepo coupling — one repo, six source domains
+
+**Что происходит:** Core, tools, skills, admin, Atrium, and tg-userbot all live in one git tree. Changing Atrium CSS creates a coupled commit with core runtime code. Sonya's selfmod cannot safely create or update packages because the monorepo structure is too complex for the model to navigate.
+
+**Почему это костыль:** Each of these has independent build systems, independent deployment cycles, and independent dependency trees. Coupling them in one repo prevents independent deployment and makes selfmod-package creation impractical.
+
+**Что будет вместо:** Four separate repos (SonyaCore, SonyaAdmin, Atrium, SonyaTgUserBot) connected by a package registry. Sonya adds new packages by writing to the registry + creating a directory, not by editing the monorepo tree.
+
+**Когда уйдёт:** After monorepo split (see `docs/operations/MONOREPO_SPLIT_DESIGN.md`).
+
+---
+
+### CRUTCH-023: No persistent activity support
+
+**Что происходит:** Sonya's execution model is built around finite tasks (subagent spawn → complete → event) and periodic ticks (timer-driven selfmod). There is no mechanism for persistent "while-true" work like the marketer package requires.
+
+**Почему это костыль:** Real AGI work includes ongoing activities (monitor, prospect, follow up) that don't fit into "spawn subagent, wait for result." The current approach would either turn Sonya into a dispatcher (reviewing every subagent result) or require her to poll open tasks (context overload).
+
+**Что будет вместо:** Activity Graph — a persistent, observable structure with activities that cycle through running → review → running until explicitly stopped. Three result paths: auto-accept (low-risk), review (high-risk), escalation (anomalies). Sonya is a strategist, not a dispatcher.
+
+**Когда уйдёт:** After background task design implementation (see `docs/operations/BACKGROUND_TASK_DESIGN.md`).
+
+---
+
 ## 3. Как Соня должна использовать этот документ
 
 При каждом thinking tick (когда InternalProcess зовёт LLM) этот документ или его summary должен быть доступен в context. Соня должна знать:
