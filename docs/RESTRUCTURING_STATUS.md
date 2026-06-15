@@ -25,6 +25,8 @@ after every meaningful change so another agent can continue without guessing.
 
 ## Last Completed Change
 
+- Committed the restructuring documentation baseline in commit `bc345f3`
+  (`docs(restructuring): finalize split baseline and migration docs`).
 - Finalized the split direction: `SonyaLegacy` archive + fresh `SonyaCore`.
 - Added runtime-state preservation as a hard constraint of the split.
 - Created this tracker and the master restructuring checklist.
@@ -40,10 +42,9 @@ after every meaningful change so another agent can continue without guessing.
 
 ## Next Steps
 
-1. Review the full documentation diff and commit docs only.
-2. Archive the current repo as `SonyaLegacy` in a separate folder / remote.
-3. Create fresh repos for the new active layout.
-4. Prepare runtime bootstrap so the same VPS substrate and secrets continue
+1. Archive the current repo as `SonyaLegacy` in a separate folder / remote.
+2. Create fresh repos for the new active layout.
+3. Prepare runtime bootstrap so the same VPS substrate and secrets continue
    under the new repo layout.
 
 ## Active Risks
