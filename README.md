@@ -1,3 +1,11 @@
+# SonyaLegacy Read-Only Baseline
+
+This checkout is the preserved legacy baseline, not the active development
+home. New work belongs in the fresh repositories under `SonyaAGI`; keep this
+repository intact for compatibility, comparison, and rollback proof.
+
+---
+
 # Sonya
 
 Repository for Sonya core, reusable runtime packages, and active implementation work.
